@@ -1,5 +1,7 @@
 //! The app rail (S2.1): 52 px wide, one 34 px tile per app, then the add tile.
 
+use std::path::Path;
+
 use eframe::egui::scroll_area::ScrollBarVisibility;
 use eframe::egui::{
     Align2, Color32, Rect, Role, ScrollArea, Sense, Shape, Stroke, Ui, UiBuilder, Vec2, WidgetInfo,
@@ -11,6 +13,8 @@ use crate::strings;
 use crate::theme::{Face, Palette, Type, radius, size, stroke, ty};
 
 pub struct Tile<'a> {
+    /// The app folder. Two apps can have the same name, never the same folder.
+    pub root: &'a Path,
     pub name: &'a str,
     pub monogram: &'a str,
     /// How many findings of the kind problem the app has. Any raises the pip.
@@ -176,7 +180,7 @@ fn app_tile(
 ) -> eframe::egui::Response {
     let response = ui.interact(
         rect,
-        ui.scope_id().with(("rail-tile", tile.name)),
+        ui.scope_id().with(("rail-tile", tile.root)),
         Sense::click_and_drag(),
     );
     if selected {

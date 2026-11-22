@@ -1247,6 +1247,7 @@ impl eframe::App for MortiseApp {
             .iter()
             .zip(&self.apps)
             .map(|(app, open)| Tile {
+                root: &app.root,
                 name: &app.name,
                 monogram: &app.monogram,
                 problems: match open.live.state() {
