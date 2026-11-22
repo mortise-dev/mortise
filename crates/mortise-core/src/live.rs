@@ -279,8 +279,16 @@ impl Worker {
                 plan.missing.push((folder.clone(), above.to_owned()));
                 (above.to_owned(), RecursiveMode::NonRecursive)
             };
-            if !plan.folders.iter().any(|(folder, _)| *folder == watched.0) {
-                plan.folders.push(watched);
+            // A folder wanted twice, such as a modules folder set to `config`, is
+            // watched once, with its subfolders when either wants them.
+            match plan
+                .folders
+                .iter_mut()
+                .find(|(folder, _)| *folder == watched.0)
+            {
+                Some((_, mode)) if watched.1 == RecursiveMode::Recursive => *mode = watched.1,
+                Some(_) => {}
+                None => plan.folders.push(watched),
             }
         }
         plan
