@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use crate::clover::{self, Coverage};
 use crate::code::propose_codes;
 use crate::composer::{Lock, Version};
+use crate::findings::{self, DEFAULT_COVERAGE_LIMIT, Findings, Subject};
 use crate::git::{self, Git};
 use crate::kind::Kinds;
 use crate::layout::Layout;
@@ -58,6 +59,10 @@ pub struct AppSnapshot {
     /// The boundary rules the links were checked against.
     pub rules: Rules,
     pub rules_source: RulesSource,
+    /// What the rules and the checks on files found.
+    pub findings: Findings,
+    /// A module covered less than this many per cent is a warning.
+    pub coverage_limit: u8,
 }
 
 impl AppSnapshot {
@@ -227,7 +232,7 @@ pub fn read_app_cached(
 
     let (layout, config) = Layout::read(&root);
     let kinds = Kinds::new(config.as_ref(), &layout.app_folder);
-    let found = find_modules(&layout, &kinds, cache);
+    let (found, status_entries) = find_modules(&layout, &kinds, cache);
 
     // A code is kept once given. Only modules without one get a proposal.
     let taken: BTreeSet<String> = codes.values().cloned().collect();
@@ -307,7 +312,7 @@ pub fn read_app_cached(
         _ => BTreeMap::new(),
     };
 
-    let modules = found
+    let modules: Vec<Module> = found
         .into_iter()
         .zip(codes)
         .zip(&folders)
@@ -328,6 +333,18 @@ pub fn read_app_cached(
             churn: churn.get(folder).copied(),
         })
         .collect();
+
+    let findings = findings::find(&Subject {
+        root: &root,
+        modules: &modules,
+        links: &links,
+        cycles: &cycles,
+        rules: &rules,
+        status_entries: &status_entries,
+        statuses_file: &shown(&root, &layout.statuses_file),
+        has_coverage_report: report_path.is_some(),
+        coverage_limit: DEFAULT_COVERAGE_LIMIT,
+    });
 
     Ok(AppSnapshot {
         name: root
@@ -352,6 +369,8 @@ pub fn read_app_cached(
         cycles,
         rules,
         rules_source,
+        findings,
+        coverage_limit: DEFAULT_COVERAGE_LIMIT,
         root,
     })
 }

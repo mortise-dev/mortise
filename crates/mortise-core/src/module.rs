@@ -130,15 +130,18 @@ impl ReadCache {
 
 /// Finds the modules of an app: every folder directly under the modules folder
 /// that holds a `module.json`. Sorted by name.
+///
+/// Also gives the names the statuses file lists, for the check on entries without a module.
 pub(crate) fn find_modules(
     layout: &Layout,
     kinds: &Kinds,
     cache: &mut ReadCache,
-) -> Vec<FoundModule> {
+) -> (Vec<FoundModule>, Vec<String>) {
     let statuses = read_statuses(&layout.statuses_file);
+    let listed: Vec<String> = statuses.keys().cloned().collect();
 
     let Ok(entries) = std::fs::read_dir(&layout.modules_dir) else {
-        return Vec::new();
+        return (Vec::new(), listed);
     };
     let mut modules: Vec<FoundModule> = entries
         .filter_map(Result::ok)
@@ -179,7 +182,7 @@ pub(crate) fn find_modules(
             .then_with(|| a.name.cmp(&b.name))
             .then_with(|| a.dir.cmp(&b.dir))
     });
-    modules
+    (modules, listed)
 }
 
 #[derive(Default)]

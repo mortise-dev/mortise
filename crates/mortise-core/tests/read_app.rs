@@ -621,3 +621,189 @@ fn a_module_without_composer_json_takes_its_namespace_from_the_config() {
     assert_eq!(app.module("Billing").unwrap().namespace, r"Modules\Billing");
     assert_eq!(app.link("Checkout", "Billing").unwrap().files(), 6);
 }
+
+#[test]
+fn finds_what_breaks_a_rule_or_a_check() {
+    use mortise_core::{Check, Detail, FindingState, Severity};
+
+    let app = read_app(&fixture("shop-api")).unwrap();
+    let findings = &app.findings;
+    assert_eq!((findings.problems(), findings.warnings()), (2, 1));
+
+    // A circle is counted once, on Checkout: the side with fewer files to change.
+    let circle = &findings.list[0];
+    assert_eq!(
+        (circle.severity, circle.check),
+        (Severity::Problem, Check::NoCircularUse)
+    );
+    assert_eq!(circle.module.as_deref(), Some("Checkout"));
+    assert_eq!(
+        circle.detail,
+        Detail::CircularUse {
+            files: vec![("Checkout".into(), 2), ("Shipping".into(), 4)]
+        }
+    );
+
+    let internals = &findings.list[1];
+    assert_eq!(internals.check, Check::PublicSurfaceOnly);
+    assert_eq!(internals.module.as_deref(), Some("Checkout"));
+    assert_eq!(
+        internals.detail,
+        Detail::ReadsInternals {
+            of: "Billing".into(),
+            files: 3,
+            classes: vec![r"Modules\Billing\Models\Invoice".into()],
+        }
+    );
+
+    let coverage = &findings.list[2];
+    assert_eq!(
+        (coverage.severity, coverage.check),
+        (Severity::Warning, Check::CoverageLimit)
+    );
+    assert_eq!(coverage.module.as_deref(), Some("Notifications"));
+    assert_eq!(
+        coverage.detail,
+        Detail::LowCoverage {
+            percent: 39,
+            limit: 50
+        }
+    );
+
+    assert_eq!(findings.state_of("Checkout"), FindingState::Problems(2));
+    assert_eq!(findings.state_of("Notifications"), FindingState::Warning);
+    assert_eq!(findings.state_of("Billing"), FindingState::Good);
+    // Shipping is in the circle, but the circle is counted on Checkout.
+    assert_eq!(findings.state_of("Shipping"), FindingState::Good);
+
+    // Two rules and four checks ran. Three of the six found nothing.
+    assert_eq!(findings.rules_and_checks(), (2, 4));
+    let quiet: Vec<_> = findings
+        .checks
+        .iter()
+        .filter(|result| result.findings == 0)
+        .map(|result| (result.check, result.checked))
+        .collect();
+    assert_eq!(
+        quiet,
+        [
+            (Check::ValidManifest, 7),
+            (Check::NamespaceMatchesFolder, 7),
+            (Check::NoStaleStatus, 7)
+        ]
+    );
+}
+
+#[test]
+fn finds_broken_files_of_the_package() {
+    use mortise_core::{Check, Detail, Severity};
+
+    let app = copy_of("shop-api");
+    let modules = app.path().join("Modules");
+    // module.json that is not valid JSON.
+    std::fs::write(
+        modules.join("Users/module.json"),
+        "{\n    \"name\": \"Users\",\n",
+    )
+    .unwrap();
+    // A namespace that does not match the folder.
+    let composer = modules.join("Catalog/composer.json");
+    let json = std::fs::read_to_string(&composer).unwrap();
+    std::fs::write(
+        &composer,
+        json.replace(r"Modules\\Catalog\\", r"Modules\\Catalogue\\"),
+    )
+    .unwrap();
+    // An entry in the statuses file without a module.
+    let statuses = app.path().join("modules_statuses.json");
+    let json = std::fs::read_to_string(&statuses).unwrap();
+    std::fs::write(&statuses, json.replace("{", "{\n    \"Legacy\": true,")).unwrap();
+
+    let app = read_app(app.path()).unwrap();
+    let by_check = |check: Check| -> Vec<_> {
+        app.findings
+            .list
+            .iter()
+            .filter(|finding| finding.check == check)
+            .collect()
+    };
+
+    let manifest = by_check(Check::ValidManifest);
+    assert_eq!(manifest.len(), 1);
+    assert_eq!(manifest[0].severity, Severity::Problem);
+    assert_eq!(manifest[0].module.as_deref(), Some("Users"));
+    assert_eq!(
+        manifest[0].detail,
+        Detail::InvalidManifest {
+            file: "Modules/Users/module.json".into(),
+            message: "EOF while parsing a value".into(),
+            line: 3,
+        }
+    );
+
+    let namespace = by_check(Check::NamespaceMatchesFolder);
+    assert_eq!(namespace.len(), 1);
+    assert_eq!(namespace[0].module.as_deref(), Some("Catalog"));
+    assert_eq!(
+        namespace[0].detail,
+        Detail::NamespaceMismatch {
+            namespace: r"Modules\Catalogue".into(),
+            folder: "Modules/Catalog".into()
+        }
+    );
+
+    let stale = by_check(Check::NoStaleStatus);
+    assert_eq!(stale.len(), 1);
+    assert_eq!(stale[0].module, None);
+    assert_eq!(
+        stale[0].detail,
+        Detail::StaleStatus {
+            entry: "Legacy".into(),
+            file: "modules_statuses.json".into()
+        }
+    );
+    let result = app
+        .findings
+        .checks
+        .iter()
+        .find(|result| result.check == Check::NoStaleStatus)
+        .unwrap();
+    assert_eq!((result.checked, result.findings), (8, 1));
+}
+
+#[test]
+fn a_rule_that_is_off_is_not_checked_and_no_report_means_no_coverage_check() {
+    use mortise_core::Check;
+
+    let app = copy_of("shop-api");
+    std::fs::write(
+        app.path().join("mortise.json"),
+        r#"{"rules": {"no-circular-use": false, "public-surface-only": {"enabled": false}}}"#,
+    )
+    .unwrap();
+    std::fs::remove_dir_all(app.path().join("build")).unwrap();
+
+    let app = read_app(app.path()).unwrap();
+    assert!(app.findings.list.is_empty(), "{:?}", app.findings.list);
+    assert_eq!(app.findings.rules_and_checks(), (0, 3));
+    assert!(
+        !app.findings
+            .checks
+            .iter()
+            .any(|result| result.check == Check::CoverageLimit)
+    );
+}
+
+#[test]
+fn a_module_that_is_off_gets_no_coverage_warning() {
+    let app = copy_of("shop-api");
+    let statuses = app.path().join("modules_statuses.json");
+    let json = std::fs::read_to_string(&statuses).unwrap();
+    std::fs::write(
+        &statuses,
+        json.replace("\"Notifications\": true", "\"Notifications\": false"),
+    )
+    .unwrap();
+    let app = read_app(app.path()).unwrap();
+    assert_eq!(app.findings.warnings(), 0);
+}

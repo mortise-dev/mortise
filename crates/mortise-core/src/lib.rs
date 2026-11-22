@@ -8,6 +8,7 @@ mod app;
 mod clover;
 mod code;
 mod composer;
+mod findings;
 mod git;
 mod kind;
 mod layout;
@@ -23,6 +24,9 @@ pub use app::{AppSnapshot, CoverageReport, ReadError, read_app, read_app_cached,
 pub use clover::Coverage;
 pub use code::{ALL_CODE, propose_codes, propose_monogram};
 pub use composer::Version;
+pub use findings::{
+    Check, CheckResult, DEFAULT_COVERAGE_LIMIT, Detail, Finding, FindingState, Findings, Severity,
+};
 pub use git::{CHURN_DAYS, Churn, Git};
 pub use kind::{OTHER, TESTS};
 pub use layout::{Layout, LayoutKey};
