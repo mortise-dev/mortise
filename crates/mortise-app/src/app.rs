@@ -521,6 +521,7 @@ impl MortiseApp {
             entry.environments.push(environment);
         }
         self.apps.push(open_app(ctx, &self.settings.apps[index]));
+        self.settings_open = None;
         self.select_app(index);
         self.save();
         self.toast = Some(Toast::done(strings::added(&app.name, app.modules.len())));
@@ -593,21 +594,33 @@ impl MortiseApp {
         self
     }
 
-    /// Does what was chosen in the menu bar: the same commands as the palette.
+    /// What was chosen in the menu bar. A Settings field in use is left first, so
+    /// that its edit applies in this frame, before the choice is done at its end.
     #[cfg(target_os = "macos")]
-    fn menu_actions(&mut self, ctx: &egui::Context) {
-        use crate::menu::MenuAction;
+    fn menu_chosen(&self, ctx: &egui::Context) -> Vec<crate::menu::MenuAction> {
         let chosen = self
             .menu
             .as_ref()
             .map(|menu| menu.chosen())
             .unwrap_or_default();
+        if !chosen.is_empty() && self.settings_open.is_some() {
+            ctx.memory_mut(egui::Memory::stop_text_input);
+        }
+        chosen
+    }
+
+    /// Does what was chosen in the menu bar: the same commands as the palette.
+    #[cfg(target_os = "macos")]
+    fn menu_actions(&mut self, ctx: &egui::Context, chosen: Vec<crate::menu::MenuAction>) {
+        use crate::menu::MenuAction;
         for action in chosen {
             self.palette_scope = self.current.unwrap_or(0);
             match action {
                 MenuAction::Settings => self.open_settings(Section::Apps),
                 MenuAction::Shortcuts => self.open_settings(Section::Keyboard),
-                MenuAction::AddApp => self.pick(ctx),
+                // A dialog holds the app until it closes, as for the key.
+                MenuAction::AddApp if self.dialog.is_none() => self.pick(ctx),
+                MenuAction::AddApp => {}
                 MenuAction::Palette => self.open_palette(),
                 MenuAction::AllModules => self.run(Command::AllModules),
                 MenuAction::Findings => self.run(Command::Findings),
@@ -1187,7 +1200,10 @@ impl MortiseApp {
             AddAction::Add | AddAction::Open(_) | AddAction::Test
                 if !self.adding.as_ref().is_some_and(AddPanel::is_current) => {}
             AddAction::Add => self.add_found(ctx),
-            AddAction::Open(index) => self.select_app(index),
+            AddAction::Open(index) => {
+                self.settings_open = None;
+                self.select_app(index);
+            }
             AddAction::CopyCommand => {
                 ctx.copy_text(strings::REQUIRE_PACKAGE.to_owned());
                 self.toast = Some(Toast::done(strings::COPIED_COMMAND));
@@ -1214,7 +1230,7 @@ impl eframe::App for MortiseApp {
         self.reveal = std::mem::take(&mut self.reveal_next);
         draw::focus_what_was_asked(&ctx);
         #[cfg(target_os = "macos")]
-        self.menu_actions(&ctx);
+        let menu_chosen = self.menu_chosen(&ctx);
         self.keys(ui);
         self.take_in();
         self.sync_runtime(&ctx);
@@ -1673,6 +1689,8 @@ impl eframe::App for MortiseApp {
         if let Some(action) = add_action {
             self.add_action(&ctx, action);
         }
+        #[cfg(target_os = "macos")]
+        self.menu_actions(&ctx, menu_chosen);
     }
 
     fn clear_color(&self, visuals: &egui::Visuals) -> [f32; 4] {

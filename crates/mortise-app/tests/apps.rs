@@ -262,6 +262,10 @@ fn an_app_that_is_already_there_is_opened_not_added() {
     let mut harness = desk.start();
     assert_eq!(harness.state().current(), Some(0));
 
+    // From Settings: the app that opens takes the place of Settings.
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::Comma);
+    harness.run();
+    harness.get_by_role_and_label(Role::Button, "Back to shop-api");
     harness.key_press_modifiers(Modifiers::COMMAND, Key::O);
     harness.run();
     harness.get_by_label("crm is already in Mortise. Press Enter to open it.");
@@ -271,6 +275,7 @@ fn an_app_that_is_already_there_is_opened_not_added() {
         app.current() == Some(1)
     });
     assert!(!harness.state().is_adding());
+    assert!(harness.query_by_label_contains("Back to").is_none());
     assert_eq!(harness.state().app_names(), ["shop-api", "crm"]);
 }
 
