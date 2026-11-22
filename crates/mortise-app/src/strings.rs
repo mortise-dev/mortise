@@ -607,6 +607,15 @@ pub fn reported_on(module: &str) -> String {
     )
 }
 
+/// Not in the spec: the footer of a link in a circle of three or more modules,
+/// where removing one direction need not end the circle.
+pub fn reported_on_in_circle(module: &str) -> String {
+    format!(
+        "Reported on {module}, the module of the circle with the fewest files to change. Every \
+         file of a link in a circle is marked."
+    )
+}
+
 /// `platform has 60 modules. Above 12 modules the graph of the whole app gives way to this table.`
 pub fn many_modules(app: &str, modules_count: usize) -> String {
     format!(

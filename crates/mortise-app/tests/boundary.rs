@@ -76,6 +76,46 @@ fn a_circle_lists_the_files_of_both_directions() {
 }
 
 #[test]
+fn a_link_one_way_in_a_circle_of_three_is_shown_as_part_of_the_circle() {
+    let desk = Desk::new();
+    let root = desk.app("shop-api");
+    // Users uses Shipping, so Checkout, Shipping and Users make one circle.
+    let services = root.join("Modules/Users/app/Services");
+    std::fs::create_dir_all(&services).unwrap();
+    std::fs::write(
+        services.join("ShippingRates.php"),
+        "<?php\n\nnamespace Modules\\Users\\Services;\n\nuse Modules\\Shipping\\Contracts\\RateCalculator;\n\n\
+         class ShippingRates\n{\n    public function __construct(private RateCalculator $rates) {}\n}\n",
+    )
+    .unwrap();
+    desk.knows(&[(&root, "SA")]);
+    let mut harness = desk.start();
+    harness.key_press(Key::Num2);
+    harness.run();
+
+    // The circle lands on Users, which carries it, and on the module Users uses.
+    harness
+        .get_by_role_and_label(
+            Role::Row,
+            "Checkout, Shipping and Users use each other in a circle",
+        )
+        .click();
+    harness.run();
+    assert_eq!(
+        harness.state().selection(),
+        Selection::Module("Users".into())
+    );
+    harness.get_by_role_and_label(Role::Heading, "Users uses Shipping");
+    harness.get_by_label("Circular, 1 file");
+    harness.get_by_label_contains("Reported on Users, the module of the circle");
+    assert!(
+        harness
+            .query_by_label_contains("Rule: other modules use only")
+            .is_none()
+    );
+}
+
+#[test]
 fn copy_path_copies_the_selected_file_and_says_so() {
     let (_desk, mut harness) = shop_api();
     harness
