@@ -32,9 +32,11 @@ Phase 1 (read only) is built. The plan is `docs/plan/phase-1.md`.
 
 ## Rules that must hold
 
-- Mortise reads the files of an app. It needs no PHP and runs nothing in the app.
+- Mortise runs a command in the app only when the user starts it, with the exact command on screen first,
+  through the PHP the user chose for the app. Reading an app still needs no PHP.
 - The only file Mortise writes in an app is `mortise.json`, and it asks before it creates it.
   A save goes through a short-lived temporary file beside it (`docs/deviations.md`, S28).
+  Other files in the app are written by the package's commands, not by Mortise.
 - The actuator client asks for the actuator base path (for its list of links), `health`, `info`, `mappings`
   and `scheduledtasks` only. It never asks for `env` and follows no redirect.
 - A token or a password goes to the credential store of the operating system. It is never written to a file or a log.

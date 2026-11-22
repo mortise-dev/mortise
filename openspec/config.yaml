@@ -4,8 +4,11 @@ schema: spec-driven
 context: |
   Mortise is a desktop app (Rust, egui and eframe) for Laravel apps that use nwidart/laravel-modules.
   Designs and tasks must cover macOS, Windows and Linux. Say what was not run on a platform.
-  Mortise reads an app's files only. The one file it may write in an app is mortise.json, after asking.
-  It never needs PHP and never asks laravel-actuator for env. Secrets go to the OS credential store only.
+  Mortise runs a command in the app only when the user starts it, with the exact command on screen first,
+  through the PHP the user chose for the app. Reading an app still needs no PHP.
+  The one file Mortise itself may write in an app is mortise.json, after asking. Other files in the app
+  are written by the package's commands, not by Mortise.
+  Mortise never asks laravel-actuator for env. Secrets go to the OS credential store only.
   The design source is docs/spec (screen ids such as S4.2). A change that differs from it records why in docs/deviations.md.
   Write artifacts in plain, short English: one idea per sentence, active voice, no marketing words.
 
