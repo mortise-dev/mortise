@@ -1,6 +1,6 @@
 //! Reading one app folder into a snapshot.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -48,6 +48,14 @@ impl AppSnapshot {
         self.modules.iter().map(|module| module.files).sum()
     }
 
+    /// The code of every module, by module name. Store it, and pass it to the next read.
+    pub fn codes(&self) -> BTreeMap<String, String> {
+        self.modules
+            .iter()
+            .map(|module| (module.name.clone(), module.code.clone()))
+            .collect()
+    }
+
     /// The modules folder as the user writes it: relative to the app folder when it
     /// is inside it, with `/` between the parts.
     pub fn modules_dir_shown(&self) -> String {
@@ -89,6 +97,17 @@ pub enum ReadError {
 
 /// Reads the app in `root`. Reads only: nothing in the folder is changed and nothing is run.
 pub fn read_app(root: &Path) -> Result<AppSnapshot, ReadError> {
+    read_app_with(root, &BTreeMap::new())
+}
+
+/// Reads the app in `root`, keeping the codes its modules already have.
+///
+/// `codes` maps a module name to its code. A module that is not in it gets a new
+/// code that differs from all of them.
+pub fn read_app_with(
+    root: &Path,
+    codes: &BTreeMap<String, String>,
+) -> Result<AppSnapshot, ReadError> {
     let root = std::path::absolute(root).map_err(|source| ReadError::Io {
         path: root.to_owned(),
         source,
@@ -120,10 +139,20 @@ pub fn read_app(root: &Path) -> Result<AppSnapshot, ReadError> {
 
     let layout = Layout::read(&root);
     let found = find_modules(&layout);
-    let codes = propose_codes(
-        found.iter().map(|module| module.name.as_str()),
-        &BTreeSet::new(),
-    );
+    // A code is kept once given. Only modules without one get a proposal.
+    let taken: BTreeSet<String> = codes.values().cloned().collect();
+    let new_names = found
+        .iter()
+        .map(|module| module.name.as_str())
+        .filter(|name| !codes.contains_key(*name));
+    let mut proposed = propose_codes(new_names, &taken).into_iter();
+    let codes: Vec<String> = found
+        .iter()
+        .map(|module| match codes.get(&module.name) {
+            Some(code) => code.clone(),
+            None => proposed.next().unwrap_or_default(),
+        })
+        .collect();
     let modules = found
         .into_iter()
         .zip(codes)

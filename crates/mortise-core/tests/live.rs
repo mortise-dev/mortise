@@ -1,0 +1,177 @@
+//! An app that is kept fresh while its files change.
+#![cfg(feature = "watch")]
+
+use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
+use std::sync::mpsc::{Receiver, channel};
+use std::time::{Duration, Instant};
+
+use mortise_core::{AppSnapshot, LiveApp, LiveState, ModuleState, ReadError};
+
+fn fixture(name: &str) -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../fixtures")
+        .join(name)
+}
+
+fn copy_dir(from: &Path, to: &Path) {
+    std::fs::create_dir_all(to).unwrap();
+    for entry in std::fs::read_dir(from).unwrap() {
+        let entry = entry.unwrap();
+        let target = to.join(entry.file_name());
+        if entry.file_type().unwrap().is_dir() {
+            copy_dir(&entry.path(), &target);
+        } else {
+            std::fs::copy(entry.path(), target).unwrap();
+        }
+    }
+}
+
+struct Opened {
+    live: LiveApp,
+    changed: Receiver<()>,
+    _dir: tempfile::TempDir,
+    root: PathBuf,
+}
+
+fn open(codes: BTreeMap<String, String>) -> Opened {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join("shop-api");
+    copy_dir(&fixture("shop-api"), &root);
+    let (tell, changed) = channel();
+    let live = LiveApp::open(root.clone(), codes, move || {
+        let _ = tell.send(());
+    });
+    Opened {
+        live,
+        changed,
+        _dir: dir,
+        root,
+    }
+}
+
+impl Opened {
+    /// Waits until the app is read and `wanted` holds for the snapshot.
+    fn wait_for(
+        &self,
+        what: &str,
+        wanted: impl Fn(&AppSnapshot) -> bool,
+    ) -> std::sync::Arc<AppSnapshot> {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            if let LiveState::Ready(app) = self.live.state()
+                && wanted(&app)
+            {
+                return app;
+            }
+            let left = deadline.saturating_duration_since(Instant::now());
+            assert!(!left.is_zero(), "waited 10 s for: {what}");
+            let _ = self.changed.recv_timeout(left);
+        }
+    }
+}
+
+#[test]
+fn the_first_read_arrives_and_tells() {
+    let opened = open(BTreeMap::new());
+    let app = opened.wait_for("the first read", |_| true);
+    assert_eq!(app.modules.len(), 7);
+}
+
+#[test]
+fn a_folder_that_is_not_an_app_fails_and_tells() {
+    let dir = tempfile::tempdir().unwrap();
+    let (tell, changed) = channel();
+    let live = LiveApp::open(dir.path().to_owned(), BTreeMap::new(), move || {
+        let _ = tell.send(());
+    });
+    changed.recv_timeout(Duration::from_secs(10)).unwrap();
+    let LiveState::Failed(error) = live.state() else {
+        panic!("expected a failure");
+    };
+    assert!(matches!(*error, ReadError::NotLaravel { .. }));
+}
+
+#[test]
+fn refresh_reads_again_without_a_watcher() {
+    let opened = open(BTreeMap::new());
+    opened.wait_for("the first read", |_| true);
+
+    std::fs::remove_dir_all(opened.root.join("Modules/Users")).unwrap();
+    opened.live.refresh();
+    opened.wait_for("six modules", |app| app.modules.len() == 6);
+}
+
+#[test]
+fn a_change_of_the_statuses_file_is_seen() {
+    let opened = open(BTreeMap::new());
+    opened.wait_for("the first read", |_| true);
+    opened.live.watch(true);
+    // The watcher starts on the worker thread; give it a moment to be in place.
+    std::thread::sleep(Duration::from_millis(500));
+
+    let statuses = opened.root.join("modules_statuses.json");
+    let json = std::fs::read_to_string(&statuses).unwrap();
+    std::fs::write(
+        &statuses,
+        json.replace("\"Checkout\": true", "\"Checkout\": false"),
+    )
+    .unwrap();
+
+    let app = opened.wait_for("Checkout turned off", |app| app.modules_on() == 6);
+    let checkout = app
+        .modules
+        .iter()
+        .find(|module| module.name == "Checkout")
+        .unwrap();
+    assert_eq!(checkout.state, ModuleState::Off);
+}
+
+#[test]
+fn a_new_file_and_a_new_module_are_seen() {
+    let opened = open(BTreeMap::new());
+    opened.wait_for("the first read", |_| true);
+    opened.live.watch(true);
+    std::thread::sleep(Duration::from_millis(500));
+
+    let model = opened.root.join("Modules/Billing/app/Models/Invoice.php");
+    std::fs::create_dir_all(model.parent().unwrap()).unwrap();
+    std::fs::write(model, "<?php\n").unwrap();
+    opened.wait_for("one more file in Billing", |app| app.modules[0].files == 8);
+
+    let loyalty = opened.root.join("Modules/Loyalty");
+    std::fs::create_dir(&loyalty).unwrap();
+    std::fs::write(loyalty.join("module.json"), r#"{"name": "Loyalty"}"#).unwrap();
+    let app = opened.wait_for("the module Loyalty", |app| app.modules.len() == 8);
+    // A module that is new and has no entry in the statuses file is off.
+    let loyalty = app
+        .modules
+        .iter()
+        .find(|module| module.name == "Loyalty")
+        .unwrap();
+    assert_eq!(loyalty.state, ModuleState::Off);
+}
+
+#[test]
+fn a_code_is_kept_when_modules_come_and_go() {
+    let codes = BTreeMap::from([("Checkout".to_owned(), "COT".to_owned())]);
+    let opened = open(codes);
+    let app = opened.wait_for("the first read", |_| true);
+    let code = |app: &AppSnapshot, name: &str| {
+        app.modules
+            .iter()
+            .find(|module| module.name == name)
+            .map(|module| module.code.clone())
+    };
+    assert_eq!(code(&app, "Checkout").as_deref(), Some("COT"));
+    assert_eq!(code(&app, "Catalog").as_deref(), Some("CTL"));
+
+    // A module whose proposal would be CTL arrives before Catalog in the order of names.
+    let cattle = opened.root.join("Modules/Cattle");
+    std::fs::create_dir(&cattle).unwrap();
+    std::fs::write(cattle.join("module.json"), r#"{"name": "Cattle"}"#).unwrap();
+    opened.live.refresh();
+    let app = opened.wait_for("the module Cattle", |app| app.modules.len() == 8);
+    assert_eq!(code(&app, "Catalog").as_deref(), Some("CTL"));
+    assert_ne!(code(&app, "Cattle").as_deref(), Some("CTL"));
+}

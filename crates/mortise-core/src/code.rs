@@ -74,27 +74,41 @@ fn propose_code(name: &str, taken: &BTreeSet<String>) -> String {
         .unwrap_or(consonants)
 }
 
-/// Proposes the two letter monogram of an app from the name of its folder:
-/// the initials of its first two words, or its first two letters.
-pub fn propose_monogram(name: &str) -> String {
+/// Proposes the two letter monogram of an app from the name of its folder: the
+/// initials of its first two words, or its first two letters. If that is taken,
+/// the first two letters; if that is taken too, the first letter and the next
+/// free letter.
+pub fn propose_monogram(name: &str, taken: &BTreeSet<String>) -> String {
     let words: Vec<&str> = name
         .split(|c: char| !c.is_ascii_alphanumeric())
         .filter(|word| !word.is_empty())
         .collect();
-    let letters: String = match words[..] {
-        [] => String::new(),
-        [word] => word.chars().take(2).collect(),
-        [first, second, ..] => first
-            .chars()
-            .take(1)
-            .chain(second.chars().take(1))
-            .collect(),
+    let letters: Vec<char> = words
+        .iter()
+        .flat_map(|word| word.chars())
+        .map(|c| c.to_ascii_uppercase())
+        .collect();
+    let Some(&first) = letters.first() else {
+        return "??".to_owned();
     };
-    if letters.is_empty() {
-        "??".to_owned()
-    } else {
-        letters.to_ascii_uppercase()
-    }
+
+    let initials: String = match words[..] {
+        [one, two, ..] => one.chars().take(1).chain(two.chars().take(1)).collect(),
+        _ => String::new(),
+    };
+    let first_two: String = letters.iter().take(2).collect();
+    let later = letters[1..]
+        .iter()
+        .copied()
+        .chain('A'..='Z')
+        .chain('0'..='9');
+
+    [initials.to_ascii_uppercase(), first_two]
+        .into_iter()
+        .filter(|candidate| !candidate.is_empty())
+        .chain(later.map(|second| String::from_iter([first, second])))
+        .find(|candidate| !taken.contains(candidate))
+        .unwrap_or_else(|| String::from_iter([first, first]))
 }
 
 fn consonant_code(letters: &[char]) -> String {
@@ -183,12 +197,27 @@ mod tests {
 
     #[test]
     fn a_monogram_is_two_initials_or_the_first_two_letters() {
-        assert_eq!(propose_monogram("booking-engine"), "BE");
-        assert_eq!(propose_monogram("landing_pages.v2"), "LP");
-        assert_eq!(propose_monogram("crm"), "CR");
-        assert_eq!(propose_monogram("x"), "X");
-        assert_eq!(propose_monogram("shop api final"), "SA");
-        assert_eq!(propose_monogram("---"), "??");
+        let none = BTreeSet::new();
+        assert_eq!(propose_monogram("booking-engine", &none), "BE");
+        assert_eq!(propose_monogram("landing_pages.v2", &none), "LP");
+        assert_eq!(propose_monogram("crm", &none), "CR");
+        assert_eq!(propose_monogram("x", &none), "X");
+        assert_eq!(propose_monogram("shop api final", &none), "SA");
+        assert_eq!(propose_monogram("---", &none), "??");
+    }
+
+    #[test]
+    fn a_taken_monogram_is_not_given_again() {
+        let taken = |codes: &[&str]| codes.iter().map(|code| (*code).to_owned()).collect();
+        // The initials are taken: the first two letters.
+        assert_eq!(propose_monogram("booking-engine", &taken(&["BE"])), "BO");
+        // Both are taken: the first letter and the next free letter.
+        assert_eq!(
+            propose_monogram("booking-engine", &taken(&["BE", "BO"])),
+            "BK"
+        );
+        assert_eq!(propose_monogram("crm", &taken(&["CR"])), "CM");
+        assert_eq!(propose_monogram("x", &taken(&["X"])), "XA");
     }
 
     #[test]

@@ -17,6 +17,10 @@ serde_json = "1"
 thiserror = "2"
 ignore = "0.4"
 tempfile = "3"
+directories = "6"
+notify = "9"
+notify-debouncer-full = "0.8"
+rfd = "0.18"
 
 # The PHP parser. Its API changes inside 1.x, so every crate is pinned to one
 # version and used only in `mortise_core::php`. Version 1.60 and later need
