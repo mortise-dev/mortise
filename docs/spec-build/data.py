@@ -1,5 +1,5 @@
 # Interface text and package assumptions. Drawings read their strings from here, so the table in section 10 is what the drawings show.
-from lib import deftext, defassume
+from lib import deftext, defassume, ASTATE
 
 deftext('Names and labels', [
  ('tab.summary', 'Workspace tab 1', 'Summary'), ('tab.boundary', 'Workspace tab 2', 'Boundary'),
@@ -191,7 +191,7 @@ defassume([
  ('P2', 'nwidart/laravel-modules', 'Dry run for generators',
   'An option on <code>module:make</code> and every <code>module:make-*</code> command that returns the paths it would write, and whether each exists, without writing. Today a generator writes at once and the only way to know the paths is to copy the package\'s path logic.'),
  ('P3', 'nwidart/laravel-modules', 'Generator description',
-  'One command that lists every generator with its arguments and options as data, so the forms are built from the package. Today the 42 commands are only described by <code>--help</code>.'),
+  'One command that lists every generator with its arguments and options as data, so the forms are built from the package. Today the 43 commands are only described by <code>--help</code>.'),
  ('P4', 'nwidart/laravel-modules', 'Migration state as data',
   'Which migrations of a module ran and which wait, as JSON. Today <code>module:migrate-status</code> calls Laravel\'s <code>migrate:status</code> and prints its table.'),
  ('P5', 'nwidart/laravel-modules', 'Result of a generator run as data',
@@ -203,16 +203,17 @@ defassume([
  ('P8', 'nwidart/laravel-modules', 'Translation check as data',
   '<code>module:lang</code> exists and prints text. The finding needs the missing keys as data.'),
  ('P9', 'nwidart/laravel-modules', 'Actuator integration: runtime status per module',
-  'Module-aware health indicators: runtime status per module, with the failing indicator and its detail. The package has no actuator integration today. No endpoint path or field is fixed in this spec.'),
+  'Module-aware health indicators: runtime status per module, with the failing indicator and its detail. The source of <code>master</code> at <code>5b0307af</code> has it: a <code>modules</code> health indicator and, per module, indicators named <code>module:{module}:{key}</code>. It is not in a release yet; 13.3.0 has no actuator integration.'),
  ('P10', 'nwidart/laravel-modules', 'Actuator integration: module data',
-  'Routes and scheduled tasks grouped by module, read over the actuator. Today Mortise can attribute a route by the namespace of its action, and a scheduled task only when its target is a class name.'),
+  'Routes and scheduled tasks grouped by module, read over the actuator. Today Mortise can attribute a route by the namespace of its action, and a scheduled task only when its target is a class name. The same source adds a <code>modules</code> endpoint that lists name, enabled, version, description, priority and providers. It lists no routes and no scheduled tasks, so the need is met in part.'),
  ('A1', 'nwidart/laravel-actuator', 'Custom endpoints',
-  'A way for another package to register an endpoint. Version 1.0.0 has a fixed set of five: health, info, env, mappings, scheduledtasks. P9 can use custom health indicators, which exist; P10 and A2 need this.'),
+  'A way for another package to register an endpoint. Version 1.3.0 (tag, <code>main</code> at <code>b77ae76</code>) has custom endpoints with read, write and delete operations. Version 1.0.0 had a fixed set of five: health, info, env, mappings, scheduledtasks.'),
  ('A2', 'nwidart/laravel-actuator', 'Metrics endpoint',
-  'A Prometheus endpoint with requests, response time, errors, jobs and database time, each labelled with the module. Version 1.0.0 has no metrics endpoint.'),
+  'A Prometheus endpoint with requests, response time, errors, jobs and database time, each labelled with the module. Version 1.3.0 has a <code>prometheus</code> endpoint, fed by <code>nwidart/laravel-metrics</code>. It has no module label, so the need is met in part. Version 1.0.0 had no metrics endpoint.'),
  ('M1', 'Mortise', 'Rule check outside the app',
   'A command line twin of Mortise that checks the boundary rules in CI. It is phase 3 and is drawn only as a line that is not available yet.'),
 ])
+ASTATE.update({'P9': 'met', 'A1': 'met', 'P10': 'in part', 'A2': 'in part'})
 
 
 # Complete shortcut table: (scope, what it does, macOS, Windows and Linux, note)

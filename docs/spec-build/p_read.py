@@ -391,10 +391,10 @@ def build():
     b += screen('S7.1', 'Metrics, not connected', 'No environment is connected for shop-api. The button opens Settings on the app\'s environments.', metrics_empty('none'), '3', None, ['A2'],
                 ['<b>Same connection.</b> Metrics use the actuator environment of the app: same URL, same credentials, same environment switch as the runtime box. There is no separate Prometheus address.'])
     b += screen('S7.2', 'Metrics, endpoint not exposed', 'An environment is connected and answers, but the metrics endpoint is not among its links.', metrics_empty('expose'), '3', None, ['A2'],
-                ['The exact name to add to <span class="mono">exposure.include</span> is not known until the endpoint exists; the sentence is written so that only the name has to be filled in.'])
+                ['In actuator 1.3.0 the endpoint is named <code>prometheus</code>. The sentence is written so that only the name has to be filled in.'])
     b += screen('S7.3', 'Metrics, connected with data', 'All modules. One chart for the selected row, a table for the rest. No colour: there are no limits in this version, so nothing here is a state.', metrics_data(), '3',
                 'Requests, response time, errors, jobs and database time per module, read from the actuator every 15 s and kept in memory for the chosen range.', ['A1', 'A2'],
-                ['<b>One module.</b> With a module selected, the chart shows that module and the table lists its routes by the same five figures.',
+                ['<b>Module label.</b> The <code>prometheus</code> endpoint of 1.3.0 has no module label, so the figures per module wait for A2.', '<b>One module.</b> With a module selected, the chart shows that module and the table lists its routes by the same five figures.',
                  '<b>Chart.</b> Straight segments, 1.5 px ink, hairline grid. J and K move through the table and the chart follows the selected row.'])
     b += '<h2>5.8 A tab from a later phase</h2>'
     b += screen('S7.4', 'A tab whose phase is not built yet', 'Decision: the five tabs are always shown, in the same order with the same keys. A tab that is not built explains itself. Buttons and palette entries of a later phase are hidden instead.', later_tab(), 'A phase 1 build, Generate tab. Actions and Metrics use the same block.',

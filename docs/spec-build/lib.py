@@ -693,6 +693,7 @@ def t(key):
 # ---------------------------------------------------------------- assumptions registry
 ASSUME = {}  # key: (package, short, long)
 AUSED = {}
+ASTATE = {}  # key: 'met' or 'in part'; a key not here is not met yet
 def defassume(rows):
     for k, pkg, short, long in rows: ASSUME[k] = (pkg, short, long)
 
@@ -711,7 +712,10 @@ def screen(sid, title, cap, mock, phase, data=None, assumes=(), more=()):
     for m in more: n += '<div>%s</div>' % m
     if assumes:
         for a in assumes: AUSED.setdefault(a, []).append(sid)
-        n += '<div><b>Assumes, not in the package today.</b> %s</div>' % ' '.join('<a class="sid" href="open.html#a-%s">%s</a> %s.' % (a, a, ASSUME[a][1]) for a in assumes)
+        head = 'Assumes, not in the package today.'
+        if any(a in ASTATE for a in assumes):
+            head = 'Assumes, met in the packages.' if all(ASTATE.get(a) == 'met' for a in assumes) else 'Assumes, not fully in the packages today.'
+        n += '<div><b>%s</b> %s</div>' % (head, ' '.join('<a class="sid" href="open.html#a-%s">%s</a> %s%s.' % (a, a, ASSUME[a][1], ' (%s)' % ASTATE[a] if a in ASTATE else '') for a in assumes))
     else:
         n += '<div><b>Assumes.</b> Nothing the packages lack today.</div>'
     return '<h3 id="%s"><span class="sid">%s</span>%s</h3><p class="cap">%s</p>%s<div class="notes">%s</div>' % (sid, sid, title, cap, mock, n)
