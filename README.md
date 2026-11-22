@@ -67,11 +67,12 @@ UPDATE_SNAPSHOTS=1 cargo test -p mortise-app --test images
 | `crates/mortise-core` | Everything that is not drawing: reading an app into a snapshot, the actuator client, the scan. No interface dependency. |
 | `crates/mortise-app` | The window, built with egui and eframe. Binary `mortise`. |
 | `assets/fonts` | Asap and Inconsolata, each with its `OFL.txt`. |
+| `assets/icon` | The app icon: two drawings, `mortise.svg` and `mortise-16.svg`, and the files made from them for macOS (`.icns`), Windows (`.ico`) and Linux (hicolor PNGs). |
 | `fixtures` | Laravel apps for the tests. They are never installed or run. |
 | `docs/spec` | The design specification of phase 0. |
 | `docs/deviations.md` | Where the build differs from the specification, and why. |
 | `licenses` | The licences of the crates Mortise is built from. |
-| `tools` | The script that writes that list. |
+| `tools` | `third-party-licenses.py` writes that list. `app-icon.mjs` makes the icon files from the drawings; it needs macOS and Google Chrome. |
 
 ## Licence
 
