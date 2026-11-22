@@ -111,6 +111,8 @@ pub struct MortiseApp {
     /// The folder of the add panel, while it is read on another thread.
     reading: Option<Reading>,
     quick_read: std::time::Duration,
+    /// What the operating system said about motion, and when it was asked.
+    system_motion: Option<(bool, std::time::Instant)>,
     toast: Option<Toast>,
     pick_folder: Box<dyn FnMut() -> Option<PathBuf>>,
     /// True while the keyboard is in use, false once the pointer is. The focus ring
@@ -185,6 +187,7 @@ impl MortiseApp {
             adding: None,
             reading: None,
             quick_read: config.quick_read,
+            system_motion: None,
             toast,
             pick_folder: config.pick_folder,
             // At start, focus is on the selected row of the index.
@@ -569,6 +572,19 @@ impl MortiseApp {
             let entry = &mut self.settings.apps[current];
             entry.problems_first = !entry.problems_first;
             self.save();
+        }
+    }
+
+    /// What the operating system says about motion, asked at most once a second.
+    fn system_reduces_motion(&mut self) -> bool {
+        let fresh = |(_, at): &(bool, std::time::Instant)| at.elapsed().as_secs() < 1;
+        match self.system_motion.filter(fresh) {
+            Some((reduced, _)) => reduced,
+            None => {
+                let reduced = system_reduces_motion();
+                self.system_motion = Some((reduced, std::time::Instant::now()));
+                reduced
+            }
         }
     }
 
@@ -1155,8 +1171,11 @@ impl eframe::App for MortiseApp {
             self.index_choice = None;
         }
         let chrome = self.apply_general(&ctx);
-        // "System" cannot be read from egui yet, so it moves as "Full" does.
-        let reduced_motion = self.settings.general.motion == mortise_core::Motion::Reduced;
+        let reduced_motion = match self.settings.general.motion {
+            mortise_core::Motion::Reduced => true,
+            mortise_core::Motion::Full => false,
+            mortise_core::Motion::System => self.system_reduces_motion(),
+        };
 
         let bar = Rect::from_min_size(window.min, vec2(window.width(), size::TITLEBAR_H));
         let app_name = self
@@ -1648,6 +1667,20 @@ fn surface_inputs<'a>(
         scheduled,
         environment: runtime.environment(),
     }
+}
+
+/// True when the operating system is set to reduce motion.
+///
+/// macOS is asked. On Windows and Linux neither egui nor winit gives the setting,
+/// and reading it needs code this crate does not allow: there "System" moves as "Full".
+#[cfg(target_os = "macos")]
+fn system_reduces_motion() -> bool {
+    objc2_app_kit::NSWorkspace::sharedWorkspace().accessibilityDisplayShouldReduceMotion()
+}
+
+#[cfg(not(target_os = "macos"))]
+fn system_reduces_motion() -> bool {
+    false
 }
 
 /// What a dialog waits to do.
