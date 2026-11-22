@@ -216,6 +216,13 @@ impl Worker {
             (self.root.clone(), RecursiveMode::NonRecursive),
             (self.root.join("config"), RecursiveMode::NonRecursive),
             (self.root.join(".git"), RecursiveMode::NonRecursive),
+            // A tool that uses libgit2 changes only the refs and this log on a commit.
+            // When `.git` is a file, as in a worktree, this folder is not there and
+            // is not watched.
+            (
+                self.root.join(".git").join("logs"),
+                RecursiveMode::NonRecursive,
+            ),
             (modules_dir, RecursiveMode::Recursive),
         ];
         let statuses = self.statuses_file();
@@ -286,9 +293,10 @@ fn is_relevant(root: &Path, path: &Path) -> bool {
     });
     if inside.starts_with(".git") {
         // The index is rewritten by every `git status` of every editor: not that.
+        let git: Vec<&str> = parts.skip(1).collect();
         return matches!(
-            parts.nth(1),
-            Some("HEAD" | "COMMIT_EDITMSG" | "ORIG_HEAD" | "packed-refs")
+            git.as_slice(),
+            ["HEAD" | "COMMIT_EDITMSG" | "ORIG_HEAD" | "packed-refs"] | ["logs", "HEAD"]
         );
     }
     // A coverage report is a file Mortise reads, wherever it is written.
@@ -319,6 +327,8 @@ mod tests {
 
         assert!(relevant(".git/HEAD"));
         assert!(relevant(".git/COMMIT_EDITMSG"));
+        assert!(relevant(".git/logs/HEAD"));
+        assert!(!relevant(".git/logs/refs/heads/main"));
         assert!(!relevant(".git/index"));
         assert!(!relevant(".git/index.lock"));
         assert!(!relevant(".git/objects/ab/cdef"));
