@@ -1365,6 +1365,7 @@ impl eframe::App for MortiseApp {
                         problems_first,
                         rows: self.settings.general.index_rows,
                         mac,
+                        name: &entry.name,
                         runtime: runtime.brief().map(|brief| IndexRuntime {
                             brief: brief.for_header(),
                             environment: runtime.environment(),

@@ -291,3 +291,33 @@ fn a_narrow_window_collapses_the_index_and_ctrl_b_opens_it() {
         .collect();
     assert_eq!(labels.len(), 9);
 }
+
+#[test]
+fn a_name_given_in_settings_is_the_name_everywhere() {
+    let (desk, mut harness) = shop_api();
+    open_settings(&mut harness);
+    let name = harness.get_by_role_and_label(Role::TextInput, "Name");
+    name.focus();
+    harness.run();
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::A);
+    harness
+        .get_by_role_and_label(Role::TextInput, "Name")
+        .type_text("Shop");
+    harness.run();
+    harness
+        .get_by_role_and_label(Role::TextInput, "Monogram")
+        .focus();
+    harness.run();
+    assert_eq!(desk.saved().apps[0].name, "Shop");
+
+    // The index, the rail and the title bar say the new name; the folder keeps its own.
+    harness.key_press(Key::Escape);
+    harness.run_steps(3);
+    harness.get_by_role_and_label(Role::Heading, "Shop");
+    harness.get_by_role_and_label(Role::ListBoxOption, "Shop");
+    assert!(
+        harness
+            .query_by_role_and_label(Role::Heading, "shop-api")
+            .is_none()
+    );
+}

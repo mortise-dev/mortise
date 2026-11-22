@@ -35,6 +35,8 @@ pub struct IndexState<'a> {
     pub mac: bool,
     /// The runtime status of the chosen environment, when one is connected.
     pub runtime: Option<IndexRuntime<'a>>,
+    /// The name the user gave the app, which is the name of its folder until changed.
+    pub name: &'a str,
 }
 
 /// The line under the versions: what the running app reports, and where.
@@ -145,6 +147,7 @@ pub fn index(
         rows,
         mac,
         runtime,
+        name,
     } = state;
     let mut toggle_order = false;
 
@@ -175,7 +178,17 @@ pub fn index(
         draw::keycap(ui, pal, pos2(cap_right, foot_top + 16.0), &keys);
         (rect.top(), foot_top)
     } else {
-        let head_bottom = head(ui, pal, rect, app, filter, runtime, focus_filter, keyboard);
+        let head_bottom = head(
+            ui,
+            pal,
+            rect,
+            app,
+            name,
+            filter,
+            runtime,
+            focus_filter,
+            keyboard,
+        );
         // Foot: how many modules the filter leaves, or the order of the list.
         let foot_top = rect.bottom() - (8.0 + 15.0 + 8.0 + 1.0);
         draw::hline(ui, inner.clone(), foot_top, pal.line);
@@ -342,6 +355,7 @@ fn head(
     pal: &Palette,
     rect: Rect,
     app: &AppSnapshot,
+    app_name: &str,
     filter: &mut String,
     runtime: Option<IndexRuntime<'_>>,
     focus_filter: bool,
@@ -362,9 +376,9 @@ fn head(
         ty::SECONDARY,
         pal.ink_2,
     );
-    let name = draw::galley_elided(ui, &app.name, ty::APP_NAME, pal.ink, on.left() - 8.0 - left);
+    let name = draw::galley_elided(ui, app_name, ty::APP_NAME, pal.ink, on.left() - 8.0 - left);
     let name = draw::paint_galley(ui, pos2(left, rect.top() + 12.0), Align2::LEFT_TOP, name);
-    draw::announce(ui, name, Role::Heading, &app.name);
+    draw::announce(ui, name, Role::Heading, app_name);
     draw::label(
         ui,
         pos2(left, rect.top() + 12.0 + 20.0 + 1.0),
