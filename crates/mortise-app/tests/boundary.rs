@@ -79,13 +79,14 @@ fn a_circle_lists_the_files_of_both_directions() {
 fn a_link_one_way_in_a_circle_of_three_is_shown_as_part_of_the_circle() {
     let desk = Desk::new();
     let root = desk.app("shop-api");
-    // Users uses Shipping, so Checkout, Shipping and Users make one circle.
+    // Users uses Shipping, so Checkout, Shipping and Users make one circle. It reads a
+    // class outside the public surface of Shipping.
     let services = root.join("Modules/Users/app/Services");
     std::fs::create_dir_all(&services).unwrap();
     std::fs::write(
         services.join("ShippingRates.php"),
-        "<?php\n\nnamespace Modules\\Users\\Services;\n\nuse Modules\\Shipping\\Contracts\\RateCalculator;\n\n\
-         class ShippingRates\n{\n    public function __construct(private RateCalculator $rates) {}\n}\n",
+        "<?php\n\nnamespace Modules\\Users\\Services;\n\nuse Modules\\Shipping\\Services\\LabelPrinter;\n\n\
+         class ShippingRates\n{\n    public function __construct(private LabelPrinter $printer) {}\n}\n",
     )
     .unwrap();
     desk.knows(&[(&root, "SA")]);
@@ -113,6 +114,51 @@ fn a_link_one_way_in_a_circle_of_three_is_shown_as_part_of_the_circle() {
             .query_by_label_contains("Rule: other modules use only")
             .is_none()
     );
+
+    // With "No circular use" off, no circle is reported: the public surface rule is.
+    harness
+        .get_by_role_and_label(Role::ListBoxOption, "All modules")
+        .click();
+    harness.run();
+    harness
+        .get_by_role_and_label(Role::CheckBox, "No circular use")
+        .click();
+    harness.run();
+    harness
+        .get_by_role_and_label(Role::Button, "Create mortise.json")
+        .click();
+    wait_until(&mut harness, "the circle rule is off", |app| {
+        app.app().is_some_and(|app| !app.rules.no_circular_use)
+    });
+    harness
+        .get_by_role_and_label(Role::ListBoxOption, "Users")
+        .click();
+    harness.run();
+    harness.get_by_role_and_label(Role::Heading, "Users uses Shipping");
+    harness.get_by_label("1 of 1 file read internals");
+    harness
+        .get_by_label_contains("Rule: other modules use only a module's public surface. Shipping");
+    assert!(harness.query_by_label_contains("Circular").is_none());
+    assert!(harness.query_by_label_contains("Reported on").is_none());
+
+    // Two modules that use each other: both directions, under the same rule. The index
+    // comes before the graph, which also has a node for Checkout.
+    harness
+        .get_all_by_role_and_label(Role::ListBoxOption, "Checkout")
+        .next()
+        .unwrap()
+        .click();
+    harness.run();
+    harness
+        .get_all_by_role_and_label(Role::ListBoxOption, "Shipping")
+        .last()
+        .unwrap()
+        .click();
+    harness.run();
+    harness.get_by_role_and_label(Role::Heading, "Checkout and Shipping use each other");
+    harness.get_by_label("6 files");
+    harness.get_by_label_contains("Checkout and Shipping have none yet");
+    assert!(harness.query_by_label_contains("Reported on").is_none());
 }
 
 #[test]

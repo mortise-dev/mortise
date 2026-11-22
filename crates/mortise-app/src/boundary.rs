@@ -525,12 +525,14 @@ impl View<'_> {
             return y;
         };
         // A link one way is part of a circle too when the circle runs through other modules.
+        // With the rule "No circular use" off, no circle is reported: the link is shown
+        // as any other, under the rule that is on.
         let circle = self
             .app
             .cycles
             .iter()
             .find(|cycle| cycle.modules.iter().any(|member| member == module))
-            .filter(|_| first_link.circular);
+            .filter(|_| first_link.circular && rules.no_circular_use);
         let rows: usize = sections.iter().map(|link| link.refs.len()).sum();
         let titled = sections.len() > 1;
         let section_head = if titled { 30.0 } else { 0.0 };
@@ -539,6 +541,7 @@ impl View<'_> {
                 strings::reported_on_in_circle(&cycle.carrier)
             }
             Some(cycle) => strings::reported_on(&cycle.carrier),
+            None if titled => strings::rule_of_links(module, other, rules),
             None => strings::rule_of_link(&first_link.to, rules),
         };
         let copy = Button {
@@ -582,20 +585,17 @@ impl View<'_> {
                 rules.no_circular_use,
             ),
             (None, _) => {
-                let link = first_link;
-                let internal = link.internal_files();
-                if rules.public_surface_only && internal > 0 {
-                    (
-                        strings::a_uses_b(&link.from, &link.to),
-                        strings::files_read_internals(internal, link.files()),
-                        true,
-                    )
+                let title = if titled {
+                    strings::use_each_other(module, other)
                 } else {
-                    (
-                        strings::a_uses_b(&link.from, &link.to),
-                        strings::files(link.files() as u64),
-                        false,
-                    )
+                    strings::a_uses_b(&first_link.from, &first_link.to)
+                };
+                let internal: usize = sections.iter().map(|link| link.internal_files()).sum();
+                let files: usize = sections.iter().map(|link| link.files()).sum();
+                if rules.public_surface_only && internal > 0 {
+                    (title, strings::files_read_internals(internal, files), true)
+                } else {
+                    (title, strings::files(files as u64), false)
                 }
             }
         };

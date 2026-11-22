@@ -585,6 +585,18 @@ pub fn accepted_for(accepted: usize, total: usize) -> String {
 /// `Rule: other modules use only a module's public surface. Billing has none yet, so the
 /// folders Contracts and Events count.`
 pub fn rule_of_link(module: &str, rules: &mortise_core::Rules) -> String {
+    public_surface_rule(module, "has", rules)
+}
+
+/// Not in the spec: the rule under the files of two modules that use each other while
+/// the rule "No circular use" is off.
+/// `Rule: other modules use only a module's public surface. Checkout and Shipping have
+/// none yet, so the folders Contracts and Events count.`
+pub fn rule_of_links(a: &str, b: &str, rules: &mortise_core::Rules) -> String {
+    public_surface_rule(&format!("{a} and {b}"), "have", rules)
+}
+
+fn public_surface_rule(modules: &str, has: &str, rules: &mortise_core::Rules) -> String {
     if !rules.public_surface_only {
         // Not in the spec: the rule is turned off.
         return "The rule about a module's public surface is turned off for this app.".to_owned();
@@ -595,7 +607,7 @@ pub fn rule_of_link(module: &str, rules: &mortise_core::Rules) -> String {
         [rest @ .., last] => format!("the folders {} and {last} count", rest.join(", ")),
     };
     format!(
-        "Rule: other modules use only a module's public surface. {module} has none yet, so {folders}."
+        "Rule: other modules use only a module's public surface. {modules} {has} none yet, so {folders}."
     )
 }
 
