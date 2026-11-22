@@ -1,7 +1,7 @@
 //! The runtime status of a running app, read through `nwidart/laravel-actuator` 1.0.0.
 //!
-//! Four endpoints are read: `health`, `info`, `mappings` and `scheduledtasks`.
-//! `env` is never requested. What the app answers is called Runtime; it is not
+//! The base path is read for its list of links, then four endpoints: `health`, `info`,
+//! `mappings` and `scheduledtasks`. `env` is never requested, and no redirect is followed. What the app answers is called Runtime; it is not
 //! mixed with Findings, which Mortise works out from files.
 
 use std::time::Duration;
