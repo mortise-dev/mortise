@@ -330,7 +330,20 @@ fn a_narrow_window_collapses_the_index_and_ctrl_b_opens_it() {
             .query_by_role_and_label(Role::TextInput, "Filter modules")
             .is_none()
     );
-    harness.get_by_role_and_label(Role::ListBoxOption, "Checkout");
+    let fits = harness
+        .get_by_role_and_label(Role::ListBoxOption, "Checkout")
+        .rect();
+
+    // Rows that do not fit: the strip adds the 10 px track of the scrollbar at its
+    // right, so that the scrollbar does not cover the marks.
+    harness.set_size(egui::vec2(960.0, 400.0));
+    harness.run();
+    let scrolls = harness
+        .get_by_role_and_label(Role::ListBoxOption, "Checkout")
+        .rect();
+    assert_eq!(scrolls.right() - fits.right(), 10.0);
+    harness.set_size(egui::vec2(960.0, 600.0));
+    harness.run();
 
     // Ctrl B opens it, and the workspace gives way.
     harness.key_press_modifiers(Modifiers::COMMAND, Key::B);

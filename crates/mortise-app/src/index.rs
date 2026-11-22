@@ -15,6 +15,13 @@ use crate::theme::{Face, Palette, Type, radius, size, stroke, ty};
 /// Above this many modules a row has one line.
 const TWO_LINE_LIMIT: usize = 20;
 
+/// The foot of the strip, with the key that opens the index again.
+const STRIP_FOOT_H: f32 = 32.0;
+/// The space above the first row and below the last.
+const LIST_PAD: f32 = 8.0;
+/// The room the sentence takes when the filter leaves no module.
+const NO_MATCH_H: f32 = 60.0;
+
 /// What the index needs from the app besides the snapshot.
 pub struct IndexState<'a> {
     pub selection: &'a mut Selection,
@@ -170,7 +177,7 @@ pub fn index(
     };
     let (head_bottom, foot_top) = if collapsed {
         // The strip: stamps and marks only, and the key that opens the index again.
-        let foot_top = rect.bottom() - 32.0;
+        let foot_top = rect.bottom() - STRIP_FOOT_H;
         draw::hline(ui, inner.clone(), foot_top, pal.line);
         let keys = format!("{} B", strings::command_key(mac));
         let cap_w = draw::keycap_width(ui, &keys);
@@ -224,16 +231,8 @@ pub fn index(
 
     // The list reaches the right edge of the index, so that the selected row can cover the joint.
     let list = Rect::from_min_max(pos2(rect.left(), head_bottom), pos2(rect.right(), foot_top));
-    let compact = match rows {
-        IndexRows::Automatic => app.modules.len() > TWO_LINE_LIMIT,
-        IndexRows::TwoLines => false,
-        IndexRows::OneLine => true,
-    };
-    let row_h = if compact {
-        size::INDEX_ROW_COMPACT_H
-    } else {
-        size::INDEX_ROW_H
-    };
+    let compact = is_compact(app, rows);
+    let row_h = row_height(compact);
     let no_match = (!filter.trim().is_empty() && modules.is_empty())
         .then(|| strings::no_module_matches(filter.trim()));
     // With many modules and problems first, those that need attention get a heading.
@@ -249,7 +248,7 @@ pub fn index(
             .auto_shrink(false)
             .show(ui, |ui| {
                 ui.spacing_mut().item_spacing = Vec2::ZERO;
-                ui.add_space(8.0);
+                ui.add_space(LIST_PAD);
                 let mut show = |ui: &mut Ui, row: Row<'_>| {
                     let (slot, _) =
                         ui.allocate_exact_size(vec2(ui.available_width(), row_h), Sense::hover());
@@ -282,8 +281,10 @@ pub fn index(
                 }
                 if let Some(text) = &no_match {
                     let width = ui.available_width() - 14.0 - 13.0;
-                    let (slot, _) =
-                        ui.allocate_exact_size(vec2(ui.available_width(), 60.0), Sense::hover());
+                    let (slot, _) = ui.allocate_exact_size(
+                        vec2(ui.available_width(), NO_MATCH_H),
+                        Sense::hover(),
+                    );
                     if !collapsed {
                         draw::paragraph(
                             ui,
@@ -295,10 +296,47 @@ pub fn index(
                         );
                     }
                 }
-                ui.add_space(8.0);
+                ui.add_space(LIST_PAD);
             });
     });
     toggle_order
+}
+
+/// True when the rows of the index have one line.
+fn is_compact(app: &AppSnapshot, rows: IndexRows) -> bool {
+    match rows {
+        IndexRows::Automatic => app.modules.len() > TWO_LINE_LIMIT,
+        IndexRows::TwoLines => false,
+        IndexRows::OneLine => true,
+    }
+}
+
+fn row_height(compact: bool) -> f32 {
+    if compact {
+        size::INDEX_ROW_COMPACT_H
+    } else {
+        size::INDEX_ROW_H
+    }
+}
+
+/// The width of the strip in an index `height` px high. When its rows do not fit,
+/// the track of the scrollbar is added at its right, so that the scrollbar does not
+/// cover the marks.
+pub fn strip_width(app: &AppSnapshot, filter: &str, rows: IndexRows, height: f32) -> f32 {
+    let modules = ordered(app, filter, false).len();
+    let no_match = if !filter.trim().is_empty() && modules == 0 {
+        NO_MATCH_H
+    } else {
+        0.0
+    };
+    // "All modules", then one row per module.
+    let content =
+        2.0 * LIST_PAD + (1 + modules) as f32 * row_height(is_compact(app, rows)) + no_match;
+    if content > height - STRIP_FOOT_H {
+        size::INDEX_STRIP_W + size::SCROLLBAR_W
+    } else {
+        size::INDEX_STRIP_W
+    }
 }
 
 /// The row of one module: its code, its name, its files and coverage, its state.
@@ -616,13 +654,23 @@ fn index_row(ui: &Ui, pal: &Palette, rect: Rect, row: &Row<'_>, look: RowLook) -
         draw::ring_is_drawn(ui);
         // The ring is 1 px outside the row, so it needs more room than the list's clip
         // gives. It is drawn over the workspace, which is painted after the index.
-        let clip = ui.clip_rect().expand2(vec2(4.0, 0.0));
+        // In the strip it stays inside the strip: its right side runs beside the marks,
+        // clear of the track of the scrollbar.
+        let (ring, clip) = if look.collapsed {
+            let ring = Rect::from_min_max(
+                rect.min - vec2(1.0, 1.0),
+                pos2(marks_right, rect.bottom() + 1.0),
+            );
+            (ring, ui.clip_rect())
+        } else {
+            (rect.expand(1.0), ui.clip_rect().expand2(vec2(4.0, 0.0)))
+        };
         let layer = egui::LayerId::new(egui::Order::Foreground, focus_id());
         ui.ctx()
             .layer_painter(layer)
             .with_clip_rect(clip)
             .rect_stroke(
-                rect.expand(1.0),
+                ring,
                 1,
                 Stroke::new(stroke::FOCUS_RING, pal.ink),
                 StrokeKind::Outside,
