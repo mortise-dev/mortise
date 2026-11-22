@@ -12,6 +12,7 @@ Phase 1 (read only) is built. The plan is `docs/plan/phase-1.md`.
 
 - Mortise reads the files of an app. It needs no PHP and runs nothing in the app.
 - The only file Mortise writes in an app is `mortise.json`, and it asks before it creates it.
+  A save goes through a short-lived temporary file beside it (`docs/deviations.md`, S28).
 - The actuator client asks for `health`, `info`, `mappings` and `scheduledtasks` only. It never asks for `env`.
 - A token or a password goes to the credential store of the operating system. It is never written to a file or a log.
 - `unsafe` code is forbidden in the workspace (`unsafe_code = "forbid"`). Find a safe route or record a deviation.
