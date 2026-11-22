@@ -43,7 +43,13 @@ icons = [
     "../../assets/icon/windows/mortise.ico",
     "../../assets/icon/linux/hicolor/*/apps/mortise.png",
 ]
-resources = ["../../LICENSE", "../../licenses/THIRD-PARTY.md"]
+# The SIL Open Font License asks that each copy of the fonts ships with its licence.
+resources = [
+    "../../LICENSE",
+    "../../licenses/THIRD-PARTY.md",
+    { src = "../../assets/fonts/asap/OFL.txt", target = "licenses/Asap-OFL.txt" },
+    { src = "../../assets/fonts/inconsolata/OFL.txt", target = "licenses/Inconsolata-OFL.txt" },
+]
 out-dir = "../../target/packages"
 before-packaging-command = "cargo build --release --locked -p mortise-app"
 binaries = [{ path = "mortise", main = true }]
