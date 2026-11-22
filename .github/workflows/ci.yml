@@ -39,7 +39,8 @@ jobs:
             exit 1
           fi
 
-  # Markdown-only changes skip the build and the tests. A job skipped by `if:` still passes required checks.
+  # Markdown-only changes skip the build and the tests. A skipped matrix job reports one check under
+  # its unexpanded name, so do not make the "Build and test" checks required: a Markdown-only PR would wait for them.
   changes:
     name: Detect code changes
     runs-on: ubuntu-latest
