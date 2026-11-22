@@ -9,7 +9,8 @@ use std::time::Duration;
 use notify::{RecommendedWatcher, RecursiveMode};
 use notify_debouncer_full::{DebounceEventResult, Debouncer, RecommendedCache, new_debouncer};
 
-use crate::app::{AppSnapshot, ReadError, read_app_with};
+use crate::app::{AppSnapshot, ReadError, read_app_cached};
+use crate::module::ReadCache;
 
 /// How long file changes are collected before the app is read again.
 const QUIET: Duration = Duration::from_millis(300);
@@ -26,8 +27,10 @@ pub enum LiveState {
 }
 
 enum Command {
-    /// Read again now.
+    /// Read everything again now, also the files that did not change.
     Refresh,
+    /// Files changed: read again, but only the files that changed.
+    Changed,
     /// Watch the files of the app, or stop watching.
     Watch(bool),
     Stop,
@@ -55,13 +58,14 @@ impl LiveApp {
         let worker = Worker {
             root,
             codes,
+            cache: ReadCache::default(),
             state: Arc::clone(&state),
             inbox,
             // The watcher reports into the same inbox.
             outbox: commands.clone(),
             on_change: Box::new(on_change),
             watcher: None,
-            watching: false,
+            watched: Vec::new(),
         };
         std::thread::Builder::new()
             .name("mortise-app-reader".to_owned())
@@ -78,7 +82,7 @@ impl LiveApp {
             .clone()
     }
 
-    /// Reads the app again, now.
+    /// Reads the app again, now, also the files that did not change.
     pub fn refresh(&self) {
         let _ = self.commands.send(Command::Refresh);
     }
@@ -95,15 +99,20 @@ impl Drop for LiveApp {
     }
 }
 
+/// A folder to watch, and whether the folders inside it are watched too.
+type Watched = (PathBuf, RecursiveMode);
+
 struct Worker {
     root: PathBuf,
     codes: BTreeMap<String, String>,
+    cache: ReadCache,
     state: Arc<Mutex<LiveState>>,
     inbox: Receiver<Command>,
     outbox: Sender<Command>,
     on_change: Box<dyn Fn() + Send>,
     watcher: Option<Debouncer<RecommendedWatcher, RecommendedCache>>,
-    watching: bool,
+    /// What the watcher watches. Empty while it is off.
+    watched: Vec<Watched>,
 }
 
 impl Worker {
@@ -111,13 +120,15 @@ impl Worker {
         self.read();
         while let Ok(command) = self.inbox.recv() {
             match command {
-                Command::Refresh => self.read(),
-                Command::Watch(on) => {
-                    self.watching = on;
+                Command::Refresh => {
+                    self.cache.clear();
+                    self.read();
+                }
+                Command::Changed => self.read(),
+                Command::Watch(true) => self.start_watching(),
+                Command::Watch(false) => {
                     self.watcher = None;
-                    if on {
-                        self.start_watching();
-                    }
+                    self.watched.clear();
                 }
                 Command::Stop => break,
             }
@@ -125,7 +136,7 @@ impl Worker {
     }
 
     fn read(&mut self) {
-        let state = match read_app_with(&self.root, &self.codes) {
+        let state = match read_app_cached(&self.root, &self.codes, &mut self.cache) {
             Ok(app) => {
                 // A code is kept once given, also for a module that is gone for a while.
                 self.codes.extend(app.codes());
@@ -133,30 +144,44 @@ impl Worker {
             }
             Err(error) => LiveState::Failed(Arc::new(error)),
         };
-        // The modules folder can move when the config changes.
-        let moved = match (&state, &self.watcher) {
-            (LiveState::Ready(app), Some(_)) => !self.watched().contains(&app.layout.modules_dir),
-            _ => false,
-        };
         *self.state.lock().expect("the state is never poisoned") = state;
-        if moved {
-            self.watcher = None;
+        // The modules folder or the coverage report can move when a config changes.
+        if self.watcher.is_some() && self.wanted() != self.watched {
             self.start_watching();
         }
         (self.on_change)();
     }
 
-    /// The folders to watch: the app folder and its config folder for the few files
-    /// Mortise reads there, and the whole modules folder.
-    fn watched(&self) -> Vec<PathBuf> {
-        let modules_dir = match &*self.state.lock().expect("the state is never poisoned") {
-            LiveState::Ready(app) => app.layout.modules_dir.clone(),
-            _ => self.root.join("Modules"),
+    /// What should be watched: the app folder and its config folder for the few files
+    /// Mortise reads there, the whole modules folder, the folder of the coverage
+    /// report, and git's folder for a new commit or another branch.
+    fn wanted(&self) -> Vec<Watched> {
+        let (modules_dir, report) = match &*self.state.lock().expect("the state is never poisoned")
+        {
+            LiveState::Ready(app) => (
+                app.layout.modules_dir.clone(),
+                app.coverage_report
+                    .as_ref()
+                    .map(|report| report.path.clone()),
+            ),
+            _ => (self.root.join("Modules"), None),
         };
-        vec![self.root.clone(), self.root.join("config"), modules_dir]
+        let mut wanted = vec![
+            (self.root.clone(), RecursiveMode::NonRecursive),
+            (self.root.join("config"), RecursiveMode::NonRecursive),
+            (self.root.join(".git"), RecursiveMode::NonRecursive),
+            (modules_dir, RecursiveMode::Recursive),
+        ];
+        if let Some(folder) = report.as_deref().and_then(Path::parent) {
+            wanted.push((folder.to_owned(), RecursiveMode::NonRecursive));
+        }
+        wanted
     }
 
     fn start_watching(&mut self) {
+        self.watcher = None;
+        self.watched = self.wanted();
+
         let outbox = self.outbox.clone();
         let root = self.root.clone();
         let handler = move |result: DebounceEventResult| {
@@ -166,35 +191,45 @@ impl Worker {
                     .any(|event| event.paths.iter().any(|path| is_relevant(&root, path)))
             });
             if relevant {
-                let _ = outbox.send(Command::Refresh);
+                let _ = outbox.send(Command::Changed);
             }
         };
         let Ok(mut watcher) = new_debouncer(QUIET, None, handler) else {
             return;
         };
-        let [root, config, modules] = &self.watched()[..] else {
-            return;
-        };
-        // A folder that does not exist cannot be watched. That is not an error here:
-        // the app folder is watched, so its creation is seen.
-        let _ = watcher.watch(root, RecursiveMode::NonRecursive);
-        let _ = watcher.watch(config, RecursiveMode::NonRecursive);
-        let _ = watcher.watch(modules, RecursiveMode::Recursive);
+        for (folder, mode) in &self.watched {
+            // A folder that does not exist cannot be watched. That is not an error here:
+            // the app folder is watched, so its creation is seen.
+            let _ = watcher.watch(folder, *mode);
+        }
         self.watcher = Some(watcher);
     }
 }
 
 /// False for what Mortise never reads and what changes in bulk: installed packages,
-/// git's own files, logs and caches. Only the part of the path inside the app counts.
+/// logs and caches, and git's own files except the few that change with a commit or
+/// a checkout. Only the part of the path inside the app counts.
 fn is_relevant(root: &Path, path: &Path) -> bool {
     let inside = path.strip_prefix(root).unwrap_or(path);
-    !inside.components().any(|part| {
-        matches!(
-            part,
-            Component::Normal(name)
-                if ["vendor", "node_modules", ".git", "storage"].iter().any(|skip| name == *skip)
-        )
-    })
+    let mut parts = inside.components().filter_map(|part| match part {
+        Component::Normal(name) => name.to_str(),
+        _ => None,
+    });
+    if inside.starts_with(".git") {
+        // The index is rewritten by every `git status` of every editor: not that.
+        return matches!(
+            parts.nth(1),
+            Some("HEAD" | "COMMIT_EDITMSG" | "ORIG_HEAD" | "packed-refs")
+        );
+    }
+    // A coverage report is a file Mortise reads, wherever it is written.
+    if inside
+        .extension()
+        .is_some_and(|extension| extension == "xml")
+    {
+        return true;
+    }
+    !parts.any(|name| matches!(name, "vendor" | "node_modules" | ".git" | "storage"))
 }
 
 #[cfg(test)]
@@ -202,14 +237,21 @@ mod tests {
     use super::*;
 
     #[test]
-    fn installed_packages_and_git_files_are_not_relevant() {
+    fn installed_packages_logs_and_most_git_files_are_not_relevant() {
         let root = Path::new("/home/storage/shop-api");
         let relevant = |path: &str| is_relevant(root, &root.join(path));
         assert!(relevant("modules_statuses.json"));
         assert!(relevant("Modules/Blog/app/Models/Post.php"));
+        assert!(relevant("build/coverage/clover.xml"));
+        assert!(relevant("storage/coverage/clover.xml"));
         assert!(!relevant("vendor/composer/installed.json"));
         assert!(!relevant("Modules/Blog/node_modules/x/index.js"));
-        assert!(!relevant(".git/index"));
         assert!(!relevant("storage/logs/laravel.log"));
+
+        assert!(relevant(".git/HEAD"));
+        assert!(relevant(".git/COMMIT_EDITMSG"));
+        assert!(!relevant(".git/index"));
+        assert!(!relevant(".git/index.lock"));
+        assert!(!relevant(".git/objects/ab/cdef"));
     }
 }

@@ -2,17 +2,30 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
+use std::time::UNIX_EPOCH;
 
 use serde::{Deserialize, Serialize};
 
+use crate::clover::{self, Coverage};
 use crate::code::propose_codes;
 use crate::composer::{Lock, Version};
+use crate::git::{self, Git};
+use crate::kind::Kinds;
 use crate::layout::Layout;
-use crate::module::{Module, ModuleState, find_modules};
+use crate::module::{Module, ModuleState, ReadCache, find_modules};
 
 const LARAVEL: &str = "laravel/framework";
 const PACKAGE: &str = "nwidart/laravel-modules";
 const ACTUATOR: &str = "nwidart/laravel-actuator";
+
+/// The coverage report an app's coverage figures come from.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CoverageReport {
+    /// The clover file. Absolute.
+    pub path: PathBuf,
+    /// When the file was written, in seconds since 1970.
+    pub written: Option<i64>,
+}
 
 /// Everything Mortise knows about an app from one read of its folder.
 ///
@@ -32,6 +45,9 @@ pub struct AppSnapshot {
     pub layout: Layout,
     /// The modules, sorted by name.
     pub modules: Vec<Module>,
+    /// The coverage report, when one was found.
+    pub coverage_report: Option<CoverageReport>,
+    pub git: Git,
 }
 
 impl AppSnapshot {
@@ -46,6 +62,25 @@ impl AppSnapshot {
     /// Files in all modules together.
     pub fn files(&self) -> u64 {
         self.modules.iter().map(|module| module.files).sum()
+    }
+
+    /// Lines of PHP in all modules together.
+    pub fn lines(&self) -> u64 {
+        self.modules.iter().map(|module| module.lines).sum()
+    }
+
+    /// Tests in all modules together.
+    pub fn tests(&self) -> u32 {
+        self.modules.iter().map(|module| module.tests).sum()
+    }
+
+    /// The coverage of all modules together. `None` when no module has a figure.
+    pub fn coverage(&self) -> Option<Coverage> {
+        let mut total: Option<Coverage> = None;
+        for coverage in self.modules.iter().filter_map(|module| module.coverage) {
+            total.get_or_insert_default().add(coverage);
+        }
+        total
     }
 
     /// The code of every module, by module name. Store it, and pass it to the next read.
@@ -64,13 +99,17 @@ impl AppSnapshot {
 
     /// A path as the user writes it: relative to the app folder when it is inside it.
     pub fn path_shown(&self, path: &Path) -> String {
-        let shown = path.strip_prefix(&self.root).unwrap_or(path);
-        shown
-            .components()
-            .map(|part| part.as_os_str().to_string_lossy())
-            .collect::<Vec<_>>()
-            .join("/")
+        shown(&self.root, path)
     }
+}
+
+fn shown(root: &Path, path: &Path) -> String {
+    path.strip_prefix(root)
+        .unwrap_or(path)
+        .components()
+        .map(|part| part.as_os_str().to_string_lossy())
+        .collect::<Vec<_>>()
+        .join("/")
 }
 
 /// Why a folder could not be read as an app.
@@ -108,6 +147,16 @@ pub fn read_app_with(
     root: &Path,
     codes: &BTreeMap<String, String>,
 ) -> Result<AppSnapshot, ReadError> {
+    read_app_cached(root, codes, &mut ReadCache::default())
+}
+
+/// Reads the app in `root`. Files that did not change since they were put in
+/// `cache` are not read again.
+pub fn read_app_cached(
+    root: &Path,
+    codes: &BTreeMap<String, String>,
+    cache: &mut ReadCache,
+) -> Result<AppSnapshot, ReadError> {
     let root = std::path::absolute(root).map_err(|source| ReadError::Io {
         path: root.to_owned(),
         source,
@@ -137,8 +186,10 @@ pub fn read_app_with(
         return Err(ReadError::NoPackage { root });
     };
 
-    let layout = Layout::read(&root);
-    let found = find_modules(&layout);
+    let (layout, config) = Layout::read(&root);
+    let kinds = Kinds::new(config.as_ref(), &layout.app_folder);
+    let found = find_modules(&layout, &kinds, cache);
+
     // A code is kept once given. Only modules without one get a proposal.
     let taken: BTreeSet<String> = codes.values().cloned().collect();
     let new_names = found
@@ -153,10 +204,43 @@ pub fn read_app_with(
             None => proposed.next().unwrap_or_default(),
         })
         .collect();
+
+    // A module's folder as git and the coverage report name it.
+    let folders: Vec<String> = found
+        .iter()
+        .map(|module| shown(&root, &module.dir))
+        .collect();
+
+    let report_path = clover::find_report(&root);
+    let report = report_path
+        .as_ref()
+        .and_then(|path| std::fs::read(path).ok())
+        .map(|xml| clover::read_report(&xml));
+    let coverage_of = |folder: &str| -> Option<Coverage> {
+        // The report has the paths of the machine that ran the tests, so only the
+        // part from the modules folder on can be compared.
+        let inside = format!("/{folder}/");
+        let at_start = format!("{folder}/");
+        let mut total: Option<Coverage> = None;
+        for file in report.as_ref()? {
+            if file.path.contains(&inside) || file.path.starts_with(&at_start) {
+                total.get_or_insert_default().add(file.coverage);
+            }
+        }
+        total
+    };
+
+    let git = git::read(&root);
+    let churn = match git {
+        Git::Repository { .. } => git::churn(&root, &folders),
+        _ => BTreeMap::new(),
+    };
+
     let modules = found
         .into_iter()
         .zip(codes)
-        .map(|(module, code)| Module {
+        .zip(&folders)
+        .map(|((module, code), folder)| Module {
             name: module.name,
             code,
             dir: module.dir,
@@ -164,7 +248,12 @@ pub fn read_app_with(
             description: module.description,
             priority: module.priority,
             manifest: module.manifest,
-            files: module.files,
+            files: module.scan.files,
+            lines: module.scan.lines,
+            kinds: module.scan.kinds,
+            tests: module.scan.tests,
+            coverage: coverage_of(folder),
+            churn: churn.get(folder).copied(),
         })
         .collect();
 
@@ -178,6 +267,15 @@ pub fn read_app_with(
         actuator: lock.version(ACTUATOR),
         layout,
         modules,
+        coverage_report: report_path.map(|path| CoverageReport {
+            written: std::fs::metadata(&path)
+                .and_then(|metadata| metadata.modified())
+                .ok()
+                .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
+                .map(|since| since.as_secs() as i64),
+            path,
+        }),
+        git,
         root,
     })
 }

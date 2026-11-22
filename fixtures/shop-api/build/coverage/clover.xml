@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<coverage generated="1763800000">
+  <project timestamp="1763800000">
+    <file name="/var/www/html/Modules/Users/app/Models/User.php">
+      <metrics loc="75" ncloc="50" classes="1" methods="2" coveredmethods="1" statements="25" coveredstatements="22" elements="27" coveredelements="23"/>
+    </file>
+    <file name="/var/www/html/Modules/Billing/app/Models/Invoice.php">
+      <metrics loc="96" ncloc="64" classes="1" methods="2" coveredmethods="1" statements="32" coveredstatements="30" elements="34" coveredelements="31"/>
+    </file>
+    <file name="/var/www/html/Modules/Billing/app/Http/Controllers/InvoiceController.php">
+      <metrics loc="63" ncloc="42" classes="1" methods="2" coveredmethods="1" statements="21" coveredstatements="13" elements="23" coveredelements="14"/>
+    </file>
+    <file name="/var/www/html/Modules/Catalog/app/Models/Product.php">
+      <metrics loc="39" ncloc="26" classes="1" methods="2" coveredmethods="1" statements="13" coveredstatements="10" elements="15" coveredelements="11"/>
+    </file>
+    <file name="/var/www/html/Modules/Inventory/app/Jobs/SyncStock.php">
+      <metrics loc="75" ncloc="50" classes="1" methods="2" coveredmethods="1" statements="25" coveredstatements="18" elements="27" coveredelements="19"/>
+    </file>
+    <file name="/var/www/html/Modules/Shipping/app/Services/LabelPrinter.php">
+      <metrics loc="84" ncloc="56" classes="1" methods="2" coveredmethods="1" statements="28" coveredstatements="20" elements="30" coveredelements="21"/>
+    </file>
+    <file name="/var/www/html/Modules/Shipping/app/Jobs/SyncTracking.php">
+      <metrics loc="66" ncloc="44" classes="1" methods="2" coveredmethods="1" statements="22" coveredstatements="13" elements="24" coveredelements="14"/>
+    </file>
+    <file name="/var/www/html/Modules/Checkout/app/Services/InvoiceSync.php">
+      <metrics loc="60" ncloc="40" classes="1" methods="2" coveredmethods="1" statements="20" coveredstatements="12" elements="22" coveredelements="13"/>
+    </file>
+    <file name="/var/www/html/Modules/Checkout/app/Services/PaymentService.php">
+      <metrics loc="90" ncloc="60" classes="1" methods="2" coveredmethods="1" statements="30" coveredstatements="15" elements="32" coveredelements="16"/>
+    </file>
+    <file name="/var/www/html/Modules/Notifications/app/Listeners/NotifyOrderPaid.php">
+      <metrics loc="54" ncloc="36" classes="1" methods="2" coveredmethods="1" statements="18" coveredstatements="7" elements="20" coveredelements="8"/>
+    </file>
+    <file name="/var/www/html/app/Models/User.php">
+      <metrics loc="30" ncloc="20" classes="1" methods="1" coveredmethods="0" statements="10" coveredstatements="0" elements="11" coveredelements="0"/>
+    </file>
+    <metrics files="11" statements="244" coveredstatements="160"/>
+  </project>
+</coverage>

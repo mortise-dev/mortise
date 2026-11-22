@@ -21,6 +21,7 @@ directories = "6"
 notify = "9"
 notify-debouncer-full = "0.8"
 rfd = "0.18"
+quick-xml = "0.42"
 
 # The PHP parser. Its API changes inside 1.x, so every crate is pinned to one
 # version and used only in `mortise_core::php`. Version 1.60 and later need

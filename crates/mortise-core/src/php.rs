@@ -6,9 +6,11 @@
 use mago_allocator::LocalArena;
 use mago_database::file::FileId;
 use mago_syntax::cst::{
-    Argument, ArrayElement, Call, Expression, Literal, Statement, TokenSeparatedSequence,
+    Argument, ArrayElement, Call, Expression, FunctionCall, Literal, Method, Modifier, Statement,
+    TokenSeparatedSequence, TriviaKind,
 };
 use mago_syntax::parser::parse_file_content;
+use mago_syntax::walker::MutWalker;
 
 /// A value in a PHP config file, as far as it can be known without running PHP.
 #[derive(Debug, Clone, PartialEq)]
@@ -120,6 +122,80 @@ fn lossy(bytes: &[u8]) -> String {
     String::from_utf8_lossy(bytes).into_owned()
 }
 
+/// Counts the tests in a PHP test file: PHPUnit methods whose name starts with
+/// `test`, or that carry the `Test` attribute or a `@test` docblock, and Pest's
+/// `it(...)` and `test(...)` calls.
+pub(crate) fn count_tests(source: &[u8]) -> u32 {
+    let arena = LocalArena::new();
+    let program = parse_file_content(&arena, FileId::zero(), source);
+    let mut counter = TestCounter::default();
+    counter.walk_program(program, &mut ());
+
+    // A docblock with @test marks the method that follows it.
+    let mut tests = counter.calls
+        + counter
+            .methods
+            .iter()
+            .filter(|(_, is_test)| *is_test)
+            .count() as u32;
+    for trivia in program.trivia.iter() {
+        if trivia.kind != TriviaKind::DocBlockComment || !has_test_tag(trivia.value) {
+            continue;
+        }
+        let end = trivia.span.end.offset;
+        let next = counter
+            .methods
+            .iter()
+            .filter(|(start, _)| *start >= end)
+            .min_by_key(|(start, _)| *start);
+        if let Some((_, false)) = next {
+            tests += 1;
+        }
+    }
+    tests
+}
+
+fn has_test_tag(docblock: &[u8]) -> bool {
+    docblock.windows(5).enumerate().any(|(at, window)| {
+        window == b"@test" && !docblock.get(at + 5).is_some_and(u8::is_ascii_alphanumeric)
+    })
+}
+
+#[derive(Default)]
+struct TestCounter {
+    /// Where each method starts, and whether its name or an attribute makes it a test.
+    methods: Vec<(u32, bool)>,
+    /// Pest's `it` and `test` calls.
+    calls: u32,
+}
+
+impl<'ast, 'arena> MutWalker<'ast, 'arena, ()> for TestCounter {
+    fn walk_in_method(&mut self, method: &'ast Method<'arena>, _: &mut ()) {
+        // PHPUnit runs public methods whose name starts with "test".
+        let hidden = method
+            .modifiers
+            .iter()
+            .any(|modifier| matches!(modifier, Modifier::Private(_) | Modifier::Protected(_)));
+        let name = method.name.value;
+        let by_name = !hidden && name.len() >= 4 && name[..4].eq_ignore_ascii_case(b"test");
+        let by_attribute = method
+            .attribute_lists
+            .iter()
+            .flat_map(|list| list.attributes.iter())
+            .any(|attribute| attribute.name.last_segment().eq_ignore_ascii_case(b"Test"));
+        self.methods
+            .push((method.function.span.start.offset, by_name || by_attribute));
+    }
+
+    fn walk_in_function_call(&mut self, call: &'ast FunctionCall<'arena>, _: &mut ()) {
+        if let Expression::Identifier(name) = call.function
+            && (name.value() == b"it" || name.value() == b"test")
+        {
+            self.calls += 1;
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -189,6 +265,71 @@ mod tests {
     #[test]
     fn a_file_without_a_return_gives_nothing() {
         assert_eq!(read_config(b"<?php $x = 1;"), None);
+    }
+
+    #[test]
+    fn counts_phpunit_tests_by_name_attribute_and_docblock() {
+        let tests = count_tests(
+            br#"<?php
+            namespace Modules\Billing\Tests\Unit;
+            use PHPUnit\Framework\Attributes\Test;
+            use PHPUnit\Framework\TestCase;
+
+            class InvoiceTest extends TestCase
+            {
+                protected function setUp(): void {}
+
+                public function testItAddsLines(): void {}
+                public function test_it_rounds(): void {}
+
+                #[Test]
+                public function it_numbers_invoices(): void {}
+
+                /** @test */
+                public function it_sends_a_copy(): void {}
+
+                /**
+                 * Counted once: the name already makes it a test.
+                 * @test
+                 */
+                public function testTwice(): void {}
+
+                /** @testWith [1] is another tag */
+                public function helper(): void {}
+
+                public function test(): void {}
+                private function testimony(): string { return ''; }
+            }"#,
+        );
+        // testItAddsLines, test_it_rounds, it_numbers_invoices, it_sends_a_copy,
+        // testTwice and test. Not setUp, helper, or testimony, which is private.
+        assert_eq!(tests, 6);
+    }
+
+    #[test]
+    fn counts_pest_tests_also_inside_describe() {
+        let tests = count_tests(
+            br#"<?php
+            use Modules\Billing\Models\Invoice;
+
+            it('adds lines', function () { expect(1)->toBe(1); });
+            test('rounds', fn () => expect(round(1.5))->toBe(2.0))->group('money');
+            describe('numbering', function () {
+                it('counts up', function () {});
+                it('skips cancelled invoices')->todo();
+            });
+            beforeEach(function () { $this->invoice = new Invoice; });
+            "#,
+        );
+        assert_eq!(tests, 4);
+    }
+
+    #[test]
+    fn a_file_without_tests_counts_none() {
+        assert_eq!(count_tests(b"<?php class Helper { function make() {} }"), 0);
+        assert_eq!(count_tests(b""), 0);
+        // A call that is not complete is not a test yet.
+        assert_eq!(count_tests(b"<?php it("), 0);
     }
 
     #[test]

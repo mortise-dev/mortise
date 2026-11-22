@@ -1,12 +1,17 @@
 //! The modules of an app: found on disk the way the package finds them.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 
 use ignore::WalkBuilder;
 use serde::{Deserialize, Serialize};
 
+use crate::clover::Coverage;
+use crate::git::Churn;
+use crate::kind::{Kinds, TESTS};
 use crate::layout::Layout;
+use crate::php::count_tests;
 
 /// Whether a module is turned on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -32,6 +37,14 @@ pub enum Manifest {
     NoName,
 }
 
+/// How many files of one kind a module has.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KindCount {
+    /// `Models`, `Controllers`, `Tests`, or `Other`.
+    pub kind: String,
+    pub files: u32,
+}
+
 /// One module of an app.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Module {
@@ -49,9 +62,20 @@ pub struct Module {
     /// Files in the module's folder. Hidden files, `vendor`, `node_modules` and
     /// whatever `.gitignore` excludes are not counted.
     pub files: u64,
+    /// Lines in the module's PHP files. Blade views are not PHP files.
+    pub lines: u64,
+    /// The files by kind, most files first. The kind comes from the folder a file is in.
+    pub kinds: Vec<KindCount>,
+    /// Tests in the module's test files.
+    pub tests: u32,
+    /// Statements covered by tests, from the coverage report. `None` when there
+    /// is no report or it has none of the module's files.
+    pub coverage: Option<Coverage>,
+    /// Commits in git. `None` when the app is not in a repository.
+    pub churn: Option<Churn>,
 }
 
-/// A module as read from disk, before it has a code.
+/// A module as read from disk, before it has a code, coverage and git data.
 pub(crate) struct FoundModule {
     pub(crate) name: String,
     pub(crate) dir: PathBuf,
@@ -59,12 +83,48 @@ pub(crate) struct FoundModule {
     pub(crate) description: String,
     pub(crate) priority: i64,
     pub(crate) manifest: Manifest,
+    pub(crate) scan: Scan,
+}
+
+/// What walking a module's folder gave.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub(crate) struct Scan {
     pub(crate) files: u64,
+    pub(crate) lines: u64,
+    pub(crate) kinds: Vec<KindCount>,
+    pub(crate) tests: u32,
+}
+
+/// What was worked out from the content of a file, kept so that a file that did
+/// not change is not read again.
+#[derive(Debug, Clone, Copy)]
+struct Facts {
+    size: u64,
+    modified: Option<SystemTime>,
+    lines: u64,
+    tests: u32,
+}
+
+/// The facts of the files read so far, by path.
+#[derive(Debug, Default)]
+pub struct ReadCache {
+    files: HashMap<PathBuf, Facts>,
+}
+
+impl ReadCache {
+    /// Forgets everything, so that the next read reads every file.
+    pub fn clear(&mut self) {
+        self.files.clear();
+    }
 }
 
 /// Finds the modules of an app: every folder directly under the modules folder
 /// that holds a `module.json`. Sorted by name.
-pub(crate) fn find_modules(layout: &Layout) -> Vec<FoundModule> {
+pub(crate) fn find_modules(
+    layout: &Layout,
+    kinds: &Kinds,
+    cache: &mut ReadCache,
+) -> Vec<FoundModule> {
     let statuses = read_statuses(&layout.statuses_file);
 
     let Ok(entries) = std::fs::read_dir(&layout.modules_dir) else {
@@ -90,7 +150,7 @@ pub(crate) fn find_modules(layout: &Layout) -> Vec<FoundModule> {
                 ModuleState::Off
             };
             Some(FoundModule {
-                files: count_files(&dir),
+                scan: scan(&dir, kinds, cache),
                 name,
                 dir,
                 state,
@@ -165,18 +225,83 @@ fn read_statuses(path: &Path) -> BTreeMap<String, serde_json::Value> {
         .unwrap_or_default()
 }
 
-fn count_files(dir: &Path) -> u64 {
-    WalkBuilder::new(dir)
+/// Walks a module's folder: counts its files by kind, the lines of its PHP files
+/// and the tests in its test files.
+fn scan(dir: &Path, kinds: &Kinds, cache: &mut ReadCache) -> Scan {
+    let mut scan = Scan::default();
+    let mut by_kind: BTreeMap<String, u32> = BTreeMap::new();
+
+    let walk = WalkBuilder::new(dir)
         // Apply .gitignore files also when the app is not a git repository.
         .require_git(false)
         .filter_entry(|entry| {
             let is_dir = entry.file_type().is_some_and(|kind| kind.is_dir());
             !(is_dir && matches!(entry.file_name().to_str(), Some("vendor" | "node_modules")))
         })
-        .build()
-        .filter_map(Result::ok)
-        .filter(|entry| entry.file_type().is_some_and(|kind| kind.is_file()))
-        .count() as u64
+        .build();
+    for entry in walk.filter_map(Result::ok) {
+        if !entry.file_type().is_some_and(|kind| kind.is_file()) {
+            continue;
+        }
+        let path = entry.path();
+        let relative = path
+            .strip_prefix(dir)
+            .unwrap_or(path)
+            .components()
+            .map(|part| part.as_os_str().to_string_lossy())
+            .collect::<Vec<_>>()
+            .join("/");
+        let kind = kinds.of(&relative);
+        scan.files += 1;
+        let is_test = kind == TESTS;
+        *by_kind.entry(kind).or_default() += 1;
+
+        // Blade views end in .php but are templates, not PHP files.
+        if !relative.ends_with(".php") || relative.ends_with(".blade.php") {
+            continue;
+        }
+        let metadata = entry.metadata().ok();
+        let size = metadata.as_ref().map_or(0, std::fs::Metadata::len);
+        let modified = metadata.and_then(|metadata| metadata.modified().ok());
+        let facts = match cache.files.get(path) {
+            Some(facts)
+                if facts.size == size && facts.modified == modified && modified.is_some() =>
+            {
+                *facts
+            }
+            _ => {
+                let source = std::fs::read(path).unwrap_or_default();
+                let facts = Facts {
+                    size,
+                    modified,
+                    lines: count_lines(&source),
+                    tests: if is_test { count_tests(&source) } else { 0 },
+                };
+                cache.files.insert(path.to_owned(), facts);
+                facts
+            }
+        };
+        scan.lines += facts.lines;
+        scan.tests += facts.tests;
+    }
+
+    scan.kinds = by_kind
+        .into_iter()
+        .map(|(kind, files)| KindCount { kind, files })
+        .collect();
+    // Most files first; kinds with the same number of files by name.
+    scan.kinds
+        .sort_by(|a, b| b.files.cmp(&a.files).then_with(|| a.kind.cmp(&b.kind)));
+    scan
+}
+
+/// Lines of a file: line ends, plus a last line that has no line end.
+fn count_lines(source: &[u8]) -> u64 {
+    let ends = source.iter().filter(|byte| **byte == b'\n').count() as u64;
+    match source.last() {
+        Some(b'\n') | None => ends,
+        Some(_) => ends + 1,
+    }
 }
 
 #[cfg(test)]
@@ -186,6 +311,10 @@ mod tests {
     fn write(path: &Path, content: &str) {
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(path, content).unwrap();
+    }
+
+    fn scan_dir(dir: &Path) -> Scan {
+        scan(dir, &Kinds::new(None, "app/"), &mut ReadCache::default())
     }
 
     #[test]
@@ -200,7 +329,88 @@ mod tests {
         write(&module.join("vendor/autoload.php"), "<?php");
         write(&module.join(".gitignore"), "/build\n");
         write(&module.join("build/app.js"), "");
-        assert_eq!(count_files(module), 3);
+        assert_eq!(scan_dir(module).files, 3);
+    }
+
+    #[test]
+    fn counts_lines_of_php_kinds_and_tests() {
+        let dir = tempfile::tempdir().unwrap();
+        let module = dir.path();
+        write(&module.join("module.json"), "{\n}\n");
+        write(
+            &module.join("app/Models/Post.php"),
+            "<?php\n\nclass Post {}\n",
+        );
+        write(&module.join("app/Models/Tag.php"), "<?php\nclass Tag {}");
+        write(
+            &module.join("app/Http/Controllers/PostController.php"),
+            "<?php\n",
+        );
+        write(
+            &module.join("resources/views/index.blade.php"),
+            "<p>\n</p>\n<?php echo 1; ?>\n",
+        );
+        write(
+            &module.join("tests/Unit/PostTest.php"),
+            "<?php\nclass PostTest {\n  function testTitle() {}\n  function testSlug() {}\n}\n",
+        );
+        // Not in a tests folder: its methods are not counted as tests.
+        write(
+            &module.join("app/Support/Check.php"),
+            "<?php class Check { function testThis() {} }",
+        );
+
+        let scan = scan_dir(module);
+        assert_eq!(scan.files, 7);
+        // 3 + 2 + 1 + 5 + 1. The Blade view and module.json are not PHP.
+        assert_eq!(scan.lines, 12);
+        assert_eq!(scan.tests, 2);
+        let kinds: Vec<_> = scan
+            .kinds
+            .iter()
+            .map(|kind| (kind.kind.as_str(), kind.files))
+            .collect();
+        assert_eq!(
+            kinds,
+            [
+                ("Models", 2),
+                ("Controllers", 1),
+                ("Other", 1),
+                ("Support", 1),
+                ("Tests", 1),
+                ("Views", 1)
+            ]
+        );
+    }
+
+    #[test]
+    fn a_file_that_did_not_change_is_not_read_again() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("app/Models/Post.php");
+        write(&file, "<?php\nclass Post {}\n");
+        let kinds = Kinds::new(None, "app/");
+        let mut cache = ReadCache::default();
+        assert_eq!(scan(dir.path(), &kinds, &mut cache).lines, 2);
+
+        // Same size and time: the cached facts are used even if the cache is wrong.
+        cache.files.get_mut(&file).unwrap().lines = 99;
+        assert_eq!(scan(dir.path(), &kinds, &mut cache).lines, 99);
+
+        // Another size: read again.
+        write(&file, "<?php\nclass Post {}\n// more\n");
+        assert_eq!(scan(dir.path(), &kinds, &mut cache).lines, 3);
+
+        cache.clear();
+        assert_eq!(scan(dir.path(), &kinds, &mut cache).lines, 3);
+    }
+
+    #[test]
+    fn counts_a_last_line_without_a_line_end() {
+        assert_eq!(count_lines(b""), 0);
+        assert_eq!(count_lines(b"a"), 1);
+        assert_eq!(count_lines(b"a\n"), 1);
+        assert_eq!(count_lines(b"a\nb"), 2);
+        assert_eq!(count_lines(b"a\r\nb\r\n"), 2);
     }
 
     #[test]

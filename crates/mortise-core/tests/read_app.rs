@@ -68,28 +68,65 @@ fn reads_shop_api() {
         .modules
         .iter()
         .map(|module| {
+            let coverage = module.coverage.and_then(|coverage| coverage.percent());
             (
                 module.name.as_str(),
                 module.code.as_str(),
-                module.state,
                 module.files,
+                module.lines,
+                module.tests,
+                coverage,
             )
         })
         .collect();
     assert_eq!(
         seen,
         [
-            ("Billing", "BLN", ModuleState::On, 7),
-            ("Catalog", "CTL", ModuleState::On, 7),
-            ("Checkout", "CHK", ModuleState::On, 7),
-            ("Inventory", "INV", ModuleState::On, 7),
-            ("Notifications", "NTF", ModuleState::On, 7),
-            ("Shipping", "SHP", ModuleState::On, 7),
-            ("Users", "USR", ModuleState::On, 7),
+            ("Billing", "BLN", 19, 202, 5, Some(81)),
+            ("Catalog", "CTL", 10, 90, 4, Some(77)),
+            ("Checkout", "CHK", 20, 212, 2, Some(54)),
+            ("Inventory", "INV", 9, 75, 2, Some(72)),
+            ("Notifications", "NTF", 9, 68, 0, Some(39)),
+            ("Shipping", "SHP", 14, 128, 2, Some(66)),
+            ("Users", "USR", 10, 85, 3, Some(88)),
         ]
     );
+    assert!(
+        app.modules
+            .iter()
+            .all(|module| module.state == ModuleState::On)
+    );
     assert_eq!(app.modules_on(), 7);
-    assert_eq!(app.files(), 49);
+    assert_eq!(app.files(), 91);
+    assert_eq!(app.lines(), 860);
+    assert_eq!(app.tests(), 18);
+    // 160 of 234 statements. The file outside the modules folder does not count.
+    assert_eq!(app.coverage().unwrap().percent(), Some(68));
+    assert_eq!(
+        app.path_shown(&app.coverage_report.as_ref().unwrap().path),
+        "build/coverage/clover.xml"
+    );
+    assert!(app.coverage_report.as_ref().unwrap().written.is_some());
+
+    let kinds = |name: &str| -> Vec<(String, u32)> {
+        let module = app
+            .modules
+            .iter()
+            .find(|module| module.name == name)
+            .unwrap();
+        module
+            .kinds
+            .iter()
+            .map(|kind| (kind.kind.clone(), kind.files))
+            .collect()
+    };
+    let checkout = kinds("Checkout");
+    assert_eq!(checkout[0], ("Listeners".to_owned(), 4));
+    assert_eq!(checkout[1], ("Services".to_owned(), 3));
+    assert_eq!(checkout.iter().map(|(_, files)| files).sum::<u32>(), 20);
+    assert!(kinds("Billing").contains(&("Commands".to_owned(), 2)));
+    assert!(kinds("Billing").contains(&("Migrations".to_owned(), 1)));
+
     assert!(
         app.modules
             .iter()
@@ -216,6 +253,64 @@ fn folders_without_module_json_and_files_are_not_modules() {
 }
 
 #[test]
+fn without_a_coverage_report_coverage_is_unknown() {
+    let app = copy_of("shop-api");
+    std::fs::remove_dir_all(app.path().join("build")).unwrap();
+    let app = read_app(app.path()).unwrap();
+    assert_eq!(app.coverage_report, None);
+    assert_eq!(app.coverage(), None);
+    assert!(app.modules.iter().all(|module| module.coverage.is_none()));
+}
+
+#[test]
+fn a_module_that_is_not_in_the_report_has_no_coverage() {
+    let app = copy_of("shop-api");
+    let report = app.path().join("build/coverage/clover.xml");
+    let xml = std::fs::read_to_string(&report).unwrap();
+    std::fs::write(&report, xml.replace("Modules/Users/", "Modules/Members/")).unwrap();
+
+    let app = read_app(app.path()).unwrap();
+    let users = app
+        .modules
+        .iter()
+        .find(|module| module.name == "Users")
+        .unwrap();
+    assert_eq!(users.coverage, None);
+    // 138 of 209 statements without the 22 of 25 of Users.
+    assert_eq!(app.coverage().unwrap().percent(), Some(66));
+}
+
+#[test]
+fn the_report_named_in_phpunit_xml_is_read() {
+    let app = copy_of("shop-api");
+    std::fs::rename(
+        app.path().join("build/coverage/clover.xml"),
+        app.path().join("cov.xml"),
+    )
+    .unwrap();
+    assert_eq!(read_app(app.path()).unwrap().coverage(), None);
+    std::fs::write(
+        app.path().join("phpunit.xml"),
+        r#"<phpunit><coverage><report><clover outputFile="cov.xml"/></report></coverage></phpunit>"#,
+    )
+    .unwrap();
+    let app = read_app(app.path()).unwrap();
+    assert_eq!(
+        app.path_shown(&app.coverage_report.as_ref().unwrap().path),
+        "cov.xml"
+    );
+    assert_eq!(app.coverage().unwrap().percent(), Some(68));
+}
+
+#[test]
+fn a_folder_that_is_not_a_repository_has_no_git_data() {
+    let app = copy_of("shop-api");
+    let app = read_app(app.path()).unwrap();
+    assert_eq!(app.git, mortise_core::Git::NotARepository);
+    assert!(app.modules.iter().all(|module| module.churn.is_none()));
+}
+
+#[test]
 fn the_modules_folder_of_the_config_is_used() {
     let app = copy_of("shop-api");
     std::fs::rename(app.path().join("Modules"), app.path().join("Domains")).unwrap();
@@ -335,6 +430,36 @@ fn real_apps_read_without_failing() {
         println!(
             "{folder}: {} {} files, package {}",
             module, app.modules[0].files, app.package.raw
+        );
+    }
+}
+
+/// Prints what Mortise reads from the shop-api fixture. Run with `-- --ignored print`.
+#[test]
+#[ignore = "prints the snapshot for a person to read"]
+fn print_shop_api() {
+    let app = read_app(&fixture("shop-api")).unwrap();
+    println!(
+        "lines {} tests {} coverage {:?} git {:?}",
+        app.lines(),
+        app.tests(),
+        app.coverage().and_then(|c| c.percent()),
+        app.git
+    );
+    for module in &app.modules {
+        println!(
+            "{:14} {} files {:3} lines {:4} tests {:2} cov {:?} kinds {:?}",
+            module.name,
+            module.code,
+            module.files,
+            module.lines,
+            module.tests,
+            module.coverage.and_then(|c| c.percent()),
+            module
+                .kinds
+                .iter()
+                .map(|k| format!("{} {}", k.kind, k.files))
+                .collect::<Vec<_>>()
         );
     }
 }

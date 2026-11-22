@@ -134,10 +134,13 @@ fn a_new_file_and_a_new_module_are_seen() {
     opened.live.watch(true);
     std::thread::sleep(Duration::from_millis(500));
 
-    let model = opened.root.join("Modules/Billing/app/Models/Invoice.php");
-    std::fs::create_dir_all(model.parent().unwrap()).unwrap();
-    std::fs::write(model, "<?php\n").unwrap();
-    opened.wait_for("one more file in Billing", |app| app.modules[0].files == 8);
+    let before = opened.wait_for("the first read", |_| true).modules[0].clone();
+    let model = opened.root.join("Modules/Billing/app/Models/Receipt.php");
+    std::fs::write(model, "<?php\n\nclass Receipt {}\n").unwrap();
+    let app = opened.wait_for("one more file in Billing", |app| {
+        app.modules[0].files == before.files + 1
+    });
+    assert_eq!(app.modules[0].lines, before.lines + 3);
 
     let loyalty = opened.root.join("Modules/Loyalty");
     std::fs::create_dir(&loyalty).unwrap();
@@ -174,4 +177,29 @@ fn a_code_is_kept_when_modules_come_and_go() {
     let app = opened.wait_for("the module Cattle", |app| app.modules.len() == 8);
     assert_eq!(code(&app, "Catalog").as_deref(), Some("CTL"));
     assert_ne!(code(&app, "Cattle").as_deref(), Some("CTL"));
+}
+
+#[test]
+fn a_new_coverage_report_is_seen() {
+    let opened = open(BTreeMap::new());
+    let app = opened.wait_for("the first read", |_| true);
+    assert_eq!(app.coverage().unwrap().percent(), Some(68));
+    opened.live.watch(true);
+    std::thread::sleep(Duration::from_millis(500));
+
+    // The tests ran again and cover every statement of Users.
+    let report = opened.root.join("build/coverage/clover.xml");
+    let xml = std::fs::read_to_string(&report).unwrap();
+    let xml = xml.replace(
+        r#"statements="25" coveredstatements="22""#,
+        r#"statements="25" coveredstatements="25""#,
+    );
+    std::fs::write(&report, xml).unwrap();
+
+    let app = opened.wait_for("Users fully covered", |app| {
+        app.modules
+            .iter()
+            .any(|module| module.name == "Users" && module.coverage.unwrap().percent() == Some(100))
+    });
+    assert_eq!(app.coverage().unwrap().percent(), Some(70));
 }

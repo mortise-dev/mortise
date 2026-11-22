@@ -55,8 +55,9 @@ pub struct Layout {
 }
 
 impl Layout {
-    /// Reads the layout of the app in `root`. A missing config file means the package defaults.
-    pub(crate) fn read(root: &Path) -> Self {
+    /// Reads the layout of the app in `root`, and gives the config it came from.
+    /// A missing config file means the package defaults.
+    pub(crate) fn read(root: &Path) -> (Self, Option<ConfigValue>) {
         let mut layout = Self {
             modules_dir: root.join("Modules"),
             namespace: "Modules".into(),
@@ -68,7 +69,7 @@ impl Layout {
         };
 
         let Ok(source) = std::fs::read(root.join("config").join("modules.php")) else {
-            return layout;
+            return (layout, None);
         };
         layout.has_config = true;
 
@@ -81,7 +82,7 @@ impl Layout {
                 LayoutKey::StatusesFile,
                 LayoutKey::Activator,
             ];
-            return layout;
+            return (layout, None);
         };
 
         // A top-level key of the app's file replaces the package's whole value for that key,
@@ -122,7 +123,7 @@ impl Layout {
             &mut layout.statuses_file,
         );
 
-        layout
+        (layout, Some(config))
     }
 
     /// True when the on or off state of modules is in the statuses file.
@@ -147,7 +148,7 @@ mod tests {
     #[test]
     fn no_config_file_means_the_package_defaults() {
         let app = app_with_config(None);
-        let layout = Layout::read(app.path());
+        let (layout, _) = Layout::read(app.path());
         assert_eq!(layout.modules_dir, app.path().join("Modules"));
         assert_eq!(layout.namespace, "Modules");
         assert_eq!(layout.app_folder, "app/");
@@ -170,7 +171,7 @@ mod tests {
                 'activator' => 'database',
             ];"#,
         ));
-        let layout = Layout::read(app.path());
+        let (layout, _) = Layout::read(app.path());
         assert_eq!(layout.modules_dir, app.path().join("src/Domains"));
         assert_eq!(layout.namespace, "Acme");
         assert_eq!(layout.app_folder, "src/");
@@ -191,7 +192,7 @@ mod tests {
                 'paths' => ['modules' => __DIR__ . '/../Modules', 'app_folder' => 'app/'],
             ];"#,
         ));
-        let layout = Layout::read(app.path());
+        let (layout, _) = Layout::read(app.path());
         assert_eq!(layout.namespace, "Modules");
         assert_eq!(layout.modules_dir, app.path().join("Modules"));
         assert_eq!(
@@ -203,7 +204,7 @@ mod tests {
     #[test]
     fn a_relative_string_path_cannot_be_followed() {
         let app = app_with_config(Some("<?php return ['paths' => ['modules' => 'Modules']];"));
-        let layout = Layout::read(app.path());
+        let (layout, _) = Layout::read(app.path());
         assert_eq!(layout.modules_dir, app.path().join("Modules"));
         assert_eq!(layout.assumed, vec![LayoutKey::ModulesFolder]);
     }
@@ -211,7 +212,7 @@ mod tests {
     #[test]
     fn a_config_file_that_returns_nothing_assumes_everything() {
         let app = app_with_config(Some("<?php $config = [];"));
-        let layout = Layout::read(app.path());
+        let (layout, _) = Layout::read(app.path());
         assert!(layout.has_config);
         assert_eq!(layout.assumed.len(), 5);
     }

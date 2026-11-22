@@ -16,6 +16,7 @@ watch = ["dep:notify", "dep:notify-debouncer-full"]
 directories.workspace = true
 notify = { workspace = true, optional = true }
 notify-debouncer-full = { workspace = true, optional = true }
+quick-xml.workspace = true
 ignore.workspace = true
 mago-allocator.workspace = true
 mago-database.workspace = true
