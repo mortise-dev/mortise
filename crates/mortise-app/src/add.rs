@@ -35,7 +35,7 @@ pub struct AddPanel {
     /// The text of the path field.
     pub path: String,
     pub checked: Option<Checked>,
-    /// The path that `checked` belongs to.
+    /// The path that `checked` belongs to, or that is being read.
     checked_path: String,
     /// Where focus goes in the next frame.
     focus: Option<Focus>,
@@ -99,8 +99,22 @@ impl AddPanel {
         }
     }
 
-    pub fn set_checked(&mut self, checked: Checked) {
+    /// Starts reading the folder in the path field.
+    pub fn start_reading(&mut self) {
         self.checked_path = self.path.clone();
+        self.checked = None;
+        self.runtime = None;
+        self.reading = true;
+    }
+
+    /// True when what was found belongs to the path in the field.
+    pub fn is_current(&self) -> bool {
+        self.checked.is_some() && self.path.trim() == self.checked_path.trim()
+    }
+
+    /// Takes in what reading the folder gave. The path that was read is kept, so a
+    /// field changed during the read does not take a result that is not its own.
+    pub fn set_checked(&mut self, checked: Checked) {
         self.focus = match checked {
             Checked::Failed(_) => None,
             _ => Some(Focus::Primary),
@@ -249,6 +263,14 @@ pub fn add_panel(
     }
     if keyboard && focused {
         draw::focus_ring(ui, pal, field, radius::CONTROL);
+    }
+    // A changed path drops what was found for the folder before: Add, Open and Test
+    // act only on the folder the field shows.
+    if response.changed() && panel.path.trim() != panel.checked_path.trim() {
+        panel.checked = None;
+        panel.runtime = None;
+        panel.reading = false;
+        panel.checked_path.clear();
     }
     // Enter in the field, or leaving it after a change, reads the folder.
     let changed = panel.path.trim() != panel.checked_path.trim() && !panel.path.trim().is_empty();
