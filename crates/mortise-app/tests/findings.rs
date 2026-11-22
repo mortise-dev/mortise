@@ -110,9 +110,12 @@ fn f_opens_the_findings_list_and_esc_returns() {
 #[test]
 fn a_finding_opens_where_it_lives() {
     let (_desk, mut harness) = shop_api();
-    harness
-        .get_by_role_and_label(Role::Button, "Show all 3 findings")
-        .click();
+    // Boundary was left on a public surface: a link opens on the links.
+    harness.key_press(Key::J);
+    harness.key_press(Key::Num2);
+    harness.key_press(Key::P);
+    harness.run();
+    harness.key_press(Key::F);
     harness.run();
     assert!(harness.state().findings_open());
 
