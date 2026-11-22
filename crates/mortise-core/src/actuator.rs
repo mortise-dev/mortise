@@ -130,6 +130,8 @@ pub enum Answer {
     Unexpected {
         url: String,
         status: u16,
+        /// Where a redirect sends to, as a full address. Mortise does not follow it.
+        location: Option<String>,
     },
     Answered(Box<Runtime>),
 }
@@ -137,10 +139,11 @@ pub enum Answer {
 /// The secret that goes with [`Credentials`]: a token, a password or a header value.
 pub type Secret = Option<String>;
 
-/// A response of the app: its status and its body.
+/// A response of the app: its status, its body and the `Location` header.
 struct Reply {
     status: u16,
     body: String,
+    location: Option<String>,
 }
 
 /// One connection to an environment: an agent, and the credentials every request carries.
@@ -158,7 +161,7 @@ impl<'a> Client<'a> {
             .http_status_as_error(false)
             // A redirect is not followed. It could take a custom header with the secret to
             // another host, or ask for a path Mortise does not read. It comes back as an
-            // unexpected answer.
+            // unexpected answer that names where it sends to.
             .max_redirects(0)
             // The certificates this computer trusts, so that a local site with its own
             // certificate authority works as it does in the browser.
@@ -192,8 +195,17 @@ impl<'a> Client<'a> {
         }
         let mut response = request.call()?;
         let status = response.status().as_u16();
+        let location = response
+            .headers()
+            .get("location")
+            .and_then(|value| value.to_str().ok())
+            .map(|location| resolve(url, location));
         let body = response.body_mut().read_to_string().unwrap_or_default();
-        Ok(Reply { status, body })
+        Ok(Reply {
+            status,
+            body,
+            location,
+        })
     }
 
     /// The JSON an endpoint answers, or the answer that says why there is none.
@@ -212,7 +224,11 @@ impl<'a> Client<'a> {
             // 503: the app is down or out of service, and says so in the body.
             200 | 503 => Ok(serde_json::from_str(&reply.body).unwrap_or(Value::Null)),
             status @ (401 | 403) => Err(Answer::NotAuthorized { url, status }),
-            status => Err(Answer::Unexpected { url, status }),
+            status => Err(Answer::Unexpected {
+                url,
+                status,
+                location: reply.location.filter(|_| (300..400).contains(&status)),
+            }),
         }
     }
 
@@ -284,6 +300,22 @@ impl<'a> Client<'a> {
             runtime.tasks = Some(read_tasks(&self.fetch("scheduledtasks")?));
         }
         Ok(runtime)
+    }
+}
+
+/// A `Location` header read against the address that was asked for.
+fn resolve(url: &str, location: &str) -> String {
+    let Some((scheme, rest)) = url.split_once("://") else {
+        return location.to_owned();
+    };
+    let host = rest.split('/').next().unwrap_or_default();
+    if location.starts_with("//") {
+        format!("{scheme}:{location}")
+    } else if location.starts_with('/') {
+        format!("{scheme}://{host}{location}")
+    } else {
+        // A full address, or a relative path, which is shown as given.
+        location.to_owned()
     }
 }
 

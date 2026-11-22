@@ -242,7 +242,18 @@ fn a_500_and_a_404_are_not_statuses_of_the_app() {
         ask(&local(&stub), &None),
         Answer::Unexpected {
             url: format!("{}/actuator/health", stub.base_url),
-            status: 500
+            status: 500,
+            location: None
+        }
+    );
+    // A redirect names where it sends to, read against the address that was asked for.
+    stub.set("/actuator/health", Reply::redirect("/actuator/health/"));
+    assert_eq!(
+        ask(&local(&stub), &None),
+        Answer::Unexpected {
+            url: format!("{}/actuator/health", stub.base_url),
+            status: 302,
+            location: Some(format!("{}/actuator/health/", stub.base_url))
         }
     );
 
@@ -252,7 +263,8 @@ fn a_500_and_a_404_are_not_statuses_of_the_app() {
         ask(&local(&empty), &None),
         Answer::Unexpected {
             url: format!("{}/actuator", empty.base_url),
-            status: 404
+            status: 404,
+            location: None
         }
     );
 }
@@ -313,7 +325,8 @@ fn each_kind_of_credentials_is_sent_as_its_header() {
             ask(&environment, &Some("s3cret".into())),
             Answer::Unexpected {
                 url: format!("{}/actuator", stub.base_url),
-                status: 302
+                status: 302,
+                location: Some(format!("{}/actuator/env", other.base_url))
             }
         );
         assert!(other.asked().is_empty());

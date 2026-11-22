@@ -366,11 +366,18 @@ fn items(
                 )]),
             ];
         }
-        Answer::Unexpected { url, status: code } => {
+        Answer::Unexpected {
+            url,
+            status: code,
+            location,
+        } => {
             // i. The actuator answers 500, or there is none at this address.
             let mut items = vec![
                 status(Some(brief), None),
-                Item::Text(strings::answered_unexpected(name, url, *code), false),
+                Item::Text(
+                    strings::answered_unexpected(name, url, *code, location.as_deref()),
+                    false,
+                ),
             ];
             if !(500..600).contains(code) {
                 items.push(Item::Buttons(vec![(
