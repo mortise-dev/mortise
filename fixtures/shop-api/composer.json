@@ -1,0 +1,23 @@
+{
+    "name": "mortise/fixture-shop-api",
+    "description": "A fixture for the tests of Mortise. It is never installed or run.",
+    "type": "project",
+    "require": {
+        "php": "^8.3",
+        "laravel/framework": "^13.0",
+        "nwidart/laravel-actuator": "^1.0",
+        "nwidart/laravel-modules": "^13.3"
+    },
+    "autoload": {
+        "psr-4": {
+            "App\\": "app/"
+        }
+    },
+    "extra": {
+        "merge-plugin": {
+            "include": [
+                "Modules/*/composer.json"
+            ]
+        }
+    }
+}

@@ -1,0 +1,36 @@
+{
+    "_readme": [
+        "A fixture for the tests of Mortise. Only the fields Mortise reads are kept."
+    ],
+    "packages": [
+        {
+            "name": "laravel/framework",
+            "version": "v13.2.0",
+            "extra": {
+                "branch-alias": {
+                    "dev-master": "13.0.x-dev"
+                }
+            }
+        },
+        {
+            "name": "nwidart/laravel-actuator",
+            "version": "1.0.0",
+            "extra": {
+                "branch-alias": {
+                    "dev-master": "1.x-dev"
+                }
+            }
+        },
+        {
+            "name": "nwidart/laravel-modules",
+            "version": "v13.3.0",
+            "extra": {
+                "branch-alias": {
+                    "dev-master": "13.x-dev"
+                }
+            }
+        }
+    ],
+    "packages-dev": [],
+    "aliases": []
+}

@@ -1,0 +1,16 @@
+{
+    "name": "mortise/fixture-checkout",
+    "description": "",
+    "autoload": {
+        "psr-4": {
+            "Modules\\Checkout\\": "app/",
+            "Modules\\Checkout\\Database\\Factories\\": "database/factories/",
+            "Modules\\Checkout\\Database\\Seeders\\": "database/seeders/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Modules\\Checkout\\Tests\\": "tests/"
+        }
+    }
+}
