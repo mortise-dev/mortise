@@ -28,6 +28,29 @@ tempfile.workspace = true
 [lints]
 workspace = true
 
+# cargo-packager builds the installers from this table: `cargo packager -p mortise-app --release`.
+# Paths are relative to this folder. The Installers workflow replaces the signing-identity line and
+# the before-packaging-command line for a signed release, so keep each on one line as it is.
+[package.metadata.packager]
+product-name = "Mortise"
+identifier = "com.nicolaswidart.mortise"
+category = "DeveloperTool"
+authors = ["Nicolas Widart"]
+description = "Shows the modules of a Laravel app that uses nwidart/laravel-modules"
+license-file = "../../LICENSE"
+icons = [
+    "../../assets/icon/macos/Mortise.icns",
+    "../../assets/icon/windows/mortise.ico",
+    "../../assets/icon/linux/hicolor/*/apps/mortise.png",
+]
+resources = ["../../LICENSE", "../../licenses/THIRD-PARTY.md"]
+out-dir = "../../target/packages"
+before-packaging-command = "cargo build --release --locked -p mortise-app"
+binaries = [{ path = "mortise", main = true }]
+
+[package.metadata.packager.macos]
+signing-identity = "-"
+
 # The setting of macOS that asks for less motion. Both calls are safe Rust.
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "NSWorkspace", "NSAccessibility"] }

@@ -1,0 +1,250 @@
+# Releases when a release PR (opened by release.yml) merges into main: builds the installers on the merge
+# commit, then tags it and creates the GitHub release from the CHANGELOG.md section.
+#
+# The trigger is a push to main, so the run belongs to refs/heads/main and the `release` environment,
+# which allows only main, accepts it. A pull_request event runs on refs/pull/N/merge and would not pass
+# that rule.
+# A push runs the release jobs only for the merge of a release PR, and only after this check, which fails
+# closed: the commit message must start like a release merge, then the pull requests GitHub lists for the
+# commit must hold exactly one merged PR of this repository, from release/vX.Y.Z into main, whose merge
+# commit is the pushed commit. GitHub can list no PR for a few seconds after a merge, so the check asks up
+# to 5 times, 10 seconds apart. A commit that looks like a release merge and still has no PR fails the run
+# with an error, and starts no release. Any other push to main starts nothing: its run shows as skipped.
+# Squash and merge is the recommended way to merge a release PR, and a merge commit works too. A rebase
+# merge is not supported: it can end on a commit that is not named chore(release): vX.Y.Z. Run this
+# workflow by hand with the tag.
+#
+# The tag exists only once the installers built. A failed build leaves no tag.
+# "Re-run failed jobs" rebuilds the same commit, so it only helps with flaky or infrastructure failures.
+# A run that failed because the Apple secrets or the `release` environment were missing needs no new
+# commit: add them, then "Re-run failed jobs", since a job reads its secrets when it starts.
+# For a code failure, merge the fix into main through a normal PR, then run this workflow by hand with the tag.
+# The run by hand builds the current main commit, then tags and publishes the same way.
+# The tag is pushed with GITHUB_TOKEN, which starts no other workflow, so this workflow calls installers.yml itself.
+#
+# macOS signing: the installers call asks for a signed release with `sign: true` and passes the six Apple
+# secrets named below, and no other job gets them. They are environment secrets of the `release`
+# environment, which only main can deploy to. The macOS signing section of CONTRIBUTING.md says how to
+# set the environment and the secrets up.
+name: Tag release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The release tag, vX.Y.Z. Cargo.toml and CHANGELOG.md on main must already hold this version.
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+# A push gets a group of its own commit, so no other push can displace it while it waits. A run by hand
+# gets the group of its tag, so two runs by hand for one tag queue instead of overlapping. The version
+# job refuses a tag already on origin, and the publish job refuses a tag on another commit.
+concurrency:
+  group: ${{ github.event_name == 'workflow_dispatch' && format('tag-release-{0}', inputs.tag) || format('tag-release-{0}', github.sha) }}
+  cancel-in-progress: false
+
+jobs:
+  # Picks the tag and the commit to build, and says whether this run is a release at all. A push that is
+  # not a release merge ends here with release=false, and every later job skips.
+  version:
+    name: Read the release version
+    # Cheap first test on the commit message, so most pushes to main start no runner. The step makes the real check.
+    if: >-
+      github.event_name == 'workflow_dispatch' || (
+        github.event_name == 'push' && (
+          startsWith(github.event.head_commit.message, 'chore(release): v') ||
+          (startsWith(github.event.head_commit.message, 'Merge pull request #') && contains(github.event.head_commit.message, '/release/v'))
+        )
+      )
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      release: ${{ steps.read.outputs.release }}
+      tag: ${{ steps.read.outputs.tag }}
+      sha: ${{ steps.read.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Read version
+        id: read
+        shell: bash
+        env:
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          INPUT_TAG: ${{ inputs.tag }}
+          SHA: ${{ github.sha }}
+          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [[ $REF != refs/heads/main ]]; then
+            echo "::error::Run this workflow on main, not on '$REF'."
+            exit 1
+          fi
+          if [[ $EVENT == workflow_dispatch ]]; then
+            if ! [[ $INPUT_TAG =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "::error::Tag '$INPUT_TAG' is not vX.Y.Z."
+              exit 1
+            fi
+            tag=$INPUT_TAG
+          else
+            # A release merge is the merge commit of exactly one merged PR of this repository, from
+            # release/vX.Y.Z into main. A failed API call fails the step.
+            pulls='[]'
+            for attempt in 1 2 3 4 5; do
+              pulls=$(gh api "repos/$REPO/commits/$SHA/pulls")
+              if [ "$(jq 'length' <<<"$pulls")" -gt 0 ]; then break; fi
+              if [ "$attempt" -lt 5 ]; then sleep 10; fi
+            done
+            if [ "$(jq 'length' <<<"$pulls")" -eq 0 ]; then
+              echo "::error::The commit message of $SHA looks like a release merge, but GitHub lists no pull request for it after 5 tries. No release starts. When the release PR did merge into main, run this workflow by hand with its tag."
+              exit 1
+            fi
+            # shellcheck disable=SC2016  # $sha and $repo belong to jq, not to the shell.
+            branches=$(jq -r --arg sha "$SHA" --arg repo "$REPO" '[.[] | select(
+                .merged_at != null and .base.ref == "main" and .merge_commit_sha == $sha and
+                .head.repo.full_name == $repo and (.head.ref | test("^release/v[0-9]+\\.[0-9]+\\.[0-9]+$"))
+              ) | .head.ref] | unique | .[]' <<<"$pulls")
+            if [ "$(printf '%s' "$branches" | grep -c .)" -ne 1 ]; then
+              echo "::warning::$SHA is not the merge of a release/vX.Y.Z pull request, so no release starts."
+              echo "release=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            tag=${branches#release/}
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/$tag" > /dev/null; then
+            echo "::error::Tag $tag already exists on origin."
+            exit 1
+          fi
+          # installers.yml checks that Cargo.toml holds the same version.
+          if ! grep -qF "## [${tag#v}]" CHANGELOG.md; then
+            echo "::error::No CHANGELOG.md section for ${tag#v} at $SHA"
+            exit 1
+          fi
+          {
+            echo "release=true"
+            echo "tag=$tag"
+            echo "sha=$SHA"
+          } >> "$GITHUB_OUTPUT"
+
+  installers:
+    name: Installers
+    needs: version
+    if: needs.version.outputs.release == 'true'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/installers.yml
+    with:
+      ref: ${{ needs.version.outputs.sha }}
+      tag: ${{ needs.version.outputs.tag }}
+      sign: true
+    secrets:
+      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+      APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+      APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+      APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+
+  publish:
+    name: Tag and publish release
+    needs: [version, installers]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: bash
+    env:
+      TAG: ${{ needs.version.outputs.tag }}
+      SHA: ${{ needs.version.outputs.sha }}
+      GH_TOKEN: ${{ github.token }}
+    # Its actions are pinned to commits, because the job holds a token that can write the repository.
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: ${{ needs.version.outputs.sha }}
+
+      # Edits made on the release branch count: the notes come from CHANGELOG.md at the built commit.
+      - name: Extract release notes from CHANGELOG.md
+        run: |
+          version="${TAG#v}"
+          awk -v v="$version" '
+            /^## \[/ { if (found) exit; if (index($0, "## [" v "]") == 1) { found = 1; next } }
+            /^\[[^]]+\]: / { next }
+            found { print }
+          ' CHANGELOG.md > "$RUNNER_TEMP/release-notes.md"
+          if ! grep -q '[^[:space:]]' "$RUNNER_TEMP/release-notes.md"; then
+            echo "::error::No CHANGELOG.md section for $version at $SHA"
+            exit 1
+          fi
+          cat "$RUNNER_TEMP/release-notes.md"
+
+      # Only the installers: a failed earlier attempt may have left other artifacts in the run.
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: dmg
+          path: dist
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: setup
+          path: dist
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: linux
+          path: dist
+
+      - name: Write checksums
+        run: |
+          cd dist
+          sha256sum -- * > "Mortise-$TAG-SHA256SUMS.txt"
+          cat "Mortise-$TAG-SHA256SUMS.txt"
+
+      # A re-run after a later step failed finds the tag it pushed, and keeps it.
+      - name: Tag the commit
+        run: |
+          tagged=$(git ls-remote --tags origin "refs/tags/$TAG^{}" | cut -f1)
+          if [ "$tagged" = "$SHA" ]; then
+            echo "$TAG already tags $SHA."
+            exit 0
+          elif [ -n "$tagged" ]; then
+            echo "::error::Tag $TAG already exists on origin, on $tagged."
+            exit 1
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git tag -a "$TAG" -m "$TAG" "$SHA"
+          git push origin "refs/tags/$TAG"
+
+      # A re-run after this step failed finds the release, and uploads the files again.
+      # Each installer also goes up under a name with no version, so releases/latest/download/<name>
+      # always links to the newest one.
+      - name: Create the GitHub release
+        run: |
+          cp "dist/Mortise-$TAG-macos-arm64.dmg" dist/Mortise-macos-arm64.dmg
+          cp "dist/Mortise-$TAG-windows-x64-setup.exe" dist/Mortise-windows-x64-setup.exe
+          cp "dist/Mortise-$TAG-linux-x86_64.AppImage" dist/Mortise-linux-x86_64.AppImage
+          cp "dist/Mortise-$TAG-linux-amd64.deb" dist/Mortise-linux-amd64.deb
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --clobber
+          else
+            gh release create "$TAG" --verify-tag --title "$TAG" --notes-file "$RUNNER_TEMP/release-notes.md" dist/*
+          fi
+
+      # A run by hand usually finds the branch gone already.
+      - name: Delete the release branch
+        run: |
+          branch="release/$TAG"
+          if git ls-remote --exit-code --heads origin "refs/heads/$branch" > /dev/null; then
+            git push origin --delete "$branch"
+          else
+            echo "$branch is already deleted."
+          fi

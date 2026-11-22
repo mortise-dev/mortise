@@ -26,6 +26,18 @@ build differs from the specification is in `docs/deviations.md`.
 
 The only file Mortise writes in an app is `mortise.json`, and it asks before it creates it.
 
+## Install
+
+Each [release](https://github.com/nWidart/mortise/releases/latest) has:
+
+| Platform | File |
+|---|---|
+| macOS, Apple silicon | `Mortise-macos-arm64.dmg`. Signed with a Developer ID and notarized by Apple. |
+| Windows, x64 | `Mortise-windows-x64-setup.exe`. Not signed: SmartScreen warns once. Choose More info, then Run anyway. |
+| Linux, x86_64 | `Mortise-linux-x86_64.AppImage`, or `Mortise-linux-amd64.deb` for Debian and Ubuntu. Not signed. |
+
+`Mortise-vX.Y.Z-SHA256SUMS.txt` holds the SHA-256 of each file.
+
 ## Run
 
 ```
@@ -72,7 +84,8 @@ UPDATE_SNAPSHOTS=1 cargo test -p mortise-app --test images
 | `docs/spec` | The design specification of phase 0. |
 | `docs/deviations.md` | Where the build differs from the specification, and why. |
 | `licenses` | The licences of the crates Mortise is built from. |
-| `tools` | `third-party-licenses.py` writes that list. `app-icon.mjs` makes the icon files from the drawings; it needs macOS and Google Chrome. |
+| `tools` | `third-party-licenses.py` writes that list. `app-icon.mjs` makes the icon files from the drawings; it needs macOS and Google Chrome. `release.sh`, `pack-installer.sh` and `verify-macos-app.sh` serve the release workflows. |
+| `.github/workflows` | CI, the installers and the release. `CONTRIBUTING.md` says how a release works. |
 
 ## Licence
 
