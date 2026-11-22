@@ -15,8 +15,8 @@ Nothing here was run on Windows or Linux.
 |---|---|---|---|---|---|
 | D1 | Section 8, T2: Windows 11 snapping from the maximise button with a custom title bar | Not possible. winit never handles `WM_NCHITTEST`, so a drawn maximise button cannot report itself to Windows. Dragging to an edge and Win with the arrow keys still snap | The flyout on the maximise button is absent with the custom bar. The spec leaves the choice to the owner: custom bar without it, or the platform's bar (T4) | Yes | Source of winit, not run |
 | D2 | Section 8: a frameless window on Windows | winit keeps a 1 px line at the top of an undecorated window for the system shadow | One extra pixel line above the title bar on Windows | Yes, to be looked at on Windows | Source, not run |
-| D3 | Section 9: reduced motion follows the system setting | Neither egui, eframe nor winit reads that setting | Mortise reads it itself per platform. Until that is built, "System" behaves as "Full" | No, same result once built | Source |
-| D4 | Section 8: a system menu bar on macOS | eframe offers only the default app menu | The menu is built with `muda`, in milestone 6 | No, same result | Source |
+| D3 | Section 9: reduced motion follows the system setting | Neither egui, eframe nor winit reads that setting | macOS is asked through AppKit, in safe Rust. On Windows and Linux reading it needs unsafe code, which this workspace forbids: there "System" moves as "Full". "Reduced" and "Full" work everywhere | Yes, milestone 9 | macOS: built, the call returns. Windows, Linux: not built |
+| D4 | Section 8: a system menu bar on macOS | eframe offers only the default app menu | Built with `muda`: Mortise, File, View, Window, Help. The items of Mortise carry no key in the menu: the window handles the keys, and a key the menu handled too would act twice. The first menu reads "mortise" until the app is a bundle with a name | Yes, milestone 9 | Run on macOS: the menus are there, and choosing an item acts |
 | D5 | Tokens 3.3: text size scales type and sizes, strokes stay 1 px | Text size is egui's zoom factor, which scales strokes too. Hairlines are drawn at 1 divided by the zoom, so they stay 1 px at 100% display scale. At 110% and 125% a line can fall between pixels | Hairlines may look slightly soft at 110% and 125% | To be looked at in milestone 6 | Source |
 | D7 | Section 11: static font files, because variable fonts were not checked | Variable fonts work in 0.37 (`FontTweak::coords`, `RichText::variation`). Font weight is still not part of `FontId` | Static files are kept as the spec says; each weight is its own named family | No | Source, compiled |
 
@@ -74,21 +74,25 @@ Not forced by egui. Each is small; each is what milestone 1 built, so the owner 
 | S21 | An entry added by hand | S5.7: "checked against the module's files as it is typed" | A line under the field says what the name is in the module. Enter adds it only when the module has it: a class it declares, a command, or a pattern that some of its routes are under | No |
 | S22 | Route patterns | S5.7 draws `api/billing/*` and `billing/*` and gives no rule | A route is proposed under its first part, or its first two parts when the first is `api`. A route whose first part is a parameter stands for itself | No |
 | S23 | A scan that finds nothing | No drawing | The table holds one sentence that says so | No |
+| S24 | The edge that sets the index width | Section 9: every control is a target of at least 24 by 24 px | The edge is 6 px wide, as such an edge is on every platform. A wider one would take clicks from the rows beside it. Left and Right move it while it has focus, 8 px a step | No |
+| S25 | The order of the rail | S2.1: "changed by dragging or in Settings". Settings draws no control for it | Dragging a tile, or Alt with Up or Down while a tile has focus | No |
+| S26 | The first control of a tab | K1: Enter or Right moves focus to the first control of the tab | A tab without a control keeps focus in the index | No |
+| S27 | Two "Open in editor" buttons on one screen | S5.1 draws both with the same label | The labels stay. A screen reader hears "Open Checkout in the editor" and "Open the selected file in the editor" | No |
 
 ## Moved between milestones
 
-What the plan placed in one milestone and was built, or will be built, in another. Nothing is dropped.
+What the plan placed in one milestone and was built in another. Nothing is dropped.
 
 | What | Planned | Now | Why |
 |---|---|---|---|
-| Progress bar (C17), "Reading 312 of 551 files" | 2 | 9 | Reading an app takes milliseconds until PHP files are parsed. The bar is built with the work that can take long |
-| Reordering rail tiles by dragging | 2 | 6 | Settings also changes the order; both are built together |
+| Progress bar (C17), "Reading 312 of 551 files" | 2 | 9, built | Reading an app takes milliseconds until PHP files are parsed. The bar is built with the work that can take long |
+| Reordering rail tiles by dragging | 2 | 9, built | Built with its key path: Alt with Up or Down. See S25 |
 | "Open the command palette" on the first run screen (S1.1) | 2 | 6 | The palette is built in milestone 6. A button that opens nothing is not drawn |
 | Removing an app | 2 | 6 | The only place the spec draws it is Settings (S8.1). The core can already remove an app |
 | Settings tile on the rail | 1 | 6 | Drawn when Settings exist |
-| F6 between regions, arrow keys in the graph, J and K inside tables, Enter or Right from the index into the workspace | 6 | 9 | Tab and Shift Tab reach every control and the focus ring shows on all of them. The shorter paths of section 7 are built on top of that |
-| macOS menu bar | 6 | 9 | Needs `muda` and a check on a real bundle |
-| Dragging the index edge between 220 and 320 px | 6 | 9 | The widths of section 5.14 that depend on the window are built |
-| Motion "System" | 6 | 9 | egui does not expose the setting of the operating system (D3). "Reduced" and "Full" work |
-| A shortcut keycap inside a tooltip | 6 | 9 | Tooltips name the control |
-| J and K through the entries of a proposal | 8 | 9 | With the other table keys. Tab and Shift Tab reach every entry, Space takes it in or leaves it out, and focus is on the first entry when a scan ends |
+| F6 between regions, arrow keys in the graph, J and K inside tables, Enter or Right from the index into the workspace | 6 | 9, built | Tab and Shift Tab reach every control and the focus ring shows on all of them. The shorter paths of section 7 are built on top of that |
+| macOS menu bar | 6 | 9, built | Needs `muda` and a check on a real bundle |
+| Dragging the index edge between 220 and 320 px | 6 | 9, built | The widths of section 5.14 that depend on the window are built |
+| Motion "System" | 6 | 9, built for macOS | See D3 |
+| A shortcut keycap inside a tooltip | 6 | 9, built | Tooltips name the control |
+| J and K through the entries of a proposal | 8 | 9, built | With the other table keys. Tab and Shift Tab reach every entry, Space takes it in or leaves it out, and focus is on the first entry when a scan ends |

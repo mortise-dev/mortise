@@ -43,5 +43,17 @@ jobs:
       - name: Test
         run: cargo test --workspace
 
+      # The image tests run on macOS only. When an image differs, the new image
+      # and the difference are kept, to be looked at.
+      - name: Keep the images that differ
+        if: failure() && runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: images-that-differ
+          path: |
+            crates/mortise-app/tests/snapshots/*.new.png
+            crates/mortise-app/tests/snapshots/*.diff.png
+          if-no-files-found: ignore
+
       - name: Build the release binary
         run: cargo build --release -p mortise-app
