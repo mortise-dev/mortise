@@ -1047,6 +1047,33 @@ pub fn tooltip(response: Response, pal: &Palette, text: &str) -> Response {
     })
 }
 
+/// A tooltip that also shows the shortcut of the control: a shortcut is shown where
+/// its action is.
+pub fn tooltip_keys(response: Response, pal: &Palette, text: &str, keys: &str) -> Response {
+    response.on_hover_ui(|ui| {
+        ui.set_max_width(size::TOOLTIP_MAX_W);
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 8.0;
+            ui.label(LayoutJob::single_section(
+                text.to_owned(),
+                ty::SECONDARY.format(pal.key_fg),
+            ));
+            // The key hint, on the key fill of the tooltip.
+            let cap = galley(ui, keys, ty::KEYCAP, pal.key_fg);
+            let (rect, _) =
+                ui.allocate_exact_size(vec2(cap.size().x.ceil() + 8.0, 16.0), Sense::hover());
+            ui.painter().rect_stroke(
+                rect,
+                CornerRadius::same(radius::STAMP),
+                Stroke::new(stroke::HAIRLINE, pal.key_fg),
+                StrokeKind::Inside,
+            );
+            paint_galley(ui, rect.center(), Align2::CENTER_CENTER, cap);
+            announce(ui, rect, Role::Label, keys);
+        });
+    })
+}
+
 // ---------------------------------------------------------------------------
 // Segmented control (C5)
 

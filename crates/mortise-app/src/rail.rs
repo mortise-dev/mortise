@@ -17,6 +17,11 @@ pub struct Tile<'a> {
     pub problems: usize,
 }
 
+/// Cmd on macOS, Ctrl elsewhere.
+fn command_key(ui: &Ui) -> &'static str {
+    strings::command_key(ui.ctx().os() == eframe::egui::os::OperatingSystem::Mac)
+}
+
 fn current_tile_id() -> eframe::egui::Id {
     eframe::egui::Id::unique("mortise-rail-current-tile")
 }
@@ -30,6 +35,8 @@ pub fn current_tile(ctx: &eframe::egui::Context) -> Option<eframe::egui::Id> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RailAction {
     Select(usize),
+    /// Move the app at the first place to the second.
+    Move(usize, usize),
     Add,
     Settings,
 }
@@ -90,8 +97,36 @@ pub fn rail(
                             .allocate_exact_size(vec2(ui.available_width(), step), Sense::hover());
                         let tile_rect =
                             Rect::from_min_size(pos2(x, slot.top()), Vec2::splat(size::RAIL_TILE));
-                        if app_tile(ui, pal, tile_rect, tile, current == Some(i) && !adding) {
+                        let selected = current == Some(i) && !adding;
+                        let response = app_tile(ui, pal, tile_rect, tile, selected);
+                        if response.clicked() {
                             action = Some(RailAction::Select(i));
+                        }
+                        // The order of the rail: a tile that is dragged over another
+                        // takes its place. Alt with Up or Down does the same by key.
+                        let last = tiles.len() - 1;
+                        if response.dragged()
+                            && let Some(pointer) = response.interact_pointer_pos()
+                        {
+                            let over = ((pointer.y - tile_rect.top()) / step).floor() as isize;
+                            let target = (i as isize + over).clamp(0, last as isize) as usize;
+                            if target != i {
+                                action = Some(RailAction::Move(i, target));
+                            }
+                        }
+                        if response.has_focus() {
+                            use eframe::egui::{Key, Modifiers};
+                            let (up, down) = ui.input_mut(|input| {
+                                (
+                                    input.consume_key(Modifiers::ALT, Key::ArrowUp),
+                                    input.consume_key(Modifiers::ALT, Key::ArrowDown),
+                                )
+                            });
+                            if up && i > 0 {
+                                action = Some(RailAction::Move(i, i - 1));
+                            } else if down && i < last {
+                                action = Some(RailAction::Move(i, i + 1));
+                            }
                         }
                     }
                     if fits {
@@ -132,11 +167,17 @@ pub fn rail(
 }
 
 /// A tile with the monogram of an app. The selected tile is a key block.
-fn app_tile(ui: &Ui, pal: &Palette, rect: Rect, tile: &Tile<'_>, selected: bool) -> bool {
+fn app_tile(
+    ui: &Ui,
+    pal: &Palette,
+    rect: Rect,
+    tile: &Tile<'_>,
+    selected: bool,
+) -> eframe::egui::Response {
     let response = ui.interact(
         rect,
         ui.scope_id().with(("rail-tile", tile.name)),
-        Sense::click(),
+        Sense::click_and_drag(),
     );
     if selected {
         // For F6: the tile that takes focus when focus moves to the rail.
@@ -178,13 +219,11 @@ fn app_tile(ui: &Ui, pal: &Palette, rect: Rect, tile: &Tile<'_>, selected: bool)
         );
     }
 
-    let clicked = response.clicked();
     draw::tooltip(
         response,
         pal,
         &strings::app_with_problems(tile.name, tile.problems),
-    );
-    clicked
+    )
 }
 
 /// The add tile: a dashed outline and a plus.
@@ -231,7 +270,8 @@ fn add_tile(ui: &Ui, pal: &Palette, rect: Rect, active: bool) -> bool {
     }
 
     let clicked = response.clicked();
-    draw::tooltip(response, pal, strings::ADD_APP);
+    let keys = format!("{} O", command_key(ui));
+    draw::tooltip_keys(response, pal, strings::ADD_APP, &keys);
     clicked
 }
 
@@ -259,6 +299,7 @@ fn settings_tile(ui: &Ui, pal: &Palette, rect: Rect, selected: bool) -> bool {
         draw::focus_ring(ui, pal, rect, radius::CONTROL);
     }
     let clicked = response.clicked();
-    draw::tooltip(response, pal, "Settings");
+    let keys = format!("{} ,", command_key(ui));
+    draw::tooltip_keys(response, pal, "Settings", &keys);
     clicked
 }

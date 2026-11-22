@@ -106,6 +106,8 @@ pub struct General {
     pub window_controls_left: bool,
     /// The platform's own title bar, with Mortise's bar under it.
     pub system_title_bar: bool,
+    /// The width of the module index in a window that has room for it: 220 to 320.
+    pub index_width: u16,
 }
 
 impl Default for General {
@@ -119,6 +121,7 @@ impl Default for General {
             editor_command: String::new(),
             window_controls_left: false,
             system_title_bar: false,
+            index_width: 264,
         }
     }
 }

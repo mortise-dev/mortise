@@ -201,7 +201,7 @@ pub fn index(
                 draw::focus_ring(ui, pal, text.expand(3.0), radius::STAMP);
             }
             toggle_order = response.clicked();
-            draw::tooltip(response, pal, strings::CHANGE_THE_ORDER);
+            draw::tooltip_keys(response, pal, strings::CHANGE_THE_ORDER, "S");
         } else {
             let shown = strings::of_modules(modules.len(), app.modules.len());
             draw::label(ui, at, Align2::LEFT_TOP, &shown, ty::SECONDARY, pal.ink_2);

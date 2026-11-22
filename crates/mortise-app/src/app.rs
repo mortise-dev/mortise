@@ -615,6 +615,36 @@ impl MortiseApp {
         chrome
     }
 
+    /// Moves an app to another place on the rail. The app on screen stays on screen.
+    fn move_app(&mut self, from: usize, to: usize) {
+        if from >= self.apps.len() || to >= self.apps.len() || from == to {
+            return;
+        }
+        let entry = self.settings.apps.remove(from);
+        self.settings.apps.insert(to, entry);
+        let open = self.apps.remove(from);
+        self.apps.insert(to, open);
+        // Where a place that was held before the move is now.
+        let moved = |place: usize| {
+            if place == from {
+                to
+            } else if from < place && place <= to {
+                place - 1
+            } else if to <= place && place < from {
+                place + 1
+            } else {
+                place
+            }
+        };
+        self.current = self.current.map(moved);
+        self.palette_scope = moved(self.palette_scope);
+        self.settings.current = self.current;
+        if let Some(state) = &mut self.settings_open {
+            state.app = moved(state.app);
+        }
+        self.save();
+    }
+
     /// Forgets an app. Its folder and its files stay as they are.
     fn remove_app(&mut self, index: usize) {
         if index >= self.apps.len() {
@@ -917,7 +947,8 @@ impl MortiseApp {
         // Collapse or open the module index. Mortise then stops deciding its width
         // until the window is resized.
         if chord(Modifiers::COMMAND, Key::B) {
-            let (_, collapsed) = index_width(self.window_w, self.index_choice);
+            let set = f32::from(self.settings.general.index_width);
+            let (_, collapsed) = index_width(self.window_w, self.index_choice, set);
             self.index_choice = Some(!collapsed);
         }
         // Filter modules: / when not typing, or the chord for keyboards where / needs Shift.
@@ -1158,7 +1189,10 @@ impl eframe::App for MortiseApp {
         let rail_action = rail::rail(ui, pal, rail_rect, &tiles, on_rail, adding, settings_open);
 
         let rest = Rect::from_min_max(pos2(rail_rect.right(), below.top()), below.max);
-        let (index_w, index_collapsed) = index_width(window.width(), self.index_choice);
+        let set_index_w = f32::from(self.settings.general.index_width);
+        let (index_w, index_collapsed) =
+            index_width(window.width(), self.index_choice, set_index_w);
+        let mut new_index_w = None;
         let mut settings_action = None;
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -1269,6 +1303,10 @@ impl eframe::App for MortiseApp {
                         }),
                     };
                     toggle_order = index::index(ui, pal, index_rect, &app, state);
+                    // Where the window has room, the user sets the width of the index.
+                    if !index_collapsed && window.width() >= 1076.0 {
+                        new_index_w = index_edge(ui, index_rect, self.keyboard, pal);
+                    }
                     // The palette offers the modules that were opened last.
                     if let Selection::Module(name) = &open.selection
                         && open.recent.first() != Some(name)
@@ -1458,6 +1496,13 @@ impl eframe::App for MortiseApp {
         if toggle_order {
             self.toggle_order();
         }
+        if let Some((width, keep)) = new_index_w {
+            self.settings.general.index_width = width as u16;
+            if keep {
+                self.save();
+            }
+            ctx.request_repaint();
+        }
         match work_action {
             Some(BoundaryAction::SetRules(rules)) => self.set_rules(rules),
             Some(BoundaryAction::CopyPath(path)) => {
@@ -1488,6 +1533,7 @@ impl eframe::App for MortiseApp {
                 self.settings_open = None;
                 self.select_app(index);
             }
+            Some(RailAction::Move(from, to)) => self.move_app(from, to),
             Some(RailAction::Add) => self.adding = Some(AddPanel::empty()),
             Some(RailAction::Settings) if self.settings_open.is_some() => self.settings_open = None,
             Some(RailAction::Settings) => self.open_settings(Section::Apps),
@@ -1615,17 +1661,74 @@ enum Pending {
 /// How wide the module index is for a window of this width (section 5.14), and
 /// whether it is its strip. The workspace is what the user came for, so the index
 /// gives up width before the workspace does.
-fn index_width(window_w: f32, choice: Option<bool>) -> (f32, bool) {
+/// `set` is the width the user gave the index, which it has when there is room.
+fn index_width(window_w: f32, choice: Option<bool>, set: f32) -> (f32, bool) {
     let narrow = window_w < 1032.0;
+    let set = set.clamp(size::INDEX_W_MIN, size::INDEX_W_MAX);
     match choice.unwrap_or(narrow) {
         true => (size::INDEX_STRIP_W, true),
         // Opened by hand in a narrow window: the workspace gives way.
         false if narrow => (size::INDEX_W_MIN, false),
         false => {
             let left = window_w - size::RAIL_W - 760.0;
-            (left.clamp(size::INDEX_W_MIN, size::INDEX_W), false)
+            (left.clamp(size::INDEX_W_MIN, set), false)
         }
     }
+}
+
+/// The right edge of the index as a handle: dragging it, or Left and Right while it
+/// has focus, sets the width of the index between 220 and 320 px. Returns the new
+/// width while it changes, and true when the change is to be kept.
+fn index_edge(
+    ui: &Ui,
+    index_rect: Rect,
+    keyboard: bool,
+    pal: &theme::Palette,
+) -> Option<(f32, bool)> {
+    let zone = Rect::from_min_max(
+        pos2(index_rect.right() - 3.0, index_rect.top()),
+        pos2(index_rect.right() + 3.0, index_rect.bottom()),
+    );
+    let id = ui.scope_id().with("index-edge");
+    let response = ui.interact(zone, id, egui::Sense::click_and_drag());
+    response.widget_info(|| {
+        egui::WidgetInfo::labeled(egui::Role::Splitter, true, strings::INDEX_WIDTH)
+    });
+    if response.hovered() || response.dragged() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
+    }
+    let clamp = |width: f32| width.clamp(size::INDEX_W_MIN, size::INDEX_W_MAX).round();
+    let mut change = None;
+    if response.dragged()
+        && let Some(pointer) = response.interact_pointer_pos()
+    {
+        change = Some((clamp(pointer.x - index_rect.left()), false));
+    }
+    if response.drag_stopped() {
+        change = Some((clamp(index_rect.width()), true));
+    }
+    if response.has_focus() {
+        // Nothing is reachable only by dragging: the arrows move the edge too.
+        draw::keep_arrows(ui, id, false, true);
+        let (left, right) = ui.input_mut(|input| {
+            (
+                input.consume_key(Modifiers::NONE, Key::ArrowLeft),
+                input.consume_key(Modifiers::NONE, Key::ArrowRight),
+            )
+        });
+        let step = match (left, right) {
+            (true, _) => -8.0,
+            (_, true) => 8.0,
+            _ => 0.0,
+        };
+        if step != 0.0 {
+            change = Some((clamp(index_rect.width() + step), true));
+        }
+        if keyboard {
+            draw::focus_ring(ui, pal, zone.shrink2(vec2(2.0, 0.0)), 0);
+        }
+    }
+    change
 }
 
 /// What the user set for an app, as the reader takes it.

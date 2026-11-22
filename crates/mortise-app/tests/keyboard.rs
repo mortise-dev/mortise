@@ -313,3 +313,111 @@ fn the_arrows_move_between_the_modules_of_the_graph() {
         Selection::Module("Checkout".into())
     );
 }
+
+#[test]
+fn the_edge_of_the_index_sets_its_width_with_the_arrows() {
+    let (desk, mut harness) = shop_api();
+    // The edge is a stop between the index and the workspace.
+    let stops = tab_stops(&mut harness);
+    let edge = place(&stops, Role::Splitter, "Width of the module index");
+    assert!(place(&stops, Role::ListBoxOption, "All modules") < edge);
+    assert!(edge < place(&stops, Role::Tab, "Summary"));
+
+    for _ in 0..80 {
+        press(&mut harness, Key::Tab);
+        if focused(&harness).is_some_and(|(role, _)| role == Role::Splitter) {
+            break;
+        }
+    }
+    assert_eq!(desk.saved().general.index_width, 264);
+    press(&mut harness, Key::ArrowRight);
+    assert_eq!(desk.saved().general.index_width, 272);
+    // The width stops at 320 and at 220.
+    for _ in 0..12 {
+        press(&mut harness, Key::ArrowRight);
+    }
+    assert_eq!(desk.saved().general.index_width, 320);
+    for _ in 0..20 {
+        press(&mut harness, Key::ArrowLeft);
+    }
+    assert_eq!(desk.saved().general.index_width, 220);
+    // The module does not change: the arrows belong to the edge.
+    assert_eq!(harness.state().selection(), Selection::All);
+
+    // The next start has the same width.
+    let harness = desk.start();
+    let row = harness.get_by_role_and_label(Role::ListBoxOption, "All modules");
+    assert!(row.rect().right() < 52.0 + 221.0, "{:?}", row.rect());
+}
+
+#[test]
+fn alt_with_up_or_down_moves_an_app_on_the_rail() {
+    let desk = common::Desk::new();
+    let shop = desk.app("shop-api");
+    let crm = desk.app("crm");
+    let pages = desk.app("landing-pages");
+    desk.knows(&[(&shop, "SA"), (&crm, "CR"), (&pages, "LP")]);
+    let mut harness = desk.start();
+    assert_eq!(
+        harness.state().app_names(),
+        ["shop-api", "crm", "landing-pages"]
+    );
+
+    // To the rail: the tile of the app on screen.
+    harness.key_press_modifiers(Modifiers::SHIFT, Key::F6);
+    harness.run_steps(3);
+    assert_eq!(
+        focused(&harness),
+        Some((Role::ListBoxOption, "shop-api".to_owned()))
+    );
+
+    harness.key_press_modifiers(Modifiers::ALT, Key::ArrowDown);
+    harness.run_steps(3);
+    assert_eq!(
+        harness.state().app_names(),
+        ["crm", "shop-api", "landing-pages"]
+    );
+    // The app on screen stays on screen, and focus stays on its tile.
+    assert_eq!(harness.state().current(), Some(1));
+    assert_eq!(
+        focused(&harness),
+        Some((Role::ListBoxOption, "shop-api".to_owned()))
+    );
+    harness.get_by_role_and_label(Role::Heading, "shop-api");
+
+    harness.key_press_modifiers(Modifiers::ALT, Key::ArrowDown);
+    harness.run_steps(3);
+    // At the end of the rail nothing more happens.
+    harness.key_press_modifiers(Modifiers::ALT, Key::ArrowDown);
+    harness.run_steps(3);
+    assert_eq!(
+        harness.state().app_names(),
+        ["crm", "landing-pages", "shop-api"]
+    );
+    assert_eq!(harness.state().current(), Some(2));
+
+    // The order is kept.
+    let saved = desk.saved();
+    let names: Vec<&str> = saved.apps.iter().map(|app| app.name.as_str()).collect();
+    assert_eq!(names, ["crm", "landing-pages", "shop-api"]);
+    assert_eq!(saved.current, Some(2));
+
+    harness.key_press_modifiers(Modifiers::ALT, Key::ArrowUp);
+    harness.run_steps(3);
+    assert_eq!(
+        harness.state().app_names(),
+        ["crm", "shop-api", "landing-pages"]
+    );
+}
+
+#[test]
+fn a_tooltip_shows_the_shortcut_of_its_control() {
+    let (_desk, mut harness) = shop_api();
+    harness
+        .get_by_role_and_label(Role::Button, "Settings")
+        .hover();
+    harness.run_steps(12);
+    // The name of the control and its shortcut, both in the tooltip.
+    assert!(harness.get_all_by_label("Settings").count() >= 2);
+    harness.get_by_label("Ctrl ,");
+}

@@ -264,6 +264,8 @@ pub fn no_modules(app: &AppSnapshot) -> String {
 }
 
 pub const FILTER_MODULES: &str = "Filter modules";
+/// Not in the spec: the name of the edge of the index that sets its width.
+pub const INDEX_WIDTH: &str = "Width of the module index";
 pub const LINES_OF_PHP: &str = "Lines of PHP";
 pub const TEST_COVERAGE: &str = "Test coverage";
 /// The word for a coverage that cannot be worked out: there is no report.
