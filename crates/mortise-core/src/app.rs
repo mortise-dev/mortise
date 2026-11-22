@@ -45,6 +45,9 @@ pub struct AppSnapshot {
     pub package: Version,
     /// The version of `nwidart/laravel-actuator`, when the app has it.
     pub actuator: Option<Version>,
+    /// `APP_URL` from `.env`, to propose the base URL of an environment. It is the
+    /// only line Mortise reads from that file.
+    pub app_url: Option<String>,
     pub layout: Layout,
     /// The modules, sorted by name.
     pub modules: Vec<Module>,
@@ -176,6 +179,29 @@ pub enum ReadError {
         path: PathBuf,
         source: std::io::Error,
     },
+}
+
+/// `APP_URL` from the `.env` file of the app. No other line is looked at.
+fn app_url(root: &Path) -> Option<String> {
+    let env = std::fs::read_to_string(root.join(".env")).ok()?;
+    env_value(&env, "APP_URL")
+}
+
+/// The value of one name in the text of a `.env` file.
+fn env_value(env: &str, name: &str) -> Option<String> {
+    let value = env.lines().find_map(|line| {
+        let line = line.trim_start();
+        let line = line.strip_prefix("export ").unwrap_or(line);
+        line.strip_prefix(name)?.trim_start().strip_prefix('=')
+    })?;
+    let value = value.trim();
+    let value = match value.chars().next() {
+        // A quoted value ends at the closing quote.
+        Some(quote @ ('"' | '\'')) => value[1..].split(quote).next().unwrap_or_default(),
+        // A plain value ends where a comment starts.
+        _ => value.split(" #").next().unwrap_or_default().trim_end(),
+    };
+    (!value.is_empty()).then(|| value.to_owned())
 }
 
 /// Reads the app in `root`. Reads only: nothing in the folder is changed and nothing is run.
@@ -385,6 +411,7 @@ pub fn read_app_cached(
         laravel: lock.version(LARAVEL),
         package,
         actuator: lock.version(ACTUATOR),
+        app_url: app_url(&root),
         layout,
         modules,
         coverage_report: report_path.map(|path| CoverageReport {
@@ -415,4 +442,33 @@ fn requires_laravel(root: &Path) -> bool {
                 .iter()
                 .any(|section| composer.get(section).and_then(|s| s.get(LARAVEL)).is_some())
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_url_of_the_app_is_read_from_its_line() {
+        let env = "APP_NAME=Shop\nAPP_URLS=no\nAPP_URL=https://shop-api.test\nDB_PASSWORD=secret\n";
+        assert_eq!(
+            env_value(env, "APP_URL").as_deref(),
+            Some("https://shop-api.test")
+        );
+        assert_eq!(
+            env_value("APP_URL=\"http://localhost:8000\" # dev", "APP_URL").as_deref(),
+            Some("http://localhost:8000")
+        );
+        assert_eq!(
+            env_value("APP_URL = http://localhost # dev", "APP_URL").as_deref(),
+            Some("http://localhost")
+        );
+        assert_eq!(
+            env_value("export APP_URL='http://a.test'", "APP_URL").as_deref(),
+            Some("http://a.test")
+        );
+        assert_eq!(env_value("APP_URL=", "APP_URL"), None);
+        assert_eq!(env_value("# APP_URL=http://old.test", "APP_URL"), None);
+        assert_eq!(env_value("APP_ENV=local", "APP_URL"), None);
+    }
 }

@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use crate::app::AppSnapshot;
 use crate::code::propose_monogram;
 use crate::editor::Editor;
+use crate::environment::Environment;
 use crate::findings::DEFAULT_COVERAGE_LIMIT;
 
 /// An app Mortise knows.
@@ -34,6 +35,22 @@ pub struct AppEntry {
     /// look in `phpunit.xml` and the usual places.
     #[serde(default)]
     pub coverage_report: Option<String>,
+    /// The running copies of the app that Mortise can ask for their runtime status.
+    #[serde(default)]
+    pub environments: Vec<Environment>,
+    /// The name of the environment the runtime box shows.
+    #[serde(default)]
+    pub environment: Option<String>,
+}
+
+impl AppEntry {
+    /// The environment the runtime box shows: the chosen one, else the first.
+    pub fn chosen_environment(&self) -> Option<&Environment> {
+        self.environments
+            .iter()
+            .find(|environment| Some(&environment.name) == self.environment.as_ref())
+            .or(self.environments.first())
+    }
 }
 
 fn default_coverage_limit() -> u8 {
@@ -214,6 +231,8 @@ impl Settings {
             problems_first: false,
             coverage_limit: DEFAULT_COVERAGE_LIMIT,
             coverage_report: None,
+            environments: Vec::new(),
+            environment: None,
         });
         self.apps.len() - 1
     }
@@ -250,6 +269,8 @@ mod tests {
             problems_first: false,
             coverage_limit: 50,
             coverage_report: None,
+            environments: Vec::new(),
+            environment: None,
         }
     }
 
@@ -282,6 +303,39 @@ mod tests {
         assert_eq!(
             std::fs::read_dir(path.parent().unwrap()).unwrap().count(),
             1
+        );
+    }
+
+    #[test]
+    fn an_environment_is_saved_without_a_secret() {
+        use crate::environment::Credentials;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        let staging = Environment {
+            name: "staging".into(),
+            base_url: "https://staging.shop-api.example".into(),
+            path: "actuator".into(),
+            credentials: Credentials::Basic {
+                user: "mortise".into(),
+            },
+        };
+        let settings = Settings {
+            apps: vec![AppEntry {
+                environments: vec![staging.clone()],
+                environment: Some("staging".into()),
+                ..entry("shop-api", "SA")
+            }],
+            ..Settings::default()
+        };
+        settings.save(&path).unwrap();
+        let loaded = Settings::load(&path).unwrap();
+        assert_eq!(loaded.apps[0].chosen_environment(), Some(&staging));
+        // The file holds the kind and the user name, and no field for a secret.
+        let json: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        assert_eq!(
+            json["apps"][0]["environments"][0]["credentials"],
+            serde_json::json!({"kind": "basic", "user": "mortise"})
         );
     }
 
