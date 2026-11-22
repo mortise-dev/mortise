@@ -145,6 +145,32 @@ fn a_path_can_be_typed_into_the_field() {
     harness.run();
     harness.get_by_role_and_label(Role::Button, "Add crm");
     harness.get_by_role_and_label(Role::Heading, "Found in this folder");
+
+    // Another path drops what was found for crm: Add acts on the folder the field shows.
+    let pages = desk.app("landing-pages");
+    harness
+        .get_by_role_and_label(Role::TextInput, "App folder")
+        .focus();
+    harness.run();
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::A);
+    harness
+        .get_by_role_and_label(Role::TextInput, "App folder")
+        .type_text(pages.to_str().unwrap());
+    harness.run();
+    assert!(
+        harness
+            .query_by_role_and_label(Role::Button, "Add crm")
+            .is_none()
+    );
+    harness.key_press(Key::Enter);
+    harness.run();
+    harness
+        .get_by_role_and_label(Role::Button, "Add landing-pages")
+        .click();
+    wait_until(&mut harness, "the new app is read", |app| {
+        app.app().is_some()
+    });
+    assert_eq!(desk.saved().apps[0].root, pages);
 }
 
 #[test]
