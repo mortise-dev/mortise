@@ -330,15 +330,19 @@ fn an_editor_that_starts_is_given_the_file_and_the_line() {
         .get_by_role_and_label(Role::Button, "Open the selected file in the editor")
         .click();
     harness.run_steps(2);
+    // The shell makes the file before it writes the line, so wait for the line.
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
-    while !out.exists() {
+    let opened = loop {
+        let opened = std::fs::read_to_string(&out).unwrap_or_default();
+        if opened.ends_with('\n') {
+            break opened;
+        }
         assert!(
             std::time::Instant::now() < deadline,
             "the editor was not started"
         );
         std::thread::sleep(std::time::Duration::from_millis(20));
-    }
-    let opened = std::fs::read_to_string(&out).unwrap();
+    };
     assert!(
         opened
             .trim()
