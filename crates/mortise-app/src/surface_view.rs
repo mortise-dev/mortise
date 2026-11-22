@@ -216,7 +216,17 @@ pub fn surface(
         ..ty::CODE
     };
     let mut toggled = None;
-    let mut first_entry = true;
+    // The entries are one stop: J and K move through them, Space takes one in or
+    // leaves it out. When a scan ends, focus is on the first entry.
+    let entries = rows
+        .iter()
+        .filter(|row| matches!(row, Row::Entry(_)))
+        .count();
+    let nav = draw::ListNav::new(ui, ("surface", &proposal.module), entries);
+    if focus_first && entries > 0 {
+        nav.focus(ui);
+    }
+    let mut entry_row = 0;
     for (i, row) in rows.iter().enumerate() {
         let top = head_bottom + i as f32 * ROW;
         let mid = top + ROW / 2.0;
@@ -251,16 +261,12 @@ pub fn surface(
             }
             Row::Entry(index) => {
                 let entry = &proposal.entries[*index];
-                let id = ui
-                    .scope_id()
-                    .with(("surface-entry", &proposal.module, &entry.name));
-                let response = ui.interact(row_rect, id, Sense::click());
+                let response = ui.interact(row_rect, nav.id(entry_row), nav.sense(entry_row));
+                nav.after(ui, entry_row, &response);
+                entry_row += 1;
                 response.widget_info(|| {
                     WidgetInfo::selected(Role::CheckBox, true, entry.proposed, &entry.name)
                 });
-                if std::mem::take(&mut first_entry) && focus_first {
-                    response.request_focus();
-                }
                 if response.hovered() {
                     ui.painter()
                         .rect_filled(row_rect.shrink2(vec2(0.0, 0.5)), 0, pal.well);

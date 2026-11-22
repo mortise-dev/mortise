@@ -94,6 +94,16 @@ fn attention(app: &AppSnapshot, module: &Module) -> u8 {
 }
 
 /// The id of the filter field, to give it focus from a key.
+fn focus_id() -> egui::Id {
+    egui::Id::unique("mortise-index-row-has-focus")
+}
+
+/// True when the selected row of the index held focus in the last frame. Asking forgets it.
+pub fn take_row_focus(ctx: &egui::Context) -> bool {
+    ctx.data_mut(|data| data.remove_temp::<bool>(focus_id()))
+        .unwrap_or(false)
+}
+
 pub fn filter_id(ui: &Ui) -> egui::Id {
     ui.scope_id().with("index-filter")
 }
@@ -482,12 +492,15 @@ struct RowLook {
 
 /// Paints one row (C7). Returns true when it was clicked.
 fn index_row(ui: &Ui, pal: &Palette, rect: Rect, row: &Row<'_>, look: RowLook) -> bool {
-    // The interaction comes first so that hover is known before painting.
-    let response = ui.interact(
-        rect,
-        ui.scope_id().with(("index-row", row.code)),
-        Sense::click(),
-    );
+    // The interaction comes first so that hover is known before painting. The list
+    // is one stop in the Tab order: the selected row holds focus.
+    let id = ui.scope_id().with(("index-row", row.code));
+    let response = ui.interact(rect, id, draw::one_stop(look.selected));
+    if response.has_focus() {
+        // The arrows move through the modules and into the workspace.
+        draw::keep_arrows(ui, id, true, true);
+        ui.ctx().data_mut(|data| data.insert_temp(focus_id(), true));
+    }
     response
         .widget_info(|| WidgetInfo::selected(Role::ListBoxOption, true, look.selected, row.name));
 
@@ -582,15 +595,24 @@ fn index_row(ui: &Ui, pal: &Palette, rect: Rect, row: &Row<'_>, look: RowLook) -
         }
     }
 
-    if look.focused {
-        // The ring is 1 px outside the row, so it needs more room than the list's clip gives.
+    // Focus is on the index when its row holds it, and also when nothing holds it:
+    // J, K and the digit keys work from the start.
+    let nothing_focused = ui.memory(|memory| memory.focused()).is_none();
+    if look.focused && (response.has_focus() || nothing_focused) {
+        draw::ring_is_drawn(ui);
+        // The ring is 1 px outside the row, so it needs more room than the list's clip
+        // gives. It is drawn over the workspace, which is painted after the index.
         let clip = ui.clip_rect().expand2(vec2(4.0, 0.0));
-        ui.painter().with_clip_rect(clip).rect_stroke(
-            rect.expand(1.0),
-            1,
-            Stroke::new(stroke::FOCUS_RING, pal.ink),
-            StrokeKind::Outside,
-        );
+        let layer = egui::LayerId::new(egui::Order::Foreground, focus_id());
+        ui.ctx()
+            .layer_painter(layer)
+            .with_clip_rect(clip)
+            .rect_stroke(
+                rect.expand(1.0),
+                1,
+                Stroke::new(stroke::FOCUS_RING, pal.ink),
+                StrokeKind::Outside,
+            );
     }
 
     let clicked = response.clicked();

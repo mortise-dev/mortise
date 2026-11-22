@@ -143,6 +143,12 @@ fn list(
 
     let mut group = None;
     let last = rows.len().saturating_sub(1);
+    // The list is one stop: J and K move through it, Enter opens a finding where it
+    // lives. It takes focus when nothing else holds it, so the keys work at once.
+    let nav = draw::ListNav::over(ui, "findings", rows.len(), selected);
+    if !rows.is_empty() && ui.memory(|memory| memory.focused()).is_none() {
+        nav.focus(ui);
+    }
     for (index, (finding, sentence, galley, row_h)) in rows.into_iter().enumerate() {
         if group != Some(finding.severity) {
             group = Some(finding.severity);
@@ -177,7 +183,8 @@ fn list(
         );
         let (place, opens) = opens(finding);
         let is_selected = index == (*selected).min(last);
-        let response = ui.interact(row, ui.scope_id().with(("finding", index)), Sense::click());
+        let response = ui.interact(row, nav.id(index), nav.sense(index));
+        nav.after(ui, index, &response);
         response.widget_info(|| WidgetInfo::selected(Role::Row, true, is_selected, &sentence));
         let behind = if is_selected {
             // A selected list row: well fill, a line above and below, and the peg.

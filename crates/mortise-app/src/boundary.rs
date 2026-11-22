@@ -621,6 +621,9 @@ impl View<'_> {
         let line_right = reads_x - 12.0;
         let mut index = 0;
         let mut selected_path = None;
+        // The files are one stop: J and K move through them, Enter opens the file.
+        let nav = draw::ListNav::over(ui, ("files", module, other), rows, &mut state.file);
+        let mut opened = false;
         for (link, _) in &sections {
             if titled {
                 let mid = row_y + section_head / 2.0;
@@ -689,16 +692,18 @@ impl View<'_> {
                     pos2(panel.right() - 1.0, row_y + size::TABLE_ROW_H),
                 );
                 let selected = index == state.file.min(rows - 1);
-                if self.file_row(
-                    ui,
-                    row,
-                    reference,
-                    link,
-                    selected,
-                    (file_x, line_right, reads_x),
-                ) {
+                let response = ui.interact(row, nav.id(index), nav.sense(index));
+                nav.after(ui, index, &response);
+                // Enter on the selected file opens it at the line in the editor.
+                if response.clicked() && selected && ui.input(|input| input.key_pressed(Key::Enter))
+                {
+                    opened = true;
+                }
+                if response.clicked() {
                     state.file = index;
                 }
+                let columns = (file_x, line_right, reads_x);
+                self.file_row(ui, row, &response, reference, link, selected, columns);
                 if selected {
                     selected_path = Some((reference.file.clone(), reference.line));
                 }
@@ -726,7 +731,7 @@ impl View<'_> {
             foot.center().y - copy.height() / 2.0,
         );
         let open_min = pos2(copy_min.x - 8.0 - open.width(ui), copy_min.y);
-        if open.show(ui, pal, open_min, self.keyboard).clicked()
+        if (open.show(ui, pal, open_min, self.keyboard).clicked() || opened)
             && let Some((file, line)) = &selected_path
         {
             // The file at the line that names the class.
@@ -743,21 +748,19 @@ impl View<'_> {
         panel.bottom()
     }
 
-    /// One file of a link. Returns true when the row was clicked.
+    /// Paints one file of a link.
+    #[expect(clippy::too_many_arguments)]
     fn file_row(
         &self,
         ui: &Ui,
         row: Rect,
+        response: &eframe::egui::Response,
         reference: &Reference,
         link: &Link,
         selected: bool,
         (file_x, line_right, reads_x): (f32, f32, f32),
-    ) -> bool {
+    ) {
         let pal = self.pal;
-        let id = ui
-            .scope_id()
-            .with(("link-file", &link.from, &reference.file, &reference.class));
-        let response = ui.interact(row, id, Sense::click());
         response.widget_info(|| WidgetInfo::selected(Role::Row, true, selected, &reference.file));
         if selected {
             // A selected list row: well fill, a line above and below, and the peg.
@@ -816,7 +819,6 @@ impl View<'_> {
             row.right() - 12.0 - reads_x,
         );
         draw::paint_galley(ui, pos2(reads_x, mid), Align2::LEFT_CENTER, reads);
-        response.clicked()
     }
 
     // --- All modules (S5.3) ---
@@ -1122,12 +1124,14 @@ impl View<'_> {
         );
         draw::mark_bad(ui, mark, pal.bad, pal.surface);
 
+        let nav = draw::ListNav::new(ui, "broken-links", rows.len());
         for (i, (text, files, module, other)) in rows.iter().enumerate() {
             let row = Rect::from_min_max(
                 pos2(rect.left() + 1.0, y),
                 pos2(rect.right() - 1.0, y + ROW),
             );
-            let response = ui.interact(row, ui.scope_id().with(("broken-link", i)), Sense::click());
+            let response = ui.interact(row, nav.id(i), nav.sense(i));
+            nav.after(ui, i, &response);
             response.widget_info(|| WidgetInfo::labeled(Role::Row, true, text));
             if response.hovered() {
                 ui.painter()
@@ -1415,6 +1419,7 @@ impl View<'_> {
             pal.line_2,
         );
 
+        let nav = draw::ListNav::new(ui, "links", links.len());
         for (i, link) in links.iter().enumerate() {
             let row_top = table.top() + size::TABLE_HEAD_H + i as f32 * size::TABLE_ROW_H;
             let row = Rect::from_min_max(
@@ -1422,11 +1427,8 @@ impl View<'_> {
                 pos2(table.right() - 1.0, row_top + size::TABLE_ROW_H),
             );
             let name = strings::a_uses_b(&link.from, &link.to);
-            let response = ui.interact(
-                row,
-                ui.scope_id().with(("link-row", &link.from, &link.to)),
-                Sense::click(),
-            );
+            let response = ui.interact(row, nav.id(i), nav.sense(i));
+            nav.after(ui, i, &response);
             response.widget_info(|| WidgetInfo::labeled(Role::Row, true, &name));
             if response.hovered() {
                 ui.painter().rect_filled(row, 0, pal.well);

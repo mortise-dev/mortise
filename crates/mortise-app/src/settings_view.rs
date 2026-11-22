@@ -663,6 +663,9 @@ impl Form<'_> {
             table.top() + size::TABLE_HEAD_H - 1.0,
             pal.line_2,
         );
+        // The table is one stop: J and K move through the apps.
+        let apps_nav =
+            draw::ListNav::over(ui, "settings-apps", settings.apps.len(), &mut state.app);
         for (i, app) in settings.apps.iter().enumerate() {
             let top = table.top() + size::TABLE_HEAD_H + i as f32 * size::TABLE_ROW_H;
             let row = Rect::from_min_max(
@@ -670,8 +673,8 @@ impl Form<'_> {
                 pos2(table.right() - 1.0, top + size::TABLE_ROW_H),
             );
             let selected = i == state.app;
-            let response =
-                ui.interact(row, ui.scope_id().with(("settings-app", i)), Sense::click());
+            let response = ui.interact(row, apps_nav.id(i), apps_nav.sense(i));
+            apps_nav.after(ui, i, &response);
             response.widget_info(|| WidgetInfo::selected(Role::Row, true, selected, &app.name));
             if response.clicked() {
                 state.app = i;
@@ -1116,6 +1119,13 @@ impl Form<'_> {
             size: 11.5,
             ..ty::CODE
         };
+        let count = entry.environments.len();
+        let nav = draw::ListNav::over(
+            ui,
+            ("settings-environments", index),
+            count,
+            &mut state.environment,
+        );
         for (i, environment) in entry.environments.iter().enumerate() {
             let top = table.top() + size::TABLE_HEAD_H + i as f32 * size::TABLE_ROW_H;
             let row = Rect::from_min_max(
@@ -1123,8 +1133,8 @@ impl Form<'_> {
                 pos2(table.right() - 1.0, top + size::TABLE_ROW_H),
             );
             let selected = i == state.environment;
-            let id = ui.scope_id().with(("settings-environment", index, i));
-            let response = ui.interact(row, id, Sense::click());
+            let response = ui.interact(row, nav.id(i), nav.sense(i));
+            nav.after(ui, i, &response);
             let said = format!("{} {}", strings::COL_ENVIRONMENT, environment.name);
             response.widget_info(|| WidgetInfo::selected(Role::Row, true, selected, &said));
             if response.clicked() {

@@ -1,6 +1,8 @@
 //! The workspace: a header with the title and the five tabs, and the body of the open tab.
 
-use eframe::egui::{Align2, Color32, Pos2, Rect, Role, Sense, Ui, Vec2, WidgetInfo, pos2, vec2};
+use eframe::egui::{
+    Align2, Color32, Key, Modifiers, Pos2, Rect, Role, Ui, Vec2, WidgetInfo, pos2, vec2,
+};
 use mortise_core::AppSnapshot;
 
 use crate::app::Selection;
@@ -190,6 +192,25 @@ pub fn workspace(
         );
     }
 
+    // The action of the header comes before the tabs in the Tab order, so that the
+    // first control after the tab row is the first control of the tab.
+    let mut header_action = None;
+    if let Some(module) = module {
+        let open = Button {
+            label: "Open in editor",
+            small: true,
+            ..Default::default()
+        };
+        let at = pos2(head.right() - 16.0 - open.width(ui), head.top() + 12.0);
+        if open.show(ui, pal, at, state.keyboard).clicked() {
+            header_action = Some(BoundaryAction::OpenInEditor {
+                path: module.dir.clone(),
+                line: 1,
+            });
+        }
+    }
+
+    let mut moved_to = None;
     let mut x = head.left() + 16.0;
     for candidate in Tab::ALL {
         let label_type = if candidate == *tab {
@@ -210,16 +231,37 @@ pub fn workspace(
         );
         x += width;
 
-        let response = ui.interact(
-            tab_rect,
-            ui.scope_id().with(("tab", candidate.digit())),
-            Sense::click(),
-        );
+        // The tab row is one stop: the selected tab holds focus.
+        let id = tab_id(ui, candidate);
+        let response = ui.interact(tab_rect, id, draw::one_stop(candidate == *tab));
         response.widget_info(|| {
             WidgetInfo::selected(Role::Tab, true, candidate == *tab, candidate.label())
         });
         if response.clicked() {
             *tab = candidate;
+        }
+        // Left and Right change the tab while the row has focus.
+        if candidate == *tab && response.has_focus() {
+            draw::keep_arrows(ui, id, false, true);
+            let at = Tab::ALL
+                .iter()
+                .position(|other| *other == candidate)
+                .unwrap_or(0);
+            let (left, right) = ui.input_mut(|input| {
+                (
+                    input.consume_key(Modifiers::NONE, Key::ArrowLeft),
+                    input.consume_key(Modifiers::NONE, Key::ArrowRight),
+                )
+            });
+            let target = match (left, right) {
+                (true, _) if at > 0 => Some(Tab::ALL[at - 1]),
+                (_, true) if at + 1 < Tab::ALL.len() => Some(Tab::ALL[at + 1]),
+                _ => None,
+            };
+            if let Some(target) = target {
+                moved_to = Some(target);
+                draw::focus_soon(ui, tab_id(ui, target));
+            }
         }
 
         let selected = candidate == *tab;
@@ -273,21 +315,8 @@ pub fn workspace(
         );
     }
 
-    // In this version the header of a module has one action.
-    let mut header_action = None;
-    if let Some(module) = module {
-        let open = Button {
-            label: "Open in editor",
-            small: true,
-            ..Default::default()
-        };
-        let at = pos2(head.right() - 16.0 - open.width(ui), head.top() + 12.0);
-        if open.show(ui, pal, at, state.keyboard).clicked() {
-            header_action = Some(BoundaryAction::OpenInEditor {
-                path: module.dir.clone(),
-                line: 1,
-            });
-        }
+    if let Some(target) = moved_to {
+        *tab = target;
     }
 
     let body = Rect::from_min_max(pos2(rect.left(), head.bottom()), rect.max);
@@ -314,6 +343,11 @@ pub fn workspace(
         (_, None) => summary::summary(ui, pal, body, app, module, state.summary),
     };
     in_body.or(header_action)
+}
+
+/// The id of a tab, to give it focus.
+pub fn tab_id(ui: &Ui, tab: Tab) -> eframe::egui::Id {
+    ui.scope_id().with(("tab", tab.digit()))
 }
 
 /// What stands above the title of an empty-state block.

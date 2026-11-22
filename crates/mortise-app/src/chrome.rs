@@ -197,10 +197,11 @@ fn window_controls(ui: &Ui, pal: &Palette, rect: Rect, order: &[Icon], maximized
             ),
         };
 
+        // Not in the Tab order: the platform's own keys work for the window.
         let response = ui.interact(
             button,
             ui.scope_id().with(("window-control", i)),
-            Sense::click(),
+            Sense::CLICK,
         );
         response.widget_info(|| WidgetInfo::labeled(Role::Button, true, name));
         if response.is_pointer_button_down_on() {

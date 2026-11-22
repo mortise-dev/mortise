@@ -115,15 +115,19 @@ pub fn outlined(ui: &Ui, rect: Rect, radius: u8, fill: Color32, outline: Color32
 
 /// The keyboard focus ring: 2 px of ink, 1 px outside the control, over everything else.
 pub fn focus_ring(ui: &Ui, pal: &Palette, rect: Rect, radius: u8) {
-    // Tell the frame that the focused control drew its own ring.
-    ui.ctx()
-        .data_mut(|data| data.insert_temp(ring_drawn_id(), true));
+    ring_is_drawn(ui);
     ui.painter().rect_stroke(
         rect.expand(stroke::FOCUS_OFFSET),
         CornerRadius::same(radius + stroke::FOCUS_OFFSET as u8),
         Stroke::new(stroke::FOCUS_RING, pal.ink),
         StrokeKind::Outside,
     );
+}
+
+/// Tells the frame that the focused control drew its own ring.
+pub fn ring_is_drawn(ui: &Ui) {
+    ui.ctx()
+        .data_mut(|data| data.insert_temp(ring_drawn_id(), true));
 }
 
 fn ring_drawn_id() -> eframe::egui::Id {
@@ -840,6 +844,166 @@ pub fn box_line(
 }
 
 // ---------------------------------------------------------------------------
+// One stop in the Tab order (K1): a list, a table, the tab row and a segmented
+// control each take one Tab press. Arrows, or J and K, move inside them.
+
+/// The sense of a part of a one-stop control: every part can be clicked, and only
+/// the current one can hold focus.
+pub fn one_stop(current: bool) -> Sense {
+    if current {
+        Sense::click()
+    } else {
+        Sense::CLICK
+    }
+}
+
+/// Keeps the arrow keys with a focused control, so that egui does not use them
+/// to move focus to another one.
+pub fn keep_arrows(ui: &Ui, id: eframe::egui::Id, vertical: bool, horizontal: bool) {
+    let filter = eframe::egui::EventFilter {
+        vertical_arrows: vertical,
+        horizontal_arrows: horizontal,
+        ..Default::default()
+    };
+    ui.memory_mut(|memory| memory.set_focus_lock_filter(id, filter));
+}
+
+fn pending_focus_id() -> eframe::egui::Id {
+    eframe::egui::Id::unique("mortise-focus-in-the-next-frame")
+}
+
+/// Gives focus to a control in the next frame. For a control that cannot hold
+/// focus yet in this one: the part of a one-stop control that is about to be chosen.
+pub fn focus_soon(ui: &Ui, id: eframe::egui::Id) {
+    ui.ctx()
+        .data_mut(|data| data.insert_temp(pending_focus_id(), Some(id)));
+    ui.ctx().request_repaint();
+}
+
+/// Gives focus to the control [`focus_soon`] named in the last frame. Call at the
+/// start of a frame.
+pub fn focus_what_was_asked(ctx: &eframe::egui::Context) {
+    let pending = ctx
+        .data_mut(|data| data.remove_temp::<Option<eframe::egui::Id>>(pending_focus_id()))
+        .flatten();
+    if let Some(id) = pending {
+        ctx.memory_mut(|memory| memory.request_focus(id));
+    }
+}
+
+fn list_focus_id() -> eframe::egui::Id {
+    eframe::egui::Id::unique("mortise-list-has-focus")
+}
+
+/// True when a row of a list or table had focus in the last frame. Asking forgets it.
+/// While it is true, J, K and the arrows belong to that list, not to the module index.
+pub fn take_list_focus(ctx: &eframe::egui::Context) -> bool {
+    ctx.data_mut(|data| data.remove_temp::<bool>(list_focus_id()))
+        .unwrap_or(false)
+}
+
+/// The rows of a list or table as one stop: one row is the current one and can
+/// hold focus. J, K, Down, Up, Home and End move it while it has focus; Enter and
+/// Space press it, as they press any focused control.
+pub struct ListNav {
+    salt: eframe::egui::Id,
+    current: usize,
+    /// The current row moved by a key in this frame: scroll it into view.
+    pub moved: bool,
+}
+
+impl ListNav {
+    /// `name` tells this list from the others on screen. `len` is how many rows it has.
+    /// The list keeps its current row itself.
+    pub fn new(ui: &Ui, name: impl std::hash::Hash + std::fmt::Debug, len: usize) -> Self {
+        let salt = ui.scope_id().with(("list", &name));
+        let mut current = ui.data(|data| data.get_temp::<usize>(salt)).unwrap_or(0);
+        let nav = Self::over(ui, name, len, &mut current);
+        ui.data_mut(|data| data.insert_temp(salt, current));
+        nav
+    }
+
+    /// As [`ListNav::new`], for a list whose selected row the caller keeps: that row
+    /// is the current one, and the keys move it.
+    pub fn over(
+        ui: &Ui,
+        name: impl std::hash::Hash + std::fmt::Debug,
+        len: usize,
+        selected: &mut usize,
+    ) -> Self {
+        use eframe::egui::{Key, Modifiers};
+        let salt = ui.scope_id().with(("list", name));
+        let last = len.saturating_sub(1);
+        let mut current = (*selected).min(last);
+        let mut moved = false;
+        if len > 0 && ui.memory(|memory| memory.has_focus(salt.with(current))) {
+            ui.ctx()
+                .data_mut(|data| data.insert_temp(list_focus_id(), true));
+            keep_arrows(ui, salt.with(current), true, false);
+            let target = ui.input_mut(|input| {
+                let mut pressed = |key| input.consume_key(Modifiers::NONE, key);
+                let mut target = current;
+                if pressed(Key::J) || pressed(Key::ArrowDown) {
+                    target = (current + 1).min(last);
+                }
+                if pressed(Key::K) || pressed(Key::ArrowUp) {
+                    target = current.saturating_sub(1);
+                }
+                if pressed(Key::Home) {
+                    target = 0;
+                }
+                if pressed(Key::End) {
+                    target = last;
+                }
+                target
+            });
+            if target != current {
+                current = target;
+                moved = true;
+                ui.memory_mut(|memory| memory.request_focus(salt.with(current)));
+            }
+        }
+        *selected = current;
+        Self {
+            salt,
+            current,
+            moved,
+        }
+    }
+
+    /// Gives focus to the current row.
+    pub fn focus(&self, ui: &Ui) {
+        ui.memory_mut(|memory| memory.request_focus(self.salt.with(self.current)));
+    }
+
+    /// True when the current row holds focus.
+    pub fn has_focus(&self, ui: &Ui) -> bool {
+        ui.memory(|memory| memory.has_focus(self.salt.with(self.current)))
+    }
+
+    /// The id of a row, for its interaction.
+    pub fn id(&self, row: usize) -> eframe::egui::Id {
+        self.salt.with(row)
+    }
+
+    /// The sense of a row: every row can be clicked, the current one can hold focus.
+    pub fn sense(&self, row: usize) -> Sense {
+        one_stop(row == self.current)
+    }
+
+    /// Call with the response of a row. A row that was clicked becomes the current
+    /// one; the current row is scrolled into view when a key moved it.
+    pub fn after(&self, ui: &Ui, row: usize, response: &Response) {
+        if response.clicked() && row != self.current {
+            ui.data_mut(|data| data.insert_temp(self.salt, row));
+        }
+        if self.moved && row == self.current {
+            response.scroll_to_me(None);
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tooltip (C12)
 
 /// Gives a control a tooltip: key fill, key-fg text, at most 240 px wide, no shadow.
@@ -885,15 +1049,32 @@ pub fn segmented(
     for (i, label) in labels.iter().enumerate() {
         let segment = Rect::from_min_size(pos2(x, track.top() + 3.0), vec2(widths[i], 20.0));
         x += widths[i] + 2.0;
-        let response = ui.interact(
-            segment,
-            ui.scope_id().with(("segment", name, i)),
-            Sense::click(),
-        );
+        let id = ui.scope_id().with(("segment", name, i));
+        let response = ui.interact(segment, id, one_stop(i == selected));
         response
             .widget_info(|| WidgetInfo::selected(Role::RadioButton, true, i == selected, *label));
         if response.clicked() {
             clicked = Some(i);
+        }
+        // Left and Right change the choice while the control has focus.
+        if i == selected && response.has_focus() {
+            use eframe::egui::{Key, Modifiers};
+            keep_arrows(ui, id, false, true);
+            let (left, right) = ui.input_mut(|input| {
+                (
+                    input.consume_key(Modifiers::NONE, Key::ArrowLeft),
+                    input.consume_key(Modifiers::NONE, Key::ArrowRight),
+                )
+            });
+            let target = match (left, right) {
+                (true, _) if i > 0 => Some(i - 1),
+                (_, true) if i + 1 < labels.len() => Some(i + 1),
+                _ => None,
+            };
+            if let Some(target) = target {
+                clicked = Some(target);
+                focus_soon(ui, ui.scope_id().with(("segment", name, target)));
+            }
         }
         let color = if i == selected {
             outlined(ui, segment, radius::STAMP, pal.surface, pal.ink);

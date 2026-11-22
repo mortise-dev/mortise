@@ -1050,18 +1050,17 @@ fn by_module(
         }
     }
 
-    // Rows: 28 px, a hairline between them. Numbers are right aligned.
+    // Rows: 28 px, a hairline between them. Numbers are right aligned. The table is
+    // one stop: J and K move through it, Enter selects the module in the index.
+    let nav = draw::ListNav::new(ui, "by-module", modules.len());
     for (row, module) in modules.iter().enumerate() {
         let top = head_bottom + row as f32 * size::TABLE_ROW_H;
         let row_rect = Rect::from_min_max(
             pos2(rect.left() + 1.0, top),
             pos2(rect.right() - 1.0, top + size::TABLE_ROW_H),
         );
-        let response = ui.interact(
-            row_rect,
-            ui.scope_id().with(("by-module-row", &module.name)),
-            Sense::click(),
-        );
+        let response = ui.interact(row_rect, nav.id(row), nav.sense(row));
+        nav.after(ui, row, &response);
         response.widget_info(|| WidgetInfo::labeled(Role::Row, true, &module.name));
         if response.hovered() {
             ui.painter().rect_filled(row_rect, 0, pal.well);

@@ -99,6 +99,13 @@ pub struct MortiseApp {
     keyboard: bool,
     /// The selection moved by key in this frame, so its row must be scrolled into view.
     reveal: bool,
+    /// The selection moved in the workspace: its row is scrolled into view in the next frame.
+    reveal_next: bool,
+    /// Where the workspace was in the last frame, to tell which region holds focus.
+    work_rect: Rect,
+    /// Focus is on its way from the index into the workspace: 2 when the tab row
+    /// has it, 1 when it moved on to the first control of the tab.
+    entering_workspace: u8,
     /// What Ctrl B chose for the index: its strip, or its full width. `None` lets
     /// the width of the window decide, which it does again after a resize.
     index_choice: Option<bool>,
@@ -162,6 +169,9 @@ impl MortiseApp {
             // At start, focus is on the selected row of the index.
             keyboard: true,
             reveal: false,
+            reveal_next: false,
+            work_rect: Rect::NOTHING,
+            entering_workspace: 0,
             index_choice: None,
             window_w: 0.0,
             settings_open: None,
@@ -701,6 +711,33 @@ impl MortiseApp {
         let chord = |modifiers: Modifiers, key: Key| {
             ui.input_mut(|input| input.consume_shortcut(&KeyboardShortcut::new(modifiers, key)))
         };
+        // Which region holds focus (K1). Focus is on the index when its selected row
+        // holds it, and also when nothing holds it.
+        let in_list = draw::take_list_focus(ui.ctx());
+        let on_row = index::take_row_focus(ui.ctx());
+        let focused = ui.memory(|memory| memory.focused());
+        let on_index = focused.is_none() || on_row;
+        let focused_at = focused
+            .filter(|_| !on_row)
+            .and_then(|id| ui.ctx().read_response(id))
+            .map(|response| response.rect.center());
+        let in_workspace = focused_at.is_some_and(|at| self.work_rect.contains(at));
+
+        // Focus on its way into the workspace: from the tab row to the first control
+        // of the tab. A tab without a control gives focus back to the index.
+        match self.entering_workspace {
+            2 => {
+                ui.memory_mut(|memory| memory.move_focus(egui::FocusDirection::Next));
+                self.entering_workspace = 1;
+            }
+            1 => {
+                if let Some(id) = focused.filter(|_| !in_workspace) {
+                    ui.memory_mut(|memory| memory.surrender_focus(id));
+                }
+                self.entering_workspace = 0;
+            }
+            _ => {}
+        }
 
         // The command palette, from anywhere. The same key closes it.
         if chord(Modifiers::COMMAND, Key::K) {
@@ -771,6 +808,37 @@ impl MortiseApp {
         // Settings take the place of the workbench: its keys rest until Esc.
         if self.settings_open.is_some() {
             return;
+        }
+
+        // F6 and Shift F6: to the next or the previous region. Rail, index, workspace.
+        let backwards = chord(Modifiers::SHIFT, Key::F6);
+        if (backwards || chord(Modifiers::NONE, Key::F6))
+            && let Some(current) = self.current
+        {
+            let region = if on_index {
+                1
+            } else if in_workspace {
+                2
+            } else {
+                0
+            };
+            let target = if backwards {
+                (region + 2) % 3
+            } else {
+                (region + 1) % 3
+            };
+            let id = match target {
+                0 => rail::current_tile(ui.ctx()),
+                2 => Some(workspace::tab_id(ui, self.apps[current].tab)),
+                _ => None,
+            };
+            ui.memory_mut(|memory| match (id, focused) {
+                (Some(id), _) => memory.request_focus(id),
+                // The index: its selected row has the keys when nothing else holds focus.
+                (None, Some(focused)) => memory.surrender_focus(focused),
+                (None, None) => {}
+            });
+            self.keyboard = true;
         }
 
         // Collapse or open the module index. Mortise then stops deciding its width
@@ -853,8 +921,19 @@ impl MortiseApp {
             open.finding_row = 0;
         }
 
+        // Enter or Right: from the index into the workspace. Esc brings focus back.
+        if on_index && (pressed(Key::Enter) || pressed(Key::ArrowRight)) {
+            ui.memory_mut(|memory| {
+                // The arrow is not also a move of focus to the right.
+                memory.move_focus(egui::FocusDirection::None);
+                memory.request_focus(workspace::tab_id(ui, open.tab));
+            });
+            self.entering_workspace = 2;
+        }
+
         // J and K, or Down and Up: the next or previous row. Home and End: the first or last.
-        // Only the rows the filter leaves.
+        // Only the rows the filter leaves. A list or table that has focus keeps these
+        // keys for itself, and the arrows move focus when another control has it.
         let modules = index::ordered(&app, &open.filter, problems_first);
         let rows = modules.len() + 1;
         let current = match &open.selection {
@@ -865,16 +944,16 @@ impl MortiseApp {
                 .map_or(0, |i| i + 1),
         };
         let mut target = current;
-        if pressed(Key::J) || pressed(Key::ArrowDown) {
+        if !in_list && (pressed(Key::J) || (on_index && pressed(Key::ArrowDown))) {
             target = (current + 1).min(rows - 1);
         }
-        if pressed(Key::K) || pressed(Key::ArrowUp) {
+        if !in_list && (pressed(Key::K) || (on_index && pressed(Key::ArrowUp))) {
             target = current.saturating_sub(1);
         }
-        if pressed(Key::Home) {
+        if on_index && pressed(Key::Home) {
             target = 0;
         }
-        if pressed(Key::End) {
+        if on_index && pressed(Key::End) {
             target = rows - 1;
         }
         if target != current {
@@ -939,7 +1018,8 @@ impl eframe::App for MortiseApp {
         let pal = theme::palette(ui.ctx().theme());
         let ctx = ui.ctx().clone();
         let mac = ctx.os() == egui::os::OperatingSystem::Mac;
-        self.reveal = false;
+        self.reveal = std::mem::take(&mut self.reveal_next);
+        draw::focus_what_was_asked(&ctx);
         self.keys(ui);
         self.take_in();
         self.sync_runtime(&ctx);
@@ -1058,7 +1138,6 @@ impl eframe::App for MortiseApp {
                     let index_rect = Rect::from_min_size(rest.min, vec2(index_w, rest.height()));
                     let work_rect =
                         Rect::from_min_max(pos2(index_rect.right(), rest.top()), rest.max);
-                    // The workspace first: the selected row of the index is painted over its edge.
                     // The Findings list belongs to the Summary of "All modules" only.
                     if open.selection != Selection::All || open.tab != Tab::Summary {
                         open.findings_open = false;
@@ -1077,49 +1156,6 @@ impl eframe::App for MortiseApp {
                     // "checked 8 s ago" counts on while the box is on screen.
                     if runtime.brief().is_some() {
                         ctx.request_repaint_after(std::time::Duration::from_secs(1));
-                    }
-                    let state = WorkState {
-                        summary: SummaryState {
-                            sort: &mut open.sort,
-                            now,
-                            runtime: &runtime,
-                            keyboard: self.keyboard,
-                        },
-                        boundary: &mut open.boundary,
-                        findings_open: &mut open.findings_open,
-                        finding_row: &mut open.finding_row,
-                        keyboard: self.keyboard,
-                        surface: surface_inputs(&app, &open.selection, &runtime),
-                        mac,
-                    };
-                    work_action = workspace::workspace(
-                        ui,
-                        pal,
-                        work_rect,
-                        &app,
-                        &open.selection,
-                        &mut open.tab,
-                        state,
-                    );
-                    // A module chosen in the workspace is selected before the index is
-                    // painted, so that the joint is in the right place in this frame.
-                    match &work_action {
-                        Some(BoundaryAction::Select(module)) => {
-                            open.selection = Selection::Module(module.clone());
-                            self.reveal = true;
-                        }
-                        Some(BoundaryAction::ShowFindings) => {
-                            open.findings_open = true;
-                            open.finding_row = 0;
-                        }
-                        Some(BoundaryAction::ShowLink { module, other }) => {
-                            open.selection = Selection::Module(module.clone());
-                            open.tab = Tab::Boundary;
-                            open.boundary.other = Some(other.clone());
-                            open.boundary.file = 0;
-                            self.reveal = true;
-                        }
-                        _ => {}
                     }
                     let state = IndexState {
                         selection: &mut open.selection,
@@ -1156,6 +1192,55 @@ impl eframe::App for MortiseApp {
                             open.selection = first.map_or(Selection::All, Selection::Module);
                         }
                     }
+
+                    // The workspace, after the index: Tab goes from the rail to the index
+                    // and then to the workspace.
+                    let state = WorkState {
+                        summary: SummaryState {
+                            sort: &mut open.sort,
+                            now,
+                            runtime: &runtime,
+                            keyboard: self.keyboard,
+                        },
+                        boundary: &mut open.boundary,
+                        findings_open: &mut open.findings_open,
+                        finding_row: &mut open.finding_row,
+                        keyboard: self.keyboard,
+                        surface: surface_inputs(&app, &open.selection, &runtime),
+                        mac,
+                    };
+                    work_action = workspace::workspace(
+                        ui,
+                        pal,
+                        work_rect,
+                        &app,
+                        &open.selection,
+                        &mut open.tab,
+                        state,
+                    );
+                    // A module chosen in the workspace shows in the index in the next frame.
+                    if work_action.is_some() {
+                        ctx.request_repaint();
+                    }
+                    match &work_action {
+                        Some(BoundaryAction::Select(module)) => {
+                            open.selection = Selection::Module(module.clone());
+                            self.reveal_next = true;
+                        }
+                        Some(BoundaryAction::ShowFindings) => {
+                            open.findings_open = true;
+                            open.finding_row = 0;
+                        }
+                        Some(BoundaryAction::ShowLink { module, other }) => {
+                            open.selection = Selection::Module(module.clone());
+                            open.tab = Tab::Boundary;
+                            open.boundary.other = Some(other.clone());
+                            open.boundary.file = 0;
+                            self.reveal_next = true;
+                        }
+                        _ => {}
+                    }
+                    self.work_rect = work_rect;
                 }
                 LiveState::Reading => {
                     ui.painter().rect_filled(rest, 0, pal.surface);

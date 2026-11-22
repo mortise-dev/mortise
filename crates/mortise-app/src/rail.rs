@@ -17,6 +17,16 @@ pub struct Tile<'a> {
     pub problems: usize,
 }
 
+fn current_tile_id() -> eframe::egui::Id {
+    eframe::egui::Id::unique("mortise-rail-current-tile")
+}
+
+/// The tile of the app on screen, to give it focus.
+pub fn current_tile(ctx: &eframe::egui::Context) -> Option<eframe::egui::Id> {
+    ctx.data(|data| data.get_temp::<Option<eframe::egui::Id>>(current_tile_id()))
+        .flatten()
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RailAction {
     Select(usize),
@@ -128,6 +138,11 @@ fn app_tile(ui: &Ui, pal: &Palette, rect: Rect, tile: &Tile<'_>, selected: bool)
         ui.scope_id().with(("rail-tile", tile.name)),
         Sense::click(),
     );
+    if selected {
+        // For F6: the tile that takes focus when focus moves to the rail.
+        ui.ctx()
+            .data_mut(|data| data.insert_temp(current_tile_id(), Some(response.id)));
+    }
     response.widget_info(|| WidgetInfo::selected(Role::ListBoxOption, true, selected, tile.name));
 
     // On frame, an outline is ink-2: line-2 is under 3 to 1 there in the light theme.
