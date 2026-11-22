@@ -934,12 +934,13 @@ fn sentence_of(clauses: &[String]) -> String {
     format!("{first}{}.", letters.as_str())
 }
 
-/// The alert at the top of the Summary of "All modules": the module with the most
-/// problems, in bold, and what is wrong with it.
+/// The alert at the top of the Summary of "All modules", with its severity: the
+/// module with the most problems, in bold, and what is wrong with it.
 /// `Checkout` and ` has 2 problems. It and Shipping use each other (6 files), and 3 of its
 /// files read Billing\Models\Invoice directly.`
-pub fn app_alert(app: &AppSnapshot) -> Option<(String, String)> {
-    use mortise_core::FindingState;
+/// Without a module that has a problem, the first finding, with its own severity.
+pub fn app_alert(app: &AppSnapshot) -> Option<(mortise_core::Severity, String, String)> {
+    use mortise_core::{FindingState, Severity};
     let worst = app
         .modules
         .iter()
@@ -947,14 +948,17 @@ pub fn app_alert(app: &AppSnapshot) -> Option<(String, String)> {
             FindingState::Problems(n) => Some((n, &module.name)),
             _ => None,
         })
-        .max_by(|a, b| a.0.cmp(&b.0).then_with(|| b.1.cmp(a.1)))?;
-    let (count, module) = worst;
+        .max_by(|a, b| a.0.cmp(&b.0).then_with(|| b.1.cmp(a.1)));
+    let Some((count, module)) = worst else {
+        let first = app.findings.list.first()?;
+        return Some((first.severity, String::new(), finding(first, app)));
+    };
     let rest = format!(
         " has {}. {}",
         problems(count),
         sentence_of(&clauses(module, app, false))
     );
-    Some((module.clone(), rest))
+    Some((Severity::Problem, module.clone(), rest))
 }
 
 /// The alert at the top of the Summary of one module, with its severity.
@@ -1060,6 +1064,31 @@ mod tests {
             "no commits in 30 days, last 3 months ago"
         );
         assert_eq!(churn(0, None, 100 * day), "never committed");
+    }
+
+    #[test]
+    fn a_problem_of_the_app_itself_is_alerted_as_a_problem() {
+        use mortise_core::{Check, Detail, Finding, Severity};
+        let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/shop-api");
+        let mut app = mortise_core::read_app(&fixture).unwrap();
+        // No module has a finding; the statuses file lists a module that has no folder.
+        app.findings.list = vec![Finding {
+            severity: Severity::Problem,
+            check: Check::NoStaleStatus,
+            module: None,
+            detail: Detail::StaleStatus {
+                entry: "Legacy".to_owned(),
+                file: "modules_statuses.json".to_owned(),
+            },
+        }];
+        assert_eq!(
+            app_alert(&app),
+            Some((
+                Severity::Problem,
+                String::new(),
+                "modules_statuses.json lists Legacy, which has no folder.".to_owned()
+            ))
+        );
     }
 
     #[test]
