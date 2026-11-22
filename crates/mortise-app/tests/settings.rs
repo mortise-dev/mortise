@@ -176,6 +176,28 @@ fn the_fields_of_an_app_apply_when_they_lose_focus() {
             .query_by_role_and_label(Role::Heading, "Settings")
             .is_none()
     );
+
+    // A click on Back while a field holds an edit keeps the edit and goes back.
+    open_settings(&mut harness);
+    harness
+        .get_by_role_and_label(Role::TextInput, "Coverage limit")
+        .focus();
+    harness.run();
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::A);
+    harness
+        .get_by_role_and_label(Role::TextInput, "Coverage limit")
+        .type_text("35");
+    harness.run();
+    harness
+        .get_by_role_and_label(Role::Button, "Back to shop-api")
+        .click();
+    harness.run();
+    assert_eq!(desk.saved().apps[0].coverage_limit, 35);
+    assert!(
+        harness
+            .query_by_role_and_label(Role::Heading, "Settings")
+            .is_none()
+    );
 }
 
 #[test]
@@ -187,10 +209,21 @@ fn removing_an_app_asks_first_and_leaves_its_folder() {
     let mut harness = desk.start();
     open_settings(&mut harness);
 
+    // The click that leaves an edited field keeps the edit and asks.
+    harness
+        .get_by_role_and_label(Role::TextInput, "Coverage limit")
+        .focus();
+    harness.run();
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::A);
+    harness
+        .get_by_role_and_label(Role::TextInput, "Coverage limit")
+        .type_text("35");
+    harness.run();
     harness
         .get_by_role_and_label(Role::Button, "Remove shop-api from Mortise")
         .click();
     harness.run();
+    assert_eq!(desk.saved().apps[0].coverage_limit, 35);
     harness.get_by_role_and_label(Role::Heading, "Remove shop-api from Mortise?");
     harness.get_by_label_contains("The folder and its files stay as they are.");
     harness.key_press(Key::Escape);
