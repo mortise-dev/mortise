@@ -1,0 +1,708 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tokens | Mortise design specification</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Asap:wght@400;500;600;700&family=Inconsolata:wght@400;500;600&display=swap">
+<style>
+:root{color-scheme:dark}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:#000;color:#fff}
+body{font:15px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased}
+.doc{max-width:1320px;margin:0 auto;padding:20px 20px 80px}
+nav.top{display:flex;flex-wrap:wrap;gap:6px 18px;padding-bottom:12px;border-bottom:1px solid #2a2a2a;margin-bottom:22px;font-size:14px}
+nav.top a{color:#a8a8a8;text-decoration:none}
+nav.top a:hover{color:#fff;text-decoration:underline}
+nav.top a.cur{color:#fff;font-weight:600}
+.doc h1{font-size:26px;line-height:1.2;font-weight:650;margin:0 0 8px}
+.doc h2{font-size:19px;line-height:1.3;font-weight:650;margin:40px 0 10px;padding-top:16px;border-top:1px solid #2a2a2a}
+.doc h3{font-size:15px;line-height:1.35;font-weight:650;margin:26px 0 8px}
+.doc h3 .sid,.doc a.sid{font:600 12.5px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:#a8a8a8;text-decoration:none}
+.doc h3 .sid{margin-right:8px}
+.doc a.sid{text-decoration:underline;text-decoration-color:#555;text-underline-offset:3px}
+.doc p,.doc li{max-width:86ch}
+.doc p{margin:0 0 10px}
+.doc ul,.doc ol{padding-left:20px;margin:0 0 12px}
+.doc li{margin-bottom:4px}
+.doc a{color:#fff}
+.dim{color:#a8a8a8}
+.doc code{font:13px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:#151515;border:1px solid #262626;border-radius:3px;padding:0 4px}
+.doc pre.json{font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:#0d0d0d;border:1px solid #262626;padding:12px;overflow:auto;max-height:420px;margin:8px 0 16px}
+table.spec{width:100%;border-collapse:collapse;font-size:14px;margin:8px 0 16px}
+table.spec th,table.spec td{text-align:left;vertical-align:top;padding:7px 14px 7px 0;border-bottom:1px solid #2a2a2a}
+table.spec th{color:#a8a8a8;font-weight:500}
+table.spec td.num{font-variant-numeric:tabular-nums;white-space:nowrap}
+table.spec code{white-space:nowrap}
+table.spec td.fail{color:#ff8a80;font-weight:600}
+.tscroll{overflow-x:auto}
+.tscroll table.spec{min-width:620px}
+.dot{display:inline-block;width:14px;height:14px;border:1px solid rgba(255,255,255,.3);vertical-align:-2px;margin-right:6px}
+.cap{font-size:13px;color:#a8a8a8;margin:0 0 8px}
+.notes{font-size:13px;line-height:1.5;color:#d0d0d0;margin:0 0 22px;border-left:2px solid #333;padding:2px 0 2px 12px}
+.notes div{margin:2px 0;max-width:110ch}
+.notes b{color:#fff;font-weight:600}
+.pair{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px;margin:8px 0 12px}
+.trio{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin:8px 0 12px}
+.mwrap{overflow-x:auto;margin:8px 0 12px}
+.pair .mwrap,.trio .mwrap{margin:0}
+.themebar{position:sticky;top:0;z-index:20;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;padding:8px 0;background:#000;border-bottom:1px solid #2a2a2a;margin:14px 0 14px;font-size:14px}
+.tt{display:inline-flex;border:1px solid #444}
+.tt button{background:#000;color:#a8a8a8;border:0;padding:5px 14px;font:500 13px/1.3 system-ui,sans-serif;cursor:pointer}
+.tt button.on{background:#fff;color:#000}
+.tt button:focus-visible{outline:2px solid #fff;outline-offset:2px}
+.toc{columns:2 320px;column-gap:28px;font-size:14px;margin:8px 0 16px;padding:0;list-style:none}
+.toc li{margin:0 0 3px;break-inside:avoid}
+.flowgrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0 28px}
+.strip{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-start;margin:8px 0 12px}
+.strip figure{margin:0}
+.strip figcaption,.cellcap{font-size:12.5px;color:#a8a8a8;margin:6px 0 0}
+.chips{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:1px;margin:8px 0 14px}
+.chip{padding:30px 10px 8px;font:12px/1.35 ui-monospace,Menlo,monospace}
+.chip b{display:block;font:600 12px/1.35 system-ui,sans-serif}
+svg.diagram{display:block;max-width:100%;height:auto;margin:8px 0 16px}
+@media (max-width:1180px){.pair,.trio,.flowgrid{grid-template-columns:minmax(0,1fr)}}
+
+.m{--rail-w:52px;--idx-w:264px;--shell-h:548px;font:400 12.5px/1.45 var(--sans);color:var(--ink);text-align:left;-webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums}
+.m *,.m *::before,.m *::after{box-sizing:border-box}
+.m svg{display:block;flex:none}
+.m .mono{font-family:var(--mono);font-size:.95em}
+.m .dim{color:var(--ink-2)}
+.m b,.m strong{font-weight:700}
+.win{position:relative;background:var(--frame);border:1px solid var(--win-line);border-radius:var(--r-win);overflow:hidden;min-width:1080px}
+.win.sm{min-width:0}
+.tbar{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;height:34px;padding:0 12px;gap:12px}
+.tb-brand{display:flex;align-items:center;gap:8px;font-weight:700;font-size:13px}
+.tb-find{display:flex;align-items:center;gap:8px;width:320px;height:22px;padding:0 8px;font-size:11.5px}
+.tb-find .kbd{margin-left:auto}
+.tb-right{justify-self:end;font-size:11.5px}
+.shell{display:grid;grid-template-columns:var(--rail-w) var(--idx-w) minmax(0,1fr);min-height:var(--shell-h)}
+.rail{display:flex;flex-direction:column;align-items:center;gap:8px;padding:10px 0}
+.tile{position:relative;width:34px;height:34px;display:flex;align-items:center;justify-content:center;font:600 11px/1 var(--sans);letter-spacing:.02em}
+.tile .pip{position:absolute;top:-4px;right:-4px;padding:1.5px;border-radius:50%;background:var(--pip-bg);color:var(--bad)}
+.rail .sp{flex:1}
+.idx{display:flex;flex-direction:column;min-width:0}
+.idx-head{padding:12px 12px 10px}
+.app-name{display:flex;align-items:baseline;justify-content:space-between;gap:8px;font-weight:700;font-size:14px;line-height:20px}
+.app-name span{font-weight:400;font-size:11.5px;color:var(--ink-2)}
+.app-sub{font-size:11.5px;color:var(--ink-2);margin-top:1px}
+.filter{display:flex;align-items:center;gap:7px;margin-top:9px;height:26px;padding:0 8px;font-size:12px;color:var(--ink-3)}
+.filter .kbd{margin-left:auto}
+.mods{flex:1;display:flex;flex-direction:column}
+.row{position:relative;display:grid;grid-template-columns:var(--g-w) minmax(0,1fr) auto;align-items:center;column-gap:9px;min-height:40px;padding:3px 12px}
+.row .n{font-weight:600;font-size:13px;line-height:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .meta{font-size:11.5px;line-height:15px;color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.idx-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 12px;font-size:11.5px;color:var(--ink-2)}
+.work{display:flex;flex-direction:column;min-width:0}
+.whead{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px 8px;min-height:42px}
+.wtitle{display:flex;align-items:baseline;gap:10px;min-width:0;white-space:nowrap}
+.wtitle h4{margin:0;font-size:18px;line-height:22px;font-weight:700}
+.wtitle .path{font-size:11.5px;color:var(--ink-2)}
+.acts{display:flex;gap:6px;align-items:center}
+.tabs{display:flex;gap:2px;padding:0 16px}
+.tab{display:flex;align-items:baseline;gap:6px;padding:6px 10px;font-size:12.5px;font-weight:500;color:var(--ink-2);white-space:nowrap}
+.tab i{font-style:normal;font-family:var(--mono);font-size:10.5px;color:var(--ink-3)}
+.wbody{flex:1;padding:14px 16px 16px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px}
+.stack{display:flex;flex-direction:column;gap:12px;min-width:0}
+.btn{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 10px;font-weight:600;font-size:12px;line-height:1;white-space:nowrap}
+.btn.sm{height:22px;padding:0 8px;font-size:11.5px}
+.btns{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.kbd{display:inline-flex;align-items:center;height:16px;padding:0 4px;font:500 10.5px/1 var(--mono);white-space:nowrap}
+.st{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;line-height:1.2;white-space:nowrap}
+.st.good{color:var(--good)}.st.warn{color:var(--warn)}.st.bad{color:var(--bad)}.st.off{color:var(--off)}
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr))}
+.stat .k{font-size:11.5px;color:var(--ink-2)}
+.stat .v{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-height:26px}
+.stat .v .st{font-size:12px}
+.box h5{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin:0;font-size:12.5px;line-height:1.4;font-weight:700}
+.box h5 > span:last-child:not(.st){font-weight:400;font-size:11.5px;color:var(--ink-2)}
+.kv{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:27px;font-size:12.5px}
+.kv > span:first-child{display:flex;align-items:center;gap:7px;min-width:0}
+.bar{display:grid;grid-template-columns:88px minmax(0,1fr) 34px;align-items:center;gap:10px;min-height:21px;font-size:12px}
+.bar .tr{display:block;height:6px;background:var(--track)}
+.bar .fl{display:block;height:100%;background:var(--bar)}
+.bar .val{text-align:right;font-family:var(--mono);font-size:11.5px}
+.bar.low .fl{background:var(--warn)}
+.bar.low .val{color:var(--warn);font-weight:600}
+.alert{display:flex;gap:9px;align-items:flex-start;padding:9px 12px;font-size:12.5px;line-height:1.5}
+.alert .st{margin-top:2px}
+.code{font:400 12px/1.6 var(--mono);white-space:pre-wrap;word-break:break-word;padding:10px 12px;background:var(--code-bg);color:var(--code-fg)}
+.code .c-dim{color:var(--code-dim)}.code .c-ok,.drawer .c-ok{color:var(--code-ok)}.code .c-err,.drawer .c-err{color:var(--code-err)}
+.tree{margin:0;font:400 12px/1.7 var(--mono);white-space:pre;color:var(--ink-2);overflow:hidden}
+.tree b{font-weight:600;color:var(--ink)}
+.lbl{font-size:11.5px;font-weight:600;margin:0 0 4px}
+.lbl span{font-weight:400;color:var(--ink-2)}
+.inp{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:28px;padding:0 9px;font-size:12.5px}
+.field{margin-bottom:12px}
+.chks{display:grid;grid-template-columns:1fr 1fr;gap:1px 12px}
+.chk{display:flex;align-items:center;gap:8px;min-height:24px;font-size:12.5px}
+.sq{width:14px;height:14px;display:inline-flex;align-items:center;justify-content:center;flex:none}
+.drawer{background:var(--code-bg);color:var(--code-fg);padding:8px 16px 12px;font:400 11.5px/1.6 var(--mono)}
+.dbar{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:5px;font-family:var(--sans);font-size:12px;color:var(--code-dim)}
+.dbar > span{display:flex;align-items:center;gap:8px}
+.dbar b{color:var(--code-fg)}
+.dbar .st.good{color:var(--code-ok)}.dbar .st.bad{color:var(--code-err)}
+.m .dbar .kbd,.m .drawer .kbd{background:transparent;box-shadow:none;border:1px solid var(--code-dim);color:var(--code-dim)}
+.stage{position:relative}
+.scrim{position:absolute;inset:0;background:var(--scrim)}
+.pal{position:absolute;top:58px;left:50%;transform:translateX(-50%);width:620px;background:var(--surface);overflow:hidden}
+.pal-in{display:flex;align-items:center;gap:10px;height:44px;padding:0 14px;font-size:15px}
+.pal-in .q{flex:1}
+.caret{display:inline-block;width:1.5px;height:17px;background:var(--ink);vertical-align:-3px;margin-left:1px}
+.pal-g{padding:9px 14px 3px;font-size:11.5px;font-weight:600;color:var(--ink-2)}
+.pal-r{position:relative;display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:32px;padding:0 14px;font-size:12.5px}
+.pal-r .l{display:block;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pal-r .l svg{display:inline-block;vertical-align:-2px}
+.pal-r .l .st{margin-left:8px;vertical-align:1px}
+.code .tk{white-space:nowrap}
+.pal-r .hint{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--ink-2);white-space:nowrap}
+.pal-f{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:8px 14px;margin-top:6px;font-size:11.5px;color:var(--ink-2)}
+.empty{display:flex;flex-direction:column;justify-content:center;gap:12px;padding:26px 28px;min-height:262px}
+.empty h4{margin:0;font-size:18px;line-height:1.25;font-weight:700}
+.empty p{margin:0;max-width:46ch;color:var(--ink-2)}
+.fail{display:flex;flex-direction:column;gap:10px;padding:12px 14px 14px;min-height:220px}
+.fail p{margin:0;color:var(--ink-2)}
+.m.cmp{--rail-w:40px;--idx-w:190px;--shell-h:452px;font-size:12px}
+.m.cmp .win{min-width:570px}
+.m.cmp .tbar{grid-template-columns:1fr auto;height:30px;padding:0 10px}
+.m.cmp .tb-find{display:none}
+.m.cmp .tile{width:28px;height:28px;font-size:10px}
+.m.cmp .idx-head{padding:10px 9px 8px}
+.m.cmp .row{padding:2px 8px;min-height:37px;column-gap:7px}
+.m.cmp .row .n{font-size:12.5px}
+.m.cmp .row .meta{font-size:11px}
+.m.cmp .idx-foot{padding:7px 9px;white-space:nowrap}
+.m.cmp .idx-foot .btn svg{display:none}
+.m.cmp .whead{padding:10px 12px 6px;min-height:36px}
+.m.cmp .wtitle h4{font-size:15px;line-height:20px}
+.m.cmp .tabs{padding:0 8px;gap:0}
+.m.cmp .tab{padding:5px 7px;font-size:11.5px}
+.m.cmp .tab i{display:none}
+.m.cmp .wbody{padding:10px 12px 12px;gap:10px}
+.m.cmp .stats{grid-template-columns:1fr 1fr}
+.m.cmp .bar{grid-template-columns:80px minmax(0,1fr) 30px;gap:8px;min-height:19px;font-size:11.5px}
+.m.cmp .alert{padding:8px 10px;font-size:12px}
+.fa{--frame:#D1D8E2;--panel:#E5EAF0;--surface:#F9FAFC;--well:#DBE1E9;--ink:#1A1E25;--ink-2:#48515C;--ink-3:#5B6570;--line:#BCC6D3;--line-2:#747F8C;--key:#1A1E25;--key-fg:#F9FAFC;--good:#2C6A37;--warn:#855600;--bad:#B02A20;--bad-fg:#F9FAFC;--off:#5B6570;--bad-soft:#F8E2DD;--code-bg:#1A1E25;--code-fg:#E5EBF4;--code-dim:#93A0B0;--code-ok:#8FD49B;--code-err:#F59A8E;--key-hover:#3E4147;--key-press:#5D6066;--scrim:rgba(26,30,37,.42);--shadow:rgba(10,13,18,.30);--sans:"Asap",system-ui,-apple-system,"Segoe UI",sans-serif;--mono:"Inconsolata",ui-monospace,Menlo,Consolas,monospace}
+.fa[data-theme="dark"]{--frame:#0F1216;--panel:#15191E;--surface:#1D2229;--well:#11151B;--ink:#E5EBF4;--ink-2:#A1AEBE;--ink-3:#8895A5;--line:#2E353E;--line-2:#657180;--key:#E5EBF4;--key-fg:#15191E;--good:#84CC90;--warn:#E5B152;--bad:#F28B7F;--bad-fg:#15191E;--off:#8895A5;--bad-soft:#3A201B;--code-bg:#0B0E12;--code-fg:#E5EBF4;--code-dim:#93A0B0;--code-ok:#8FD49B;--code-err:#F59A8E;--key-hover:#C5CBD4;--key-press:#A9AFB7;--scrim:rgba(6,6,8,.6);--shadow:rgba(0,0,0,.50)}
+.fa{--r-win:8px;--g-w:36px;--win-line:var(--line-2);--track:var(--well);--bar:var(--ink);--pip-bg:var(--frame)}
+.fa .bm{color:var(--ink)}
+.fa .bm .t2{fill:var(--line-2)}
+.fa .tbar{background:var(--frame);border-bottom:1px solid var(--line-2);color:var(--ink)}
+.fa .tb-find{background:var(--panel);border:1px solid var(--ink-2);border-radius:3px;color:var(--ink-2)}
+.fa .tb-right{color:var(--ink-2)}
+.fa .rail{background:var(--frame);border-right:1px solid var(--line-2)}
+.fa .tile{border:1px solid var(--ink-2);border-radius:3px;background:var(--panel);color:var(--ink-2)}
+.fa .tile.on{background:var(--key);border-color:var(--key);color:var(--key-fg)}
+.fa .tile.add{border-style:dashed;background:transparent;font-size:15px;font-weight:400}
+.fa .tile.ico{border:0;background:transparent}
+.fa .tile.ico.on{background:var(--key);color:var(--key-fg)}
+.fa .idx{background:var(--panel);border-right:1px solid var(--line-2)}
+.fa .idx-head{border-bottom:1px solid var(--line)}
+.fa .filter{background:var(--surface);border:1px solid var(--line-2);border-radius:3px}
+.fa .mods{padding:8px 0 8px 8px}
+.fa .row,.fa.cmp .row{border:1px solid transparent;border-right:0;padding-left:14px}
+.fa .row.on{background:var(--surface);border-color:var(--line-2);margin-right:-1px}
+.fa .row.on::before,.fa .pal-r.on::before,.fa .trow.on::before,.fa .lrow.on::before{content:"";position:absolute;left:4px;top:50%;margin-top:-2.5px;width:5px;height:5px;background:var(--ink)}
+.fa .stamp{display:inline-block;width:34px;text-align:center;font:600 10.5px/16px var(--mono);letter-spacing:.03em;color:var(--ink-2);border:1px solid var(--line-2);border-radius:2px;vertical-align:1px}
+.fa .row.on .stamp{color:var(--ink);border-color:var(--ink)}
+.fa .idx-foot{border-top:1px solid var(--line)}
+.fa .work{background:var(--surface)}
+.fa .wtop{background:var(--panel);border-bottom:1px solid var(--line-2)}
+.fa .tabs{gap:0;margin-bottom:-1px}
+.fa .tab{border:1px solid transparent;border-bottom:0;padding:6px 12px 7px}
+.fa .tab.on{background:var(--surface);border-color:var(--line-2);color:var(--ink);font-weight:600}
+.fa .btn{border:1px solid var(--line-2);border-radius:3px;background:var(--surface);color:var(--ink)}
+.fa .btn.pri{background:var(--key);border-color:var(--key);color:var(--key-fg)}
+.fa .kbd{border:1px solid var(--line-2);border-radius:2px;background:var(--well);color:var(--ink-2)}
+.fa .btn .kbd{margin-left:2px}
+.fa .stats{border:1px solid var(--line-2);border-radius:3px}
+.fa .stat{padding:9px 12px 8px;border-left:1px solid var(--line)}
+.fa .stat:first-child{border-left:0}
+.fa .stat .big{font-size:19px;font-weight:600;line-height:26px}
+.fa.cmp .stat:nth-child(odd){border-left:0}
+.fa.cmp .stat:nth-child(n+3){border-top:1px solid var(--line)}
+.fa.cmp .stat .big{font-size:17px}
+.fa .box{border:1px solid var(--line-2);border-radius:3px;padding:0 12px 8px}
+.fa .box h5{padding:8px 0 7px;border-bottom:1px solid var(--line);margin-bottom:6px}
+.fa .kv{border-bottom:1px solid var(--line)}
+.fa .kv:last-child{border-bottom:0}
+.fa .alert{background:var(--bad-soft);border:1px solid var(--bad);border-radius:3px}
+.fa .code{border-radius:3px}
+.fa .inp{background:var(--surface);border:1px solid var(--line-2);border-radius:3px}
+.fa .field.opt{padding-top:8px;border-top:1px solid var(--line)}
+.fa .sq{border:1.5px solid var(--line-2);border-radius:2px;background:var(--surface)}
+.fa .sq.on{background:var(--key);border-color:var(--key);color:var(--key-fg)}
+.fa .drawer{border-top:1px solid var(--line-2)}
+.fa .pal{border:1px solid var(--ink);border-radius:4px;box-shadow:0 14px 34px var(--shadow)}
+.fa .pal-in{border-bottom:1px solid var(--line-2)}
+.fa .pal-r.on{background:var(--well);box-shadow:inset 0 1px 0 var(--line-2),inset 0 -1px 0 var(--line-2)}
+.fa .pal-f{border-top:1px solid var(--line);background:var(--panel)}
+.fa .wtitle h4{letter-spacing:-.005em}
+
+.m svg.ic{display:inline-block;vertical-align:-2px}
+.fa .is-focus{outline:2px solid var(--ink);outline-offset:1px}
+.fa .btn.is-hover,.fa .tile.is-hover{background:var(--well)}
+.fa .btn.is-press{background:var(--line)}
+.fa .btn.pri.is-hover{background:var(--key-hover);border-color:var(--key-hover)}
+.fa .btn.pri.is-press{background:var(--key-press);border-color:var(--key-press)}
+.fa .btn.is-dis{background:transparent;border-color:var(--line);color:var(--ink-3)}
+.fa .btn.pri.is-dis{background:var(--line);border-color:var(--line);color:var(--ink-2)}
+.fa .btn.danger{border-color:var(--bad);color:var(--bad)}
+.fa .btn.danger.fill{background:var(--bad);color:var(--bad-fg)}
+.fa .btn.danger.is-hover{background:var(--bad-soft)}
+.fa .btn.danger.fill.is-hover{background:var(--bad);box-shadow:inset 0 0 0 1px var(--bad-fg)}
+.fa .btn.danger.is-press{background:var(--bad-soft);box-shadow:inset 0 0 0 1px var(--bad)}
+.fa .btn.danger.fill.is-press{background:var(--bad);box-shadow:inset 0 0 0 2px var(--bad-fg)}
+.fa .btn.danger.is-dis,.fa .btn.danger.fill.is-dis{border-color:var(--line);color:var(--ink-3);background:transparent;box-shadow:none}
+.fa .btn.ghost{border-color:transparent;background:transparent}
+.fa .btn.ghost.is-hover{background:var(--well)}
+.fa .btn.icon{width:26px;padding:0;justify-content:center}
+.fa .btn.icon.sm{width:22px}
+.fa .inp.is-hover,.fa .filter.is-hover{border-color:var(--ink-2)}
+.fa .inp.is-focus,.fa .filter.is-focus{border-color:var(--ink);color:var(--ink)}
+.fa .inp.is-dis{background:var(--well);border-color:var(--line);color:var(--ink-2)}
+.fa .inp.is-err{border-color:var(--bad)}
+.fa .inp .ph,.fa .ph{color:var(--ink-3)}
+.fa .errmsg{display:flex;gap:6px;align-items:flex-start;margin-top:4px;font-size:11.5px;line-height:1.4;color:var(--bad)}
+.fa .errmsg .st{margin-top:1px}
+.fa .hint2{margin-top:4px;font-size:11.5px;line-height:1.4;color:var(--ink-2)}
+.fa .filter.has{color:var(--ink)}
+.fa .sq.is-hover{border-color:var(--ink)}
+.fa .sq.is-dis{background:var(--well);border-color:var(--line)}
+.fa .sq.on.is-dis{background:var(--line);border-color:var(--line);color:var(--ink-2)}
+.fa .chk.is-dis{color:var(--ink-3)}
+.fa .seg{display:inline-flex;padding:2px;gap:2px;background:var(--well);border:1px solid var(--line-2);border-radius:3px}
+.fa .seg span{display:inline-flex;align-items:center;height:20px;padding:0 10px;font-size:12px;font-weight:600;line-height:1;color:var(--ink-2);border:1px solid transparent;border-radius:2px;white-space:nowrap}
+.fa .seg span.on{background:var(--surface);border-color:var(--ink);color:var(--ink)}
+.fa .seg span.is-hover{color:var(--ink)}
+.fa .seg span.is-dis{color:var(--ink-2);text-decoration:line-through}
+.fa .tab.is-hover{color:var(--ink)}
+.fa .row.is-hover,.fa .trow.is-hover,.fa .lrow.is-hover,.fa .pal-r.is-hover{background:var(--well)}
+.fa .row.off .n{color:var(--ink-2);font-weight:500}
+.fa .row.off .stamp{border-style:dashed}
+.fa .row .marks{display:flex;align-items:center;gap:8px}
+.fa .row.c1{min-height:26px;padding-top:1px;padding-bottom:1px}
+.fa .row.c1 .meta{display:none}
+.fa .grp{padding:9px 12px 3px 14px;font-size:11.5px;font-weight:600;color:var(--ink-2);display:flex;justify-content:space-between}
+.fa .grp span{font-weight:400}
+.fa .idx-rt{display:flex;align-items:center;gap:6px;margin-top:3px;font-size:11.5px;color:var(--ink-2)}
+.st.up{color:var(--good)}.st.down{color:var(--bad)}.st.oos{color:var(--warn)}.st.unk{color:var(--off)}
+.fa .tbl{width:100%;font-size:12.5px}
+.fa .thead,.fa .trow{position:relative;display:grid;align-items:center;column-gap:12px;padding:0 10px 0 14px}
+.fa .thead{min-height:26px;font-size:11.5px;font-weight:600;color:var(--ink-2);border-bottom:1px solid var(--line-2)}
+.fa .thead .srt{color:var(--ink)}
+.fa .trow{min-height:28px;border-bottom:1px solid var(--line)}
+.fa .trow:last-child{border-bottom:0}
+.fa .trow.on,.fa .lrow.on{background:var(--well);box-shadow:inset 0 1px 0 var(--line-2),inset 0 -1px 0 var(--line-2)}
+.fa .trow.is-dis{color:var(--ink-3)}
+.fa .trow > *,.fa .thead > *{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fa .r{text-align:right}
+.fa .lrow{position:relative;display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:30px;padding:0 10px 0 14px;font-size:12.5px;border-bottom:1px solid var(--line)}
+.fa .lrow:last-child{border-bottom:0}
+.fa .box.flush{padding:0 0 0}
+.fa .lrow.dgrp{background:var(--panel);font-weight:600;border-top:1px solid var(--line-2)}
+.fa .lrow.dact{padding-left:26px}
+.fa .lrow.dact.on::before{left:14px}
+.fa .box.flush h5{padding:8px 12px 7px;margin-bottom:0}
+.fa .alert.warn{background:var(--surface);border-color:var(--warn)}
+.fa .alert.note{background:var(--panel);border-color:var(--line-2)}
+.fa .tip{display:inline-block;max-width:240px;padding:4px 8px;background:var(--key);color:var(--key-fg);font-size:11.5px;line-height:1.4;border-radius:3px}
+.fa .tip .kbd{background:transparent;border-color:var(--key-fg);color:var(--key-fg);margin-left:4px}
+.fa .toast{display:flex;gap:9px;align-items:flex-start;width:320px;padding:9px 10px 9px 12px;background:var(--surface);border:1px solid var(--ink);border-radius:4px;box-shadow:0 6px 16px var(--shadow);font-size:12.5px;line-height:1.45}
+.fa .toast .st{margin-top:2px}
+.fa .toast .tx{flex:1;min-width:0}
+.fa .toast .tx .btns{margin-top:6px}
+.fa .dlg{width:440px;background:var(--surface);border:1px solid var(--ink);border-radius:4px;box-shadow:0 14px 34px var(--shadow);overflow:hidden}
+.fa .dlg-b{padding:14px 16px 12px;display:flex;flex-direction:column;gap:8px}
+.fa .dlg-b h4{margin:0;font-size:15px;line-height:20px;font-weight:700}
+.fa .dlg-b p{margin:0;color:var(--ink-2);line-height:1.5}
+.fa .dlg-f{display:flex;justify-content:flex-end;gap:8px;padding:10px 16px;background:var(--panel);border-top:1px solid var(--line)}
+.fa .dlg-f .lft{margin-right:auto}
+.fa .over{position:absolute;inset:0;display:flex;align-items:flex-start;justify-content:center;padding-top:96px}
+.fa .scrollv{position:relative;width:10px;align-self:stretch;flex:none}
+.fa .scrollv i{position:absolute;left:2px;width:6px;border-radius:3px;background:var(--line-2)}
+.fa .scrollv i.is-hover{background:var(--ink-2)}
+.fa .scrollv i.is-press{background:var(--ink)}
+.fa .prog{display:block;height:6px;background:var(--well)}
+.fa .prog i{display:block;height:100%;background:var(--ink)}
+.fa .busy{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;color:var(--ink)}
+.fa .handle{height:7px;display:flex;align-items:center;justify-content:center;background:var(--surface);border-top:1px solid var(--line-2);cursor:ns-resize}
+.fa .handle i{display:block;width:28px;height:1px;background:var(--line-2)}
+.fa .handle.is-hover{border-top-color:var(--ink)}
+.fa .handle.is-hover i,.fa .handle.is-press i{background:var(--ink);height:2px}
+.fa .handle.is-press{border-top:2px solid var(--ink)}
+.fa .dcol{display:flex;align-items:center;justify-content:space-between;gap:10px;height:28px;padding:0 16px;background:var(--code-bg);color:var(--code-dim);font-size:12px;border-top:1px solid var(--line-2)}
+.fa .dcol b{color:var(--code-fg)}
+.fa .dcol > span{display:flex;align-items:center;gap:8px}
+.fa .dcol .st.good,.fa .drawer .st.good{color:var(--code-ok)}.fa .dcol .st.bad,.fa .drawer .st.bad{color:var(--code-err)}
+.fa .drawer .hl{background:rgba(147,160,176,.18)}
+.fa .dhist{display:grid;grid-template-columns:420px minmax(0,1fr);gap:14px}
+.dbar > span{white-space:nowrap}
+.fa .dhist .hr{display:flex;justify-content:space-between;gap:8px;padding:1px 6px;font-family:var(--sans);font-size:11.5px;color:var(--code-dim);white-space:nowrap}
+.fa .dhist .hr.on{background:rgba(147,160,176,.18);color:var(--code-fg)}
+.fa .dhist .hr span:first-child{overflow:hidden;text-overflow:ellipsis}
+.fa .gen{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0 14px}
+.fa .gen .gh{grid-column:1/-1;padding:8px 0 2px;font-size:11.5px;font-weight:600;color:var(--ink-2);border-bottom:1px solid var(--line)}
+.fa .gen .gi{position:relative;display:flex;align-items:baseline;justify-content:space-between;gap:8px;min-height:26px;padding:4px 8px 3px 14px;border-bottom:1px solid var(--line);font-size:12.5px}
+.fa .gen .gi span{font-family:var(--mono);font-size:11.5px;color:var(--ink-2);white-space:nowrap}
+.fa .gen .gi.on{background:var(--well)}
+.fa .gen .gi.on::before{content:"";position:absolute;left:4px;top:50%;margin-top:-2.5px;width:5px;height:5px;background:var(--ink)}
+.fa .newf{background:var(--well)}
+.fa .wintitle{display:flex;gap:0;align-items:stretch;height:100%;margin-right:-12px}
+.fa .wc{display:flex;align-items:center;justify-content:center;width:44px;height:34px;color:var(--ink)}
+.fa .mac{display:flex;gap:8px;align-items:center}
+.fa .mac i{width:12px;height:12px;border-radius:50%;border:1px solid var(--ink-2);display:block}
+.fa .crumb{font-size:11.5px;color:var(--ink-2)}
+.fa .setnav .row{min-height:32px}
+.fa .frm{max-width:560px}
+.fa .frm .field:last-child{margin-bottom:0}
+.fa .sub{font-size:12.5px;font-weight:700;margin:4px 0 8px;padding-bottom:6px;border-bottom:1px solid var(--line)}
+.fa .gnode{fill:var(--surface);stroke:var(--line-2)}
+.fa .gnode.me{fill:var(--panel);stroke:var(--ink);stroke-width:1.5}
+.fa .glink{fill:none;stroke:var(--ink-2);stroke-width:1}
+.fa .glink.bad{stroke:var(--bad);stroke-width:2}
+.fa .glink.sel{stroke:var(--ink);stroke-width:2}
+.fa .garrow{fill:var(--ink-2)}.fa .garrow.bad{fill:var(--bad)}
+.fa .gt{font:600 12px var(--sans);fill:var(--ink)}
+.fa .gt2{font:400 11px var(--mono);fill:var(--ink-2)}
+.fa .gt2.bad{fill:var(--bad);font-weight:600}
+.fa .gst{font:600 10.5px var(--mono);fill:var(--ink-2);letter-spacing:.03em}
+.fa .gcap{font:600 11.5px var(--sans);fill:var(--ink-2)}
+.fa .gbadmark{fill:var(--bad)}
+.fa .gx{stroke:var(--surface);stroke-width:1.3}
+.fa .chart .ax{stroke:var(--line);stroke-width:1}
+.fa .chart .ln{fill:none;stroke:var(--ink);stroke-width:1.5}
+.fa .chart .ln2{fill:none;stroke:var(--line-2);stroke-width:1}
+.fa .chart text{font:400 10.5px var(--mono);fill:var(--ink-2)}
+.fa .spark{display:block}
+.fa .spark path{fill:none;stroke:var(--ink-2);stroke-width:1.2}
+.m .nowrap{white-space:nowrap}
+.m .wrap{white-space:normal}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><symbol id="i-search" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M2.75 2.75h7.5v7.5h-7.5zM10.25 10.25l3.75 3.75"/></g></symbol><symbol id="i-settings" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M1.5 5h3.25M8.25 5h6.25M1.5 11h6.25M11.25 11h3.25"/><path d="M4.75 3.25h3.5v3.5h-3.5zM7.75 9.25h3.5v3.5h-3.5z"/></g></symbol><symbol id="i-generate" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M2.75 6V2.75H6M10 2.75h3.25V6M13.25 10v3.25H10M6 13.25H2.75V10M8 5.25v5.5M5.25 8h5.5"/></g></symbol><symbol id="i-run" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M4.75 3.1 12.9 8l-8.15 4.9z"/></g></symbol><symbol id="i-boundary" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M1.75 4.75h4v6.5h-4zM10.25 4.75h4v6.5h-4z"/><path d="M8 1.5v13" stroke-dasharray="2 1.6"/></g></symbol><symbol id="i-pulse" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M1.25 8.75h3l2-5.5 3 9.5 2-4h3.5"/></g></symbol><symbol id="i-metrics" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M3.5 13.5v-5M8 13.5v-11M12.5 13.5v-7.5" stroke-width="2.4"/></g></symbol><symbol id="i-migrate" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M1.75 3.75h6.5v8.5h-6.5zM1.75 8h6.5M10.25 8h4.5M12.5 5.5 15 8l-2.5 2.5"/></g></symbol><symbol id="i-test" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M2.25 4.75 3.9 6.4l2.6-3.2M8.75 4.9h5.5M2.25 10.75 3.9 12.4l2.6-3.2M8.75 10.9h5.5"/></g></symbol><symbol id="i-app" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><rect x="2.25" y="3.25" width="11.5" height="9.5"/><path d="M2.25 6.25h11.5"/></g></symbol><symbol id="i-module" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M2.25 3.75h7v2.5h4.5v3.5h-4.5v2.5h-7z"/></g></symbol><symbol id="i-x" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9"/></g></symbol><symbol id="i-chev-r" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M6 3.5 10.5 8 6 12.5"/></g></symbol><symbol id="i-chev-d" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M3.5 6 8 10.5 12.5 6"/></g></symbol><symbol id="i-chev-u" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M3.5 10 8 5.5 12.5 10"/></g></symbol><symbol id="i-folder" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M1.75 3.75h4.5l1.5 1.75h6.5v7.25H1.75z"/></g></symbol><symbol id="i-copy" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M5.25 5.25h8v8h-8zM2.75 10.75v-8h8"/></g></symbol><symbol id="i-stop" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M4 4h8v8H4z"/></g></symbol><symbol id="i-list" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M2.5 4h11M2.5 8h11M2.5 12h7"/></g></symbol><symbol id="i-open" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M6.5 3.25H2.75v10h10V9.5M9 2.75h4.25V7M13 3 7.5 8.5"/></g></symbol><symbol id="i-plus" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M8 3v10M3 8h10"/></g></symbol><symbol id="i-sync" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M2.5 5.5h10M10 3l2.5 2.5L10 8M13.5 10.5h-10M6 8l-2.5 2.5L6 13"/></g></symbol><symbol id="i-lock" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M4.25 7.25h7.5v6h-7.5zM5.75 7.25v-3h4.5v3"/></g></symbol><symbol id="i-clock" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M2.75 2.75h10.5v10.5H2.75zM8 5v3.25h2.75"/></g></symbol><symbol id="i-route" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M2.5 12.5h4v-9h7M11 1.5l2.5 2-2.5 2"/></g></symbol><symbol id="i-min" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M3.5 8h9"/></g></symbol><symbol id="i-max" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M3.75 3.75h8.5v8.5h-8.5z"/></g></symbol><symbol id="m-good" viewBox="0 0 12 12"><path d="M1.8 6.4 4.7 9.3 10.2 2.9" fill="none" stroke="currentColor" stroke-width="1.9"/></symbol><symbol id="m-warn" viewBox="0 0 12 12"><path d="M6 1 11.4 10.8H.6z" fill="currentColor"/></symbol><symbol id="m-bad" viewBox="0 0 12 12"><path fill-rule="evenodd" fill="currentColor" d="M1 1h10v10H1zM3.3 4.2 5.1 6 3.3 7.8l.9.9L6 6.9l1.8 1.8.9-.9L6.9 6l1.8-1.8-.9-.9L6 5.1 4.2 3.3z"/></symbol><symbol id="m-off" viewBox="0 0 12 12"><rect x="1.75" y="1.75" width="8.5" height="8.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M4 6h4" stroke="currentColor" stroke-width="1.5"/></symbol><symbol id="m-up" viewBox="0 0 12 12"><path d="M6 11V2.4M2.4 6 6 2.4 9.6 6" fill="none" stroke="currentColor" stroke-width="1.7"/></symbol><symbol id="m-down" viewBox="0 0 12 12"><path d="M6 1v8.6M2.4 6 6 9.6 9.6 6" fill="none" stroke="currentColor" stroke-width="1.7"/></symbol><symbol id="m-oos" viewBox="0 0 12 12"><path d="M3.6 1.5v9M8.4 1.5v9" fill="none" stroke="currentColor" stroke-width="2"/></symbol><symbol id="m-unk" viewBox="0 0 12 12"><path d="M1 6h2.2M4.9 6h2.2M8.8 6H11" fill="none" stroke="currentColor" stroke-width="1.8"/></symbol><symbol id="i-mark" viewBox="0 0 24 24"><path d="M3 4h9v4H8v8h4v4H3z" fill="currentColor"/><path class="t2" d="M21 4v16h-8v-5H9V9h4V4z"/></symbol><symbol id="i-chk" viewBox="0 0 10 10"><path d="M1.6 5.2 4 7.6 8.4 2.6" fill="none" stroke="currentColor" stroke-width="1.8"/></symbol><symbol id="i-dash" viewBox="0 0 10 10"><path d="M2 5h6" fill="none" stroke="currentColor" stroke-width="1.8"/></symbol></svg>
+<div class="doc">
+<nav class="top" aria-label="Specification pages"><a href="index.html">Overview</a><a href="architecture.html">Information architecture</a><a href="tokens.html" class="cur">Tokens</a><a href="components.html">Components</a><a href="screens-start.html">Screens: start</a><a href="screens-read.html">Screens: read</a><a href="screens-write.html">Screens: write</a><a href="screens-global.html">Screens: global</a><a href="flows.html">Flows and keyboard</a><a href="reference.html">Text, platform, fonts</a><a href="open.html">Open questions</a></nav>
+<h1>Tokens</h1>
+<p class="dim">Mortise design specification, section 3. Final values for Slate, light and dark.</p>
+
+<p>Section 3 of the specification. The values are final for phase 0. Neutrals are the Slate set chosen by the owner; state colours and the oak and walnut app icon are unchanged from the Mortise identity. Everything below is also in one JSON block at the end of the page, which is what the builders should copy from.</p><h2>3.1 Colour</h2><div class="tscroll"><table class="spec "><thead><tr><th>Token</th><th>Light</th><th>Dark</th><th>Role</th></tr></thead><tbody><tr><td><code>frame</code></td><td><span class="dot" style="background:#D1D8E2"></span>#D1D8E2</td><td><span class="dot" style="background:#0F1216"></span>#0F1216</td><td>Title bar and app rail</td></tr><tr><td><code>panel</code></td><td><span class="dot" style="background:#E5EAF0"></span>#E5EAF0</td><td><span class="dot" style="background:#15191E"></span>#15191E</td><td>Module index, workspace header strip, palette and dialog footer</td></tr><tr><td><code>surface</code></td><td><span class="dot" style="background:#F9FAFC"></span>#F9FAFC</td><td><span class="dot" style="background:#1D2229"></span>#1D2229</td><td>Workspace, selected row, inputs, overlays</td></tr><tr><td><code>well</code></td><td><span class="dot" style="background:#DBE1E9"></span>#DBE1E9</td><td><span class="dot" style="background:#11151B"></span>#11151B</td><td>Bar tracks, keycaps, hover fill, selected list row, segmented track</td></tr><tr><td><code>ink</code></td><td><span class="dot" style="background:#1A1E25"></span>#1A1E25</td><td><span class="dot" style="background:#E5EBF4"></span>#E5EBF4</td><td>Primary text, bars, peg, focus ring</td></tr><tr><td><code>ink-2</code></td><td><span class="dot" style="background:#48515C"></span>#48515C</td><td><span class="dot" style="background:#A1AEBE"></span>#A1AEBE</td><td>Secondary text, code stamps, outlines on frame</td></tr><tr><td><code>ink-3</code></td><td><span class="dot" style="background:#5B6570"></span>#5B6570</td><td><span class="dot" style="background:#8895A5"></span>#8895A5</td><td>Placeholders, tab key hints, disabled labels. Only on surface and panel</td></tr><tr><td><code>line</code></td><td><span class="dot" style="background:#BCC6D3"></span>#BCC6D3</td><td><span class="dot" style="background:#2E353E"></span>#2E353E</td><td>Hairlines inside a panel, pressed fill</td></tr><tr><td><code>line-2</code></td><td><span class="dot" style="background:#747F8C"></span>#747F8C</td><td><span class="dot" style="background:#657180"></span>#657180</td><td>Panel joints, control outlines on panel, surface and well</td></tr><tr><td><code>key</code></td><td><span class="dot" style="background:#1A1E25"></span>#1A1E25</td><td><span class="dot" style="background:#E5EBF4"></span>#E5EBF4</td><td>Primary button fill, tooltip fill</td></tr><tr><td><code>key-fg</code></td><td><span class="dot" style="background:#F9FAFC"></span>#F9FAFC</td><td><span class="dot" style="background:#15191E"></span>#15191E</td><td>Label on key</td></tr><tr><td><code>good</code></td><td><span class="dot" style="background:#2C6A37"></span>#2C6A37</td><td><span class="dot" style="background:#84CC90"></span>#84CC90</td><td>Good finding state, runtime Up</td></tr><tr><td><code>warn</code></td><td><span class="dot" style="background:#855600"></span>#855600</td><td><span class="dot" style="background:#E5B152"></span>#E5B152</td><td>Warning state, runtime Out of service</td></tr><tr><td><code>bad</code></td><td><span class="dot" style="background:#B02A20"></span>#B02A20</td><td><span class="dot" style="background:#F28B7F"></span>#F28B7F</td><td>Problem state, runtime Down, destructive button</td></tr><tr><td><code>bad-fg</code></td><td><span class="dot" style="background:#F9FAFC"></span>#F9FAFC</td><td><span class="dot" style="background:#15191E"></span>#15191E</td><td>Label on a filled destructive button</td></tr><tr><td><code>off</code></td><td><span class="dot" style="background:#5B6570"></span>#5B6570</td><td><span class="dot" style="background:#8895A5"></span>#8895A5</td><td>Module turned off, runtime Unknown. Same value as ink-3, same limits</td></tr><tr><td><code>bad-soft</code></td><td><span class="dot" style="background:#F8E2DD"></span>#F8E2DD</td><td><span class="dot" style="background:#3A201B"></span>#3A201B</td><td>Problem alert background</td></tr><tr><td><code>code-bg</code></td><td><span class="dot" style="background:#1A1E25"></span>#1A1E25</td><td><span class="dot" style="background:#0B0E12"></span>#0B0E12</td><td>Runner drawer and command preview</td></tr><tr><td><code>code-fg</code></td><td><span class="dot" style="background:#E5EBF4"></span>#E5EBF4</td><td><span class="dot" style="background:#E5EBF4"></span>#E5EBF4</td><td>Runner text</td></tr><tr><td><code>code-dim</code></td><td><span class="dot" style="background:#93A0B0"></span>#93A0B0</td><td><span class="dot" style="background:#93A0B0"></span>#93A0B0</td><td>Runner secondary text</td></tr><tr><td><code>code-ok</code></td><td><span class="dot" style="background:#8FD49B"></span>#8FD49B</td><td><span class="dot" style="background:#8FD49B"></span>#8FD49B</td><td>Runner success</td></tr><tr><td><code>code-err</code></td><td><span class="dot" style="background:#F59A8E"></span>#F59A8E</td><td><span class="dot" style="background:#F59A8E"></span>#F59A8E</td><td>Runner error</td></tr><tr><td><code>key-hover</code></td><td><span class="dot" style="background:#3E4147"></span>#3E4147</td><td><span class="dot" style="background:#C5CBD4"></span>#C5CBD4</td><td>Primary button, hover</td></tr><tr><td><code>key-press</code></td><td><span class="dot" style="background:#5D6066"></span>#5D6066</td><td><span class="dot" style="background:#A9AFB7"></span>#A9AFB7</td><td>Primary button, pressed</td></tr><tr><td><code>scrim</code></td><td>rgba(26,30,37,.42)</td><td>rgba(6,6,8,.6)</td><td>Layer under palette and dialog</td></tr><tr><td><code>shadow</code></td><td>rgba(10,13,18,.30)</td><td>rgba(0,0,0,.50)</td><td>Overlay shadow colour</td></tr></tbody></table></div><div class="pair"><div><div class="chips"><div class="chip" style="background:#D1D8E2;color:#000"><b>frame</b>#D1D8E2</div><div class="chip" style="background:#E5EAF0;color:#000"><b>panel</b>#E5EAF0</div><div class="chip" style="background:#F9FAFC;color:#000"><b>surface</b>#F9FAFC</div><div class="chip" style="background:#DBE1E9;color:#000"><b>well</b>#DBE1E9</div><div class="chip" style="background:#1A1E25;color:#fff"><b>ink</b>#1A1E25</div><div class="chip" style="background:#48515C;color:#fff"><b>ink-2</b>#48515C</div><div class="chip" style="background:#5B6570;color:#fff"><b>ink-3</b>#5B6570</div><div class="chip" style="background:#BCC6D3;color:#000"><b>line</b>#BCC6D3</div><div class="chip" style="background:#747F8C;color:#fff"><b>line-2</b>#747F8C</div><div class="chip" style="background:#1A1E25;color:#fff"><b>key</b>#1A1E25</div><div class="chip" style="background:#F9FAFC;color:#000"><b>key-fg</b>#F9FAFC</div><div class="chip" style="background:#2C6A37;color:#fff"><b>good</b>#2C6A37</div><div class="chip" style="background:#855600;color:#fff"><b>warn</b>#855600</div><div class="chip" style="background:#B02A20;color:#fff"><b>bad</b>#B02A20</div><div class="chip" style="background:#F9FAFC;color:#000"><b>bad-fg</b>#F9FAFC</div><div class="chip" style="background:#5B6570;color:#fff"><b>off</b>#5B6570</div><div class="chip" style="background:#F8E2DD;color:#000"><b>bad-soft</b>#F8E2DD</div><div class="chip" style="background:#1A1E25;color:#fff"><b>code-bg</b>#1A1E25</div><div class="chip" style="background:#E5EBF4;color:#000"><b>code-fg</b>#E5EBF4</div><div class="chip" style="background:#93A0B0;color:#000"><b>code-dim</b>#93A0B0</div><div class="chip" style="background:#8FD49B;color:#000"><b>code-ok</b>#8FD49B</div><div class="chip" style="background:#F59A8E;color:#000"><b>code-err</b>#F59A8E</div><div class="chip" style="background:#3E4147;color:#fff"><b>key-hover</b>#3E4147</div><div class="chip" style="background:#5D6066;color:#fff"><b>key-press</b>#5D6066</div></div></div><div><div class="chips"><div class="chip" style="background:#0F1216;color:#fff"><b>frame</b>#0F1216</div><div class="chip" style="background:#15191E;color:#fff"><b>panel</b>#15191E</div><div class="chip" style="background:#1D2229;color:#fff"><b>surface</b>#1D2229</div><div class="chip" style="background:#11151B;color:#fff"><b>well</b>#11151B</div><div class="chip" style="background:#E5EBF4;color:#000"><b>ink</b>#E5EBF4</div><div class="chip" style="background:#A1AEBE;color:#000"><b>ink-2</b>#A1AEBE</div><div class="chip" style="background:#8895A5;color:#fff"><b>ink-3</b>#8895A5</div><div class="chip" style="background:#2E353E;color:#fff"><b>line</b>#2E353E</div><div class="chip" style="background:#657180;color:#fff"><b>line-2</b>#657180</div><div class="chip" style="background:#E5EBF4;color:#000"><b>key</b>#E5EBF4</div><div class="chip" style="background:#15191E;color:#fff"><b>key-fg</b>#15191E</div><div class="chip" style="background:#84CC90;color:#000"><b>good</b>#84CC90</div><div class="chip" style="background:#E5B152;color:#000"><b>warn</b>#E5B152</div><div class="chip" style="background:#F28B7F;color:#000"><b>bad</b>#F28B7F</div><div class="chip" style="background:#15191E;color:#fff"><b>bad-fg</b>#15191E</div><div class="chip" style="background:#8895A5;color:#fff"><b>off</b>#8895A5</div><div class="chip" style="background:#3A201B;color:#fff"><b>bad-soft</b>#3A201B</div><div class="chip" style="background:#0B0E12;color:#fff"><b>code-bg</b>#0B0E12</div><div class="chip" style="background:#E5EBF4;color:#000"><b>code-fg</b>#E5EBF4</div><div class="chip" style="background:#93A0B0;color:#000"><b>code-dim</b>#93A0B0</div><div class="chip" style="background:#8FD49B;color:#000"><b>code-ok</b>#8FD49B</div><div class="chip" style="background:#F59A8E;color:#000"><b>code-err</b>#F59A8E</div><div class="chip" style="background:#C5CBD4;color:#000"><b>key-hover</b>#C5CBD4</div><div class="chip" style="background:#A9AFB7;color:#000"><b>key-press</b>#A9AFB7</div></div></div></div><p><strong>Four rules that come with the values.</strong></p><ol><li><code>ink-3</code> never on <code>frame</code>. It is 4.13 to 1 there in the light theme, under the 4.5 limit for text. <code>off</code> has the same value and the same rule.</li><li><code>warn</code> never as text on <code>frame</code>: 4.40 to 1 in the light theme.</li><li><code>line-2</code> never as the outline of a control on <code>frame</code>: 2.84 to 1 in the light theme, under the 3 to 1 limit for marks. Rail tiles and the search entry in the title bar use <code>ink-2</code> for their outline. This is a change to the identity stylesheet, made necessary by the Slate values. The owner accepted it on 22 November 2026; it is a rule, not a question.</li><li>Colour is only state. Good, warn, bad and off are the only chromatic values in the interface. <code>key-hover</code> and <code>key-press</code> are ink mixed 16% and 30% toward surface.</li></ol><h2>3.2 Contrast</h2><p>WCAG 2.x contrast ratio, computed from the hex values when this page was built. Text is held to 4.5 to 1 and marks, outlines and other shapes to 3 to 1, in both themes. Every pairing drawn anywhere in this specification is in the table; the page build stops if one falls under its minimum.</p><div class="tscroll"><table class="spec "><thead><tr><th>Kind</th><th>Pair</th><th>Light</th><th>Dark</th><th>Minimum</th><th>Used for</th></tr></thead><tbody><tr><td>Text</td><td><code>ink</code> on <code>surface</code></td><td>16.01</td><td>13.34</td><td>4.5 to 1</td><td>Primary text in the workspace</td></tr><tr><td>Text</td><td><code>ink</code> on <code>panel</code></td><td>13.82</td><td>14.73</td><td>4.5 to 1</td><td>Primary text in the index and header strip</td></tr><tr><td>Text</td><td><code>ink</code> on <code>frame</code></td><td>11.65</td><td>15.67</td><td>4.5 to 1</td><td>Brand in the title bar</td></tr><tr><td>Text</td><td><code>ink</code> on <code>well</code></td><td>12.70</td><td>15.28</td><td>4.5 to 1</td><td>Text on a hovered or selected list row</td></tr><tr><td>Text</td><td><code>ink</code> on <code>bad-soft</code></td><td>13.46</td><td>12.49</td><td>4.5 to 1</td><td>Text in a problem alert</td></tr><tr><td>Text</td><td><code>ink-2</code> on <code>surface</code></td><td>7.71</td><td>7.09</td><td>4.5 to 1</td><td>Secondary text</td></tr><tr><td>Text</td><td><code>ink-2</code> on <code>panel</code></td><td>6.66</td><td>7.83</td><td>4.5 to 1</td><td>Secondary text in the index, monogram on a rail tile</td></tr><tr><td>Text</td><td><code>ink-2</code> on <code>frame</code></td><td>5.61</td><td>8.33</td><td>4.5 to 1</td><td>App and runner in the title bar</td></tr><tr><td>Text</td><td><code>ink-2</code> on <code>well</code></td><td>6.12</td><td>8.12</td><td>4.5 to 1</td><td>Keycap label, disabled field text, unselected segment</td></tr><tr><td>Text</td><td><code>ink-2</code> on <code>line</code></td><td>4.66</td><td>5.49</td><td>4.5 to 1</td><td>Label of a disabled primary button</td></tr><tr><td>Text</td><td><code>ink-3</code> on <code>surface</code></td><td>5.68</td><td>5.25</td><td>4.5 to 1</td><td>Placeholder, disabled label</td></tr><tr><td>Text</td><td><code>ink-3</code> on <code>panel</code></td><td>4.90</td><td>5.79</td><td>4.5 to 1</td><td>Tab key hint, disabled label in the header strip</td></tr><tr><td>Text</td><td><code>key-fg</code> on <code>key</code></td><td>16.01</td><td>14.73</td><td>4.5 to 1</td><td>Primary button, selected rail tile, tooltip</td></tr><tr><td>Text</td><td><code>key-fg</code> on <code>key-hover</code></td><td>9.80</td><td>10.82</td><td>4.5 to 1</td><td>Primary button, hover</td></tr><tr><td>Text</td><td><code>key-fg</code> on <code>key-press</code></td><td>6.04</td><td>7.99</td><td>4.5 to 1</td><td>Primary button, pressed</td></tr><tr><td>Text</td><td><code>bad-fg</code> on <code>bad</code></td><td>6.29</td><td>7.38</td><td>4.5 to 1</td><td>Filled destructive button</td></tr><tr><td>Text</td><td><code>good</code> on <code>surface</code></td><td>6.24</td><td>8.39</td><td>4.5 to 1</td><td>Good and Up, word and mark</td></tr><tr><td>Text</td><td><code>good</code> on <code>panel</code></td><td>5.38</td><td>9.26</td><td>4.5 to 1</td><td>Good and Up in the index</td></tr><tr><td>Text</td><td><code>good</code> on <code>well</code></td><td>4.95</td><td>9.61</td><td>4.5 to 1</td><td>Good on a selected row</td></tr><tr><td>Text</td><td><code>warn</code> on <code>surface</code></td><td>6.04</td><td>8.18</td><td>4.5 to 1</td><td>Warning and Out of service</td></tr><tr><td>Text</td><td><code>warn</code> on <code>panel</code></td><td>5.22</td><td>9.03</td><td>4.5 to 1</td><td>Warning in the index</td></tr><tr><td>Text</td><td><code>warn</code> on <code>well</code></td><td>4.79</td><td>9.37</td><td>4.5 to 1</td><td>Warning on a selected row</td></tr><tr><td>Text</td><td><code>bad</code> on <code>surface</code></td><td>6.29</td><td>6.68</td><td>4.5 to 1</td><td>Problem and Down, destructive outline button</td></tr><tr><td>Text</td><td><code>bad</code> on <code>panel</code></td><td>5.43</td><td>7.38</td><td>4.5 to 1</td><td>Problem in the index</td></tr><tr><td>Text</td><td><code>bad</code> on <code>well</code></td><td>4.99</td><td>7.65</td><td>4.5 to 1</td><td>Problem on a selected row</td></tr><tr><td>Text</td><td><code>bad</code> on <code>bad-soft</code></td><td>5.29</td><td>6.26</td><td>4.5 to 1</td><td>Mark and outline of a problem alert</td></tr><tr><td>Text</td><td><code>off</code> on <code>surface</code></td><td>5.68</td><td>5.25</td><td>4.5 to 1</td><td>Off and Unknown</td></tr><tr><td>Text</td><td><code>off</code> on <code>panel</code></td><td>4.90</td><td>5.79</td><td>4.5 to 1</td><td>Off in the index</td></tr><tr><td>Text</td><td><code>code-fg</code> on <code>code-bg</code></td><td>13.95</td><td>16.14</td><td>4.5 to 1</td><td>Runner text</td></tr><tr><td>Text</td><td><code>code-dim</code> on <code>code-bg</code></td><td>6.28</td><td>7.27</td><td>4.5 to 1</td><td>Runner secondary</td></tr><tr><td>Text</td><td><code>code-ok</code> on <code>code-bg</code></td><td>9.60</td><td>11.11</td><td>4.5 to 1</td><td>Runner success</td></tr><tr><td>Text</td><td><code>code-err</code> on <code>code-bg</code></td><td>7.88</td><td>9.11</td><td>4.5 to 1</td><td>Runner error</td></tr><tr><td>Mark</td><td><code>line-2</code> on <code>surface</code></td><td>3.90</td><td>3.22</td><td>3 to 1</td><td>Outline of buttons, fields, checkboxes, boxes</td></tr><tr><td>Mark</td><td><code>line-2</code> on <code>panel</code></td><td>3.37</td><td>3.55</td><td>3 to 1</td><td>Outline of stamps and the filter field in the index</td></tr><tr><td>Mark</td><td><code>line-2</code> on <code>well</code></td><td>3.09</td><td>3.69</td><td>3 to 1</td><td>Outline of a keycap and of the segmented control</td></tr><tr><td>Mark</td><td><code>ink-2</code> on <code>frame</code></td><td>5.61</td><td>8.33</td><td>3 to 1</td><td>Outline of rail tiles and of the search entry</td></tr><tr><td>Mark</td><td><code>ink</code> on <code>surface</code></td><td>16.01</td><td>13.34</td><td>3 to 1</td><td>Focus ring, peg, selected stamp, bars</td></tr><tr><td>Mark</td><td><code>ink</code> on <code>panel</code></td><td>13.82</td><td>14.73</td><td>3 to 1</td><td>Focus ring and peg in the index</td></tr><tr><td>Mark</td><td><code>ink</code> on <code>frame</code></td><td>11.65</td><td>15.67</td><td>3 to 1</td><td>Focus ring on the rail, window control glyphs</td></tr><tr><td>Mark</td><td><code>ink</code> on <code>well</code></td><td>12.70</td><td>15.28</td><td>3 to 1</td><td>Peg on a selected list row</td></tr><tr><td>Mark</td><td><code>bad</code> on <code>frame</code></td><td>4.58</td><td>7.85</td><td>3 to 1</td><td>Problem pip on a rail tile</td></tr><tr><td>Mark</td><td><code>line-2</code> on <code>bad-soft</code></td><td>3.28</td><td>3.01</td><td>3 to 1</td><td>Not used. Listed because a stamp inside an alert would land here</td></tr></tbody></table></div><p><strong>Pairs that are not allowed.</strong> They fail, or pass too narrowly to rely on.</p><div class="tscroll"><table class="spec "><thead><tr><th>Pair</th><th>Light</th><th>Dark</th><th>Not allowed for</th></tr></thead><tbody><tr><td><code>ink-3</code> on <code>frame</code></td><td>4.13</td><td>6.16</td><td>Text. The rule found in review.</td></tr><tr><td><code>off</code> on <code>frame</code></td><td>4.13</td><td>6.16</td><td>Text. Same value as ink-3.</td></tr><tr><td><code>warn</code> on <code>frame</code></td><td>4.40</td><td>9.60</td><td>Text. A warning word never sits on the title bar or rail.</td></tr><tr><td><code>line-2</code> on <code>frame</code></td><td>2.84</td><td>3.78</td><td>Outline that carries meaning. On frame it is used only for the two joints between frame and panel.</td></tr><tr><td><code>ink-3</code> on <code>well</code></td><td>4.51</td><td>6.01</td><td>Passes by 0.01. Not used for running text; a selected or hovered row with disabled text switches that text to ink-2.</td></tr></tbody></table></div><p>The drawings on every page of this specification were also checked in a browser: for each piece of text, the colour it is drawn in against the fill behind it, in both themes. No text under 4.5 to 1 was found, and no <code>ink-3</code> on <code>frame</code>.</p><h2>3.3 Type</h2><p>Two families, both bundled: Asap for the interface, Inconsolata for commands, paths, runner output, module codes and key hints. Sizes are in logical pixels at 100% text size. Numbers are tabular everywhere.</p><div class="tscroll"><table class="spec "><thead><tr><th>Token</th><th>Size / line</th><th>Weight</th><th>Family</th><th>Used for</th></tr></thead><tbody><tr><td><code>title</code></td><td>18 / 22</td><td>700</td><td>Asap</td><td>Workspace title</td></tr><tr><td><code>figure</code></td><td>19 / 26</td><td>600</td><td>Asap</td><td>Stat figure</td></tr><tr><td><code>palette-input</code></td><td>15 / 20</td><td>400</td><td>Asap</td><td>Command palette query</td></tr><tr><td><code>overlay-title</code></td><td>15 / 20</td><td>700</td><td>Asap</td><td>Dialog title, runner title</td></tr><tr><td><code>row-name</code></td><td>13 / 17</td><td>600</td><td>Asap</td><td>Module name in the index, brand in the title bar</td></tr><tr><td><code>body</code></td><td>12.5 / 18</td><td>400</td><td>Asap</td><td>Body text, table cells, list lines</td></tr><tr><td><code>tab</code></td><td>12.5 / 18</td><td>500</td><td>Asap</td><td>Tab label, 600 when selected</td></tr><tr><td><code>control</code></td><td>12 / 12</td><td>600</td><td>Asap</td><td>Button label</td></tr><tr><td><code>label</code></td><td>11.5 / 15</td><td>600</td><td>Asap</td><td>Field label, state word, table header</td></tr><tr><td><code>secondary</code></td><td>11.5 / 15</td><td>400</td><td>Asap</td><td>Secondary text, hints</td></tr><tr><td><code>code</code></td><td>12 / 19</td><td>400</td><td>Inconsolata</td><td>Command preview, file tree</td></tr><tr><td><code>runner</code></td><td>11.5 / 18</td><td>400</td><td>Inconsolata</td><td>Runner output</td></tr><tr><td><code>stamp</code></td><td>10.5 / 16</td><td>600</td><td>Inconsolata</td><td>Module code stamp, letter spacing 0.03 em</td></tr><tr><td><code>keycap</code></td><td>10.5 / 16</td><td>500</td><td>Inconsolata</td><td>Key hint</td></tr></tbody></table></div><div class="pair"><div class="m fa" data-theme="light"><div style="background:var(--surface);padding:14px 16px;"><div style="display:flex;flex-direction:column;gap:6px"><div style="font-size:18px;font-weight:700;line-height:22px">Checkout <span class="stamp">CHK</span></div><div style="font-size:19px;font-weight:600;line-height:26px">41,212 lines of PHP, 71% covered</div><div style="font-size:13px;font-weight:600">Notifications <span style="font-weight:400;font-size:11.5px;color:var(--ink-2)">38 files, 39% covered</span></div><div>3 files in Checkout read Modules\Billing\Models\Invoice directly.</div><div class="mono" style="font-size:12px">php artisan module:make-model PaymentIntent Billing --migration --policy</div><div style="color:var(--ink-2);font-size:11.5px">ABCDEFGHIJKLMNOPQRSTUVWXYZ abcdefghijklmnopqrstuvwxyz 0123456789</div></div></div></div><div class="m fa" data-theme="dark"><div style="background:var(--surface);padding:14px 16px;"><div style="display:flex;flex-direction:column;gap:6px"><div style="font-size:18px;font-weight:700;line-height:22px">Checkout <span class="stamp">CHK</span></div><div style="font-size:19px;font-weight:600;line-height:26px">41,212 lines of PHP, 71% covered</div><div style="font-size:13px;font-weight:600">Notifications <span style="font-weight:400;font-size:11.5px;color:var(--ink-2)">38 files, 39% covered</span></div><div>3 files in Checkout read Modules\Billing\Models\Invoice directly.</div><div class="mono" style="font-size:12px">php artisan module:make-model PaymentIntent Billing --migration --policy</div><div style="color:var(--ink-2);font-size:11.5px">ABCDEFGHIJKLMNOPQRSTUVWXYZ abcdefghijklmnopqrstuvwxyz 0123456789</div></div></div></div></div><p>Text size in Settings scales every type token and every size token by the same factor: 100, 110, 125 or 150%. Strokes stay 1 px.</p><h2>3.4 Spacing and size</h2><p>The unit is 4 px. Spacing steps: 2, 4, 6, 8, 12, 16, 24, 28 px. Panel padding is 12 px in the index and 16 px in the workspace; gaps between boxes are 12 px; gaps between controls are 8 px.</p><div class="pair"><div><div class="tscroll"><table class="spec "><thead><tr><th>Token</th><th>px</th><th>What</th></tr></thead><tbody><tr><td><code>titlebar-h</code></td><td>34</td><td>Title bar height</td></tr><tr><td><code>rail-w</code></td><td>52</td><td>App rail width</td></tr><tr><td><code>rail-tile</code></td><td>34</td><td>Rail tile, square</td></tr><tr><td><code>index-w</code></td><td>264</td><td>Module index width, default</td></tr><tr><td><code>index-w-min</code></td><td>220</td><td>Module index, narrowest by dragging</td></tr><tr><td><code>index-w-max</code></td><td>320</td><td>Module index, widest by dragging</td></tr><tr><td><code>index-strip-w</code></td><td>76</td><td>Module index collapsed to its strip</td></tr><tr><td><code>index-row-h</code></td><td>40</td><td>Index row, two lines</td></tr><tr><td><code>index-row-compact-h</code></td><td>26</td><td>Index row, one line</td></tr><tr><td><code>control-h</code></td><td>26</td><td>Button</td></tr><tr><td><code>control-sm-h</code></td><td>22</td><td>Small button</td></tr><tr><td><code>field-h</code></td><td>28</td><td>Text field</td></tr><tr><td><code>tab-h</code></td><td>31</td><td>Tab</td></tr><tr><td><code>table-head-h</code></td><td>26</td><td>Table header</td></tr><tr><td><code>table-row-h</code></td><td>28</td><td>Table row</td></tr><tr><td><code>list-line-h</code></td><td>27</td><td>Line in a box</td></tr><tr><td><code>palette-w</code></td><td>620</td><td>Palette width</td></tr><tr><td><code>palette-input-h</code></td><td>44</td><td>Palette query row</td></tr><tr><td><code>palette-row-h</code></td><td>32</td><td>Palette result row</td></tr><tr><td><code>dialog-w</code></td><td>440</td><td>Dialog width</td></tr></tbody></table></div></div><div><div class="tscroll"><table class="spec "><thead><tr><th>Token</th><th>px</th><th>What</th></tr></thead><tbody><tr><td><code>toast-w</code></td><td>320</td><td>Toast width</td></tr><tr><td><code>tooltip-max-w</code></td><td>240</td><td>Tooltip, widest</td></tr><tr><td><code>drawer-h-default</code></td><td>200</td><td>Runner drawer, default height</td></tr><tr><td><code>drawer-h-min</code></td><td>120</td><td>Runner drawer, lowest</td></tr><tr><td><code>drawer-collapsed-h</code></td><td>28</td><td>Runner drawer collapsed</td></tr><tr><td><code>scrollbar-w</code></td><td>10</td><td>Scrollbar track</td></tr><tr><td><code>scrollbar-thumb-w</code></td><td>6</td><td>Scrollbar thumb</td></tr><tr><td><code>scrollbar-thumb-min</code></td><td>24</td><td>Scrollbar thumb, shortest</td></tr><tr><td><code>state-mark</code></td><td>12</td><td>State mark, square</td></tr><tr><td><code>stamp-w</code></td><td>34</td><td>Code stamp width</td></tr><tr><td><code>stamp-h</code></td><td>18</td><td>Code stamp height</td></tr><tr><td><code>checkbox</code></td><td>14</td><td>Checkbox, square</td></tr><tr><td><code>icon</code></td><td>16</td><td>Icon, square</td></tr><tr><td><code>icon-in-control</code></td><td>13</td><td>Icon inside a control</td></tr><tr><td><code>peg</code></td><td>5</td><td>Peg, square</td></tr><tr><td><code>bar-h</code></td><td>6</td><td>Bar and progress height</td></tr><tr><td><code>window-min-w</code></td><td>960</td><td>Window, narrowest</td></tr><tr><td><code>window-min-h</code></td><td>600</td><td>Window, lowest</td></tr><tr><td><code>hit-min</code></td><td>24</td><td>Pointer target, smallest in either direction</td></tr></tbody></table></div></div></div><h2>3.5 Radius, stroke, elevation</h2><div class="tscroll"><table class="spec "><thead><tr><th>Token</th><th>Value</th><th>Used for</th></tr></thead><tbody><tr><td><code>radius.joint</code></td><td>0 px</td><td>Anything that forms a joint: selected index row, selected tab, selected list row</td></tr><tr><td><code>radius.stamp</code></td><td>2 px</td><td>Code stamp, keycap, checkbox, segment</td></tr><tr><td><code>radius.control</code></td><td>3 px</td><td>Button, field, box, alert, rail tile, tooltip</td></tr><tr><td><code>radius.overlay</code></td><td>4 px</td><td>Palette, dialog, toast</td></tr><tr><td><code>radius.window</code></td><td>8 px</td><td>The window, where the platform lets the app draw it</td></tr><tr><td><code>stroke.hairline</code></td><td>1 px, <code>line</code></td><td>Lines inside a panel or box</td></tr><tr><td><code>stroke.joint</code></td><td>1 px, <code>line-2</code></td><td>Where two panels meet, and around controls</td></tr><tr><td><code>stroke.icon</code></td><td>1.5 px</td><td>Icons, on a 16 px grid, straight and 45 degree strokes, square ends, mitred corners</td></tr><tr><td><code>stroke.checkbox</code></td><td>1.5 px</td><td>Checkbox outline</td></tr><tr><td><code>stroke.focus-ring</code></td><td>2 px, <code>ink</code>, 1 px outside the control</td><td>Keyboard focus, on every focusable thing</td></tr><tr><td><code>stroke.problem-link</code></td><td>2 px, <code>bad</code></td><td>A link in the graph that breaks a rule</td></tr><tr><td><code>elevation.none</code></td><td>no shadow</td><td>Workbench, panels, boxes. No shadow.</td></tr><tr><td><code>elevation.overlay</code></td><td>x 0, y 14, blur 34</td><td>Palette and dialog. 1 px ink outline, shadow x 0, y 14, blur 34, colour shadow.</td></tr><tr><td><code>elevation.toast</code></td><td>x 0, y 6, blur 16</td><td>Toast. 1 px ink outline, shadow x 0, y 6, blur 16, colour shadow.</td></tr><tr><td><code>elevation.tooltip</code></td><td>no shadow</td><td>Tooltip. Key fill, no outline, no shadow.</td></tr></tbody></table></div><p>For egui: flat fills, 1 px strokes and rounded rectangles only. The two shadows are the only blurred shapes; if a blurred shadow is costly, a 2 px ink outline replaces it. Nothing uses backdrop blur or gradients.</p><h2>3.6 Motion</h2><div class="tscroll"><table class="spec "><thead><tr><th>Token</th><th>Value</th></tr></thead><tbody><tr><td><code>motion.selection</code></td><td>0 ms. Row, tab, palette row and theme change redraw in the same frame.</td></tr><tr><td><code>motion.overlay-open</code></td><td>0 ms. Palette, dialog and tooltip appear and go without a transition.</td></tr><tr><td><code>motion.drawer</code></td><td>120 ms, ease out. Height of the runner drawer.</td></tr><tr><td><code>motion.created-file</code></td><td>600 ms, linear. Well fill behind a new file fades to none.</td></tr><tr><td><code>motion.toast-in</code></td><td>120 ms, ease out. Slides 8 px up.</td></tr><tr><td><code>motion.toast-out</code></td><td>160 ms, ease in. Fades.</td></tr><tr><td><code>motion.toast-dwell</code></td><td>4000 ms for done and note. A failed toast stays until closed.</td></tr><tr><td><code>motion.tooltip-delay</code></td><td>500 ms after the pointer rests. 0 ms on keyboard focus.</td></tr><tr><td><code>motion.reduced</code></td><td>With reduced motion every duration above is 0 ms, except toast-dwell and tooltip-delay.</td></tr></tbody></table></div><p>Nothing moves unless the user or a command caused it. No hover transitions, no loops, no spinner: a running command shows elapsed time counting, and work of known size shows a bar.</p><h2>3.7 All tokens as JSON</h2><p>One block, every value above. Colours with alpha are kept apart from the solid ones. Sizes are logical pixels; durations are milliseconds.</p><pre class="json" id="tokens-json">{
+ &quot;name&quot;: &quot;Mortise, Slate&quot;,
+ &quot;version&quot;: &quot;phase-0&quot;,
+ &quot;color&quot;: {
+  &quot;frame&quot;: {
+   &quot;light&quot;: &quot;#D1D8E2&quot;,
+   &quot;dark&quot;: &quot;#0F1216&quot;
+  },
+  &quot;panel&quot;: {
+   &quot;light&quot;: &quot;#E5EAF0&quot;,
+   &quot;dark&quot;: &quot;#15191E&quot;
+  },
+  &quot;surface&quot;: {
+   &quot;light&quot;: &quot;#F9FAFC&quot;,
+   &quot;dark&quot;: &quot;#1D2229&quot;
+  },
+  &quot;well&quot;: {
+   &quot;light&quot;: &quot;#DBE1E9&quot;,
+   &quot;dark&quot;: &quot;#11151B&quot;
+  },
+  &quot;ink&quot;: {
+   &quot;light&quot;: &quot;#1A1E25&quot;,
+   &quot;dark&quot;: &quot;#E5EBF4&quot;
+  },
+  &quot;ink-2&quot;: {
+   &quot;light&quot;: &quot;#48515C&quot;,
+   &quot;dark&quot;: &quot;#A1AEBE&quot;
+  },
+  &quot;ink-3&quot;: {
+   &quot;light&quot;: &quot;#5B6570&quot;,
+   &quot;dark&quot;: &quot;#8895A5&quot;
+  },
+  &quot;line&quot;: {
+   &quot;light&quot;: &quot;#BCC6D3&quot;,
+   &quot;dark&quot;: &quot;#2E353E&quot;
+  },
+  &quot;line-2&quot;: {
+   &quot;light&quot;: &quot;#747F8C&quot;,
+   &quot;dark&quot;: &quot;#657180&quot;
+  },
+  &quot;key&quot;: {
+   &quot;light&quot;: &quot;#1A1E25&quot;,
+   &quot;dark&quot;: &quot;#E5EBF4&quot;
+  },
+  &quot;key-fg&quot;: {
+   &quot;light&quot;: &quot;#F9FAFC&quot;,
+   &quot;dark&quot;: &quot;#15191E&quot;
+  },
+  &quot;good&quot;: {
+   &quot;light&quot;: &quot;#2C6A37&quot;,
+   &quot;dark&quot;: &quot;#84CC90&quot;
+  },
+  &quot;warn&quot;: {
+   &quot;light&quot;: &quot;#855600&quot;,
+   &quot;dark&quot;: &quot;#E5B152&quot;
+  },
+  &quot;bad&quot;: {
+   &quot;light&quot;: &quot;#B02A20&quot;,
+   &quot;dark&quot;: &quot;#F28B7F&quot;
+  },
+  &quot;bad-fg&quot;: {
+   &quot;light&quot;: &quot;#F9FAFC&quot;,
+   &quot;dark&quot;: &quot;#15191E&quot;
+  },
+  &quot;off&quot;: {
+   &quot;light&quot;: &quot;#5B6570&quot;,
+   &quot;dark&quot;: &quot;#8895A5&quot;
+  },
+  &quot;bad-soft&quot;: {
+   &quot;light&quot;: &quot;#F8E2DD&quot;,
+   &quot;dark&quot;: &quot;#3A201B&quot;
+  },
+  &quot;code-bg&quot;: {
+   &quot;light&quot;: &quot;#1A1E25&quot;,
+   &quot;dark&quot;: &quot;#0B0E12&quot;
+  },
+  &quot;code-fg&quot;: {
+   &quot;light&quot;: &quot;#E5EBF4&quot;,
+   &quot;dark&quot;: &quot;#E5EBF4&quot;
+  },
+  &quot;code-dim&quot;: {
+   &quot;light&quot;: &quot;#93A0B0&quot;,
+   &quot;dark&quot;: &quot;#93A0B0&quot;
+  },
+  &quot;code-ok&quot;: {
+   &quot;light&quot;: &quot;#8FD49B&quot;,
+   &quot;dark&quot;: &quot;#8FD49B&quot;
+  },
+  &quot;code-err&quot;: {
+   &quot;light&quot;: &quot;#F59A8E&quot;,
+   &quot;dark&quot;: &quot;#F59A8E&quot;
+  },
+  &quot;key-hover&quot;: {
+   &quot;light&quot;: &quot;#3E4147&quot;,
+   &quot;dark&quot;: &quot;#C5CBD4&quot;
+  },
+  &quot;key-press&quot;: {
+   &quot;light&quot;: &quot;#5D6066&quot;,
+   &quot;dark&quot;: &quot;#A9AFB7&quot;
+  }
+ },
+ &quot;colorAlpha&quot;: {
+  &quot;scrim&quot;: {
+   &quot;light&quot;: &quot;rgba(26,30,37,.42)&quot;,
+   &quot;dark&quot;: &quot;rgba(6,6,8,.6)&quot;
+  },
+  &quot;shadow&quot;: {
+   &quot;light&quot;: &quot;rgba(10,13,18,.30)&quot;,
+   &quot;dark&quot;: &quot;rgba(0,0,0,.50)&quot;
+  }
+ },
+ &quot;font&quot;: {
+  &quot;sans&quot;: &quot;Asap&quot;,
+  &quot;mono&quot;: &quot;Inconsolata&quot;,
+  &quot;weights&quot;: {
+   &quot;sans&quot;: [
+    400,
+    500,
+    600,
+    700
+   ],
+   &quot;mono&quot;: [
+    400,
+    500,
+    600
+   ]
+  }
+ },
+ &quot;type&quot;: {
+  &quot;title&quot;: {
+   &quot;size&quot;: 18,
+   &quot;line&quot;: 22,
+   &quot;weight&quot;: 700,
+   &quot;family&quot;: &quot;sans&quot;
+  },
+  &quot;figure&quot;: {
+   &quot;size&quot;: 19,
+   &quot;line&quot;: 26,
+   &quot;weight&quot;: 600,
+   &quot;family&quot;: &quot;sans&quot;
+  },
+  &quot;palette-input&quot;: {
+   &quot;size&quot;: 15,
+   &quot;line&quot;: 20,
+   &quot;weight&quot;: 400,
+   &quot;family&quot;: &quot;sans&quot;
+  },
+  &quot;overlay-title&quot;: {
+   &quot;size&quot;: 15,
+   &quot;line&quot;: 20,
+   &quot;weight&quot;: 700,
+   &quot;family&quot;: &quot;sans&quot;
+  },
+  &quot;row-name&quot;: {
+   &quot;size&quot;: 13,
+   &quot;line&quot;: 17,
+   &quot;weight&quot;: 600,
+   &quot;family&quot;: &quot;sans&quot;
+  },
+  &quot;body&quot;: {
+   &quot;size&quot;: 12.5,
+   &quot;line&quot;: 18,
+   &quot;weight&quot;: 400,
+   &quot;family&quot;: &quot;sans&quot;
+  },
+  &quot;tab&quot;: {
+   &quot;size&quot;: 12.5,
+   &quot;line&quot;: 18,
+   &quot;weight&quot;: 500,
+   &quot;family&quot;: &quot;sans&quot;
+  },
+  &quot;control&quot;: {
+   &quot;size&quot;: 12,
+   &quot;line&quot;: 12,
+   &quot;weight&quot;: 600,
+   &quot;family&quot;: &quot;sans&quot;
+  },
+  &quot;label&quot;: {
+   &quot;size&quot;: 11.5,
+   &quot;line&quot;: 15,
+   &quot;weight&quot;: 600,
+   &quot;family&quot;: &quot;sans&quot;
+  },
+  &quot;secondary&quot;: {
+   &quot;size&quot;: 11.5,
+   &quot;line&quot;: 15,
+   &quot;weight&quot;: 400,
+   &quot;family&quot;: &quot;sans&quot;
+  },
+  &quot;code&quot;: {
+   &quot;size&quot;: 12,
+   &quot;line&quot;: 19,
+   &quot;weight&quot;: 400,
+   &quot;family&quot;: &quot;mono&quot;
+  },
+  &quot;runner&quot;: {
+   &quot;size&quot;: 11.5,
+   &quot;line&quot;: 18,
+   &quot;weight&quot;: 400,
+   &quot;family&quot;: &quot;mono&quot;
+  },
+  &quot;stamp&quot;: {
+   &quot;size&quot;: 10.5,
+   &quot;line&quot;: 16,
+   &quot;weight&quot;: 600,
+   &quot;family&quot;: &quot;mono&quot;
+  },
+  &quot;keycap&quot;: {
+   &quot;size&quot;: 10.5,
+   &quot;line&quot;: 16,
+   &quot;weight&quot;: 500,
+   &quot;family&quot;: &quot;mono&quot;
+  }
+ },
+ &quot;space&quot;: [
+  2,
+  4,
+  6,
+  8,
+  12,
+  16,
+  24,
+  28
+ ],
+ &quot;size&quot;: {
+  &quot;titlebar-h&quot;: 34,
+  &quot;rail-w&quot;: 52,
+  &quot;rail-tile&quot;: 34,
+  &quot;index-w&quot;: 264,
+  &quot;index-w-min&quot;: 220,
+  &quot;index-w-max&quot;: 320,
+  &quot;index-strip-w&quot;: 76,
+  &quot;index-row-h&quot;: 40,
+  &quot;index-row-compact-h&quot;: 26,
+  &quot;control-h&quot;: 26,
+  &quot;control-sm-h&quot;: 22,
+  &quot;field-h&quot;: 28,
+  &quot;tab-h&quot;: 31,
+  &quot;table-head-h&quot;: 26,
+  &quot;table-row-h&quot;: 28,
+  &quot;list-line-h&quot;: 27,
+  &quot;palette-w&quot;: 620,
+  &quot;palette-input-h&quot;: 44,
+  &quot;palette-row-h&quot;: 32,
+  &quot;dialog-w&quot;: 440,
+  &quot;toast-w&quot;: 320,
+  &quot;tooltip-max-w&quot;: 240,
+  &quot;drawer-h-default&quot;: 200,
+  &quot;drawer-h-min&quot;: 120,
+  &quot;drawer-collapsed-h&quot;: 28,
+  &quot;scrollbar-w&quot;: 10,
+  &quot;scrollbar-thumb-w&quot;: 6,
+  &quot;scrollbar-thumb-min&quot;: 24,
+  &quot;state-mark&quot;: 12,
+  &quot;stamp-w&quot;: 34,
+  &quot;stamp-h&quot;: 18,
+  &quot;checkbox&quot;: 14,
+  &quot;icon&quot;: 16,
+  &quot;icon-in-control&quot;: 13,
+  &quot;peg&quot;: 5,
+  &quot;bar-h&quot;: 6,
+  &quot;window-min-w&quot;: 960,
+  &quot;window-min-h&quot;: 600,
+  &quot;hit-min&quot;: 24
+ },
+ &quot;radius&quot;: {
+  &quot;joint&quot;: 0,
+  &quot;stamp&quot;: 2,
+  &quot;control&quot;: 3,
+  &quot;overlay&quot;: 4,
+  &quot;window&quot;: 8
+ },
+ &quot;stroke&quot;: {
+  &quot;hairline&quot;: 1,
+  &quot;joint&quot;: 1,
+  &quot;icon&quot;: 1.5,
+  &quot;checkbox&quot;: 1.5,
+  &quot;focus-ring&quot;: 2,
+  &quot;focus-offset&quot;: 1,
+  &quot;problem-link&quot;: 2
+ },
+ &quot;elevation&quot;: {
+  &quot;overlay&quot;: {
+   &quot;x&quot;: 0,
+   &quot;y&quot;: 14,
+   &quot;blur&quot;: 34,
+   &quot;color&quot;: &quot;shadow&quot;,
+   &quot;outline&quot;: &quot;ink&quot;
+  },
+  &quot;toast&quot;: {
+   &quot;x&quot;: 0,
+   &quot;y&quot;: 6,
+   &quot;blur&quot;: 16,
+   &quot;color&quot;: &quot;shadow&quot;,
+   &quot;outline&quot;: &quot;ink&quot;
+  }
+ },
+ &quot;motionMs&quot;: {
+  &quot;selection&quot;: 0,
+  &quot;overlayOpen&quot;: 0,
+  &quot;drawer&quot;: 120,
+  &quot;createdFile&quot;: 600,
+  &quot;toastIn&quot;: 120,
+  &quot;toastOut&quot;: 160,
+  &quot;toastDwell&quot;: 4000,
+  &quot;tooltipDelay&quot;: 500
+ },
+ &quot;rules&quot;: [
+  &quot;ink-3 and off: only on surface and panel, never on frame or well&quot;,
+  &quot;warn as text: never on frame&quot;,
+  &quot;line-2 as a control outline: never on frame, use ink-2 there&quot;,
+  &quot;colour only for state: good, warn, bad, off&quot;
+ ]
+}</pre>
+</div>
+
+</body>
+</html>

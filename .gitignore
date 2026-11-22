@@ -1,0 +1,6 @@
+/target
+.DS_Store
+node_modules/
+*.new.png
+*.diff.png
+*.old.png

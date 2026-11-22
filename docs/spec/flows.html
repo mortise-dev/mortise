@@ -1,0 +1,395 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flows and keyboard | Mortise design specification</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Asap:wght@400;500;600;700&family=Inconsolata:wght@400;500;600&display=swap">
+<style>
+:root{color-scheme:dark}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:#000;color:#fff}
+body{font:15px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased}
+.doc{max-width:1320px;margin:0 auto;padding:20px 20px 80px}
+nav.top{display:flex;flex-wrap:wrap;gap:6px 18px;padding-bottom:12px;border-bottom:1px solid #2a2a2a;margin-bottom:22px;font-size:14px}
+nav.top a{color:#a8a8a8;text-decoration:none}
+nav.top a:hover{color:#fff;text-decoration:underline}
+nav.top a.cur{color:#fff;font-weight:600}
+.doc h1{font-size:26px;line-height:1.2;font-weight:650;margin:0 0 8px}
+.doc h2{font-size:19px;line-height:1.3;font-weight:650;margin:40px 0 10px;padding-top:16px;border-top:1px solid #2a2a2a}
+.doc h3{font-size:15px;line-height:1.35;font-weight:650;margin:26px 0 8px}
+.doc h3 .sid,.doc a.sid{font:600 12.5px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:#a8a8a8;text-decoration:none}
+.doc h3 .sid{margin-right:8px}
+.doc a.sid{text-decoration:underline;text-decoration-color:#555;text-underline-offset:3px}
+.doc p,.doc li{max-width:86ch}
+.doc p{margin:0 0 10px}
+.doc ul,.doc ol{padding-left:20px;margin:0 0 12px}
+.doc li{margin-bottom:4px}
+.doc a{color:#fff}
+.dim{color:#a8a8a8}
+.doc code{font:13px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:#151515;border:1px solid #262626;border-radius:3px;padding:0 4px}
+.doc pre.json{font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:#0d0d0d;border:1px solid #262626;padding:12px;overflow:auto;max-height:420px;margin:8px 0 16px}
+table.spec{width:100%;border-collapse:collapse;font-size:14px;margin:8px 0 16px}
+table.spec th,table.spec td{text-align:left;vertical-align:top;padding:7px 14px 7px 0;border-bottom:1px solid #2a2a2a}
+table.spec th{color:#a8a8a8;font-weight:500}
+table.spec td.num{font-variant-numeric:tabular-nums;white-space:nowrap}
+table.spec code{white-space:nowrap}
+table.spec td.fail{color:#ff8a80;font-weight:600}
+.tscroll{overflow-x:auto}
+.tscroll table.spec{min-width:620px}
+.dot{display:inline-block;width:14px;height:14px;border:1px solid rgba(255,255,255,.3);vertical-align:-2px;margin-right:6px}
+.cap{font-size:13px;color:#a8a8a8;margin:0 0 8px}
+.notes{font-size:13px;line-height:1.5;color:#d0d0d0;margin:0 0 22px;border-left:2px solid #333;padding:2px 0 2px 12px}
+.notes div{margin:2px 0;max-width:110ch}
+.notes b{color:#fff;font-weight:600}
+.pair{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px;margin:8px 0 12px}
+.trio{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin:8px 0 12px}
+.mwrap{overflow-x:auto;margin:8px 0 12px}
+.pair .mwrap,.trio .mwrap{margin:0}
+.themebar{position:sticky;top:0;z-index:20;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;padding:8px 0;background:#000;border-bottom:1px solid #2a2a2a;margin:14px 0 14px;font-size:14px}
+.tt{display:inline-flex;border:1px solid #444}
+.tt button{background:#000;color:#a8a8a8;border:0;padding:5px 14px;font:500 13px/1.3 system-ui,sans-serif;cursor:pointer}
+.tt button.on{background:#fff;color:#000}
+.tt button:focus-visible{outline:2px solid #fff;outline-offset:2px}
+.toc{columns:2 320px;column-gap:28px;font-size:14px;margin:8px 0 16px;padding:0;list-style:none}
+.toc li{margin:0 0 3px;break-inside:avoid}
+.flowgrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0 28px}
+.strip{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-start;margin:8px 0 12px}
+.strip figure{margin:0}
+.strip figcaption,.cellcap{font-size:12.5px;color:#a8a8a8;margin:6px 0 0}
+.chips{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:1px;margin:8px 0 14px}
+.chip{padding:30px 10px 8px;font:12px/1.35 ui-monospace,Menlo,monospace}
+.chip b{display:block;font:600 12px/1.35 system-ui,sans-serif}
+svg.diagram{display:block;max-width:100%;height:auto;margin:8px 0 16px}
+@media (max-width:1180px){.pair,.trio,.flowgrid{grid-template-columns:minmax(0,1fr)}}
+
+.m{--rail-w:52px;--idx-w:264px;--shell-h:548px;font:400 12.5px/1.45 var(--sans);color:var(--ink);text-align:left;-webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums}
+.m *,.m *::before,.m *::after{box-sizing:border-box}
+.m svg{display:block;flex:none}
+.m .mono{font-family:var(--mono);font-size:.95em}
+.m .dim{color:var(--ink-2)}
+.m b,.m strong{font-weight:700}
+.win{position:relative;background:var(--frame);border:1px solid var(--win-line);border-radius:var(--r-win);overflow:hidden;min-width:1080px}
+.win.sm{min-width:0}
+.tbar{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;height:34px;padding:0 12px;gap:12px}
+.tb-brand{display:flex;align-items:center;gap:8px;font-weight:700;font-size:13px}
+.tb-find{display:flex;align-items:center;gap:8px;width:320px;height:22px;padding:0 8px;font-size:11.5px}
+.tb-find .kbd{margin-left:auto}
+.tb-right{justify-self:end;font-size:11.5px}
+.shell{display:grid;grid-template-columns:var(--rail-w) var(--idx-w) minmax(0,1fr);min-height:var(--shell-h)}
+.rail{display:flex;flex-direction:column;align-items:center;gap:8px;padding:10px 0}
+.tile{position:relative;width:34px;height:34px;display:flex;align-items:center;justify-content:center;font:600 11px/1 var(--sans);letter-spacing:.02em}
+.tile .pip{position:absolute;top:-4px;right:-4px;padding:1.5px;border-radius:50%;background:var(--pip-bg);color:var(--bad)}
+.rail .sp{flex:1}
+.idx{display:flex;flex-direction:column;min-width:0}
+.idx-head{padding:12px 12px 10px}
+.app-name{display:flex;align-items:baseline;justify-content:space-between;gap:8px;font-weight:700;font-size:14px;line-height:20px}
+.app-name span{font-weight:400;font-size:11.5px;color:var(--ink-2)}
+.app-sub{font-size:11.5px;color:var(--ink-2);margin-top:1px}
+.filter{display:flex;align-items:center;gap:7px;margin-top:9px;height:26px;padding:0 8px;font-size:12px;color:var(--ink-3)}
+.filter .kbd{margin-left:auto}
+.mods{flex:1;display:flex;flex-direction:column}
+.row{position:relative;display:grid;grid-template-columns:var(--g-w) minmax(0,1fr) auto;align-items:center;column-gap:9px;min-height:40px;padding:3px 12px}
+.row .n{font-weight:600;font-size:13px;line-height:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .meta{font-size:11.5px;line-height:15px;color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.idx-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 12px;font-size:11.5px;color:var(--ink-2)}
+.work{display:flex;flex-direction:column;min-width:0}
+.whead{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px 8px;min-height:42px}
+.wtitle{display:flex;align-items:baseline;gap:10px;min-width:0;white-space:nowrap}
+.wtitle h4{margin:0;font-size:18px;line-height:22px;font-weight:700}
+.wtitle .path{font-size:11.5px;color:var(--ink-2)}
+.acts{display:flex;gap:6px;align-items:center}
+.tabs{display:flex;gap:2px;padding:0 16px}
+.tab{display:flex;align-items:baseline;gap:6px;padding:6px 10px;font-size:12.5px;font-weight:500;color:var(--ink-2);white-space:nowrap}
+.tab i{font-style:normal;font-family:var(--mono);font-size:10.5px;color:var(--ink-3)}
+.wbody{flex:1;padding:14px 16px 16px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px}
+.stack{display:flex;flex-direction:column;gap:12px;min-width:0}
+.btn{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 10px;font-weight:600;font-size:12px;line-height:1;white-space:nowrap}
+.btn.sm{height:22px;padding:0 8px;font-size:11.5px}
+.btns{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.kbd{display:inline-flex;align-items:center;height:16px;padding:0 4px;font:500 10.5px/1 var(--mono);white-space:nowrap}
+.st{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;line-height:1.2;white-space:nowrap}
+.st.good{color:var(--good)}.st.warn{color:var(--warn)}.st.bad{color:var(--bad)}.st.off{color:var(--off)}
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr))}
+.stat .k{font-size:11.5px;color:var(--ink-2)}
+.stat .v{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-height:26px}
+.stat .v .st{font-size:12px}
+.box h5{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin:0;font-size:12.5px;line-height:1.4;font-weight:700}
+.box h5 > span:last-child:not(.st){font-weight:400;font-size:11.5px;color:var(--ink-2)}
+.kv{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:27px;font-size:12.5px}
+.kv > span:first-child{display:flex;align-items:center;gap:7px;min-width:0}
+.bar{display:grid;grid-template-columns:88px minmax(0,1fr) 34px;align-items:center;gap:10px;min-height:21px;font-size:12px}
+.bar .tr{display:block;height:6px;background:var(--track)}
+.bar .fl{display:block;height:100%;background:var(--bar)}
+.bar .val{text-align:right;font-family:var(--mono);font-size:11.5px}
+.bar.low .fl{background:var(--warn)}
+.bar.low .val{color:var(--warn);font-weight:600}
+.alert{display:flex;gap:9px;align-items:flex-start;padding:9px 12px;font-size:12.5px;line-height:1.5}
+.alert .st{margin-top:2px}
+.code{font:400 12px/1.6 var(--mono);white-space:pre-wrap;word-break:break-word;padding:10px 12px;background:var(--code-bg);color:var(--code-fg)}
+.code .c-dim{color:var(--code-dim)}.code .c-ok,.drawer .c-ok{color:var(--code-ok)}.code .c-err,.drawer .c-err{color:var(--code-err)}
+.tree{margin:0;font:400 12px/1.7 var(--mono);white-space:pre;color:var(--ink-2);overflow:hidden}
+.tree b{font-weight:600;color:var(--ink)}
+.lbl{font-size:11.5px;font-weight:600;margin:0 0 4px}
+.lbl span{font-weight:400;color:var(--ink-2)}
+.inp{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:28px;padding:0 9px;font-size:12.5px}
+.field{margin-bottom:12px}
+.chks{display:grid;grid-template-columns:1fr 1fr;gap:1px 12px}
+.chk{display:flex;align-items:center;gap:8px;min-height:24px;font-size:12.5px}
+.sq{width:14px;height:14px;display:inline-flex;align-items:center;justify-content:center;flex:none}
+.drawer{background:var(--code-bg);color:var(--code-fg);padding:8px 16px 12px;font:400 11.5px/1.6 var(--mono)}
+.dbar{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:5px;font-family:var(--sans);font-size:12px;color:var(--code-dim)}
+.dbar > span{display:flex;align-items:center;gap:8px}
+.dbar b{color:var(--code-fg)}
+.dbar .st.good{color:var(--code-ok)}.dbar .st.bad{color:var(--code-err)}
+.m .dbar .kbd,.m .drawer .kbd{background:transparent;box-shadow:none;border:1px solid var(--code-dim);color:var(--code-dim)}
+.stage{position:relative}
+.scrim{position:absolute;inset:0;background:var(--scrim)}
+.pal{position:absolute;top:58px;left:50%;transform:translateX(-50%);width:620px;background:var(--surface);overflow:hidden}
+.pal-in{display:flex;align-items:center;gap:10px;height:44px;padding:0 14px;font-size:15px}
+.pal-in .q{flex:1}
+.caret{display:inline-block;width:1.5px;height:17px;background:var(--ink);vertical-align:-3px;margin-left:1px}
+.pal-g{padding:9px 14px 3px;font-size:11.5px;font-weight:600;color:var(--ink-2)}
+.pal-r{position:relative;display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:32px;padding:0 14px;font-size:12.5px}
+.pal-r .l{display:block;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pal-r .l svg{display:inline-block;vertical-align:-2px}
+.pal-r .l .st{margin-left:8px;vertical-align:1px}
+.code .tk{white-space:nowrap}
+.pal-r .hint{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--ink-2);white-space:nowrap}
+.pal-f{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:8px 14px;margin-top:6px;font-size:11.5px;color:var(--ink-2)}
+.empty{display:flex;flex-direction:column;justify-content:center;gap:12px;padding:26px 28px;min-height:262px}
+.empty h4{margin:0;font-size:18px;line-height:1.25;font-weight:700}
+.empty p{margin:0;max-width:46ch;color:var(--ink-2)}
+.fail{display:flex;flex-direction:column;gap:10px;padding:12px 14px 14px;min-height:220px}
+.fail p{margin:0;color:var(--ink-2)}
+.m.cmp{--rail-w:40px;--idx-w:190px;--shell-h:452px;font-size:12px}
+.m.cmp .win{min-width:570px}
+.m.cmp .tbar{grid-template-columns:1fr auto;height:30px;padding:0 10px}
+.m.cmp .tb-find{display:none}
+.m.cmp .tile{width:28px;height:28px;font-size:10px}
+.m.cmp .idx-head{padding:10px 9px 8px}
+.m.cmp .row{padding:2px 8px;min-height:37px;column-gap:7px}
+.m.cmp .row .n{font-size:12.5px}
+.m.cmp .row .meta{font-size:11px}
+.m.cmp .idx-foot{padding:7px 9px;white-space:nowrap}
+.m.cmp .idx-foot .btn svg{display:none}
+.m.cmp .whead{padding:10px 12px 6px;min-height:36px}
+.m.cmp .wtitle h4{font-size:15px;line-height:20px}
+.m.cmp .tabs{padding:0 8px;gap:0}
+.m.cmp .tab{padding:5px 7px;font-size:11.5px}
+.m.cmp .tab i{display:none}
+.m.cmp .wbody{padding:10px 12px 12px;gap:10px}
+.m.cmp .stats{grid-template-columns:1fr 1fr}
+.m.cmp .bar{grid-template-columns:80px minmax(0,1fr) 30px;gap:8px;min-height:19px;font-size:11.5px}
+.m.cmp .alert{padding:8px 10px;font-size:12px}
+.fa{--frame:#D1D8E2;--panel:#E5EAF0;--surface:#F9FAFC;--well:#DBE1E9;--ink:#1A1E25;--ink-2:#48515C;--ink-3:#5B6570;--line:#BCC6D3;--line-2:#747F8C;--key:#1A1E25;--key-fg:#F9FAFC;--good:#2C6A37;--warn:#855600;--bad:#B02A20;--bad-fg:#F9FAFC;--off:#5B6570;--bad-soft:#F8E2DD;--code-bg:#1A1E25;--code-fg:#E5EBF4;--code-dim:#93A0B0;--code-ok:#8FD49B;--code-err:#F59A8E;--key-hover:#3E4147;--key-press:#5D6066;--scrim:rgba(26,30,37,.42);--shadow:rgba(10,13,18,.30);--sans:"Asap",system-ui,-apple-system,"Segoe UI",sans-serif;--mono:"Inconsolata",ui-monospace,Menlo,Consolas,monospace}
+.fa[data-theme="dark"]{--frame:#0F1216;--panel:#15191E;--surface:#1D2229;--well:#11151B;--ink:#E5EBF4;--ink-2:#A1AEBE;--ink-3:#8895A5;--line:#2E353E;--line-2:#657180;--key:#E5EBF4;--key-fg:#15191E;--good:#84CC90;--warn:#E5B152;--bad:#F28B7F;--bad-fg:#15191E;--off:#8895A5;--bad-soft:#3A201B;--code-bg:#0B0E12;--code-fg:#E5EBF4;--code-dim:#93A0B0;--code-ok:#8FD49B;--code-err:#F59A8E;--key-hover:#C5CBD4;--key-press:#A9AFB7;--scrim:rgba(6,6,8,.6);--shadow:rgba(0,0,0,.50)}
+.fa{--r-win:8px;--g-w:36px;--win-line:var(--line-2);--track:var(--well);--bar:var(--ink);--pip-bg:var(--frame)}
+.fa .bm{color:var(--ink)}
+.fa .bm .t2{fill:var(--line-2)}
+.fa .tbar{background:var(--frame);border-bottom:1px solid var(--line-2);color:var(--ink)}
+.fa .tb-find{background:var(--panel);border:1px solid var(--ink-2);border-radius:3px;color:var(--ink-2)}
+.fa .tb-right{color:var(--ink-2)}
+.fa .rail{background:var(--frame);border-right:1px solid var(--line-2)}
+.fa .tile{border:1px solid var(--ink-2);border-radius:3px;background:var(--panel);color:var(--ink-2)}
+.fa .tile.on{background:var(--key);border-color:var(--key);color:var(--key-fg)}
+.fa .tile.add{border-style:dashed;background:transparent;font-size:15px;font-weight:400}
+.fa .tile.ico{border:0;background:transparent}
+.fa .tile.ico.on{background:var(--key);color:var(--key-fg)}
+.fa .idx{background:var(--panel);border-right:1px solid var(--line-2)}
+.fa .idx-head{border-bottom:1px solid var(--line)}
+.fa .filter{background:var(--surface);border:1px solid var(--line-2);border-radius:3px}
+.fa .mods{padding:8px 0 8px 8px}
+.fa .row,.fa.cmp .row{border:1px solid transparent;border-right:0;padding-left:14px}
+.fa .row.on{background:var(--surface);border-color:var(--line-2);margin-right:-1px}
+.fa .row.on::before,.fa .pal-r.on::before,.fa .trow.on::before,.fa .lrow.on::before{content:"";position:absolute;left:4px;top:50%;margin-top:-2.5px;width:5px;height:5px;background:var(--ink)}
+.fa .stamp{display:inline-block;width:34px;text-align:center;font:600 10.5px/16px var(--mono);letter-spacing:.03em;color:var(--ink-2);border:1px solid var(--line-2);border-radius:2px;vertical-align:1px}
+.fa .row.on .stamp{color:var(--ink);border-color:var(--ink)}
+.fa .idx-foot{border-top:1px solid var(--line)}
+.fa .work{background:var(--surface)}
+.fa .wtop{background:var(--panel);border-bottom:1px solid var(--line-2)}
+.fa .tabs{gap:0;margin-bottom:-1px}
+.fa .tab{border:1px solid transparent;border-bottom:0;padding:6px 12px 7px}
+.fa .tab.on{background:var(--surface);border-color:var(--line-2);color:var(--ink);font-weight:600}
+.fa .btn{border:1px solid var(--line-2);border-radius:3px;background:var(--surface);color:var(--ink)}
+.fa .btn.pri{background:var(--key);border-color:var(--key);color:var(--key-fg)}
+.fa .kbd{border:1px solid var(--line-2);border-radius:2px;background:var(--well);color:var(--ink-2)}
+.fa .btn .kbd{margin-left:2px}
+.fa .stats{border:1px solid var(--line-2);border-radius:3px}
+.fa .stat{padding:9px 12px 8px;border-left:1px solid var(--line)}
+.fa .stat:first-child{border-left:0}
+.fa .stat .big{font-size:19px;font-weight:600;line-height:26px}
+.fa.cmp .stat:nth-child(odd){border-left:0}
+.fa.cmp .stat:nth-child(n+3){border-top:1px solid var(--line)}
+.fa.cmp .stat .big{font-size:17px}
+.fa .box{border:1px solid var(--line-2);border-radius:3px;padding:0 12px 8px}
+.fa .box h5{padding:8px 0 7px;border-bottom:1px solid var(--line);margin-bottom:6px}
+.fa .kv{border-bottom:1px solid var(--line)}
+.fa .kv:last-child{border-bottom:0}
+.fa .alert{background:var(--bad-soft);border:1px solid var(--bad);border-radius:3px}
+.fa .code{border-radius:3px}
+.fa .inp{background:var(--surface);border:1px solid var(--line-2);border-radius:3px}
+.fa .field.opt{padding-top:8px;border-top:1px solid var(--line)}
+.fa .sq{border:1.5px solid var(--line-2);border-radius:2px;background:var(--surface)}
+.fa .sq.on{background:var(--key);border-color:var(--key);color:var(--key-fg)}
+.fa .drawer{border-top:1px solid var(--line-2)}
+.fa .pal{border:1px solid var(--ink);border-radius:4px;box-shadow:0 14px 34px var(--shadow)}
+.fa .pal-in{border-bottom:1px solid var(--line-2)}
+.fa .pal-r.on{background:var(--well);box-shadow:inset 0 1px 0 var(--line-2),inset 0 -1px 0 var(--line-2)}
+.fa .pal-f{border-top:1px solid var(--line);background:var(--panel)}
+.fa .wtitle h4{letter-spacing:-.005em}
+
+.m svg.ic{display:inline-block;vertical-align:-2px}
+.fa .is-focus{outline:2px solid var(--ink);outline-offset:1px}
+.fa .btn.is-hover,.fa .tile.is-hover{background:var(--well)}
+.fa .btn.is-press{background:var(--line)}
+.fa .btn.pri.is-hover{background:var(--key-hover);border-color:var(--key-hover)}
+.fa .btn.pri.is-press{background:var(--key-press);border-color:var(--key-press)}
+.fa .btn.is-dis{background:transparent;border-color:var(--line);color:var(--ink-3)}
+.fa .btn.pri.is-dis{background:var(--line);border-color:var(--line);color:var(--ink-2)}
+.fa .btn.danger{border-color:var(--bad);color:var(--bad)}
+.fa .btn.danger.fill{background:var(--bad);color:var(--bad-fg)}
+.fa .btn.danger.is-hover{background:var(--bad-soft)}
+.fa .btn.danger.fill.is-hover{background:var(--bad);box-shadow:inset 0 0 0 1px var(--bad-fg)}
+.fa .btn.danger.is-press{background:var(--bad-soft);box-shadow:inset 0 0 0 1px var(--bad)}
+.fa .btn.danger.fill.is-press{background:var(--bad);box-shadow:inset 0 0 0 2px var(--bad-fg)}
+.fa .btn.danger.is-dis,.fa .btn.danger.fill.is-dis{border-color:var(--line);color:var(--ink-3);background:transparent;box-shadow:none}
+.fa .btn.ghost{border-color:transparent;background:transparent}
+.fa .btn.ghost.is-hover{background:var(--well)}
+.fa .btn.icon{width:26px;padding:0;justify-content:center}
+.fa .btn.icon.sm{width:22px}
+.fa .inp.is-hover,.fa .filter.is-hover{border-color:var(--ink-2)}
+.fa .inp.is-focus,.fa .filter.is-focus{border-color:var(--ink);color:var(--ink)}
+.fa .inp.is-dis{background:var(--well);border-color:var(--line);color:var(--ink-2)}
+.fa .inp.is-err{border-color:var(--bad)}
+.fa .inp .ph,.fa .ph{color:var(--ink-3)}
+.fa .errmsg{display:flex;gap:6px;align-items:flex-start;margin-top:4px;font-size:11.5px;line-height:1.4;color:var(--bad)}
+.fa .errmsg .st{margin-top:1px}
+.fa .hint2{margin-top:4px;font-size:11.5px;line-height:1.4;color:var(--ink-2)}
+.fa .filter.has{color:var(--ink)}
+.fa .sq.is-hover{border-color:var(--ink)}
+.fa .sq.is-dis{background:var(--well);border-color:var(--line)}
+.fa .sq.on.is-dis{background:var(--line);border-color:var(--line);color:var(--ink-2)}
+.fa .chk.is-dis{color:var(--ink-3)}
+.fa .seg{display:inline-flex;padding:2px;gap:2px;background:var(--well);border:1px solid var(--line-2);border-radius:3px}
+.fa .seg span{display:inline-flex;align-items:center;height:20px;padding:0 10px;font-size:12px;font-weight:600;line-height:1;color:var(--ink-2);border:1px solid transparent;border-radius:2px;white-space:nowrap}
+.fa .seg span.on{background:var(--surface);border-color:var(--ink);color:var(--ink)}
+.fa .seg span.is-hover{color:var(--ink)}
+.fa .seg span.is-dis{color:var(--ink-2);text-decoration:line-through}
+.fa .tab.is-hover{color:var(--ink)}
+.fa .row.is-hover,.fa .trow.is-hover,.fa .lrow.is-hover,.fa .pal-r.is-hover{background:var(--well)}
+.fa .row.off .n{color:var(--ink-2);font-weight:500}
+.fa .row.off .stamp{border-style:dashed}
+.fa .row .marks{display:flex;align-items:center;gap:8px}
+.fa .row.c1{min-height:26px;padding-top:1px;padding-bottom:1px}
+.fa .row.c1 .meta{display:none}
+.fa .grp{padding:9px 12px 3px 14px;font-size:11.5px;font-weight:600;color:var(--ink-2);display:flex;justify-content:space-between}
+.fa .grp span{font-weight:400}
+.fa .idx-rt{display:flex;align-items:center;gap:6px;margin-top:3px;font-size:11.5px;color:var(--ink-2)}
+.st.up{color:var(--good)}.st.down{color:var(--bad)}.st.oos{color:var(--warn)}.st.unk{color:var(--off)}
+.fa .tbl{width:100%;font-size:12.5px}
+.fa .thead,.fa .trow{position:relative;display:grid;align-items:center;column-gap:12px;padding:0 10px 0 14px}
+.fa .thead{min-height:26px;font-size:11.5px;font-weight:600;color:var(--ink-2);border-bottom:1px solid var(--line-2)}
+.fa .thead .srt{color:var(--ink)}
+.fa .trow{min-height:28px;border-bottom:1px solid var(--line)}
+.fa .trow:last-child{border-bottom:0}
+.fa .trow.on,.fa .lrow.on{background:var(--well);box-shadow:inset 0 1px 0 var(--line-2),inset 0 -1px 0 var(--line-2)}
+.fa .trow.is-dis{color:var(--ink-3)}
+.fa .trow > *,.fa .thead > *{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fa .r{text-align:right}
+.fa .lrow{position:relative;display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:30px;padding:0 10px 0 14px;font-size:12.5px;border-bottom:1px solid var(--line)}
+.fa .lrow:last-child{border-bottom:0}
+.fa .box.flush{padding:0 0 0}
+.fa .lrow.dgrp{background:var(--panel);font-weight:600;border-top:1px solid var(--line-2)}
+.fa .lrow.dact{padding-left:26px}
+.fa .lrow.dact.on::before{left:14px}
+.fa .box.flush h5{padding:8px 12px 7px;margin-bottom:0}
+.fa .alert.warn{background:var(--surface);border-color:var(--warn)}
+.fa .alert.note{background:var(--panel);border-color:var(--line-2)}
+.fa .tip{display:inline-block;max-width:240px;padding:4px 8px;background:var(--key);color:var(--key-fg);font-size:11.5px;line-height:1.4;border-radius:3px}
+.fa .tip .kbd{background:transparent;border-color:var(--key-fg);color:var(--key-fg);margin-left:4px}
+.fa .toast{display:flex;gap:9px;align-items:flex-start;width:320px;padding:9px 10px 9px 12px;background:var(--surface);border:1px solid var(--ink);border-radius:4px;box-shadow:0 6px 16px var(--shadow);font-size:12.5px;line-height:1.45}
+.fa .toast .st{margin-top:2px}
+.fa .toast .tx{flex:1;min-width:0}
+.fa .toast .tx .btns{margin-top:6px}
+.fa .dlg{width:440px;background:var(--surface);border:1px solid var(--ink);border-radius:4px;box-shadow:0 14px 34px var(--shadow);overflow:hidden}
+.fa .dlg-b{padding:14px 16px 12px;display:flex;flex-direction:column;gap:8px}
+.fa .dlg-b h4{margin:0;font-size:15px;line-height:20px;font-weight:700}
+.fa .dlg-b p{margin:0;color:var(--ink-2);line-height:1.5}
+.fa .dlg-f{display:flex;justify-content:flex-end;gap:8px;padding:10px 16px;background:var(--panel);border-top:1px solid var(--line)}
+.fa .dlg-f .lft{margin-right:auto}
+.fa .over{position:absolute;inset:0;display:flex;align-items:flex-start;justify-content:center;padding-top:96px}
+.fa .scrollv{position:relative;width:10px;align-self:stretch;flex:none}
+.fa .scrollv i{position:absolute;left:2px;width:6px;border-radius:3px;background:var(--line-2)}
+.fa .scrollv i.is-hover{background:var(--ink-2)}
+.fa .scrollv i.is-press{background:var(--ink)}
+.fa .prog{display:block;height:6px;background:var(--well)}
+.fa .prog i{display:block;height:100%;background:var(--ink)}
+.fa .busy{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;color:var(--ink)}
+.fa .handle{height:7px;display:flex;align-items:center;justify-content:center;background:var(--surface);border-top:1px solid var(--line-2);cursor:ns-resize}
+.fa .handle i{display:block;width:28px;height:1px;background:var(--line-2)}
+.fa .handle.is-hover{border-top-color:var(--ink)}
+.fa .handle.is-hover i,.fa .handle.is-press i{background:var(--ink);height:2px}
+.fa .handle.is-press{border-top:2px solid var(--ink)}
+.fa .dcol{display:flex;align-items:center;justify-content:space-between;gap:10px;height:28px;padding:0 16px;background:var(--code-bg);color:var(--code-dim);font-size:12px;border-top:1px solid var(--line-2)}
+.fa .dcol b{color:var(--code-fg)}
+.fa .dcol > span{display:flex;align-items:center;gap:8px}
+.fa .dcol .st.good,.fa .drawer .st.good{color:var(--code-ok)}.fa .dcol .st.bad,.fa .drawer .st.bad{color:var(--code-err)}
+.fa .drawer .hl{background:rgba(147,160,176,.18)}
+.fa .dhist{display:grid;grid-template-columns:420px minmax(0,1fr);gap:14px}
+.dbar > span{white-space:nowrap}
+.fa .dhist .hr{display:flex;justify-content:space-between;gap:8px;padding:1px 6px;font-family:var(--sans);font-size:11.5px;color:var(--code-dim);white-space:nowrap}
+.fa .dhist .hr.on{background:rgba(147,160,176,.18);color:var(--code-fg)}
+.fa .dhist .hr span:first-child{overflow:hidden;text-overflow:ellipsis}
+.fa .gen{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0 14px}
+.fa .gen .gh{grid-column:1/-1;padding:8px 0 2px;font-size:11.5px;font-weight:600;color:var(--ink-2);border-bottom:1px solid var(--line)}
+.fa .gen .gi{position:relative;display:flex;align-items:baseline;justify-content:space-between;gap:8px;min-height:26px;padding:4px 8px 3px 14px;border-bottom:1px solid var(--line);font-size:12.5px}
+.fa .gen .gi span{font-family:var(--mono);font-size:11.5px;color:var(--ink-2);white-space:nowrap}
+.fa .gen .gi.on{background:var(--well)}
+.fa .gen .gi.on::before{content:"";position:absolute;left:4px;top:50%;margin-top:-2.5px;width:5px;height:5px;background:var(--ink)}
+.fa .newf{background:var(--well)}
+.fa .wintitle{display:flex;gap:0;align-items:stretch;height:100%;margin-right:-12px}
+.fa .wc{display:flex;align-items:center;justify-content:center;width:44px;height:34px;color:var(--ink)}
+.fa .mac{display:flex;gap:8px;align-items:center}
+.fa .mac i{width:12px;height:12px;border-radius:50%;border:1px solid var(--ink-2);display:block}
+.fa .crumb{font-size:11.5px;color:var(--ink-2)}
+.fa .setnav .row{min-height:32px}
+.fa .frm{max-width:560px}
+.fa .frm .field:last-child{margin-bottom:0}
+.fa .sub{font-size:12.5px;font-weight:700;margin:4px 0 8px;padding-bottom:6px;border-bottom:1px solid var(--line)}
+.fa .gnode{fill:var(--surface);stroke:var(--line-2)}
+.fa .gnode.me{fill:var(--panel);stroke:var(--ink);stroke-width:1.5}
+.fa .glink{fill:none;stroke:var(--ink-2);stroke-width:1}
+.fa .glink.bad{stroke:var(--bad);stroke-width:2}
+.fa .glink.sel{stroke:var(--ink);stroke-width:2}
+.fa .garrow{fill:var(--ink-2)}.fa .garrow.bad{fill:var(--bad)}
+.fa .gt{font:600 12px var(--sans);fill:var(--ink)}
+.fa .gt2{font:400 11px var(--mono);fill:var(--ink-2)}
+.fa .gt2.bad{fill:var(--bad);font-weight:600}
+.fa .gst{font:600 10.5px var(--mono);fill:var(--ink-2);letter-spacing:.03em}
+.fa .gcap{font:600 11.5px var(--sans);fill:var(--ink-2)}
+.fa .gbadmark{fill:var(--bad)}
+.fa .gx{stroke:var(--surface);stroke-width:1.3}
+.fa .chart .ax{stroke:var(--line);stroke-width:1}
+.fa .chart .ln{fill:none;stroke:var(--ink);stroke-width:1.5}
+.fa .chart .ln2{fill:none;stroke:var(--line-2);stroke-width:1}
+.fa .chart text{font:400 10.5px var(--mono);fill:var(--ink-2)}
+.fa .spark{display:block}
+.fa .spark path{fill:none;stroke:var(--ink-2);stroke-width:1.2}
+.m .nowrap{white-space:nowrap}
+.m .wrap{white-space:normal}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><symbol id="i-search" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M2.75 2.75h7.5v7.5h-7.5zM10.25 10.25l3.75 3.75"/></g></symbol><symbol id="i-settings" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M1.5 5h3.25M8.25 5h6.25M1.5 11h6.25M11.25 11h3.25"/><path d="M4.75 3.25h3.5v3.5h-3.5zM7.75 9.25h3.5v3.5h-3.5z"/></g></symbol><symbol id="i-generate" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M2.75 6V2.75H6M10 2.75h3.25V6M13.25 10v3.25H10M6 13.25H2.75V10M8 5.25v5.5M5.25 8h5.5"/></g></symbol><symbol id="i-run" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M4.75 3.1 12.9 8l-8.15 4.9z"/></g></symbol><symbol id="i-boundary" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M1.75 4.75h4v6.5h-4zM10.25 4.75h4v6.5h-4z"/><path d="M8 1.5v13" stroke-dasharray="2 1.6"/></g></symbol><symbol id="i-pulse" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M1.25 8.75h3l2-5.5 3 9.5 2-4h3.5"/></g></symbol><symbol id="i-metrics" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M3.5 13.5v-5M8 13.5v-11M12.5 13.5v-7.5" stroke-width="2.4"/></g></symbol><symbol id="i-migrate" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M1.75 3.75h6.5v8.5h-6.5zM1.75 8h6.5M10.25 8h4.5M12.5 5.5 15 8l-2.5 2.5"/></g></symbol><symbol id="i-test" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M2.25 4.75 3.9 6.4l2.6-3.2M8.75 4.9h5.5M2.25 10.75 3.9 12.4l2.6-3.2M8.75 10.9h5.5"/></g></symbol><symbol id="i-app" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><rect x="2.25" y="3.25" width="11.5" height="9.5"/><path d="M2.25 6.25h11.5"/></g></symbol><symbol id="i-module" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M2.25 3.75h7v2.5h4.5v3.5h-4.5v2.5h-7z"/></g></symbol><symbol id="i-x" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9"/></g></symbol><symbol id="i-chev-r" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M6 3.5 10.5 8 6 12.5"/></g></symbol><symbol id="i-chev-d" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M3.5 6 8 10.5 12.5 6"/></g></symbol><symbol id="i-chev-u" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M3.5 10 8 5.5 12.5 10"/></g></symbol><symbol id="i-folder" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M1.75 3.75h4.5l1.5 1.75h6.5v7.25H1.75z"/></g></symbol><symbol id="i-copy" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M5.25 5.25h8v8h-8zM2.75 10.75v-8h8"/></g></symbol><symbol id="i-stop" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M4 4h8v8H4z"/></g></symbol><symbol id="i-list" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M2.5 4h11M2.5 8h11M2.5 12h7"/></g></symbol><symbol id="i-open" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M6.5 3.25H2.75v10h10V9.5M9 2.75h4.25V7M13 3 7.5 8.5"/></g></symbol><symbol id="i-plus" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M8 3v10M3 8h10"/></g></symbol><symbol id="i-sync" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M2.5 5.5h10M10 3l2.5 2.5L10 8M13.5 10.5h-10M6 8l-2.5 2.5L6 13"/></g></symbol><symbol id="i-lock" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M4.25 7.25h7.5v6h-7.5zM5.75 7.25v-3h4.5v3"/></g></symbol><symbol id="i-clock" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M2.75 2.75h10.5v10.5H2.75zM8 5v3.25h2.75"/></g></symbol><symbol id="i-route" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M2.5 12.5h4v-9h7M11 1.5l2.5 2-2.5 2"/></g></symbol><symbol id="i-min" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M3.5 8h9"/></g></symbol><symbol id="i-max" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M3.75 3.75h8.5v8.5h-8.5z"/></g></symbol><symbol id="m-good" viewBox="0 0 12 12"><path d="M1.8 6.4 4.7 9.3 10.2 2.9" fill="none" stroke="currentColor" stroke-width="1.9"/></symbol><symbol id="m-warn" viewBox="0 0 12 12"><path d="M6 1 11.4 10.8H.6z" fill="currentColor"/></symbol><symbol id="m-bad" viewBox="0 0 12 12"><path fill-rule="evenodd" fill="currentColor" d="M1 1h10v10H1zM3.3 4.2 5.1 6 3.3 7.8l.9.9L6 6.9l1.8 1.8.9-.9L6.9 6l1.8-1.8-.9-.9L6 5.1 4.2 3.3z"/></symbol><symbol id="m-off" viewBox="0 0 12 12"><rect x="1.75" y="1.75" width="8.5" height="8.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M4 6h4" stroke="currentColor" stroke-width="1.5"/></symbol><symbol id="m-up" viewBox="0 0 12 12"><path d="M6 11V2.4M2.4 6 6 2.4 9.6 6" fill="none" stroke="currentColor" stroke-width="1.7"/></symbol><symbol id="m-down" viewBox="0 0 12 12"><path d="M6 1v8.6M2.4 6 6 9.6 9.6 6" fill="none" stroke="currentColor" stroke-width="1.7"/></symbol><symbol id="m-oos" viewBox="0 0 12 12"><path d="M3.6 1.5v9M8.4 1.5v9" fill="none" stroke="currentColor" stroke-width="2"/></symbol><symbol id="m-unk" viewBox="0 0 12 12"><path d="M1 6h2.2M4.9 6h2.2M8.8 6H11" fill="none" stroke="currentColor" stroke-width="1.8"/></symbol><symbol id="i-mark" viewBox="0 0 24 24"><path d="M3 4h9v4H8v8h4v4H3z" fill="currentColor"/><path class="t2" d="M21 4v16h-8v-5H9V9h4V4z"/></symbol><symbol id="i-chk" viewBox="0 0 10 10"><path d="M1.6 5.2 4 7.6 8.4 2.6" fill="none" stroke="currentColor" stroke-width="1.8"/></symbol><symbol id="i-dash" viewBox="0 0 10 10"><path d="M2 5h6" fill="none" stroke="currentColor" stroke-width="1.8"/></symbol></svg>
+<div class="doc">
+<nav class="top" aria-label="Specification pages"><a href="index.html">Overview</a><a href="architecture.html">Information architecture</a><a href="tokens.html">Tokens</a><a href="components.html">Components</a><a href="screens-start.html">Screens: start</a><a href="screens-read.html">Screens: read</a><a href="screens-write.html">Screens: write</a><a href="screens-global.html">Screens: global</a><a href="flows.html" class="cur">Flows and keyboard</a><a href="reference.html">Text, platform, fonts</a><a href="open.html">Open questions</a></nav>
+<h1>Flows and keyboard</h1>
+<p class="dim">Mortise design specification, sections 6 and 7. The five flows for mouse and keyboard, the shortcut table, the focus order.</p>
+
+<p>Sections 6 and 7 of the specification. The first five flows are the ones the workbench structure was chosen for; the sixth was added with the public surface scan. Each is given step by step, once for the mouse and once for the keyboard, with the screen each step lands on. Shortcuts in the steps are written for Windows and Linux; on macOS Ctrl is Cmd, except where the table in section 7 says otherwise.</p><h2>6. Flows</h2><h3 id="F1"><span class="sid">F1</span>Add an app</h3><p class="cap">From an empty Mortise to the modules of booking-engine on screen. 3 actions.</p><div class="flowgrid"><div><p><strong>With the mouse</strong></p><ol><li>Click the dashed <strong>+</strong> tile on the rail, or "Add app folder" on the first run screen <a class="sid" href="screens-start.html#S1.1" title="First run, no apps">S1.1</a>. The add panel opens <a class="sid" href="screens-start.html#S1.2" title="Add app: choose the folder">S1.2</a>.</li><li>Click "Choose folder" and pick <code>~/code/booking-engine</code> in the folder dialog, or drop the folder on the window. The panel shows what was found <a class="sid" href="screens-start.html#S1.3" title="Add app: what was found, how PHP runs, runtime connection">S1.3</a>. If something is wrong it says so at the field <a class="sid" href="screens-start.html#S1.4" title="Add app: the three failures">S1.4</a>.</li><li>Click "Add booking-engine". Its tile appears on the rail and is selected; the index lists its modules and the workspace shows its Summary <a class="sid" href="screens-read.html#S4.2" title="Summary for &quot;All modules&quot;, full">S4.2</a>.</li></ol></div><div><p><strong>With the keyboard</strong></p><ol><li>Press Ctrl O from anywhere. The folder dialog of the operating system opens at once.</li><li>Choose the folder there and confirm. Focus lands on the "Add booking-engine" button <a class="sid" href="screens-start.html#S1.3" title="Add app: what was found, how PHP runs, runtime connection">S1.3</a>; Tab reaches the PHP and runtime choices if they need changing.</li><li>Press Enter or Ctrl Enter. Focus moves to the "All modules" row of the new app <a class="sid" href="screens-read.html#S4.2" title="Summary for &quot;All modules&quot;, full">S4.2</a>.</li></ol></div></div><div class="notes"><div><b>Also.</b> Ctrl K, "add", Enter opens the same panel. A toast confirms: "Added booking-engine. 5 modules read."</div></div><h3 id="F2"><span class="sid">F2</span>Find the module with a problem and see what is wrong</h3><p class="cap">From the home screen to the two findings of Checkout. 1 action.</p><div class="flowgrid"><div><p><strong>With the mouse</strong></p><ol><li>On the home screen <a class="sid" href="screens-read.html#S4.1" title="Summary for &quot;All modules&quot;, the home screen">S4.1</a> the index already shows the problem mark and "2" on Checkout, and the alert names it. Click the Checkout row. Its Summary opens with both problems in the alert at the top <a class="sid" href="screens-read.html#S4.3" title="Summary for one module: Checkout">S4.3</a>.</li><li>Optional: click "Show all 3 findings" on the home screen for the list of the whole app <a class="sid" href="screens-read.html#S6.4" title="Findings: the list for an app">S6.4</a>, or the Boundary tab for the files <a class="sid" href="screens-read.html#S5.1" title="Boundary for one module: graph and the files of a link">S5.1</a>.</li></ol></div><div><p><strong>With the keyboard</strong></p><ol><li>Press J. With the index sorted problems first, Checkout is the first module under "All modules", and its Summary is on screen in the same frame <a class="sid" href="screens-read.html#S4.3" title="Summary for one module: Checkout">S4.3</a>.</li><li>Optional: press F for the findings list <a class="sid" href="screens-read.html#S6.4" title="Findings: the list for an app">S6.4</a>, where Enter on a finding opens it where it lives; or press 2 for Boundary <a class="sid" href="screens-read.html#S5.1" title="Boundary for one module: graph and the files of a link">S5.1</a>.</li></ol></div></div><div class="notes"><div><b>If the index is sorted by name.</b> Press S once, or read the pip on the rail and the Findings stat. With 60 modules the pinned group "Needs attention" does the same job <a class="sid" href="screens-start.html#S3.1" title="Module index: default, problems first, filtered, a module turned off">S3.1</a>.</div></div><h3 id="F3"><span class="sid">F3</span>Create a model with a migration and a policy</h3><p class="cap">A new model PaymentIntent in Billing, with its migration and policy. 4 actions. Phase 2.</p><div class="flowgrid"><div><p><strong>With the mouse</strong></p><ol><li>Click Billing in the index, then the Generate tab. The picker opens with Model first <a class="sid" href="screens-write.html#S9.1" title="Generator picker">S9.1</a>.</li><li>Click Model. Type <code>PaymentIntent</code> in "Model name" and the fillable attributes if wanted <a class="sid" href="screens-write.html#S9.2" title="The form for module:make-model, with command and file preview">S9.2</a>.</li><li>Check Migration and Policy. Read the command and the three files on the right. If a file exists already the preview says so <a class="sid" href="screens-write.html#S9.3" title="Preview when a file exists already">S9.3</a>.</li><li>Click "Create 3 files". The result replaces the preview and the runner drawer shows the output <a class="sid" href="screens-write.html#S9.5" title="Result: created">S9.5</a>; on a failure it says which file and what to do <a class="sid" href="screens-write.html#S9.6" title="Result: failed">S9.6</a>.</li></ol></div><div><p><strong>With the keyboard</strong></p><ol><li>Press Ctrl K, type <code>model bil</code>, press Enter. The form opens with Billing as the module and focus in "Model name" <a class="sid" href="screens-write.html#S9.2" title="The form for module:make-model, with command and file preview">S9.2</a>.</li><li>Type <code>PaymentIntent</code>, Tab, type the fillable attributes.</li><li>Tab to Migration, Space. Tab to Policy, Space. The command and the file list update as you go.</li><li>Press Ctrl Enter <a class="sid" href="screens-write.html#S9.5" title="Result: created">S9.5</a>. Enter then opens the model in the editor.</li></ol></div></div><div class="notes"><div><b>Without the palette.</b> J or K to Billing, G, type <code>mod</code>, Enter.</div></div><h3 id="F4"><span class="sid">F4</span>Run migrations for one module and read the output</h3><p class="cap">The waiting migration of Checkout runs and its output is on screen. 2 actions. Phase 2.</p><div class="flowgrid"><div><p><strong>With the mouse</strong></p><ol><li>Click Checkout in the index <a class="sid" href="screens-read.html#S4.3" title="Summary for one module: Checkout">S4.3</a>.</li><li>Click "Migrate (1)" in the module header. The runner drawer opens under the workspace with the command and its output as it arrives; when it ends the status reads "Done in 186 ms" or "Exit code 1" with the next steps <a class="sid" href="screens-write.html#S11.1" title="Runner drawer: running, finished, failed, history">S11.1</a>.</li></ol></div><div><p><strong>With the keyboard</strong></p><ol><li>Press J to select Checkout.</li><li>Press 4 for Actions; Migrate is selected because a migration waits <a class="sid" href="screens-write.html#S10.1" title="Actions for one module: Migrate">S10.1</a>. Press Ctrl Enter. Focus stays where it was; the drawer shows the output <a class="sid" href="screens-write.html#S11.1" title="Runner drawer: running, finished, failed, history">S11.1</a>. Ctrl ` hides it.</li></ol></div></div><div class="notes"><div><b>With options.</b> A dry run or seeding afterwards are the two checkboxes on the Actions tab. In production Mortise asks first <a class="sid" href="screens-write.html#S10.3" title="Confirmation before a destructive action">S10.3</a>.</div><div><b>From the palette.</b> Ctrl K, <code>migrate chk</code>, Enter.</div></div><h3 id="F5"><span class="sid">F5</span>See why two modules depend on each other</h3><p class="cap">From Checkout to the six files that make Checkout and Shipping use each other. 2 actions.</p><div class="flowgrid"><div><p><strong>With the mouse</strong></p><ol><li>Click Checkout in the index.</li><li>Click the Boundary tab. Checkout is in the middle with Shipping on both sides, both links drawn as problems <a class="sid" href="screens-read.html#S5.1" title="Boundary for one module: graph and the files of a link">S5.1</a>. Click either Shipping node: the files of both directions are listed below, with the line and the class each one reads <a class="sid" href="screens-read.html#S5.2" title="The files of a circular link">S5.2</a>.</li></ol></div><div><p><strong>With the keyboard</strong></p><ol><li>Press J to select Checkout.</li><li>Press 2. Focus is on the first problem link. Arrow keys move between the modules of the graph <a class="sid" href="screens-read.html#S5.1" title="Boundary for one module: graph and the files of a link">S5.1</a>; on Shipping the list below shows the files <a class="sid" href="screens-read.html#S5.2" title="The files of a circular link">S5.2</a>. Tab moves into the list, J and K move through it, Enter opens a file at its line in the editor.</li></ol></div></div><div class="notes"><div><b>From the app.</b> On "All modules", Boundary lists the links that break a rule; Enter on "Checkout and Shipping use each other" lands on the same view <a class="sid" href="screens-read.html#S5.3" title="Boundary for &quot;All modules&quot;: the app graph and the rules">S5.3</a>.</div></div><h3 id="F6"><span class="sid">F6</span>Propose and accept the public surface of a module</h3><p class="cap">Added after the owner's answer on the public surface. From Billing to an accepted list of what Billing offers to other modules, to HTTP clients and to the command line. 4 actions. Accepting needs the package (P6).</p><div class="flowgrid"><div><p><strong>With the mouse</strong></p><ol><li>Click Billing in the index, then the Boundary tab, then "Public surface" in the control at the top <a class="sid" href="screens-read.html#S5.5" title="Public surface: not scanned yet">S5.5</a>.</li><li>Click "Scan Billing". The view shows the scan as it reads <a class="sid" href="screens-read.html#S5.6" title="Public surface: scanning">S5.6</a>, then the proposal <a class="sid" href="screens-read.html#S5.7" title="Public surface: proposal ready">S5.7</a>.</li><li>Read the list. Click a checkbox to leave an entry out or take one in; type in the field at the bottom to add one by hand.</li><li>Click "Accept 21 entries". The view shows the accepted surface <a class="sid" href="screens-read.html#S5.8" title="Public surface: accepted">S5.8</a> and the findings are worked out again.</li></ol></div><div><p><strong>With the keyboard</strong></p><ol><li>J or K to Billing, 2 for Boundary, P for Public surface <a class="sid" href="screens-read.html#S5.5" title="Public surface: not scanned yet">S5.5</a>.</li><li>Ctrl Enter starts the scan <a class="sid" href="screens-read.html#S5.6" title="Public surface: scanning">S5.6</a>. Esc stops it. When it ends, focus is on the first entry of the proposal <a class="sid" href="screens-read.html#S5.7" title="Public surface: proposal ready">S5.7</a>.</li><li>J and K move through the entries, Space includes one or leaves it out, A goes to the add field, Enter there adds the entry.</li><li>Ctrl Enter accepts <a class="sid" href="screens-read.html#S5.8" title="Public surface: accepted">S5.8</a>.</li></ol></div></div><div class="notes"><div><b>Later.</b> The same Ctrl Enter in the accepted view scans again. If the code has changed, only the differences are listed, each to accept or to leave <a class="sid" href="screens-read.html#S5.9" title="Public surface: a later scan finds a difference">S5.9</a>.</div><div><b>From the palette.</b> Ctrl K, <code>surface bil</code>, Enter opens the view; it does not start the scan.</div></div><h2>7. Keyboard</h2><p>The complete table. Single keys work when focus is not in a text field. On macOS the modifier is Cmd where Windows and Linux use Ctrl, with one exception in the second row. Shortcuts are fixed in the first release (owner decision); keys that are awkward on some layouts have a second binding instead.</p><div class="tscroll"><table class="spec "><thead><tr><th>Where</th><th>Does</th><th>macOS</th><th>Windows and Linux</th><th>Note</th></tr></thead><tbody><tr><td><strong>Anywhere</strong></td><td>Open the command palette</td><td><code>Cmd K</code></td><td><code>Ctrl K</code></td><td></td></tr><tr><td></td><td>Show or hide the runner drawer</td><td><code>Ctrl ` or Cmd J</code></td><td><code>Ctrl ` or Ctrl J</code></td><td>Ctrl ` on macOS too: Cmd ` belongs to macOS for cycling windows. The J chord is for keyboards where ` is hard to type.</td></tr><tr><td></td><td>Collapse or open the module index</td><td><code>Cmd B</code></td><td><code>Ctrl B</code></td><td></td></tr><tr><td></td><td>Select app 1 to 9 on the rail</td><td><code>Cmd Option 1 to 9</code></td><td><code>Ctrl Alt 1 to 9</code></td><td></td></tr><tr><td></td><td>Add app</td><td><code>Cmd O</code></td><td><code>Ctrl O</code></td><td></td></tr><tr><td></td><td>New module</td><td><code>Cmd N</code></td><td><code>Ctrl N</code></td><td>Phase 2</td></tr><tr><td></td><td>Settings</td><td><code>Cmd ,</code></td><td><code>Ctrl ,</code></td><td></td></tr><tr><td></td><td>Read the app again, from disk and from the actuator</td><td><code>Cmd R</code></td><td><code>Ctrl R</code></td><td></td></tr><tr><td></td><td>Stop the running command</td><td><code>Cmd .</code></td><td><code>Ctrl .</code></td><td>Phase 2. Asks first for a migration, rollback or seed.</td></tr><tr><td></td><td>Move focus to the next or previous region</td><td><code>F6, Shift F6</code></td><td><code>F6, Shift F6</code></td><td>Rail, index, workspace, runner</td></tr><tr><td></td><td>Close the topmost thing</td><td><code>Esc</code></td><td><code>Esc</code></td><td>In this order: tooltip, dialog, palette, toast, filter text, second view, Settings</td></tr><tr><td></td><td>Quit</td><td><code>Cmd Q</code></td><td><code>Ctrl Q</code></td><td>Alt F4 on Windows also works</td></tr><tr><td><strong>Main window, not typing</strong></td><td>Next or previous module</td><td><code>J, K or Down, Up</code></td><td><code>J, K or Down, Up</code></td><td>The workspace follows in the same frame</td></tr><tr><td></td><td>First or last row of the index</td><td><code>Home, End</code></td><td><code>Home, End</code></td><td></td></tr><tr><td></td><td>Filter modules</td><td><code>/ or Cmd F</code></td><td><code>/ or Ctrl F</code></td><td>The chord is for keyboards where / needs Shift</td></tr><tr><td></td><td>Change the order of the index</td><td><code>S</code></td><td><code>S</code></td><td>By name, problems first</td></tr><tr><td></td><td>Summary, Boundary, Generate, Actions, Metrics</td><td><code>1, 2, 3, 4, 5</code></td><td><code>1, 2, 3, 4, 5</code></td><td></td></tr><tr><td></td><td>Generate</td><td><code>G</code></td><td><code>G</code></td><td>Same as 3, with the generator filter focused</td></tr><tr><td></td><td>Findings list of the app</td><td><code>F</code></td><td><code>F</code></td><td></td></tr><tr><td></td><td>Open the selected module in the editor</td><td><code>E</code></td><td><code>E</code></td><td></td></tr><tr><td></td><td>Show the shortcuts</td><td><code>?</code></td><td><code>?</code></td><td>Opens Settings on Keyboard</td></tr><tr><td><strong>Module index</strong></td><td>Move focus into the workspace</td><td><code>Enter or Right</code></td><td><code>Enter or Right</code></td><td>Esc in the workspace returns to the index</td></tr><tr><td><strong>Workspace</strong></td><td>Run the generator or the action</td><td><code>Cmd Enter</code></td><td><code>Ctrl Enter</code></td><td>Phase 2</td></tr><tr><td></td><td>Copy the command</td><td><code>Cmd Shift C</code></td><td><code>Ctrl Shift C</code></td><td>Phase 2</td></tr><tr><td></td><td>Next or previous control</td><td><code>Tab, Shift Tab</code></td><td><code>Tab, Shift Tab</code></td><td></td></tr><tr><td></td><td>Press a button, switch a checkbox</td><td><code>Space or Enter</code></td><td><code>Space or Enter</code></td><td></td></tr><tr><td></td><td>Change a segmented control or the tab</td><td><code>Left, Right</code></td><td><code>Left, Right</code></td><td>When it has focus</td></tr><tr><td></td><td>Move in a table or list</td><td><code>J, K or Down, Up</code></td><td><code>J, K or Down, Up</code></td><td>When it has focus</td></tr><tr><td></td><td>Open the selected row</td><td><code>Enter</code></td><td><code>Enter</code></td><td>A file in the editor, a link in Boundary, a finding where it lives</td></tr><tr><td></td><td>Back from a second view</td><td><code>Esc or Backspace</code></td><td><code>Esc or Backspace</code></td><td>Findings list, files of a link</td></tr><tr><td><strong>Boundary graph</strong></td><td>Move between modules in the graph</td><td><code>Arrow keys</code></td><td><code>Arrow keys</code></td><td></td></tr><tr><td><strong>Boundary, one module</strong></td><td>Switch between Links and Public surface</td><td><code>P</code></td><td><code>P</code></td><td>Or Left, Right on the control</td></tr><tr><td><strong>Boundary, Public surface</strong></td><td>Scan, then accept the proposal</td><td><code>Cmd Enter</code></td><td><code>Ctrl Enter</code></td><td>The same key as every run. Accepting needs P6.</td></tr><tr><td></td><td>Include or leave out the selected entry</td><td><code>Space</code></td><td><code>Space</code></td><td></td></tr><tr><td></td><td>Add an entry by hand</td><td><code>A</code></td><td><code>A</code></td><td>Focus goes to the add field</td></tr><tr><td><strong>Actions</strong></td><td>Open or close the Destructive group</td><td><code>Enter on its row</code></td><td><code>Enter on its row</code></td><td>No shortcut reaches a destructive action directly</td></tr><tr><td><strong>Command palette</strong></td><td>Move, run, close</td><td><code>Up, Down, Enter, Esc</code></td><td><code>Up, Down, Enter, Esc</code></td><td></td></tr><tr><td></td><td>Search in the next app</td><td><code>Tab</code></td><td><code>Tab</code></td><td></td></tr><tr><td><strong>Runner drawer</strong></td><td>Run the last command again</td><td><code>Cmd Shift R</code></td><td><code>Ctrl Shift R</code></td><td>Phase 2</td></tr><tr><td></td><td>Show the history</td><td><code>Cmd Shift H</code></td><td><code>Ctrl Shift H</code></td><td>Phase 2</td></tr><tr><td></td><td>Copy the output</td><td><code>Cmd Shift O</code></td><td><code>Ctrl Shift O</code></td><td>Phase 2</td></tr><tr><td></td><td>Make the drawer higher or lower</td><td><code>Up, Down on the handle</code></td><td><code>Up, Down on the handle</code></td><td>24 px a step</td></tr><tr><td><strong>Dialog</strong></td><td>Press the focused button, cancel, move</td><td><code>Enter, Esc, Tab</code></td><td><code>Enter, Esc, Tab</code></td><td>Focus starts on Cancel in a destructive dialog</td></tr><tr><td><strong>Text field</strong></td><td>Select all, copy, cut, paste, undo, redo</td><td><code>Cmd A, C, X, V, Z, Shift Z</code></td><td><code>Ctrl A, C, X, V, Z, Y</code></td><td>The platform's own</td></tr></tbody></table></div><p><strong>Rules behind the table.</strong></p><ul><li>Everything can be done without a pointer. Nothing is reachable only by hover or by dragging: the index width and the drawer height have keys, and the palette reaches every command.</li><li>Single letters never act while a text field has focus. Esc leaves the field first.</li><li>A shortcut is shown where its action is: in the button, in the tab, in the palette row, in the tooltip.</li><li>Keys that are awkward on some keyboard layouts have a second binding with a modifier: <code>/</code> and <code>`</code>.</li></ul><h3 id="K1"><span class="sid">K1</span>Focus order of the main window</h3><p>Tab moves through controls in this order; Shift Tab goes back. F6 jumps between the four regions. A list, a table, the tab row and a segmented control are each one stop: arrows move inside them.</p><svg class="diagram" viewBox="0 0 900 300" width="900" role="img" aria-label="The main window with its focus regions numbered 1 to 5"><g fill="none" stroke="#777" stroke-width="1"><rect x="10.5" y="10.5" width="879" height="279"/><path d="M10 44.5H890M70.5 44V290M300.5 44V290M300 110.5H890M300 210.5H890"/></g><g fill="#fff" font-family="system-ui,sans-serif" font-size="13"><text x="24" y="32">1  Title bar: search entry</text><text x="22" y="70">2</text><text x="22" y="92" font-size="11" fill="#a8a8a8">tiles</text><text x="22" y="108" font-size="11" fill="#a8a8a8">add</text><text x="22" y="124" font-size="11" fill="#a8a8a8">set-</text><text x="22" y="138" font-size="11" fill="#a8a8a8">tings</text><text x="86" y="70">3  Module index</text><text x="86" y="94" font-size="12" fill="#a8a8a8">a. filter field</text><text x="86" y="114" font-size="12" fill="#a8a8a8">b. the list of modules (one stop)</text><text x="86" y="134" font-size="12" fill="#a8a8a8">c. order, d. New module</text><text x="316" y="70">4  Workspace</text><text x="316" y="94" font-size="12" fill="#a8a8a8">a. header buttons, b. the tab row (one stop)</text><text x="316" y="136" font-size="12" fill="#a8a8a8">c. the controls of the tab, in reading order: left column top to bottom, then the right column,</text><text x="316" y="154" font-size="12" fill="#a8a8a8">ending on the primary button</text><text x="316" y="236">5  Runner drawer</text><text x="316" y="258" font-size="12" fill="#a8a8a8">a. handle, b. its buttons, c. the output (scrolls with the arrow keys)</text></g></svg><ul><li><strong>At start</strong>, focus is on the selected row of the index, so J, K and the digit keys work at once.</li><li><strong>Selecting a module</strong> with J or K leaves focus in the index. Enter or Right moves it to the first control of the tab; Esc brings it back.</li><li><strong>Switching tab</strong> with a digit leaves focus where it was, except on Generate, where it goes to the first field of the form.</li><li><strong>The palette and a dialog</strong> hold focus until they close, then return it to where it was. Tab does not leave them.</li><li><strong>Window controls</strong> drawn by Mortise (Windows, Linux) are not in the Tab order; the platform's own keys work for them.</li><li><strong>A command that ends</strong> does not move focus. The drawer opening never takes focus.</li></ul>
+</div>
+
+</body>
+</html>

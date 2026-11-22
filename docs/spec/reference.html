@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Text, platform, fonts | Mortise design specification</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Asap:wght@400;500;600;700&family=Inconsolata:wght@400;500;600&display=swap">
+<style>
+:root{color-scheme:dark}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:#000;color:#fff}
+body{font:15px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased}
+.doc{max-width:1320px;margin:0 auto;padding:20px 20px 80px}
+nav.top{display:flex;flex-wrap:wrap;gap:6px 18px;padding-bottom:12px;border-bottom:1px solid #2a2a2a;margin-bottom:22px;font-size:14px}
+nav.top a{color:#a8a8a8;text-decoration:none}
+nav.top a:hover{color:#fff;text-decoration:underline}
+nav.top a.cur{color:#fff;font-weight:600}
+.doc h1{font-size:26px;line-height:1.2;font-weight:650;margin:0 0 8px}
+.doc h2{font-size:19px;line-height:1.3;font-weight:650;margin:40px 0 10px;padding-top:16px;border-top:1px solid #2a2a2a}
+.doc h3{font-size:15px;line-height:1.35;font-weight:650;margin:26px 0 8px}
+.doc h3 .sid,.doc a.sid{font:600 12.5px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:#a8a8a8;text-decoration:none}
+.doc h3 .sid{margin-right:8px}
+.doc a.sid{text-decoration:underline;text-decoration-color:#555;text-underline-offset:3px}
+.doc p,.doc li{max-width:86ch}
+.doc p{margin:0 0 10px}
+.doc ul,.doc ol{padding-left:20px;margin:0 0 12px}
+.doc li{margin-bottom:4px}
+.doc a{color:#fff}
+.dim{color:#a8a8a8}
+.doc code{font:13px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:#151515;border:1px solid #262626;border-radius:3px;padding:0 4px}
+.doc pre.json{font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:#0d0d0d;border:1px solid #262626;padding:12px;overflow:auto;max-height:420px;margin:8px 0 16px}
+table.spec{width:100%;border-collapse:collapse;font-size:14px;margin:8px 0 16px}
+table.spec th,table.spec td{text-align:left;vertical-align:top;padding:7px 14px 7px 0;border-bottom:1px solid #2a2a2a}
+table.spec th{color:#a8a8a8;font-weight:500}
+table.spec td.num{font-variant-numeric:tabular-nums;white-space:nowrap}
+table.spec code{white-space:nowrap}
+table.spec td.fail{color:#ff8a80;font-weight:600}
+.tscroll{overflow-x:auto}
+.tscroll table.spec{min-width:620px}
+.dot{display:inline-block;width:14px;height:14px;border:1px solid rgba(255,255,255,.3);vertical-align:-2px;margin-right:6px}
+.cap{font-size:13px;color:#a8a8a8;margin:0 0 8px}
+.notes{font-size:13px;line-height:1.5;color:#d0d0d0;margin:0 0 22px;border-left:2px solid #333;padding:2px 0 2px 12px}
+.notes div{margin:2px 0;max-width:110ch}
+.notes b{color:#fff;font-weight:600}
+.pair{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px;margin:8px 0 12px}
+.trio{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin:8px 0 12px}
+.mwrap{overflow-x:auto;margin:8px 0 12px}
+.pair .mwrap,.trio .mwrap{margin:0}
+.themebar{position:sticky;top:0;z-index:20;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;padding:8px 0;background:#000;border-bottom:1px solid #2a2a2a;margin:14px 0 14px;font-size:14px}
+.tt{display:inline-flex;border:1px solid #444}
+.tt button{background:#000;color:#a8a8a8;border:0;padding:5px 14px;font:500 13px/1.3 system-ui,sans-serif;cursor:pointer}
+.tt button.on{background:#fff;color:#000}
+.tt button:focus-visible{outline:2px solid #fff;outline-offset:2px}
+.toc{columns:2 320px;column-gap:28px;font-size:14px;margin:8px 0 16px;padding:0;list-style:none}
+.toc li{margin:0 0 3px;break-inside:avoid}
+.flowgrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0 28px}
+.strip{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-start;margin:8px 0 12px}
+.strip figure{margin:0}
+.strip figcaption,.cellcap{font-size:12.5px;color:#a8a8a8;margin:6px 0 0}
+.chips{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:1px;margin:8px 0 14px}
+.chip{padding:30px 10px 8px;font:12px/1.35 ui-monospace,Menlo,monospace}
+.chip b{display:block;font:600 12px/1.35 system-ui,sans-serif}
+svg.diagram{display:block;max-width:100%;height:auto;margin:8px 0 16px}
+@media (max-width:1180px){.pair,.trio,.flowgrid{grid-template-columns:minmax(0,1fr)}}
+
+.m{--rail-w:52px;--idx-w:264px;--shell-h:548px;font:400 12.5px/1.45 var(--sans);color:var(--ink);text-align:left;-webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums}
+.m *,.m *::before,.m *::after{box-sizing:border-box}
+.m svg{display:block;flex:none}
+.m .mono{font-family:var(--mono);font-size:.95em}
+.m .dim{color:var(--ink-2)}
+.m b,.m strong{font-weight:700}
+.win{position:relative;background:var(--frame);border:1px solid var(--win-line);border-radius:var(--r-win);overflow:hidden;min-width:1080px}
+.win.sm{min-width:0}
+.tbar{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;height:34px;padding:0 12px;gap:12px}
+.tb-brand{display:flex;align-items:center;gap:8px;font-weight:700;font-size:13px}
+.tb-find{display:flex;align-items:center;gap:8px;width:320px;height:22px;padding:0 8px;font-size:11.5px}
+.tb-find .kbd{margin-left:auto}
+.tb-right{justify-self:end;font-size:11.5px}
+.shell{display:grid;grid-template-columns:var(--rail-w) var(--idx-w) minmax(0,1fr);min-height:var(--shell-h)}
+.rail{display:flex;flex-direction:column;align-items:center;gap:8px;padding:10px 0}
+.tile{position:relative;width:34px;height:34px;display:flex;align-items:center;justify-content:center;font:600 11px/1 var(--sans);letter-spacing:.02em}
+.tile .pip{position:absolute;top:-4px;right:-4px;padding:1.5px;border-radius:50%;background:var(--pip-bg);color:var(--bad)}
+.rail .sp{flex:1}
+.idx{display:flex;flex-direction:column;min-width:0}
+.idx-head{padding:12px 12px 10px}
+.app-name{display:flex;align-items:baseline;justify-content:space-between;gap:8px;font-weight:700;font-size:14px;line-height:20px}
+.app-name span{font-weight:400;font-size:11.5px;color:var(--ink-2)}
+.app-sub{font-size:11.5px;color:var(--ink-2);margin-top:1px}
+.filter{display:flex;align-items:center;gap:7px;margin-top:9px;height:26px;padding:0 8px;font-size:12px;color:var(--ink-3)}
+.filter .kbd{margin-left:auto}
+.mods{flex:1;display:flex;flex-direction:column}
+.row{position:relative;display:grid;grid-template-columns:var(--g-w) minmax(0,1fr) auto;align-items:center;column-gap:9px;min-height:40px;padding:3px 12px}
+.row .n{font-weight:600;font-size:13px;line-height:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .meta{font-size:11.5px;line-height:15px;color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.idx-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 12px;font-size:11.5px;color:var(--ink-2)}
+.work{display:flex;flex-direction:column;min-width:0}
+.whead{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px 8px;min-height:42px}
+.wtitle{display:flex;align-items:baseline;gap:10px;min-width:0;white-space:nowrap}
+.wtitle h4{margin:0;font-size:18px;line-height:22px;font-weight:700}
+.wtitle .path{font-size:11.5px;color:var(--ink-2)}
+.acts{display:flex;gap:6px;align-items:center}
+.tabs{display:flex;gap:2px;padding:0 16px}
+.tab{display:flex;align-items:baseline;gap:6px;padding:6px 10px;font-size:12.5px;font-weight:500;color:var(--ink-2);white-space:nowrap}
+.tab i{font-style:normal;font-family:var(--mono);font-size:10.5px;color:var(--ink-3)}
+.wbody{flex:1;padding:14px 16px 16px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px}
+.stack{display:flex;flex-direction:column;gap:12px;min-width:0}
+.btn{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 10px;font-weight:600;font-size:12px;line-height:1;white-space:nowrap}
+.btn.sm{height:22px;padding:0 8px;font-size:11.5px}
+.btns{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.kbd{display:inline-flex;align-items:center;height:16px;padding:0 4px;font:500 10.5px/1 var(--mono);white-space:nowrap}
+.st{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;line-height:1.2;white-space:nowrap}
+.st.good{color:var(--good)}.st.warn{color:var(--warn)}.st.bad{color:var(--bad)}.st.off{color:var(--off)}
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr))}
+.stat .k{font-size:11.5px;color:var(--ink-2)}
+.stat .v{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-height:26px}
+.stat .v .st{font-size:12px}
+.box h5{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin:0;font-size:12.5px;line-height:1.4;font-weight:700}
+.box h5 > span:last-child:not(.st){font-weight:400;font-size:11.5px;color:var(--ink-2)}
+.kv{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:27px;font-size:12.5px}
+.kv > span:first-child{display:flex;align-items:center;gap:7px;min-width:0}
+.bar{display:grid;grid-template-columns:88px minmax(0,1fr) 34px;align-items:center;gap:10px;min-height:21px;font-size:12px}
+.bar .tr{display:block;height:6px;background:var(--track)}
+.bar .fl{display:block;height:100%;background:var(--bar)}
+.bar .val{text-align:right;font-family:var(--mono);font-size:11.5px}
+.bar.low .fl{background:var(--warn)}
+.bar.low .val{color:var(--warn);font-weight:600}
+.alert{display:flex;gap:9px;align-items:flex-start;padding:9px 12px;font-size:12.5px;line-height:1.5}
+.alert .st{margin-top:2px}
+.code{font:400 12px/1.6 var(--mono);white-space:pre-wrap;word-break:break-word;padding:10px 12px;background:var(--code-bg);color:var(--code-fg)}
+.code .c-dim{color:var(--code-dim)}.code .c-ok,.drawer .c-ok{color:var(--code-ok)}.code .c-err,.drawer .c-err{color:var(--code-err)}
+.tree{margin:0;font:400 12px/1.7 var(--mono);white-space:pre;color:var(--ink-2);overflow:hidden}
+.tree b{font-weight:600;color:var(--ink)}
+.lbl{font-size:11.5px;font-weight:600;margin:0 0 4px}
+.lbl span{font-weight:400;color:var(--ink-2)}
+.inp{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:28px;padding:0 9px;font-size:12.5px}
+.field{margin-bottom:12px}
+.chks{display:grid;grid-template-columns:1fr 1fr;gap:1px 12px}
+.chk{display:flex;align-items:center;gap:8px;min-height:24px;font-size:12.5px}
+.sq{width:14px;height:14px;display:inline-flex;align-items:center;justify-content:center;flex:none}
+.drawer{background:var(--code-bg);color:var(--code-fg);padding:8px 16px 12px;font:400 11.5px/1.6 var(--mono)}
+.dbar{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:5px;font-family:var(--sans);font-size:12px;color:var(--code-dim)}
+.dbar > span{display:flex;align-items:center;gap:8px}
+.dbar b{color:var(--code-fg)}
+.dbar .st.good{color:var(--code-ok)}.dbar .st.bad{color:var(--code-err)}
+.m .dbar .kbd,.m .drawer .kbd{background:transparent;box-shadow:none;border:1px solid var(--code-dim);color:var(--code-dim)}
+.stage{position:relative}
+.scrim{position:absolute;inset:0;background:var(--scrim)}
+.pal{position:absolute;top:58px;left:50%;transform:translateX(-50%);width:620px;background:var(--surface);overflow:hidden}
+.pal-in{display:flex;align-items:center;gap:10px;height:44px;padding:0 14px;font-size:15px}
+.pal-in .q{flex:1}
+.caret{display:inline-block;width:1.5px;height:17px;background:var(--ink);vertical-align:-3px;margin-left:1px}
+.pal-g{padding:9px 14px 3px;font-size:11.5px;font-weight:600;color:var(--ink-2)}
+.pal-r{position:relative;display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:32px;padding:0 14px;font-size:12.5px}
+.pal-r .l{display:block;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pal-r .l svg{display:inline-block;vertical-align:-2px}
+.pal-r .l .st{margin-left:8px;vertical-align:1px}
+.code .tk{white-space:nowrap}
+.pal-r .hint{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--ink-2);white-space:nowrap}
+.pal-f{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:8px 14px;margin-top:6px;font-size:11.5px;color:var(--ink-2)}
+.empty{display:flex;flex-direction:column;justify-content:center;gap:12px;padding:26px 28px;min-height:262px}
+.empty h4{margin:0;font-size:18px;line-height:1.25;font-weight:700}
+.empty p{margin:0;max-width:46ch;color:var(--ink-2)}
+.fail{display:flex;flex-direction:column;gap:10px;padding:12px 14px 14px;min-height:220px}
+.fail p{margin:0;color:var(--ink-2)}
+.m.cmp{--rail-w:40px;--idx-w:190px;--shell-h:452px;font-size:12px}
+.m.cmp .win{min-width:570px}
+.m.cmp .tbar{grid-template-columns:1fr auto;height:30px;padding:0 10px}
+.m.cmp .tb-find{display:none}
+.m.cmp .tile{width:28px;height:28px;font-size:10px}
+.m.cmp .idx-head{padding:10px 9px 8px}
+.m.cmp .row{padding:2px 8px;min-height:37px;column-gap:7px}
+.m.cmp .row .n{font-size:12.5px}
+.m.cmp .row .meta{font-size:11px}
+.m.cmp .idx-foot{padding:7px 9px;white-space:nowrap}
+.m.cmp .idx-foot .btn svg{display:none}
+.m.cmp .whead{padding:10px 12px 6px;min-height:36px}
+.m.cmp .wtitle h4{font-size:15px;line-height:20px}
+.m.cmp .tabs{padding:0 8px;gap:0}
+.m.cmp .tab{padding:5px 7px;font-size:11.5px}
+.m.cmp .tab i{display:none}
+.m.cmp .wbody{padding:10px 12px 12px;gap:10px}
+.m.cmp .stats{grid-template-columns:1fr 1fr}
+.m.cmp .bar{grid-template-columns:80px minmax(0,1fr) 30px;gap:8px;min-height:19px;font-size:11.5px}
+.m.cmp .alert{padding:8px 10px;font-size:12px}
+.fa{--frame:#D1D8E2;--panel:#E5EAF0;--surface:#F9FAFC;--well:#DBE1E9;--ink:#1A1E25;--ink-2:#48515C;--ink-3:#5B6570;--line:#BCC6D3;--line-2:#747F8C;--key:#1A1E25;--key-fg:#F9FAFC;--good:#2C6A37;--warn:#855600;--bad:#B02A20;--bad-fg:#F9FAFC;--off:#5B6570;--bad-soft:#F8E2DD;--code-bg:#1A1E25;--code-fg:#E5EBF4;--code-dim:#93A0B0;--code-ok:#8FD49B;--code-err:#F59A8E;--key-hover:#3E4147;--key-press:#5D6066;--scrim:rgba(26,30,37,.42);--shadow:rgba(10,13,18,.30);--sans:"Asap",system-ui,-apple-system,"Segoe UI",sans-serif;--mono:"Inconsolata",ui-monospace,Menlo,Consolas,monospace}
+.fa[data-theme="dark"]{--frame:#0F1216;--panel:#15191E;--surface:#1D2229;--well:#11151B;--ink:#E5EBF4;--ink-2:#A1AEBE;--ink-3:#8895A5;--line:#2E353E;--line-2:#657180;--key:#E5EBF4;--key-fg:#15191E;--good:#84CC90;--warn:#E5B152;--bad:#F28B7F;--bad-fg:#15191E;--off:#8895A5;--bad-soft:#3A201B;--code-bg:#0B0E12;--code-fg:#E5EBF4;--code-dim:#93A0B0;--code-ok:#8FD49B;--code-err:#F59A8E;--key-hover:#C5CBD4;--key-press:#A9AFB7;--scrim:rgba(6,6,8,.6);--shadow:rgba(0,0,0,.50)}
+.fa{--r-win:8px;--g-w:36px;--win-line:var(--line-2);--track:var(--well);--bar:var(--ink);--pip-bg:var(--frame)}
+.fa .bm{color:var(--ink)}
+.fa .bm .t2{fill:var(--line-2)}
+.fa .tbar{background:var(--frame);border-bottom:1px solid var(--line-2);color:var(--ink)}
+.fa .tb-find{background:var(--panel);border:1px solid var(--ink-2);border-radius:3px;color:var(--ink-2)}
+.fa .tb-right{color:var(--ink-2)}
+.fa .rail{background:var(--frame);border-right:1px solid var(--line-2)}
+.fa .tile{border:1px solid var(--ink-2);border-radius:3px;background:var(--panel);color:var(--ink-2)}
+.fa .tile.on{background:var(--key);border-color:var(--key);color:var(--key-fg)}
+.fa .tile.add{border-style:dashed;background:transparent;font-size:15px;font-weight:400}
+.fa .tile.ico{border:0;background:transparent}
+.fa .tile.ico.on{background:var(--key);color:var(--key-fg)}
+.fa .idx{background:var(--panel);border-right:1px solid var(--line-2)}
+.fa .idx-head{border-bottom:1px solid var(--line)}
+.fa .filter{background:var(--surface);border:1px solid var(--line-2);border-radius:3px}
+.fa .mods{padding:8px 0 8px 8px}
+.fa .row,.fa.cmp .row{border:1px solid transparent;border-right:0;padding-left:14px}
+.fa .row.on{background:var(--surface);border-color:var(--line-2);margin-right:-1px}
+.fa .row.on::before,.fa .pal-r.on::before,.fa .trow.on::before,.fa .lrow.on::before{content:"";position:absolute;left:4px;top:50%;margin-top:-2.5px;width:5px;height:5px;background:var(--ink)}
+.fa .stamp{display:inline-block;width:34px;text-align:center;font:600 10.5px/16px var(--mono);letter-spacing:.03em;color:var(--ink-2);border:1px solid var(--line-2);border-radius:2px;vertical-align:1px}
+.fa .row.on .stamp{color:var(--ink);border-color:var(--ink)}
+.fa .idx-foot{border-top:1px solid var(--line)}
+.fa .work{background:var(--surface)}
+.fa .wtop{background:var(--panel);border-bottom:1px solid var(--line-2)}
+.fa .tabs{gap:0;margin-bottom:-1px}
+.fa .tab{border:1px solid transparent;border-bottom:0;padding:6px 12px 7px}
+.fa .tab.on{background:var(--surface);border-color:var(--line-2);color:var(--ink);font-weight:600}
+.fa .btn{border:1px solid var(--line-2);border-radius:3px;background:var(--surface);color:var(--ink)}
+.fa .btn.pri{background:var(--key);border-color:var(--key);color:var(--key-fg)}
+.fa .kbd{border:1px solid var(--line-2);border-radius:2px;background:var(--well);color:var(--ink-2)}
+.fa .btn .kbd{margin-left:2px}
+.fa .stats{border:1px solid var(--line-2);border-radius:3px}
+.fa .stat{padding:9px 12px 8px;border-left:1px solid var(--line)}
+.fa .stat:first-child{border-left:0}
+.fa .stat .big{font-size:19px;font-weight:600;line-height:26px}
+.fa.cmp .stat:nth-child(odd){border-left:0}
+.fa.cmp .stat:nth-child(n+3){border-top:1px solid var(--line)}
+.fa.cmp .stat .big{font-size:17px}
+.fa .box{border:1px solid var(--line-2);border-radius:3px;padding:0 12px 8px}
+.fa .box h5{padding:8px 0 7px;border-bottom:1px solid var(--line);margin-bottom:6px}
+.fa .kv{border-bottom:1px solid var(--line)}
+.fa .kv:last-child{border-bottom:0}
+.fa .alert{background:var(--bad-soft);border:1px solid var(--bad);border-radius:3px}
+.fa .code{border-radius:3px}
+.fa .inp{background:var(--surface);border:1px solid var(--line-2);border-radius:3px}
+.fa .field.opt{padding-top:8px;border-top:1px solid var(--line)}
+.fa .sq{border:1.5px solid var(--line-2);border-radius:2px;background:var(--surface)}
+.fa .sq.on{background:var(--key);border-color:var(--key);color:var(--key-fg)}
+.fa .drawer{border-top:1px solid var(--line-2)}
+.fa .pal{border:1px solid var(--ink);border-radius:4px;box-shadow:0 14px 34px var(--shadow)}
+.fa .pal-in{border-bottom:1px solid var(--line-2)}
+.fa .pal-r.on{background:var(--well);box-shadow:inset 0 1px 0 var(--line-2),inset 0 -1px 0 var(--line-2)}
+.fa .pal-f{border-top:1px solid var(--line);background:var(--panel)}
+.fa .wtitle h4{letter-spacing:-.005em}
+
+.m svg.ic{display:inline-block;vertical-align:-2px}
+.fa .is-focus{outline:2px solid var(--ink);outline-offset:1px}
+.fa .btn.is-hover,.fa .tile.is-hover{background:var(--well)}
+.fa .btn.is-press{background:var(--line)}
+.fa .btn.pri.is-hover{background:var(--key-hover);border-color:var(--key-hover)}
+.fa .btn.pri.is-press{background:var(--key-press);border-color:var(--key-press)}
+.fa .btn.is-dis{background:transparent;border-color:var(--line);color:var(--ink-3)}
+.fa .btn.pri.is-dis{background:var(--line);border-color:var(--line);color:var(--ink-2)}
+.fa .btn.danger{border-color:var(--bad);color:var(--bad)}
+.fa .btn.danger.fill{background:var(--bad);color:var(--bad-fg)}
+.fa .btn.danger.is-hover{background:var(--bad-soft)}
+.fa .btn.danger.fill.is-hover{background:var(--bad);box-shadow:inset 0 0 0 1px var(--bad-fg)}
+.fa .btn.danger.is-press{background:var(--bad-soft);box-shadow:inset 0 0 0 1px var(--bad)}
+.fa .btn.danger.fill.is-press{background:var(--bad);box-shadow:inset 0 0 0 2px var(--bad-fg)}
+.fa .btn.danger.is-dis,.fa .btn.danger.fill.is-dis{border-color:var(--line);color:var(--ink-3);background:transparent;box-shadow:none}
+.fa .btn.ghost{border-color:transparent;background:transparent}
+.fa .btn.ghost.is-hover{background:var(--well)}
+.fa .btn.icon{width:26px;padding:0;justify-content:center}
+.fa .btn.icon.sm{width:22px}
+.fa .inp.is-hover,.fa .filter.is-hover{border-color:var(--ink-2)}
+.fa .inp.is-focus,.fa .filter.is-focus{border-color:var(--ink);color:var(--ink)}
+.fa .inp.is-dis{background:var(--well);border-color:var(--line);color:var(--ink-2)}
+.fa .inp.is-err{border-color:var(--bad)}
+.fa .inp .ph,.fa .ph{color:var(--ink-3)}
+.fa .errmsg{display:flex;gap:6px;align-items:flex-start;margin-top:4px;font-size:11.5px;line-height:1.4;color:var(--bad)}
+.fa .errmsg .st{margin-top:1px}
+.fa .hint2{margin-top:4px;font-size:11.5px;line-height:1.4;color:var(--ink-2)}
+.fa .filter.has{color:var(--ink)}
+.fa .sq.is-hover{border-color:var(--ink)}
+.fa .sq.is-dis{background:var(--well);border-color:var(--line)}
+.fa .sq.on.is-dis{background:var(--line);border-color:var(--line);color:var(--ink-2)}
+.fa .chk.is-dis{color:var(--ink-3)}
+.fa .seg{display:inline-flex;padding:2px;gap:2px;background:var(--well);border:1px solid var(--line-2);border-radius:3px}
+.fa .seg span{display:inline-flex;align-items:center;height:20px;padding:0 10px;font-size:12px;font-weight:600;line-height:1;color:var(--ink-2);border:1px solid transparent;border-radius:2px;white-space:nowrap}
+.fa .seg span.on{background:var(--surface);border-color:var(--ink);color:var(--ink)}
+.fa .seg span.is-hover{color:var(--ink)}
+.fa .seg span.is-dis{color:var(--ink-2);text-decoration:line-through}
+.fa .tab.is-hover{color:var(--ink)}
+.fa .row.is-hover,.fa .trow.is-hover,.fa .lrow.is-hover,.fa .pal-r.is-hover{background:var(--well)}
+.fa .row.off .n{color:var(--ink-2);font-weight:500}
+.fa .row.off .stamp{border-style:dashed}
+.fa .row .marks{display:flex;align-items:center;gap:8px}
+.fa .row.c1{min-height:26px;padding-top:1px;padding-bottom:1px}
+.fa .row.c1 .meta{display:none}
+.fa .grp{padding:9px 12px 3px 14px;font-size:11.5px;font-weight:600;color:var(--ink-2);display:flex;justify-content:space-between}
+.fa .grp span{font-weight:400}
+.fa .idx-rt{display:flex;align-items:center;gap:6px;margin-top:3px;font-size:11.5px;color:var(--ink-2)}
+.st.up{color:var(--good)}.st.down{color:var(--bad)}.st.oos{color:var(--warn)}.st.unk{color:var(--off)}
+.fa .tbl{width:100%;font-size:12.5px}
+.fa .thead,.fa .trow{position:relative;display:grid;align-items:center;column-gap:12px;padding:0 10px 0 14px}
+.fa .thead{min-height:26px;font-size:11.5px;font-weight:600;color:var(--ink-2);border-bottom:1px solid var(--line-2)}
+.fa .thead .srt{color:var(--ink)}
+.fa .trow{min-height:28px;border-bottom:1px solid var(--line)}
+.fa .trow:last-child{border-bottom:0}
+.fa .trow.on,.fa .lrow.on{background:var(--well);box-shadow:inset 0 1px 0 var(--line-2),inset 0 -1px 0 var(--line-2)}
+.fa .trow.is-dis{color:var(--ink-3)}
+.fa .trow > *,.fa .thead > *{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fa .r{text-align:right}
+.fa .lrow{position:relative;display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:30px;padding:0 10px 0 14px;font-size:12.5px;border-bottom:1px solid var(--line)}
+.fa .lrow:last-child{border-bottom:0}
+.fa .box.flush{padding:0 0 0}
+.fa .lrow.dgrp{background:var(--panel);font-weight:600;border-top:1px solid var(--line-2)}
+.fa .lrow.dact{padding-left:26px}
+.fa .lrow.dact.on::before{left:14px}
+.fa .box.flush h5{padding:8px 12px 7px;margin-bottom:0}
+.fa .alert.warn{background:var(--surface);border-color:var(--warn)}
+.fa .alert.note{background:var(--panel);border-color:var(--line-2)}
+.fa .tip{display:inline-block;max-width:240px;padding:4px 8px;background:var(--key);color:var(--key-fg);font-size:11.5px;line-height:1.4;border-radius:3px}
+.fa .tip .kbd{background:transparent;border-color:var(--key-fg);color:var(--key-fg);margin-left:4px}
+.fa .toast{display:flex;gap:9px;align-items:flex-start;width:320px;padding:9px 10px 9px 12px;background:var(--surface);border:1px solid var(--ink);border-radius:4px;box-shadow:0 6px 16px var(--shadow);font-size:12.5px;line-height:1.45}
+.fa .toast .st{margin-top:2px}
+.fa .toast .tx{flex:1;min-width:0}
+.fa .toast .tx .btns{margin-top:6px}
+.fa .dlg{width:440px;background:var(--surface);border:1px solid var(--ink);border-radius:4px;box-shadow:0 14px 34px var(--shadow);overflow:hidden}
+.fa .dlg-b{padding:14px 16px 12px;display:flex;flex-direction:column;gap:8px}
+.fa .dlg-b h4{margin:0;font-size:15px;line-height:20px;font-weight:700}
+.fa .dlg-b p{margin:0;color:var(--ink-2);line-height:1.5}
+.fa .dlg-f{display:flex;justify-content:flex-end;gap:8px;padding:10px 16px;background:var(--panel);border-top:1px solid var(--line)}
+.fa .dlg-f .lft{margin-right:auto}
+.fa .over{position:absolute;inset:0;display:flex;align-items:flex-start;justify-content:center;padding-top:96px}
+.fa .scrollv{position:relative;width:10px;align-self:stretch;flex:none}
+.fa .scrollv i{position:absolute;left:2px;width:6px;border-radius:3px;background:var(--line-2)}
+.fa .scrollv i.is-hover{background:var(--ink-2)}
+.fa .scrollv i.is-press{background:var(--ink)}
+.fa .prog{display:block;height:6px;background:var(--well)}
+.fa .prog i{display:block;height:100%;background:var(--ink)}
+.fa .busy{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;color:var(--ink)}
+.fa .handle{height:7px;display:flex;align-items:center;justify-content:center;background:var(--surface);border-top:1px solid var(--line-2);cursor:ns-resize}
+.fa .handle i{display:block;width:28px;height:1px;background:var(--line-2)}
+.fa .handle.is-hover{border-top-color:var(--ink)}
+.fa .handle.is-hover i,.fa .handle.is-press i{background:var(--ink);height:2px}
+.fa .handle.is-press{border-top:2px solid var(--ink)}
+.fa .dcol{display:flex;align-items:center;justify-content:space-between;gap:10px;height:28px;padding:0 16px;background:var(--code-bg);color:var(--code-dim);font-size:12px;border-top:1px solid var(--line-2)}
+.fa .dcol b{color:var(--code-fg)}
+.fa .dcol > span{display:flex;align-items:center;gap:8px}
+.fa .dcol .st.good,.fa .drawer .st.good{color:var(--code-ok)}.fa .dcol .st.bad,.fa .drawer .st.bad{color:var(--code-err)}
+.fa .drawer .hl{background:rgba(147,160,176,.18)}
+.fa .dhist{display:grid;grid-template-columns:420px minmax(0,1fr);gap:14px}
+.dbar > span{white-space:nowrap}
+.fa .dhist .hr{display:flex;justify-content:space-between;gap:8px;padding:1px 6px;font-family:var(--sans);font-size:11.5px;color:var(--code-dim);white-space:nowrap}
+.fa .dhist .hr.on{background:rgba(147,160,176,.18);color:var(--code-fg)}
+.fa .dhist .hr span:first-child{overflow:hidden;text-overflow:ellipsis}
+.fa .gen{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0 14px}
+.fa .gen .gh{grid-column:1/-1;padding:8px 0 2px;font-size:11.5px;font-weight:600;color:var(--ink-2);border-bottom:1px solid var(--line)}
+.fa .gen .gi{position:relative;display:flex;align-items:baseline;justify-content:space-between;gap:8px;min-height:26px;padding:4px 8px 3px 14px;border-bottom:1px solid var(--line);font-size:12.5px}
+.fa .gen .gi span{font-family:var(--mono);font-size:11.5px;color:var(--ink-2);white-space:nowrap}
+.fa .gen .gi.on{background:var(--well)}
+.fa .gen .gi.on::before{content:"";position:absolute;left:4px;top:50%;margin-top:-2.5px;width:5px;height:5px;background:var(--ink)}
+.fa .newf{background:var(--well)}
+.fa .wintitle{display:flex;gap:0;align-items:stretch;height:100%;margin-right:-12px}
+.fa .wc{display:flex;align-items:center;justify-content:center;width:44px;height:34px;color:var(--ink)}
+.fa .mac{display:flex;gap:8px;align-items:center}
+.fa .mac i{width:12px;height:12px;border-radius:50%;border:1px solid var(--ink-2);display:block}
+.fa .crumb{font-size:11.5px;color:var(--ink-2)}
+.fa .setnav .row{min-height:32px}
+.fa .frm{max-width:560px}
+.fa .frm .field:last-child{margin-bottom:0}
+.fa .sub{font-size:12.5px;font-weight:700;margin:4px 0 8px;padding-bottom:6px;border-bottom:1px solid var(--line)}
+.fa .gnode{fill:var(--surface);stroke:var(--line-2)}
+.fa .gnode.me{fill:var(--panel);stroke:var(--ink);stroke-width:1.5}
+.fa .glink{fill:none;stroke:var(--ink-2);stroke-width:1}
+.fa .glink.bad{stroke:var(--bad);stroke-width:2}
+.fa .glink.sel{stroke:var(--ink);stroke-width:2}
+.fa .garrow{fill:var(--ink-2)}.fa .garrow.bad{fill:var(--bad)}
+.fa .gt{font:600 12px var(--sans);fill:var(--ink)}
+.fa .gt2{font:400 11px var(--mono);fill:var(--ink-2)}
+.fa .gt2.bad{fill:var(--bad);font-weight:600}
+.fa .gst{font:600 10.5px var(--mono);fill:var(--ink-2);letter-spacing:.03em}
+.fa .gcap{font:600 11.5px var(--sans);fill:var(--ink-2)}
+.fa .gbadmark{fill:var(--bad)}
+.fa .gx{stroke:var(--surface);stroke-width:1.3}
+.fa .chart .ax{stroke:var(--line);stroke-width:1}
+.fa .chart .ln{fill:none;stroke:var(--ink);stroke-width:1.5}
+.fa .chart .ln2{fill:none;stroke:var(--line-2);stroke-width:1}
+.fa .chart text{font:400 10.5px var(--mono);fill:var(--ink-2)}
+.fa .spark{display:block}
+.fa .spark path{fill:none;stroke:var(--ink-2);stroke-width:1.2}
+.m .nowrap{white-space:nowrap}
+.m .wrap{white-space:normal}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><symbol id="i-search" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M2.75 2.75h7.5v7.5h-7.5zM10.25 10.25l3.75 3.75"/></g></symbol><symbol id="i-settings" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M1.5 5h3.25M8.25 5h6.25M1.5 11h6.25M11.25 11h3.25"/><path d="M4.75 3.25h3.5v3.5h-3.5zM7.75 9.25h3.5v3.5h-3.5z"/></g></symbol><symbol id="i-generate" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M2.75 6V2.75H6M10 2.75h3.25V6M13.25 10v3.25H10M6 13.25H2.75V10M8 5.25v5.5M5.25 8h5.5"/></g></symbol><symbol id="i-run" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M4.75 3.1 12.9 8l-8.15 4.9z"/></g></symbol><symbol id="i-boundary" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M1.75 4.75h4v6.5h-4zM10.25 4.75h4v6.5h-4z"/><path d="M8 1.5v13" stroke-dasharray="2 1.6"/></g></symbol><symbol id="i-pulse" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M1.25 8.75h3l2-5.5 3 9.5 2-4h3.5"/></g></symbol><symbol id="i-metrics" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M3.5 13.5v-5M8 13.5v-11M12.5 13.5v-7.5" stroke-width="2.4"/></g></symbol><symbol id="i-migrate" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M1.75 3.75h6.5v8.5h-6.5zM1.75 8h6.5M10.25 8h4.5M12.5 5.5 15 8l-2.5 2.5"/></g></symbol><symbol id="i-test" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M2.25 4.75 3.9 6.4l2.6-3.2M8.75 4.9h5.5M2.25 10.75 3.9 12.4l2.6-3.2M8.75 10.9h5.5"/></g></symbol><symbol id="i-app" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><rect x="2.25" y="3.25" width="11.5" height="9.5"/><path d="M2.25 6.25h11.5"/></g></symbol><symbol id="i-module" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M2.25 3.75h7v2.5h4.5v3.5h-4.5v2.5h-7z"/></g></symbol><symbol id="i-x" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9"/></g></symbol><symbol id="i-chev-r" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M6 3.5 10.5 8 6 12.5"/></g></symbol><symbol id="i-chev-d" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M3.5 6 8 10.5 12.5 6"/></g></symbol><symbol id="i-chev-u" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M3.5 10 8 5.5 12.5 10"/></g></symbol><symbol id="i-folder" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M1.75 3.75h4.5l1.5 1.75h6.5v7.25H1.75z"/></g></symbol><symbol id="i-copy" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M5.25 5.25h8v8h-8zM2.75 10.75v-8h8"/></g></symbol><symbol id="i-stop" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M4 4h8v8H4z"/></g></symbol><symbol id="i-list" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M2.5 4h11M2.5 8h11M2.5 12h7"/></g></symbol><symbol id="i-open" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M6.5 3.25H2.75v10h10V9.5M9 2.75h4.25V7M13 3 7.5 8.5"/></g></symbol><symbol id="i-plus" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M8 3v10M3 8h10"/></g></symbol><symbol id="i-sync" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M2.5 5.5h10M10 3l2.5 2.5L10 8M13.5 10.5h-10M6 8l-2.5 2.5L6 13"/></g></symbol><symbol id="i-lock" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M4.25 7.25h7.5v6h-7.5zM5.75 7.25v-3h4.5v3"/></g></symbol><symbol id="i-clock" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M2.75 2.75h10.5v10.5H2.75zM8 5v3.25h2.75"/></g></symbol><symbol id="i-route" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M2.5 12.5h4v-9h7M11 1.5l2.5 2-2.5 2"/></g></symbol><symbol id="i-min" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M3.5 8h9"/></g></symbol><symbol id="i-max" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-miterlimit="8"><path d="M3.75 3.75h8.5v8.5h-8.5z"/></g></symbol><symbol id="m-good" viewBox="0 0 12 12"><path d="M1.8 6.4 4.7 9.3 10.2 2.9" fill="none" stroke="currentColor" stroke-width="1.9"/></symbol><symbol id="m-warn" viewBox="0 0 12 12"><path d="M6 1 11.4 10.8H.6z" fill="currentColor"/></symbol><symbol id="m-bad" viewBox="0 0 12 12"><path fill-rule="evenodd" fill="currentColor" d="M1 1h10v10H1zM3.3 4.2 5.1 6 3.3 7.8l.9.9L6 6.9l1.8 1.8.9-.9L6.9 6l1.8-1.8-.9-.9L6 5.1 4.2 3.3z"/></symbol><symbol id="m-off" viewBox="0 0 12 12"><rect x="1.75" y="1.75" width="8.5" height="8.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M4 6h4" stroke="currentColor" stroke-width="1.5"/></symbol><symbol id="m-up" viewBox="0 0 12 12"><path d="M6 11V2.4M2.4 6 6 2.4 9.6 6" fill="none" stroke="currentColor" stroke-width="1.7"/></symbol><symbol id="m-down" viewBox="0 0 12 12"><path d="M6 1v8.6M2.4 6 6 9.6 9.6 6" fill="none" stroke="currentColor" stroke-width="1.7"/></symbol><symbol id="m-oos" viewBox="0 0 12 12"><path d="M3.6 1.5v9M8.4 1.5v9" fill="none" stroke="currentColor" stroke-width="2"/></symbol><symbol id="m-unk" viewBox="0 0 12 12"><path d="M1 6h2.2M4.9 6h2.2M8.8 6H11" fill="none" stroke="currentColor" stroke-width="1.8"/></symbol><symbol id="i-mark" viewBox="0 0 24 24"><path d="M3 4h9v4H8v8h4v4H3z" fill="currentColor"/><path class="t2" d="M21 4v16h-8v-5H9V9h4V4z"/></symbol><symbol id="i-chk" viewBox="0 0 10 10"><path d="M1.6 5.2 4 7.6 8.4 2.6" fill="none" stroke="currentColor" stroke-width="1.8"/></symbol><symbol id="i-dash" viewBox="0 0 10 10"><path d="M2 5h6" fill="none" stroke="currentColor" stroke-width="1.8"/></symbol></svg>
+<div class="doc">
+<nav class="top" aria-label="Specification pages"><a href="index.html">Overview</a><a href="architecture.html">Information architecture</a><a href="tokens.html">Tokens</a><a href="components.html">Components</a><a href="screens-start.html">Screens: start</a><a href="screens-read.html">Screens: read</a><a href="screens-write.html">Screens: write</a><a href="screens-global.html">Screens: global</a><a href="flows.html">Flows and keyboard</a><a href="reference.html" class="cur">Text, platform, fonts</a><a href="open.html">Open questions</a></nav>
+<h1>Text, platform, fonts</h1>
+<p class="dim">Mortise design specification, sections 8 to 11. Platform notes, accessibility, interface text, font licences.</p>
+<div class="themebar"><span>Theme for the switchable drawings on this page. Kept in memory only. Without JavaScript they stay light; the paired drawings always show both.</span><span class="tt" role="group" aria-label="Theme for the drawings"><button type="button" class="on" data-set-theme="light">Light</button><button type="button" data-set-theme="dark">Dark</button></span></div>
+<p>Sections 8 to 11 of the specification: what the title bar holds on each platform, accessibility, every string of the interface in one table, and the licences of the two bundled fonts.</p><h2>8. Platform notes</h2><p>The slim title bar is 34 px high and belongs to the window frame colour. It always holds the same three things: the mark with the name on the left, the entry to the command palette in the middle, the current app and how its PHP runs on the right. Only the window controls differ.</p><h3 id="T1"><span class="sid">T1</span>macOS</h3><p class="cap">The three window buttons are drawn by macOS at the left, at their normal place. Mortise leaves 78 px free for them and starts the mark after that.</p><div class="mwrap"><div class="m fa sw" data-theme="light"><div class="win sm" style="min-width:900px;border-radius:8px 8px 0 0"><div class="tbar"><span class="tb-brand"><span class="mac" title="Close, minimise, zoom: drawn by macOS"><i></i><i></i><i></i></span><span style="width:6px"></span><svg class="bm" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h9v4H8v8h4v4H3z" fill="currentColor"/><path class="t2" d="M21 4v16h-8v-5H9V9h4V4z"/></svg><span>Mortise</span></span><span class="tb-find"><svg class="ic " width="13" height="13" aria-hidden="true"><use href="#i-search"/></svg><span>Search or run a command</span><span class="kbd">Ctrl K</span></span><span class="tb-right">shop-api on Herd</span></div><div style="height:26px;background:var(--surface);border-top:0"></div></div></div></div><h3 id="T2"><span class="sid">T2</span>Windows</h3><p class="cap">Minimise, maximise and close at the right, 44 px wide each, full height of the bar, drawn by Mortise. All three take the well fill on hover; close is not red, because colour is kept for state.</p><div class="mwrap"><div class="m fa sw" data-theme="light"><div class="win sm" style="min-width:900px;border-radius:8px 8px 0 0"><div class="tbar"><span class="tb-brand"><svg class="bm" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h9v4H8v8h4v4H3z" fill="currentColor"/><path class="t2" d="M21 4v16h-8v-5H9V9h4V4z"/></svg><span>Mortise</span></span><span class="tb-find"><svg class="ic " width="13" height="13" aria-hidden="true"><use href="#i-search"/></svg><span>Search or run a command</span><span class="kbd">Ctrl K</span></span><span class="tb-right" style="display:flex;align-items:center;gap:12px"><span>shop-api on Herd</span><span class="wintitle"><span class="wc" title="Minimise"><svg class="ic " width="14" height="14" aria-hidden="true"><use href="#i-min"/></svg></span><span class="wc" title="Maximise"><svg class="ic " width="14" height="14" aria-hidden="true"><use href="#i-max"/></svg></span><span class="wc" title="Close"><svg class="ic " width="14" height="14" aria-hidden="true"><use href="#i-x"/></svg></span></span></span></div><div style="height:26px;background:var(--surface);border-top:0"></div></div></div></div><h3 id="T3"><span class="sid">T3</span>Linux</h3><p class="cap">The same three controls drawn by Mortise, on the right by default. A setting moves them to the left for desktops that put them there.</p><div class="mwrap"><div class="m fa sw" data-theme="light"><div class="win sm" style="min-width:900px;border-radius:8px 8px 0 0"><div class="tbar"><span class="tb-brand"><svg class="bm" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h9v4H8v8h4v4H3z" fill="currentColor"/><path class="t2" d="M21 4v16h-8v-5H9V9h4V4z"/></svg><span>Mortise</span></span><span class="tb-find"><svg class="ic " width="13" height="13" aria-hidden="true"><use href="#i-search"/></svg><span>Search or run a command</span><span class="kbd">Ctrl K</span></span><span class="tb-right" style="display:flex;align-items:center;gap:12px"><span>shop-api on Herd</span><span class="wintitle"><span class="wc" title="Minimise"><svg class="ic " width="14" height="14" aria-hidden="true"><use href="#i-min"/></svg></span><span class="wc" title="Maximise"><svg class="ic " width="14" height="14" aria-hidden="true"><use href="#i-max"/></svg></span><span class="wc" title="Close"><svg class="ic " width="14" height="14" aria-hidden="true"><use href="#i-x"/></svg></span></span></span></div><div style="height:26px;background:var(--surface);border-top:0"></div></div></div></div><h3 id="T4"><span class="sid">T4</span>Fallback: the platform's own title bar</h3><p class="cap">Where a custom title bar is not possible, the window keeps the platform's bar (grey here, not designed by Mortise) and the Mortise bar sits directly under it, unchanged except that it holds no window controls.</p><div class="mwrap"><div class="m fa sw" data-theme="light"><div class="win sm" style="min-width:900px;border-radius:8px 8px 0 0"><div style="height:28px;background:#3a3a3a;color:#ddd;display:flex;align-items:center;justify-content:space-between;padding:0 12px;font:13px system-ui,sans-serif"><span>Mortise</span><span style="letter-spacing:6px">_ &#9633; x</span></div><div class="tbar"><span class="tb-brand"><svg class="bm" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h9v4H8v8h4v4H3z" fill="currentColor"/><path class="t2" d="M21 4v16h-8v-5H9V9h4V4z"/></svg><span>Mortise</span></span><span class="tb-find"><svg class="ic " width="13" height="13" aria-hidden="true"><use href="#i-search"/></svg><span>Search or run a command</span><span class="kbd">Ctrl K</span></span><span class="tb-right">shop-api on Herd</span></div><div style="height:26px;background:var(--surface);border-top:0"></div></div></div></div><div class="tscroll"><table class="spec "><thead><tr><th></th><th>macOS</th><th>Windows</th><th>Linux</th></tr></thead><tbody><tr><td>Window controls</td><td>Left. Drawn by the system (close, minimise, zoom).</td><td>Right. Drawn by Mortise: minimise, maximise or restore, close.</td><td>Right by default, left by setting. Drawn by Mortise.</td></tr><tr><td>What Mortise draws</td><td>Everything except the three buttons. The bar is content that extends under a transparent system title bar.</td><td>The whole bar. The window has no system decorations.</td><td>The whole bar. The window has no system decorations.</td></tr><tr><td>Dragging and double click</td><td>Any empty part of the bar drags the window. Double click zooms.</td><td>Any empty part drags. Double click maximises. The window edges resize.</td><td>Same as Windows.</td></tr><tr><td>Window corner radius</td><td>8 px, by the system</td><td>By the system (rounded on Windows 11, square on Windows 10)</td><td>8 px where the compositor allows a transparent corner, otherwise square</td></tr><tr><td>Menu bar</td><td>The system menu bar holds Mortise, File, View, Window and Help with the same commands as the palette.</td><td>None. The palette is the menu.</td><td>None. The palette is the menu.</td></tr><tr><td>Modifier</td><td>Cmd. Option for the app shortcuts.</td><td>Ctrl. Alt for the app shortcuts.</td><td>Ctrl. Alt for the app shortcuts.</td></tr><tr><td>Settings shortcut</td><td>Cmd ,</td><td>Ctrl ,</td><td>Ctrl ,</td></tr><tr><td>Secrets</td><td>Keychain</td><td>Credential Manager</td><td>Secret Service; if none is running, Mortise says so and does not store the secret</td></tr><tr><td>Folder dialog</td><td>The system's</td><td>The system's</td><td>The desktop's portal dialog</td></tr><tr><td>When the fallback applies</td><td>Not expected.</td><td>If window snapping from the maximise button cannot be kept with a custom frame, the owner chooses: custom bar without that menu, or the fallback.</td><td>On a tiling window manager, or when the compositor insists on its own decorations. Also offered as a setting.</td></tr></tbody></table></div><div class="notes"><div><b>Not checked against egui.</b> This section says what the design needs. Whether eframe can keep the macOS buttons over custom content, and how a frameless window behaves with Windows 11 snapping and with Wayland compositors, was not tested for this spec and is listed under "not checked".</div><div><b>The app icon</b> is the oak block with the walnut and ash joint from the identity, unchanged, on every platform. A 16 px drawing exists for small sizes.</div></div><h2>9. Accessibility</h2><div class="tscroll"><table class="spec "><thead><tr><th>Subject</th><th>Rule</th><th>How it shows in the spec</th></tr></thead><tbody><tr><td>Contrast</td><td>Text 4.5 to 1, marks and outlines 3 to 1, in both themes. Disabled text is held to 4.5 to 1 as well, although the standard does not ask for it.</td><td>Every pairing used is computed in Tokens, section 3.2, and the drawings were checked in a browser.</td></tr><tr><td>State without colour</td><td>Every state has a shape and a word. Findings: check, wedge, block with a cross, empty frame. Runtime: arrow up, arrow down, two bars, three dashes. A problem link in the graph is thicker and carries the problem mark on the line.</td><td>Components C9. Where a mark stands alone, the tooltip carries the word.</td></tr><tr><td>Selection without colour</td><td>The selected row is joined to the workspace and has a peg; the selected tab is joined to its panel; a selected list row has a line above and below and the peg. None of them is a hue.</td><td>Components C6, C7, C8.</td></tr><tr><td>Focus</td><td>A 2 px ink ring, 1 px outside the control, on every focusable thing, in both themes. It is drawn over hover and selection. Focus is always visible while the keyboard is in use, and never trapped except in the palette and a dialog.</td><td>Components, every row. Focus order K1.</td></tr><tr><td>Keyboard</td><td>Every action has a key path. No action needs a hover or a drag.</td><td>Section 7.</td></tr><tr><td>Reduced motion</td><td>Follows the system setting, with an override in Settings. The drawer appears at its height, the toast appears and disappears, the new file highlight is shown for 600 ms and removed. Nothing else moves in the first place.</td><td>Tokens, section 3.6.</td></tr><tr><td>Text size</td><td>100, 110, 125 and 150% in Settings, on top of the display scale of the system. Type and sizes scale together, strokes stay 1 px. No text is cut: labels wrap, rows grow, and the index collapses earlier to keep the workspace.</td><td>Settings S8.3, window rules S13.1.</td></tr><tr><td>Pointer target</td><td>At least 24 by 24 px for every control. Where a control is drawn smaller (22 px buttons, the 14 px checkbox, a 16 px keycap that acts as a button) the target extends beyond the drawing; a checkbox row is one target.</td><td>Tokens, size.hit-min.</td></tr><tr><td>Screen readers</td><td>Every control exposes a role, a name and its state to the accessibility interface of the platform (egui does this through AccessKit, as far as is known without a check). Marks expose their word. The runner output is a live region that announces the end of a command, not every line.</td><td>For the builders. Not tested for this spec.</td></tr><tr><td>Language</td><td>English only in this version. Sentences are complete and short so that they translate; no meaning is carried by an abbreviation.</td><td>Section 10.</td></tr><tr><td>Time</td><td>A done toast leaves after 4 s and repeats nothing that is not also on screen. A failed toast stays. Nothing else times out.</td><td>Components C13.</td></tr></tbody></table></div><h2>10. Interface text</h2><p><strong>Voice.</strong> Plain and concrete, like a note left on a workpiece: what happened, to what, and what was left untouched. Sentence case. No exclamation marks, no apology, no "please". An action keeps one name from the button to the confirmation to the message: "Turn off", "Turn off Checkout?", "Turned off Checkout." An error says what happened, then what to do next. Text that comes from PHP, the database or the package is quoted as it is and never rewritten.</p><p><strong>Two words that must not meet.</strong> <em>Findings</em> (problem, warning, good) are what Mortise works out from the files. <em>Runtime</em> (Up, Down, Out of service, Unknown) is what the running app reports through the actuator. The word "health" appears in the interface only inside a path or a config key the user must type. "On" and "Off" are a module's state in <code>modules_statuses.json</code>, and "Turn on" and "Turn off" are the actions; the artisan names <code>module:enable</code> and <code>module:disable</code> appear only in the command preview.</p><p>The drawings read their strings from this table, so what is listed here is what is drawn. Names in the examples (shop-api, Checkout, counts) are placeholders for real values.</p><h3>Names and labels</h3><div class="tscroll"><table class="spec "><thead><tr><th>Where</th><th>Text</th><th>Note</th></tr></thead><tbody><tr><td>Workspace tab 1</td><td>Summary</td><td></td></tr><tr><td>Workspace tab 2</td><td>Boundary</td><td></td></tr><tr><td>Workspace tab 3</td><td>Generate</td><td></td></tr><tr><td>Workspace tab 4</td><td>Actions</td><td></td></tr><tr><td>Workspace tab 5</td><td>Metrics</td><td></td></tr><tr><td>Title bar</td><td>Search or run a command</td><td></td></tr><tr><td>Module index</td><td>Filter modules</td><td></td></tr><tr><td>Module index, first row</td><td>All modules</td><td></td></tr><tr><td>Module index footer</td><td>Sorted: problems first</td><td></td></tr><tr><td>Module index footer</td><td>Sorted: by name</td><td></td></tr><tr><td>Summary</td><td>Modules on</td><td></td></tr><tr><td>Summary</td><td>Lines of PHP</td><td></td></tr><tr><td>Summary</td><td>Test coverage</td><td></td></tr><tr><td>Summary</td><td>Findings</td><td>The name for everything Mortise works out from the files. Never called health.</td></tr><tr><td>Summary</td><td>Runtime</td><td>The name for what the running app reports through the actuator. Never called health.</td></tr><tr><td>Findings list</td><td>Findings in shop-api</td><td></td></tr><tr><td>Summary box</td><td>Runtime on local</td><td></td></tr><tr><td>Finding state</td><td>problem</td><td>Breaks a rule or a check. Plural: problems.</td></tr><tr><td>Finding state</td><td>warning</td><td>Under a limit the app set, such as coverage.</td></tr><tr><td>Finding state</td><td>Good</td><td></td></tr><tr><td>Module state</td><td>Off</td><td></td></tr><tr><td>Module state</td><td>On</td><td></td></tr><tr><td>Runtime status UP</td><td>Up</td><td></td></tr><tr><td>Runtime status DOWN</td><td>Down</td><td></td></tr><tr><td>Runtime status OUT_OF_SERVICE</td><td>Out of service</td><td></td></tr><tr><td>Runtime status UNKNOWN</td><td>Unknown</td><td></td></tr><tr><td>Migrations</td><td>1 waiting</td><td></td></tr></tbody></table></div><h3>Buttons</h3><div class="tscroll"><table class="spec "><thead><tr><th>Where</th><th>Text</th><th>Note</th></tr></thead><tbody><tr><td>First run</td><td>Add app folder</td><td></td></tr><tr><td>Add app</td><td>Choose folder</td><td></td></tr><tr><td>Add app</td><td>Add booking-engine</td><td></td></tr><tr><td>Add app, PHP not found</td><td>Add booking-engine, read only</td><td></td></tr><tr><td>First run</td><td>Open the command palette</td><td></td></tr><tr><td>Module index footer</td><td>New module</td><td></td></tr><tr><td>Generate</td><td>Create 3 files</td><td></td></tr><tr><td>New module</td><td>Create module</td><td></td></tr><tr><td>Generate, Actions</td><td>Copy command</td><td></td></tr><tr><td>Module header, Actions</td><td>Run tests</td><td></td></tr><tr><td>Module header, Actions</td><td>Migrate (1)</td><td></td></tr><tr><td>Module header</td><td>Open in editor</td><td></td></tr><tr><td>Actions</td><td>Turn off</td><td></td></tr><tr><td>Actions</td><td>Turn on</td><td></td></tr><tr><td>Actions</td><td>Roll back</td><td></td></tr><tr><td>Actions</td><td>Seed</td><td></td></tr><tr><td>Actions, runner</td><td>Dry run</td><td></td></tr><tr><td>Actions</td><td>Check translations</td><td></td></tr><tr><td>Runner</td><td>Stop</td><td></td></tr><tr><td>Runner</td><td>Run again</td><td></td></tr><tr><td>Runner</td><td>Copy output</td><td></td></tr><tr><td>Runner</td><td>Hide</td><td></td></tr><tr><td>Runner</td><td>History</td><td></td></tr><tr><td>Runner, failed</td><td>Open migration file</td><td></td></tr><tr><td>Runtime box</td><td>Try again</td><td></td></tr><tr><td>Runtime box</td><td>Open settings</td><td></td></tr><tr><td>Settings</td><td>Test</td><td></td></tr><tr><td>Metrics</td><td>Connect an environment</td><td></td></tr><tr><td>Settings, credentials</td><td>Replace</td><td></td></tr><tr><td>Settings</td><td>Remove</td><td></td></tr><tr><td>Dialogs</td><td>Cancel</td><td></td></tr><tr><td>Summary</td><td>Show all 3 findings</td><td></td></tr><tr><td>Generate, result</td><td>Generate another</td><td></td></tr><tr><td>Runtime box</td><td>Copy line</td><td></td></tr><tr><td>Settings, add app</td><td>Add environment</td><td></td></tr><tr><td>Generate, failed</td><td>Replace PaymentIntentPolicy.php</td><td></td></tr></tbody></table></div><h3>Empty states</h3><div class="tscroll"><table class="spec "><thead><tr><th>Where</th><th>Text</th><th>Note</th></tr></thead><tbody><tr><td>First run</td><td>No apps yet</td><td></td></tr><tr><td>First run</td><td>Add the folder of a Laravel app that uses nwidart/laravel-modules. Mortise reads its modules from disk and changes nothing until you run a command.</td><td></td></tr><tr><td>Module index, filter</td><td>No module matches &quot;paym&quot;. Press Esc to clear the filter.</td><td></td></tr><tr><td>Command palette</td><td>Nothing matches &quot;zzq&quot;. Try a module name, a generator such as model, or an action such as migrate.</td><td></td></tr><tr><td>Findings list</td><td>No findings. 7 modules checked against 2 rules and 4 checks.</td><td></td></tr><tr><td>Runner</td><td>No command has run yet. Output of generators and actions appears here.</td><td></td></tr><tr><td>Tab from a later phase</td><td>Generate is not in this version</td><td></td></tr><tr><td>Tab from a later phase</td><td>Generate creates modules and files through the package&#x27;s own commands, with a preview before anything is written. It needs PHP and a newer nwidart/laravel-modules, and arrives in a later release of Mortise.</td><td></td></tr><tr><td>Generate or Actions, app without PHP</td><td>Generate needs PHP</td><td></td></tr><tr><td>Generate or Actions, app without PHP</td><td>Mortise could not run PHP for shop-api: &quot;herd: command not found&quot;. Choose how PHP runs for this app in Settings.</td><td></td></tr><tr><td>Generate, package too old</td><td>Generate needs a newer nwidart/laravel-modules</td><td></td></tr><tr><td>Generate, package too old</td><td>shop-api has 13.3.0. The preview needs the dry run that a later version adds. Run composer update nwidart/laravel-modules in the app.</td><td></td></tr><tr><td>Metrics, not connected</td><td>Metrics are not connected</td><td></td></tr><tr><td>Metrics, not connected</td><td>Metrics come from the actuator of the running app. Connect an environment for shop-api to read requests, response time and errors per module.</td><td></td></tr></tbody></table></div><h3>Messages</h3><div class="tscroll"><table class="spec "><thead><tr><th>Where</th><th>Text</th><th>Note</th></tr></thead><tbody><tr><td>Toast, Generate result</td><td>Created 3 files in Billing.</td><td></td></tr><tr><td>Toast</td><td>Added booking-engine. 5 modules read.</td><td></td></tr><tr><td>Toast</td><td>Turned off Checkout.</td><td></td></tr><tr><td>Toast</td><td>Turned on Checkout.</td><td></td></tr><tr><td>Toast</td><td>Migrated Checkout: 1 migration ran.</td><td></td></tr><tr><td>Toast</td><td>Rolled back Checkout: 1 migration.</td><td></td></tr><tr><td>Toast</td><td>Copied the command.</td><td></td></tr><tr><td>Toast</td><td>Seeded Checkout.</td><td></td></tr><tr><td>Toast</td><td>31 tests passed in Checkout.</td><td></td></tr><tr><td>Runner</td><td>Running, 2.4 s</td><td></td></tr><tr><td>Runner</td><td>Done in 186 ms</td><td></td></tr><tr><td>Runner</td><td>Stopped after 3.1 s</td><td></td></tr><tr><td>Generate preview</td><td>3 files, none exist yet</td><td></td></tr><tr><td>Generate preview</td><td>3 files, 1 exists already</td><td></td></tr><tr><td>Add app, rescan</td><td>Reading 312 of 551 files</td><td></td></tr><tr><td>Settings, credentials</td><td>Saved. Not shown again.</td><td></td></tr><tr><td>Settings, add app</td><td>Up. Exposed: health, info, mappings, scheduledtasks.</td><td></td></tr><tr><td>Settings, add app</td><td>Laravel Framework 13.2.0</td><td></td></tr><tr><td>Boundary</td><td>Reported on Checkout, the side with fewer files to change.</td><td></td></tr></tbody></table></div><h3>Findings</h3><div class="tscroll"><table class="spec "><thead><tr><th>Where</th><th>Text</th><th>Note</th></tr></thead><tbody><tr><td>Findings, Summary, Boundary</td><td>Checkout and Shipping use each other. 2 files in Checkout, 4 files in Shipping.</td><td></td></tr><tr><td>Findings, Summary, Boundary</td><td>3 files in Checkout read Modules\Billing\Models\Invoice directly. Billing offers Contracts and Events.</td><td></td></tr><tr><td>Findings, Summary</td><td>Notifications is 39% covered. The limit for shop-api is 50%.</td><td></td></tr><tr><td>Findings, to do</td><td>Checkout has 1 migration waiting.</td><td></td></tr><tr><td>Findings</td><td>Modules/Loyalty/module.json is not valid JSON: unexpected end of file at line 14.</td><td></td></tr><tr><td>Findings</td><td>Blog declares the namespace Modules\Blogs. Its folder is Modules/Blog.</td><td></td></tr><tr><td>Findings</td><td>modules_statuses.json lists Legacy, which has no folder.</td><td></td></tr><tr><td>Findings</td><td>Checkout: 4 keys in en are missing in fr.</td><td></td></tr></tbody></table></div><h3>Errors: what happened, then what to do</h3><div class="tscroll"><table class="spec "><thead><tr><th>Where</th><th>Text</th><th>Note</th></tr></thead><tbody><tr><td>Add app</td><td>No Laravel app in ~/code/notes. The folder has no artisan file and no composer.json that requires laravel/framework. Choose the folder that holds artisan.</td><td></td></tr><tr><td>Add app</td><td>booking-engine does not use nwidart/laravel-modules. composer.lock has no entry for the package. Run composer require nwidart/laravel-modules in the app, then choose the folder again.</td><td></td></tr><tr><td>Add app</td><td>No composer.lock in ~/code/booking-engine. Mortise reads versions from it. Run composer install in the app, then choose the folder again.</td><td></td></tr><tr><td>Add app, Settings</td><td>Herd did not answer: &quot;herd: command not found&quot;. You can add the app now and read it. Generating and running need PHP: choose another way, or enter the command.</td><td></td></tr><tr><td>Add app</td><td>shop-api is already in Mortise. Press Enter to open it.</td><td></td></tr><tr><td>Generate</td><td>A model name starts with a letter and has no spaces. Write PaymentIntent, not &quot;payment intent&quot;.</td><td></td></tr><tr><td>New module</td><td>The module name [2fa] is not valid. Use letters, digits, &quot;-&quot;, &quot;_&quot; or spaces, starting with a letter.</td><td>The package's own sentence, shown as it is.</td></tr><tr><td>Generate, failed</td><td>Created 2 of 3 files in Billing. PaymentIntentPolicy.php already exists and was left as it is.</td><td></td></tr><tr><td>Runner, failed</td><td>module:migrate Checkout stopped with exit code 1 at 2026_11_20_091200_add_tracking_code_to_checkouts_table. The error from the database is quoted above. Fix the migration, or try a dry run to read the SQL.</td><td></td></tr><tr><td>New module, failed</td><td>The module was created, but composer dump-autoload failed. Fix the module (for example its composer.json), then run composer dump-autoload.</td><td></td></tr><tr><td>Runner</td><td>The command did not start: &quot;herd: command not found&quot;. Choose how PHP runs for shop-api in Settings.</td><td></td></tr><tr><td>Runtime box</td><td>Runtime status needs nwidart/laravel-actuator. shop-api has no entry for it in composer.lock. Run composer require nwidart/laravel-actuator in the app.</td><td></td></tr><tr><td>Runtime box</td><td>No environment is connected. Add the URL of a running shop-api to read its runtime status.</td><td></td></tr><tr><td>Runtime box</td><td>Cannot reach local. No answer from https://shop-api.test/actuator: connection refused. Start the app, or correct the URL in Settings.</td><td></td></tr><tr><td>Runtime box</td><td>info, mappings and scheduledtasks are not exposed on local. Only health is exposed by default. Add them to exposure.include in config/actuator.php.</td><td></td></tr><tr><td>Runtime box</td><td>local refused the credentials. https://shop-api.test/actuator/info answered 401. Replace the credentials for local in Settings.</td><td></td></tr><tr><td>Runtime box</td><td>db is down: Illuminate\Database\QueryException: SQLSTATE[HY000] [2002] Connection refused.</td><td>The detail is the app's own text, quoted.</td></tr><tr><td>Runtime box</td><td>readinessState is out of service. The app reports this while it is in maintenance mode.</td><td></td></tr><tr><td>Runtime box</td><td>Components are hidden. The app shows them only when health.show_details allows it, and that is never by default. Set it to when_authorized or always in config/actuator.php.</td><td></td></tr><tr><td>Runtime box</td><td>local answered 500 for /actuator/health. The actuator configuration has an error. Read the app log.</td><td></td></tr><tr><td>Metrics</td><td>The metrics endpoint is not exposed on local. Add it to exposure.include in config/actuator.php, next to health.</td><td></td></tr><tr><td>Toast</td><td>Could not open the editor: &quot;code: command not found&quot;. Choose the editor command in Settings.</td><td></td></tr></tbody></table></div><h3>Confirmations</h3><div class="tscroll"><table class="spec "><thead><tr><th>Where</th><th>Text</th><th>Note</th></tr></thead><tbody><tr><td>Dialog</td><td>Turn off Checkout?</td><td></td></tr><tr><td>Dialog</td><td>Shipping and Notifications use it. They stay on and can fail where they call Checkout.</td><td></td></tr><tr><td>Dialog</td><td>Turn off Checkout</td><td></td></tr><tr><td>Dialog</td><td>Roll back Checkout?</td><td></td></tr><tr><td>Dialog</td><td>This runs the down method of the last migration batch of Checkout. Data in the columns and tables it drops is lost.</td><td></td></tr><tr><td>Dialog</td><td>Roll back 1 migration</td><td></td></tr><tr><td>Dialog</td><td>Migrate Checkout in production?</td><td></td></tr><tr><td>Dialog</td><td>shop-api reports the environment production. The command runs with --force on that database.</td><td></td></tr><tr><td>Dialog</td><td>Migrate in production</td><td></td></tr><tr><td>Dialog</td><td>Replace PaymentIntentPolicy.php?</td><td></td></tr><tr><td>Dialog</td><td>The file exists. The generator writes a new one over it, and Mortise cannot bring the old one back.</td><td></td></tr><tr><td>Dialog</td><td>Replace file</td><td></td></tr><tr><td>Dialog</td><td>Replace the module Loyalty?</td><td></td></tr><tr><td>Dialog</td><td>Modules/Loyalty exists with 23 files. module:make --force writes the generated files over it.</td><td></td></tr><tr><td>Dialog</td><td>Replace module</td><td></td></tr><tr><td>Dialog</td><td>Remove shop-api from Mortise?</td><td></td></tr><tr><td>Dialog</td><td>The folder and its files stay as they are. Mortise forgets the app, its environments and its saved credentials.</td><td></td></tr><tr><td>Dialog</td><td>Remove app</td><td></td></tr><tr><td>Dialog</td><td>Stop module:migrate Checkout?</td><td></td></tr><tr><td>Dialog</td><td>A migration that stops half way can leave the database between two states.</td><td></td></tr><tr><td>Dialog</td><td>Stop command</td><td></td></tr><tr><td>Dialog</td><td>Keep running</td><td></td></tr></tbody></table></div><h3>Tooltips</h3><div class="tscroll"><table class="spec "><thead><tr><th>Where</th><th>Text</th><th>Note</th></tr></thead><tbody><tr><td>App rail tile</td><td>shop-api, 2 problems</td><td></td></tr><tr><td>App rail</td><td>Add app</td><td></td></tr><tr><td>App rail</td><td>Settings</td><td></td></tr><tr><td>Code stamp</td><td>CHK is the code for Checkout</td><td></td></tr><tr><td>Runtime mark</td><td>Up on local, checked 8 s ago</td><td></td></tr><tr><td>Disabled action</td><td>Needs PHP. Choose how PHP runs in Settings.</td><td></td></tr><tr><td>Module index footer</td><td>Change the order</td><td></td></tr><tr><td>Coverage figure</td><td>From build/coverage/clover.xml, written 2 days ago</td><td></td></tr></tbody></table></div><h3>Public surface</h3><div class="tscroll"><table class="spec "><thead><tr><th>Where</th><th>Text</th><th>Note</th></tr></thead><tbody><tr><td>Boundary, one module</td><td>Links</td><td></td></tr><tr><td>Boundary, one module</td><td>Public surface</td><td></td></tr><tr><td>Public surface, not scanned</td><td>Billing has no public surface yet</td><td></td></tr><tr><td>Public surface, not scanned</td><td>A scan reads the files of Billing and proposes what other modules, HTTP clients and the command line may use. Nothing is written until you accept the proposal. Until then the rule uses the folders Contracts and Events.</td><td></td></tr><tr><td>Button</td><td>Scan Billing</td><td></td></tr><tr><td>Button</td><td>Scan again</td><td></td></tr><tr><td>Button</td><td>Stop the scan</td><td></td></tr><tr><td>Public surface, scanning</td><td>Reading 61 of 96 files</td><td></td></tr><tr><td>Public surface, proposal</td><td>22 found, 21 proposed</td><td></td></tr><tr><td>Proposal, reason</td><td>used by Checkout, 3 files</td><td></td></tr><tr><td>Proposal, reason</td><td>an interface in Contracts</td><td></td></tr><tr><td>Proposal, reason</td><td>an event</td><td></td></tr><tr><td>Proposal, reason</td><td>routes with this prefix</td><td></td></tr><tr><td>Proposal, reason</td><td>a console command</td><td></td></tr><tr><td>Proposal, entry left out</td><td>Used from outside, not proposed. Include it to allow these reads, or leave it out and keep the finding on Checkout.</td><td></td></tr><tr><td>Proposal</td><td>Add a class, a route or a command</td><td></td></tr><tr><td>Button</td><td>Accept 21 entries</td><td></td></tr><tr><td>Toast</td><td>Accepted the public surface of Billing: 21 entries.</td><td></td></tr><tr><td>Public surface, accepted</td><td>Accepted on 22 November 2026, 21 entries</td><td></td></tr><tr><td>Button</td><td>Change</td><td></td></tr><tr><td>Public surface, later scan</td><td>The scan differs from the accepted surface in 2 places.</td><td></td></tr><tr><td>Later scan, entry</td><td>new in the code</td><td></td></tr><tr><td>Later scan, entry</td><td>no longer in the code</td><td></td></tr><tr><td>Button</td><td>Accept 2 changes</td><td></td></tr><tr><td>Button</td><td>Keep the accepted surface</td><td></td></tr><tr><td>Toast</td><td>The scan matches the accepted surface.</td><td></td></tr><tr><td>Tooltip</td><td>The package cannot store a public surface yet</td><td></td></tr><tr><td>Public surface, routes not read</td><td>Routes were not read. Connect an environment or set how PHP runs, then scan again.</td><td></td></tr><tr><td>Boundary rules</td><td>Other modules use only a module&#x27;s public surface</td><td></td></tr></tbody></table></div><h3>Destructive actions</h3><div class="tscroll"><table class="spec "><thead><tr><th>Where</th><th>Text</th><th>Note</th></tr></thead><tbody><tr><td>Actions tab</td><td>Destructive</td><td></td></tr><tr><td>Actions tab</td><td>3 actions, closed</td><td></td></tr><tr><td>Actions tab</td><td>Reset migrations</td><td></td></tr><tr><td>Actions tab</td><td>Refresh migrations</td><td></td></tr><tr><td>Actions tab, All modules</td><td>Drop all tables and migrate</td><td></td></tr><tr><td>Actions tab</td><td>Delete module</td><td></td></tr><tr><td>Dialog</td><td>Reset the migrations of Checkout?</td><td></td></tr><tr><td>Dialog</td><td>This rolls back every migration of Checkout that has run. The tables and columns they created are dropped, with every row in them.</td><td></td></tr><tr><td>Dialog</td><td>Reset 9 migrations</td><td></td></tr><tr><td>Dialog</td><td>Refresh the migrations of Checkout?</td><td></td></tr><tr><td>Dialog</td><td>This rolls back every migration of Checkout and runs them again. The tables come back empty: every row in them is lost.</td><td></td></tr><tr><td>Dialog</td><td>Refresh 9 migrations</td><td></td></tr><tr><td>Dialog</td><td>Drop all tables of shop-api?</td><td></td></tr><tr><td>Dialog</td><td>This drops every table of the database, not only those of modules, then runs the migrations of the app and of the 7 modules that are on. Every row in every table is lost. There is no dry run.</td><td></td></tr><tr><td>Dialog</td><td>Drop all tables and migrate</td><td></td></tr><tr><td>Dialog</td><td>Delete the module Checkout?</td><td></td></tr><tr><td>Dialog</td><td>This removes the folder Modules/Checkout with its 84 files and its line in modules_statuses.json. Its database tables stay. Shipping and Notifications use it.</td><td></td></tr><tr><td>Dialog</td><td>12 of the files have changes that are not committed. Git cannot bring those back.</td><td></td></tr><tr><td>Dialog</td><td>Delete module</td><td></td></tr><tr><td>Dialog</td><td>Type Checkout to confirm</td><td></td></tr><tr><td>Dialog</td><td>Type shop-api to confirm</td><td></td></tr><tr><td>Actions tab, production</td><td>shop-api reports the environment production. Mortise does not run this command there. Copy it and run it where you can watch the database.</td><td></td></tr><tr><td>Runner</td><td>The app prohibits this command, so the package refused to run it. Its message is quoted above.</td><td></td></tr><tr><td>Actions tab, one module</td><td>Dropping all tables is under &quot;All modules&quot;. For one module the command would drop every table and bring back only the app&#x27;s own and this module&#x27;s.</td><td></td></tr><tr><td>Toast</td><td>Reset the migrations of Checkout: 9 rolled back.</td><td></td></tr><tr><td>Toast</td><td>Refreshed the migrations of Checkout: 9 ran again.</td><td></td></tr><tr><td>Toast</td><td>Dropped all tables of shop-api and migrated 7 modules.</td><td></td></tr><tr><td>Toast</td><td>Deleted the module Checkout.</td><td></td></tr></tbody></table></div><h3>Credentials</h3><div class="tscroll"><table class="spec "><thead><tr><th>Where</th><th>Text</th><th>Note</th></tr></thead><tbody><tr><td>Environment form</td><td>None</td><td></td></tr><tr><td>Environment form</td><td>Bearer token</td><td></td></tr><tr><td>Environment form</td><td>HTTP basic</td><td></td></tr><tr><td>Environment form</td><td>Custom header</td><td></td></tr><tr><td>Environment form</td><td>Token</td><td></td></tr><tr><td>Environment form</td><td>User name</td><td></td></tr><tr><td>Environment form</td><td>Password</td><td></td></tr><tr><td>Environment form</td><td>Header name</td><td></td></tr><tr><td>Environment form</td><td>Header value</td><td></td></tr><tr><td>Environment form</td><td>Kept in the credential store of this computer, not in mortise.json and not in the app.</td><td></td></tr></tbody></table></div><h3>The four runtime states and what else can be shown in their place</h3><div class="tscroll"><table class="spec "><thead><tr><th>What the actuator answers</th><th>Shown as</th><th>Mark</th><th>Colour</th></tr></thead><tbody><tr><td><code>UP</code></td><td>Up</td><td>arrow up</td><td>good</td></tr><tr><td><code>DOWN</code> (HTTP 503)</td><td>Down, with the failing component and its detail</td><td>arrow down</td><td>bad</td></tr><tr><td><code>OUT_OF_SERVICE</code> (HTTP 503)</td><td>Out of service, with the component</td><td>two bars</td><td>warn</td></tr><tr><td><code>UNKNOWN</code></td><td>Unknown</td><td>three dashes</td><td>off</td></tr><tr><td>No answer, a refused connection, a timeout</td><td>No answer. This is Mortise's word, not a status of the app.</td><td>three dashes</td><td>off</td></tr><tr><td>HTTP 401 or 403</td><td>Not authorized</td><td>three dashes</td><td>off</td></tr><tr><td>HTTP 500</td><td>No answer, with the sentence about the actuator configuration</td><td>three dashes</td><td>off</td></tr></tbody></table></div><h2>11. Fonts</h2><p>Both families will be bundled inside the app, so their licences were read in each font's own repository on 22 November 2026, not recalled. Both are free to bundle.</p><div class="tscroll"><table class="spec "><thead><tr><th>Family</th><th>Repository</th><th>Licence file read</th><th>Licence</th><th>Copyright line in that file</th><th>Reserved font name</th></tr></thead><tbody><tr><td>Asap</td><td><a href="https://github.com/Omnibus-Type/Asap" target="_blank" rel="noopener noreferrer">github.com/Omnibus-Type/Asap</a></td><td><a href="https://github.com/Omnibus-Type/Asap/blob/master/OFL.txt" target="_blank" rel="noopener noreferrer">OFL.txt on branch master</a></td><td>SIL Open Font License, version 1.1</td><td>Copyright 2018 The Asap Project Authors (https://github.com/Omnibus-Type/Asap)</td><td>None declared in the copyright line</td></tr><tr><td>Inconsolata</td><td><a href="https://github.com/googlefonts/Inconsolata" target="_blank" rel="noopener noreferrer">github.com/googlefonts/Inconsolata</a></td><td><a href="https://github.com/googlefonts/Inconsolata/blob/main/OFL.txt" target="_blank" rel="noopener noreferrer">OFL.txt on branch main</a></td><td>SIL Open Font License, version 1.1</td><td>Copyright 2006 The Inconsolata Project Authors (https://github.com/cyrealtype/Inconsolata)</td><td>None declared in the copyright line</td></tr></tbody></table></div><p><strong>What the licence allows and asks</strong>, from the text of the two files, which is the same from "PERMISSION &amp; CONDITIONS" on:</p><ul><li>Condition 2: the fonts "may be bundled, redistributed and/or sold with any software, provided that each copy contains the above copyright notice and this license". They "can be included either as stand-alone text files, human-readable headers or in the appropriate machine-readable metadata fields within text or binary files as long as those fields can be easily viewed by the user".</li><li>Condition 1: the fonts may not be sold by themselves. Bundling them in an app, free or paid, is not that.</li><li>Conditions 3 and 4: a modified version may not use a reserved font name, and the authors' names may not be used to promote it. Neither file declares a reserved name. Subsetting a font is a modification, so if the builders subset, they should keep the original family names only because no name is reserved; if a later release of either font declares one, a subset must be renamed.</li><li>Condition 5: the fonts stay under this licence. The app itself can have any licence.</li></ul><p><strong>What the app must do.</strong> Ship both <code>OFL.txt</code> files with their copyright lines, for example in a <code>licenses</code> folder next to the binary and on an "About" line in Settings. Leave the licence metadata inside the font files as it is.</p><p><strong>Notes.</strong> The address in Inconsolata's copyright line, <code>github.com/cyrealtype/Inconsolata</code>, now redirects to the Google Fonts repository linked above. Which files to bundle: the static weights 400, 500, 600 and 700 of Asap and 400, 500 and 600 of Inconsolata, at normal width. Whether egui renders the variable versions was not checked, so static files are the safe choice. No replacement is needed, so none is proposed.</p>
+</div>
+<script>(function(){var b=document.querySelectorAll('[data-set-theme]');function set(t){document.querySelectorAll('.sw').forEach(function(e){e.setAttribute('data-theme',t)});b.forEach(function(x){x.classList.toggle('on',x.getAttribute('data-set-theme')===t)})}
+b.forEach(function(x){x.addEventListener('click',function(){set(x.getAttribute('data-set-theme'))})});if(location.hash==='#dark')set('dark')})();</script>
+</body>
+</html>
