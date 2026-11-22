@@ -3,7 +3,7 @@
 mod common;
 
 use common::{Desk, shop_api, wait_until};
-use eframe::egui::{Key, Role};
+use eframe::egui::{Key, Modifiers, Role};
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT as _, Queryable as _};
 use mortise_app::app::{MortiseApp, Selection};
@@ -191,7 +191,8 @@ fn a_node_of_the_app_graph_selects_its_module() {
 fn the_first_change_of_a_rule_asks_before_mortise_json_is_created() {
     let desk = Desk::new();
     let root = desk.app("shop-api");
-    desk.knows(&[(&root, "SA")]);
+    let crm = desk.app("crm");
+    desk.knows(&[(&root, "SA"), (&crm, "CR")]);
     let mut harness = desk.start();
     harness.key_press(Key::Num2);
     harness.run();
@@ -203,6 +204,11 @@ fn the_first_change_of_a_rule_asks_before_mortise_json_is_created() {
         .click();
     harness.run();
     harness.get_by_role_and_label(Role::Heading, "Create mortise.json in shop-api?");
+    // The dialog holds the keys: Ctrl O does not ask for another app under it.
+    desk.picks.borrow_mut().push_back(crm);
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::O);
+    harness.run();
+    assert_eq!(desk.picks.borrow().len(), 1);
     harness.key_press(Key::Escape);
     harness.run();
     assert!(

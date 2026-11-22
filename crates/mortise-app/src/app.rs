@@ -838,24 +838,29 @@ impl MortiseApp {
             return;
         };
         if app.root.join(mortise_core::RULES_FILE).exists() {
-            self.save_rules(&rules);
+            self.save_rules(&app.root, &rules);
         } else {
             let dialog = Dialog {
                 title: strings::create_rules_title(&app.name),
                 body: strings::create_rules_body(&app.name),
                 confirm: strings::CREATE_RULES_FILE.to_owned(),
             };
-            self.dialog = Some((dialog, Pending::CreateRules(rules)));
+            let root = app.root.clone();
+            self.dialog = Some((dialog, Pending::CreateRules { root, rules }));
             self.dialog_opened = true;
         }
     }
 
-    /// Writes the rules to `mortise.json` and reads the app again.
-    fn save_rules(&mut self, rules: &Rules) {
+    /// Writes the rules to `mortise.json` of the app at `root` and reads the app again.
+    /// Nothing is written when that app is no longer the one on screen.
+    fn save_rules(&mut self, root: &Path, rules: &Rules) {
         let (Some(app), Some(current)) = (self.app(), self.current) else {
             return;
         };
-        match rules.save(&app.root) {
+        if app.root != root {
+            return;
+        }
+        match rules.save(root) {
             Ok(()) => self.apps[current].live.refresh(),
             Err(error) => self.toast = Some(Toast::failed(strings::rules_not_saved(&error))),
         }
@@ -918,8 +923,8 @@ impl MortiseApp {
                 self.open_palette();
             }
         }
-        // Add app: the folder dialog opens at once.
-        if self.palette.is_none() && chord(Modifiers::COMMAND, Key::O) {
+        // Add app: the folder dialog opens at once. A dialog holds the keys.
+        if self.palette.is_none() && self.dialog.is_none() && chord(Modifiers::COMMAND, Key::O) {
             self.pick(ui.ctx());
         }
         // Esc closes the topmost thing: the add panel, then the toast, then Settings,
@@ -1564,8 +1569,8 @@ impl eframe::App for MortiseApp {
             let answer = dialog.show(ui, pal, self.dialog_opened, self.keyboard);
             self.dialog_opened = false;
             match (answer, self.dialog.take_if(|_| answer.is_some())) {
-                (Some(Answer::Confirm), Some((_, Pending::CreateRules(rules)))) => {
-                    self.save_rules(&rules)
+                (Some(Answer::Confirm), Some((_, Pending::CreateRules { root, rules }))) => {
+                    self.save_rules(&root, &rules)
                 }
                 (Some(Answer::Confirm), Some((_, Pending::RemoveApp(index)))) => {
                     self.remove_app(index)
@@ -1749,8 +1754,8 @@ fn system_reduces_motion() -> bool {
 
 /// What a dialog waits to do.
 enum Pending {
-    /// Write the rules to a `mortise.json` that does not exist yet.
-    CreateRules(Rules),
+    /// Write the rules to a `mortise.json` that does not exist yet, in the app at `root`.
+    CreateRules { root: PathBuf, rules: Rules },
     /// Forget the app at this place on the rail.
     RemoveApp(usize),
 }
