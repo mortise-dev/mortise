@@ -461,7 +461,7 @@ pub fn app_with_modules(desk: &Desk, folder: &str, count: usize) -> PathBuf {
 
 /// Replaces a module name in every file under a folder, so that a copied module
 /// has its own name and namespace.
-fn rename_in_files(dir: &Path, from: &str, to: &str) {
+pub fn rename_in_files(dir: &Path, from: &str, to: &str) {
     for entry in std::fs::read_dir(dir).unwrap() {
         let path = entry.unwrap().path();
         if path.is_dir() {
