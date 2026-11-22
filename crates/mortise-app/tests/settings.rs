@@ -333,6 +333,13 @@ fn a_narrow_window_collapses_the_index_and_ctrl_b_opens_it() {
     let fits = harness
         .get_by_role_and_label(Role::ListBoxOption, "Checkout")
         .rect();
+    // The Findings cell has no room for both states on one line: they wrap.
+    let problems = harness.get_by_label("2 problems").rect();
+    let warning = harness.get_by_label("1 warning").rect();
+    assert!(
+        warning.top() >= problems.bottom(),
+        "{problems:?} {warning:?}"
+    );
 
     // Rows that do not fit: the strip adds the 10 px track of the scrollbar at its
     // right, so that the scrollbar does not cover the marks.
