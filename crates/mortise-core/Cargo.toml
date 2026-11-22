@@ -34,11 +34,11 @@ mago-span.workspace = true
 mago-syntax.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+tempfile.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
 mortise-core = { path = ".", features = ["testing"] }
-tempfile.workspace = true
 
 [lints]
 workspace = true

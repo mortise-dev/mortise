@@ -4,6 +4,7 @@
 //! It is the only file Mortise writes into an app without a command, and only when
 //! the interface asks after the user confirmed. No secret is ever written to it.
 
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -161,9 +162,22 @@ impl Rules {
             path: path.clone(),
             source,
         };
-        let partial = path.with_extension("json.partial");
-        std::fs::write(&partial, json).map_err(io)?;
-        std::fs::rename(&partial, &path).map_err(io)
+        // A temporary file beside it, then put in its place in one step, so that the
+        // file is never half written. Its name is unique, so no file of the user is
+        // touched.
+        let mut builder = tempfile::Builder::new();
+        builder.prefix(".mortise.json.").suffix(".tmp");
+        // A temporary file is for its owner only. Ask for what `std::fs::write` gives.
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            builder.permissions(std::fs::Permissions::from_mode(0o666));
+        }
+        let mut temporary = builder.tempfile_in(root).map_err(io)?;
+        temporary.write_all(&json).map_err(io)?;
+        // This replaces the file on Windows too.
+        temporary.persist(&path).map_err(|error| io(error.error))?;
+        Ok(())
     }
 
     /// True when a class is part of the public surface of its module by the folder
@@ -202,6 +216,9 @@ mod tests {
             r#"{"team": "shop", "rules": {"no-circular-use": true}}"#,
         )
         .unwrap();
+        // A file of the user with a name close to the temporary one.
+        let partial = app.path().join("mortise.json.partial");
+        std::fs::write(&partial, "mine").unwrap();
 
         let rules = Rules {
             no_circular_use: false,
@@ -229,11 +246,19 @@ mod tests {
 }
 "#
         );
+        assert_eq!(std::fs::read_to_string(&partial).unwrap(), "mine");
         assert_eq!(
             std::fs::read_dir(app.path()).unwrap().count(),
-            1,
+            2,
             "nothing is left beside it"
         );
+        // Readable as a file that `std::fs::write` makes.
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = |path: &Path| std::fs::metadata(path).unwrap().permissions().mode();
+            assert_eq!(mode(&path), mode(&partial));
+        }
     }
 
     #[test]
