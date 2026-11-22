@@ -12,7 +12,7 @@ mod module;
 mod php;
 
 pub use app::{AppSnapshot, ReadError, read_app};
-pub use code::{ALL_CODE, propose_codes};
+pub use code::{ALL_CODE, propose_codes, propose_monogram};
 pub use composer::Version;
 pub use layout::{Layout, LayoutKey};
 pub use module::{Manifest, Module, ModuleState};

@@ -74,6 +74,29 @@ fn propose_code(name: &str, taken: &BTreeSet<String>) -> String {
         .unwrap_or(consonants)
 }
 
+/// Proposes the two letter monogram of an app from the name of its folder:
+/// the initials of its first two words, or its first two letters.
+pub fn propose_monogram(name: &str) -> String {
+    let words: Vec<&str> = name
+        .split(|c: char| !c.is_ascii_alphanumeric())
+        .filter(|word| !word.is_empty())
+        .collect();
+    let letters: String = match words[..] {
+        [] => String::new(),
+        [word] => word.chars().take(2).collect(),
+        [first, second, ..] => first
+            .chars()
+            .take(1)
+            .chain(second.chars().take(1))
+            .collect(),
+    };
+    if letters.is_empty() {
+        "??".to_owned()
+    } else {
+        letters.to_ascii_uppercase()
+    }
+}
+
 fn consonant_code(letters: &[char]) -> String {
     let mut code = vec![letters[0]];
     let is_vowel = |c: char| matches!(c, 'A' | 'E' | 'I' | 'O' | 'U');
@@ -156,6 +179,16 @@ mod tests {
         let codes = propose_codes(names.iter().map(String::as_str), &BTreeSet::new());
         let unique: BTreeSet<_> = codes.iter().collect();
         assert_eq!(unique.len(), 200);
+    }
+
+    #[test]
+    fn a_monogram_is_two_initials_or_the_first_two_letters() {
+        assert_eq!(propose_monogram("booking-engine"), "BE");
+        assert_eq!(propose_monogram("landing_pages.v2"), "LP");
+        assert_eq!(propose_monogram("crm"), "CR");
+        assert_eq!(propose_monogram("x"), "X");
+        assert_eq!(propose_monogram("shop api final"), "SA");
+        assert_eq!(propose_monogram("---"), "??");
     }
 
     #[test]
