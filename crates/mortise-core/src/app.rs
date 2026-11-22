@@ -108,6 +108,12 @@ impl AppSnapshot {
             .find(|link| link.from == from && link.to == to)
     }
 
+    /// The module of the circle of `module` that `module` uses directly: the link a
+    /// circle finding opens on. `None` when `module` is in no circle.
+    pub fn circle_neighbour(&self, module: &str) -> Option<&str> {
+        crate::links::circle_neighbour(&self.links, module)
+    }
+
     /// The links of modules that `name` uses.
     pub fn uses<'a>(&'a self, name: &'a str) -> impl Iterator<Item = &'a Link> {
         self.links.iter().filter(move |link| link.from == name)

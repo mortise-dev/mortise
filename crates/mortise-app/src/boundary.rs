@@ -1045,12 +1045,11 @@ impl View<'_> {
         if rules.no_circular_use {
             for cycle in &self.app.cycles {
                 let files = cycle.files.iter().map(|(_, files)| files).sum();
-                let other = cycle
-                    .modules
-                    .iter()
-                    .find(|member| **member != cycle.carrier)
-                    .cloned()
-                    .unwrap_or_default();
+                let other = self
+                    .app
+                    .circle_neighbour(&cycle.carrier)
+                    .unwrap_or_default()
+                    .to_owned();
                 let text = match cycle.modules.as_slice() {
                     [a, b] => strings::use_each_other(a, b),
                     modules => strings::use_each_other_in_a_circle(modules),
