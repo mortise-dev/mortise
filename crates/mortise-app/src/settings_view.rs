@@ -858,6 +858,8 @@ impl Form<'_> {
                 entry.name = value.to_owned();
                 changed = Some(false);
             }
+            // A value that is not taken goes back to the saved one.
+            state.fields.name = entry.name.clone();
         }
         let monogram = Rect::from_min_size(
             pos2(self.left + form_w - 96.0, after),
@@ -890,6 +892,7 @@ impl Form<'_> {
                 entry.monogram = value;
                 changed = Some(false);
             }
+            state.fields.monogram = entry.monogram.clone();
         }
         y = name.bottom() + 12.0;
 
@@ -936,6 +939,7 @@ impl Form<'_> {
                 entry.coverage_report = value;
                 changed = Some(true);
             }
+            state.fields.report = entry.coverage_report.clone().unwrap_or_default();
         }
         if state.fields.report.is_empty() {
             // What Mortise does when the field is empty.
@@ -977,6 +981,7 @@ impl Form<'_> {
                 entry.coverage_limit = value;
                 changed = Some(true);
             }
+            state.fields.limit = format!("{}%", entry.coverage_limit);
         }
         y = report.bottom() + 20.0;
 
