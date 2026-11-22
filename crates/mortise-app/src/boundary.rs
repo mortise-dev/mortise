@@ -48,6 +48,8 @@ pub enum BoundaryAction {
     ShowFindings,
     /// Open a file or a folder in the editor, at a line.
     OpenInEditor { path: std::path::PathBuf, line: u32 },
+    /// Something about the runtime of the app: another environment, a new try.
+    Runtime(crate::runtime_view::RuntimeAction),
 }
 
 /// Paints the Boundary tab into `body`, which scrolls.

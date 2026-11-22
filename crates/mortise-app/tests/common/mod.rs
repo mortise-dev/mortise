@@ -11,7 +11,8 @@ use eframe::egui::{self, Theme};
 use egui_kittest::Harness;
 use mortise_app::app::{Config, MortiseApp};
 use mortise_app::chrome::Chrome;
-use mortise_core::{AppEntry, Settings};
+use mortise_core::testing::{Reply, StubActuator};
+use mortise_core::{AppEntry, Credentials, Environment, Secrets, Settings};
 
 pub fn fixture(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -87,6 +88,8 @@ impl Desk {
                     problems_first: false,
                     coverage_limit: 50,
                     coverage_report: None,
+                    environments: Vec::new(),
+                    environment: None,
                 })
                 .collect(),
             current: Some(0),
@@ -120,6 +123,8 @@ impl Desk {
             settings_path: Some(self.settings_path()),
             folder,
             pick_folder: Box::new(move || picks.borrow_mut().pop_front()),
+            // Never the credential store of the computer the tests run on.
+            secrets: Secrets::memory(),
         };
         let mut harness = Harness::builder()
             .with_size(self.size)
@@ -134,6 +139,14 @@ impl Desk {
     pub fn saved(&self) -> Settings {
         Settings::load(&self.settings_path()).unwrap()
     }
+
+    /// Gives the first app Mortise knows these environments, with the first one chosen.
+    pub fn connect(&self, environments: &[Environment]) {
+        let mut settings = self.saved();
+        settings.apps[0].environments = environments.to_vec();
+        settings.apps[0].environment = environments.first().map(|e| e.name.clone());
+        settings.save(&self.settings_path()).unwrap();
+    }
 }
 
 /// A desk with shop-api known and open, started.
@@ -143,6 +156,142 @@ pub fn shop_api() -> (Desk, Harness<'static, MortiseApp>) {
     desk.knows(&[(&root, "SA")]);
     let harness = desk.start();
     (desk, harness)
+}
+
+/// An environment without credentials at the address of a stub.
+pub fn environment(name: &str, stub: &StubActuator) -> Environment {
+    Environment {
+        name: name.to_owned(),
+        base_url: stub.base_url.clone(),
+        path: "actuator".to_owned(),
+        credentials: Credentials::None,
+    }
+}
+
+/// A desk with shop-api known, open and connected to a stub as "local", started
+/// and waited for until the stub answered.
+pub fn connected(stub: &StubActuator) -> (Desk, Harness<'static, MortiseApp>) {
+    let desk = Desk::new();
+    let root = desk.app("shop-api");
+    desk.knows(&[(&root, "SA")]);
+    desk.connect(&[environment("local", stub)]);
+    let mut harness = desk.start();
+    wait_for_answer(&mut harness);
+    (desk, harness)
+}
+
+pub fn wait_for_answer(harness: &mut Harness<'static, MortiseApp>) {
+    wait_until(harness, "the environment answers", |app| {
+        let state = app.runtime();
+        state.answer.is_some() && !state.asking
+    });
+}
+
+/// Seconds since 1970 as ISO 8601 in UTC, as the actuator writes a next run.
+pub fn iso(seconds: i64) -> String {
+    let days = seconds.div_euclid(86_400);
+    let (hour, minute) = (
+        seconds.rem_euclid(86_400) / 3600,
+        seconds.rem_euclid(3600) / 60,
+    );
+    // Days since 1970 to a date of the calendar.
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = yoe + era * 400 + i64::from(month <= 2);
+    format!("{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:00+00:00")
+}
+
+/// A stub that answers as the shop-api of the specification's drawings: everything
+/// exposed and up, 106 routes of which 12 are in no module, and 5 scheduled tasks.
+pub fn shop_api_actuator() -> StubActuator {
+    let stub = StubActuator::healthy();
+    let mut routes = Vec::new();
+    let mut add = |uri: String, name: Option<String>, action: String, middleware: &str| {
+        let name = name.map_or("null".to_owned(), |name| format!("\"{name}\""));
+        routes.push(format!(
+            r#"{{"methods":["GET","HEAD"],"uri":"{uri}","name":{name},"action":"{}","middleware":[{middleware}],"domain":null}}"#,
+            action.replace('\\', "\\\\")
+        ));
+    };
+    let modules = [
+        ("Catalog", 22),
+        ("Checkout", 18),
+        ("Users", 16),
+        ("Billing", 14),
+        ("Shipping", 11),
+        ("Inventory", 9),
+        ("Notifications", 4),
+    ];
+    for (module, count) in modules {
+        let lower = module.to_lowercase();
+        for i in 0..count {
+            // Two thirds of the routes of a module are API routes.
+            let (prefix, middleware) = if i % 3 == 2 {
+                ("", r#""web","auth""#)
+            } else {
+                ("api/", r#""api","auth:sanctum""#)
+            };
+            add(
+                format!("{prefix}{lower}/things/{i}"),
+                Some(format!("{lower}.things.{i}")),
+                format!(r"Modules\{module}\Http\Controllers\ThingController@show{i}"),
+                middleware,
+            );
+        }
+    }
+    for i in 0..10 {
+        add(format!("up/{i}"), None, "Closure".to_owned(), "");
+    }
+    add(
+        "actuator".to_owned(),
+        Some("actuator".to_owned()),
+        r"Nwidart\Actuator\Http\Controllers\DiscoveryController".to_owned(),
+        "",
+    );
+    add(
+        "actuator/health/{path?}".to_owned(),
+        Some("actuator.health".to_owned()),
+        r"Nwidart\Actuator\Http\Controllers\HealthController".to_owned(),
+        "",
+    );
+    stub.set(
+        "/actuator/mappings",
+        Reply::ok(&format!(r#"{{"routes":[{}]}}"#, routes.join(","))),
+    );
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64;
+    let today = now - now.rem_euclid(86_400);
+    // Later today when there is a later today, and tomorrow at six.
+    let soon = iso((now + 600).min(today + 86_399));
+    let tomorrow = iso(today + 86_400 + 6 * 3600);
+    let cron = |target: &str, expression: &str, next: &str| {
+        format!(
+            r#"{{"runnable":{{"target":"{target}"}},"expression":"{expression}","timezone":"UTC","nextExecution":{{"time":"{next}"}}}}"#
+        )
+    };
+    let tasks = [
+        cron("php artisan checkout:expire-carts", "*/5 * * * *", &soon),
+        cron("php artisan billing:send-invoices", "0 6 * * *", &tomorrow),
+        cron(r"Modules\\Inventory\\Jobs\\SyncStock", "0 * * * *", &soon),
+        cron("php artisan queue:prune-batches", "0 3 * * *", &tomorrow),
+    ];
+    stub.set(
+        "/actuator/scheduledtasks",
+        Reply::ok(&format!(
+            r#"{{"cron":[{}],"fixedDelay":[],"fixedRate":[{{"runnable":{{"target":"Poll shipment tracking"}},"initialDelay":0,"interval":10000}}],"custom":[]}}"#,
+            tasks.join(",")
+        )),
+    );
+    stub
 }
 
 /// Waits until `done` holds for the app, for at most 10 s. Work on other threads

@@ -1,6 +1,6 @@
 //! The app: its state, the keys, and the three columns of the workbench.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -8,17 +8,20 @@ use eframe::egui::{self, Event, Key, KeyboardShortcut, Modifiers, Rect, Theme, U
 use mortise_core::{
     AppEntry, AppSnapshot, LiveApp, LiveState, Settings, SettingsError, propose_monogram, read_app,
 };
-use mortise_core::{ReadOptions, Rules, ThemeChoice};
+use mortise_core::{
+    Environment, LiveRuntime, ReadOptions, Rules, RuntimeState, Secret, Secrets, ThemeChoice,
+};
 
 use crate::add::{self, AddAction, AddPanel, Checked};
 use crate::boundary::{BoundaryAction, BoundaryState};
 use crate::chrome::{self, Chrome};
 use crate::dialog::{Answer, Dialog};
 use crate::draw::{self, Button, ButtonKind};
-use crate::index::{self, IndexState};
+use crate::index::{self, IndexRuntime, IndexState};
 use crate::palette::{self, Command, PaletteAction, PaletteState};
 use crate::rail::{self, RailAction, Tile};
-use crate::settings_view::{self, Section, SettingsAction, SettingsState};
+use crate::runtime_view::{Brief, RuntimeAction, RuntimeView};
+use crate::settings_view::{self, AppInfo, Section, SettingsAction, SettingsState};
 use crate::strings;
 use crate::summary::{Sort, SummaryState};
 use crate::theme::{self, radius, size};
@@ -41,6 +44,15 @@ pub struct Config {
     pub folder: Option<PathBuf>,
     /// Opens the folder dialog of the operating system.
     pub pick_folder: Box<dyn FnMut() -> Option<PathBuf>>,
+    /// Where the secrets of the environments are kept.
+    pub secrets: Secrets,
+}
+
+/// An environment that is asked for its runtime status, and what it was opened with.
+struct Connected {
+    environment: Environment,
+    secret: Secret,
+    live: LiveRuntime,
 }
 
 /// An app on the rail: its live snapshot and what is selected in it.
@@ -64,6 +76,10 @@ struct OpenApp {
     finding_row: usize,
     /// The snapshot that was looked at last, to notice a newer one.
     seen: Option<Arc<AppSnapshot>>,
+    /// The chosen environment, while the app is on screen and has the actuator.
+    runtime: Option<Connected>,
+    /// The last answer of each environment in this run, by its name.
+    last_answers: BTreeMap<String, Brief>,
 }
 
 pub struct MortiseApp {
@@ -102,6 +118,7 @@ pub struct MortiseApp {
     dialog: Option<(Dialog, Pending)>,
     /// The dialog opened in this frame: focus goes to its button.
     dialog_opened: bool,
+    secrets: Secrets,
 }
 
 impl MortiseApp {
@@ -154,6 +171,7 @@ impl MortiseApp {
             palette_scope: 0,
             dialog: None,
             dialog_opened: false,
+            secrets: config.secrets,
         };
         let first = if app.apps.is_empty() { None } else { Some(0) };
         if let Some(index) = app.settings.current.or(first) {
@@ -228,7 +246,112 @@ impl MortiseApp {
             .is_some_and(|current| self.apps[current].findings_open)
     }
 
+    /// What the chosen environment of the current app answered last.
+    pub fn runtime(&self) -> RuntimeState {
+        self.current
+            .and_then(|current| self.apps[current].runtime.as_ref())
+            .map(|connected| connected.live.state())
+            .unwrap_or_default()
+    }
+
+    /// The environments of the current app, as the settings have them.
+    pub fn environments(&self) -> &[Environment] {
+        self.current
+            .map_or(&[], |current| &self.settings.apps[current].environments)
+    }
+
+    /// True when a secret is kept for an environment of the current app.
+    pub fn has_secret(&self, environment: &str) -> bool {
+        self.current.is_some_and(|current| {
+            self.secrets
+                .has(&self.settings.apps[current].root, environment)
+        })
+    }
+
     // --- Apps ---
+
+    /// Keeps the runtime connection in step with the settings: the app on screen is
+    /// asked through its chosen environment, and no other app is asked.
+    fn sync_runtime(&mut self, ctx: &egui::Context) {
+        for (index, (open, entry)) in self.apps.iter_mut().zip(&self.settings.apps).enumerate() {
+            let installed =
+                matches!(open.live.state(), LiveState::Ready(app) if app.actuator.is_some());
+            let wanted = entry
+                .chosen_environment()
+                .filter(|_| self.current == Some(index) && installed);
+            let Some(environment) = wanted else {
+                open.runtime = None;
+                continue;
+            };
+            let secret = if environment.credentials.needs_secret() {
+                self.secrets.get(&entry.root, &environment.name)
+            } else {
+                None
+            };
+            let same = open.runtime.as_ref().is_some_and(|connected| {
+                &connected.environment == environment && connected.secret == secret
+            });
+            if !same {
+                let ctx = ctx.clone();
+                let live = LiveRuntime::open(environment.clone(), secret.clone(), move || {
+                    ctx.request_repaint();
+                });
+                open.runtime = Some(Connected {
+                    environment: environment.clone(),
+                    secret,
+                    live,
+                });
+            }
+            if let Some(connected) = &open.runtime {
+                // The window is visible: this frame is drawn.
+                connected.live.seen();
+                if let Some(answer) = connected.live.state().answer {
+                    open.last_answers
+                        .insert(environment.name.clone(), Brief::of_answer(&answer));
+                }
+            }
+        }
+    }
+
+    /// What the runtime box of the current app asked for.
+    fn runtime_action(&mut self, ctx: &egui::Context, action: RuntimeAction) {
+        let Some(current) = self.current else {
+            return;
+        };
+        match action {
+            RuntimeAction::Choose(name) => {
+                self.settings.apps[current].environment = Some(name);
+                self.save();
+            }
+            RuntimeAction::TryAgain => {
+                if let Some(connected) = &self.apps[current].runtime {
+                    connected.live.refresh();
+                }
+            }
+            RuntimeAction::AddEnvironment => {
+                self.open_settings(Section::Apps);
+                if let Some(state) = &mut self.settings_open {
+                    state.add_environment = true;
+                }
+            }
+            RuntimeAction::OpenSettings => {
+                self.open_settings(Section::Apps);
+                let entry = &self.settings.apps[current];
+                let chosen = entry.chosen_environment().map(|chosen| &chosen.name);
+                let place = entry
+                    .environments
+                    .iter()
+                    .position(|e| Some(&e.name) == chosen);
+                if let Some(state) = &mut self.settings_open {
+                    state.environment = place.unwrap_or(0);
+                }
+            }
+            RuntimeAction::Copy { text, said } => {
+                ctx.copy_text(text.to_owned());
+                self.toast = Some(Toast::done(said));
+            }
+        }
+    }
 
     fn save(&mut self) {
         let Some(path) = &self.settings_path else {
@@ -282,12 +405,23 @@ impl MortiseApp {
     fn add_found(&mut self, ctx: &egui::Context) {
         let Some(AddPanel {
             checked: Some(Checked::Found(app)),
+            runtime,
             ..
         }) = self.adding.take()
         else {
             return;
         };
         let index = self.settings.add(&app);
+        // Runtime is optional: without a base URL the app is added without it.
+        if let Some(form) = runtime.filter(|form| !form.base_url.trim().is_empty()) {
+            let environment = form.environment();
+            if environment.credentials.needs_secret() && !form.secret.is_empty() {
+                self.secrets.set(&app.root, &environment.name, &form.secret);
+            }
+            let entry = &mut self.settings.apps[index];
+            entry.environment = Some(environment.name.clone());
+            entry.environments.push(environment);
+        }
         self.apps.push(open_app(ctx, &self.settings.apps[index]));
         self.select_app(index);
         self.save();
@@ -403,7 +537,11 @@ impl MortiseApp {
             return;
         }
         let was_current = self.current == Some(index);
-        self.settings.remove(index);
+        // Mortise forgets the app, its environments and its saved credentials.
+        let removed = self.settings.remove(index);
+        for environment in &removed.environments {
+            self.secrets.remove(&removed.root, &environment.name);
+        }
         self.apps.remove(index);
         self.current = match self.current {
             Some(current) if current > index => Some(current - 1),
@@ -631,7 +769,11 @@ impl MortiseApp {
         if chord(Modifiers::COMMAND, Key::R)
             && let Some(current) = self.current
         {
+            // From disk and from the actuator.
             self.apps[current].live.refresh();
+            if let Some(connected) = &self.apps[current].runtime {
+                connected.live.refresh();
+            }
         }
         // Select app 1 to 9 on the rail.
         let digits = [
@@ -754,6 +896,16 @@ impl MortiseApp {
                 ctx.copy_text(strings::REQUIRE_PACKAGE.to_owned());
                 self.toast = Some(Toast::done(strings::COPIED_COMMAND));
             }
+            AddAction::Test => {
+                if let Some(form) = self
+                    .adding
+                    .as_mut()
+                    .and_then(|panel| panel.runtime.as_mut())
+                {
+                    let secret = (!form.secret.is_empty()).then(|| form.secret.clone());
+                    form.start_test(secret, ctx);
+                }
+            }
         }
     }
 }
@@ -766,6 +918,7 @@ impl eframe::App for MortiseApp {
         self.reveal = false;
         self.keys(ui);
         self.take_in();
+        self.sync_runtime(&ctx);
 
         // A folder dropped on the window opens the add panel on it.
         let dropped = ui.input(|input| {
@@ -840,12 +993,22 @@ impl eframe::App for MortiseApp {
             // Settings take the place of the index and the workspace.
             let index_rect = Rect::from_min_size(rest.min, vec2(size::INDEX_W, rest.height()));
             let work_rect = Rect::from_min_max(pos2(index_rect.right(), rest.top()), rest.max);
-            let versions: Vec<String> = self
+            let mut infos: Vec<AppInfo<'_>> = self
                 .apps
-                .iter()
-                .map(|open| match open.live.state() {
-                    LiveState::Ready(app) => strings::versions(app.laravel.as_ref(), &app.package),
-                    _ => String::new(),
+                .iter_mut()
+                .map(|open| {
+                    let app = match open.live.state() {
+                        LiveState::Ready(app) => Some(app),
+                        _ => None,
+                    };
+                    AppInfo {
+                        versions: app.as_ref().map_or(String::new(), |app| {
+                            strings::versions(app.laravel.as_ref(), &app.package)
+                        }),
+                        actuator: app.as_ref().is_some_and(|app| app.actuator.is_some()),
+                        app_url: app.as_ref().and_then(|app| app.app_url.clone()),
+                        last: &mut open.last_answers,
+                    }
                 })
                 .collect();
             let custom_frame = matches!(self.chrome, Chrome::Custom { .. });
@@ -855,7 +1018,8 @@ impl eframe::App for MortiseApp {
                 work_rect,
                 state,
                 &mut self.settings,
-                &versions,
+                &mut infos,
+                &self.secrets,
                 custom_frame,
                 self.keyboard,
                 mac,
@@ -875,10 +1039,27 @@ impl eframe::App for MortiseApp {
                     if open.selection != Selection::All || open.tab != Tab::Summary {
                         open.findings_open = false;
                     }
+                    let entry = &self.settings.apps[current];
+                    let runtime = RuntimeView {
+                        installed: app.actuator.is_some(),
+                        environments: &entry.environments,
+                        chosen: entry.chosen_environment(),
+                        state: open
+                            .runtime
+                            .as_ref()
+                            .map(|connected| connected.live.state())
+                            .unwrap_or_default(),
+                    };
+                    // "checked 8 s ago" counts on while the box is on screen.
+                    if runtime.brief().is_some() {
+                        ctx.request_repaint_after(std::time::Duration::from_secs(1));
+                    }
                     let state = WorkState {
                         summary: SummaryState {
                             sort: &mut open.sort,
                             now,
+                            runtime: &runtime,
+                            keyboard: self.keyboard,
                         },
                         boundary: &mut open.boundary,
                         findings_open: &mut open.findings_open,
@@ -924,6 +1105,11 @@ impl eframe::App for MortiseApp {
                         problems_first,
                         rows: self.settings.general.index_rows,
                         mac,
+                        runtime: runtime.brief().map(|brief| IndexRuntime {
+                            brief: brief.for_header(),
+                            environment: runtime.environment(),
+                            checked: runtime.checked(),
+                        }),
                     };
                     toggle_order = index::index(ui, pal, index_rect, &app, state);
                     // The palette offers the modules that were opened last.
@@ -1057,6 +1243,7 @@ impl eframe::App for MortiseApp {
                 self.toast = Some(Toast::done(strings::COPIED_PATH));
             }
             Some(BoundaryAction::OpenInEditor { path, line }) => self.open_in_editor(&path, line),
+            Some(BoundaryAction::Runtime(action)) => self.runtime_action(&ctx, action),
             _ => {}
         }
 
@@ -1145,6 +1332,8 @@ fn open_app(ctx: &egui::Context, entry: &AppEntry) -> OpenApp {
         findings_open: false,
         finding_row: 0,
         seen: None,
+        runtime: None,
+        last_answers: BTreeMap::new(),
     }
 }
 
@@ -1260,6 +1449,12 @@ pub fn run(chrome: Chrome, folder: Option<PathBuf>) -> eframe::Result {
                 folder,
                 // The one native dialog in the app.
                 pick_folder: Box::new(|| rfd::FileDialog::new().pick_folder()),
+                // For work on Mortise itself: `MORTISE_SECRETS=memory` keeps secrets
+                // out of the credential store of the computer.
+                secrets: match std::env::var("MORTISE_SECRETS").as_deref() {
+                    Ok("memory") => Secrets::memory(),
+                    _ => Secrets::os(),
+                },
             };
             Ok(Box::new(MortiseApp::new(cc, config)))
         }),

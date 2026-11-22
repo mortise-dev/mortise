@@ -10,6 +10,7 @@ use eframe::egui::{
 use mortise_core::{AppSnapshot, ReadError};
 
 use crate::draw::{self, Button, ButtonKind, Icon};
+use crate::environment_form::{EnvironmentForm, FormEvent, FormOptions, environment_form};
 use crate::strings;
 use crate::theme::{Face, Palette, Type, radius, size, ty};
 
@@ -38,9 +39,11 @@ pub struct AddPanel {
     checked_path: String,
     /// Where focus goes in the next frame.
     focus: Option<Focus>,
+    /// The runtime connection of the app that was found, when it has the actuator.
+    pub runtime: Option<EnvironmentForm>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AddAction {
     /// Close the panel.
     Back,
@@ -54,6 +57,8 @@ pub enum AddAction {
     Open(usize),
     /// Copy the command that installs the package.
     CopyCommand,
+    /// Ask the environment of the runtime section now.
+    Test,
 }
 
 impl AddPanel {
@@ -64,6 +69,7 @@ impl AddPanel {
             checked: None,
             checked_path: String::new(),
             focus: Some(Focus::Field),
+            runtime: None,
         }
     }
 
@@ -72,6 +78,7 @@ impl AddPanel {
         Self {
             checked_path: path.clone(),
             path,
+            runtime: runtime_form(&checked),
             checked: Some(checked),
             focus: Some(Focus::Primary),
         }
@@ -83,7 +90,20 @@ impl AddPanel {
             Checked::Failed(_) => None,
             _ => Some(Focus::Primary),
         };
+        self.runtime = runtime_form(&checked);
         self.checked = Some(checked);
+    }
+}
+
+/// The runtime section for a folder that was read: only an app with
+/// `nwidart/laravel-actuator` has one. The base URL is proposed from `APP_URL`.
+fn runtime_form(checked: &Checked) -> Option<EnvironmentForm> {
+    match checked {
+        Checked::Found(app) if app.actuator.is_some() => Some(EnvironmentForm::new(
+            "local",
+            app.app_url.as_deref().unwrap_or_default(),
+        )),
+        _ => None,
     }
 }
 
@@ -283,6 +303,33 @@ pub fn add_panel(
             y += 16.0;
             if right_column.width() > 200.0 {
                 found(ui, pal, right_column, app, monogram);
+            }
+            // Runtime, optional: the app is added without it when the URL is empty.
+            if let Some(form) = &mut panel.runtime {
+                let heading = draw::paint_text(
+                    ui,
+                    pos2(left, y),
+                    Align2::LEFT_TOP,
+                    strings::RUNTIME_OPTIONAL,
+                    ty::BODY.with_face(Face::Sans700),
+                    pal.ink,
+                );
+                draw::announce(ui, heading, Role::Heading, strings::RUNTIME_OPTIONAL);
+                y = heading.bottom() + 6.0;
+                draw::hline(ui, left..left + column_w, y, pal.line);
+                y += 9.0;
+                let options = FormOptions {
+                    keyboard,
+                    from_env: app.app_url.is_some(),
+                    keep_typed: true,
+                    salt: "",
+                };
+                let (bottom, events) =
+                    environment_form(ui, pal, pos2(left, y), column_w, form, options);
+                if events.contains(&FormEvent::Test) {
+                    action = Some(AddAction::Test);
+                }
+                y = bottom + 16.0;
             }
         }
         Some(Checked::Known { index, name }) => {

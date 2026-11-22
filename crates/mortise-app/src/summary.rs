@@ -3,10 +3,14 @@
 use eframe::egui::{
     Align2, Color32, Rect, Role, ScrollArea, Sense, Ui, UiBuilder, Vec2, WidgetInfo, pos2, vec2,
 };
-use mortise_core::{AppSnapshot, Check, FindingState, Git, Module, ModuleState, Severity};
+use mortise_core::{
+    AppSnapshot, Check, FindingState, Git, Module, ModuleState, Severity, routes_by_module,
+    routes_of, tasks_of,
+};
 
 use crate::boundary::BoundaryAction;
 use crate::draw::{self, Button, StampState};
+use crate::runtime_view::{self, Brief, RuntimeAction, RuntimeView};
 use crate::strings;
 use crate::theme::{Face, Palette, Type, radius, size, ty};
 
@@ -139,6 +143,19 @@ pub struct SummaryState<'a> {
     pub sort: &'a mut Sort,
     /// Seconds since 1970, for "2 days ago".
     pub now: i64,
+    /// What the running app reports, and whether one is connected.
+    pub runtime: &'a RuntimeView<'a>,
+    /// True while the keyboard is in use: focus rings are drawn.
+    pub keyboard: bool,
+}
+
+/// What the parts of a Summary need besides the app, and what was asked for in them.
+struct Shared<'a> {
+    now: i64,
+    runtime: &'a RuntimeView<'a>,
+    keyboard: bool,
+    show_findings: bool,
+    asked: Option<RuntimeAction>,
 }
 
 /// Paints the Summary of the whole app or of one module into `body`, which scrolls.
@@ -152,7 +169,13 @@ pub fn summary(
     state: SummaryState<'_>,
 ) -> Option<BoundaryAction> {
     let mut clicked = None;
-    let mut show_findings = false;
+    let mut shared = Shared {
+        now: state.now,
+        runtime: state.runtime,
+        keyboard: state.keyboard,
+        show_findings: false,
+        asked: None,
+    };
     let salt = module.map_or("all", |module| module.name.as_str());
     ui.scope_builder(UiBuilder::new().max_rect(body), |ui| {
         ScrollArea::vertical()
@@ -161,48 +184,34 @@ pub fn summary(
             .show(ui, |ui| {
                 ui.spacing_mut().item_spacing = Vec2::ZERO;
                 let width = ui.available_width();
+                let origin = pos2(0.0, 0.0);
                 // Painted twice: once without ink to learn the height, once for real.
                 let height = match module {
                     None => {
-                        all_modules(
-                            ui,
-                            pal,
-                            pos2(0.0, 0.0),
-                            width,
-                            app,
-                            &mut state.sort.clone(),
-                            state.now,
-                            &mut false,
-                            false,
-                        )
-                        .0
+                        let sort = &mut state.sort.clone();
+                        all_modules(ui, pal, origin, width, app, sort, &mut shared, false).0
                     }
-                    Some(module) => one_module(
-                        ui,
-                        pal,
-                        pos2(0.0, 0.0),
-                        width,
-                        app,
-                        module,
-                        state.now,
-                        false,
-                    ),
+                    Some(module) => {
+                        one_module(ui, pal, origin, width, app, module, &mut shared, false)
+                    }
                 };
                 let (rect, _) = ui.allocate_exact_size(vec2(width, height), Sense::hover());
                 match module {
                     None => {
-                        let findings = &mut show_findings;
-                        let (now, sort) = (state.now, state.sort);
+                        let sort = state.sort;
                         clicked =
-                            all_modules(ui, pal, rect.min, width, app, sort, now, findings, true).1
+                            all_modules(ui, pal, rect.min, width, app, sort, &mut shared, true).1
                     }
                     Some(module) => {
-                        one_module(ui, pal, rect.min, width, app, module, state.now, true);
+                        one_module(ui, pal, rect.min, width, app, module, &mut shared, true);
                     }
                 }
             });
     });
-    if show_findings {
+    if let Some(asked) = shared.asked {
+        return Some(BoundaryAction::Runtime(asked));
+    }
+    if shared.show_findings {
         return Some(BoundaryAction::ShowFindings);
     }
     clicked.map(BoundaryAction::Select)
@@ -218,10 +227,10 @@ fn all_modules(
     width: f32,
     app: &AppSnapshot,
     sort: &mut Sort,
-    now: i64,
-    show_findings: &mut bool,
+    shared: &mut Shared<'_>,
     paint: bool,
 ) -> (f32, Option<String>) {
+    let now = shared.now;
     let left = origin.x + 16.0;
     let inner = width - 32.0;
     let mut y = origin.y + 14.0;
@@ -232,7 +241,7 @@ fn all_modules(
         y = note_alert(ui, pal, pos2(left, y), inner, &note, paint) + 12.0;
     }
 
-    // The stats strip. Findings and Runtime join it in later milestones.
+    // The stats strip. Runtime joins it when an environment answered.
     let on = if app.layout.uses_file_activator() {
         strings::of(app.modules_on(), app.modules.len())
     } else {
@@ -271,7 +280,10 @@ fn all_modules(
             findings: Some((app.findings.problems(), app.findings.warnings())),
         },
     ];
-    y = stats(ui, pal, pos2(left, y), inner, &cells, paint) + 12.0;
+    let runtime = shared.runtime;
+    let environment = runtime.environment().to_owned();
+    let runtime_cell = runtime.brief().map(|brief| (brief, environment.as_str()));
+    y = stats(ui, pal, pos2(left, y), inner, &cells, runtime_cell, paint) + 12.0;
 
     // The module that needs attention most, and the way to every finding.
     let all = app.findings.list.len();
@@ -298,7 +310,7 @@ fn all_modules(
             Some((&show, "F")),
             paint,
         );
-        *show_findings |= clicked;
+        shared.show_findings |= clicked;
         y = bottom + 12.0;
     }
 
@@ -323,12 +335,16 @@ fn all_modules(
         return (y - origin.y + 4.0, None);
     }
 
-    // Coverage by module, best first. Two columns when there is room.
-    let column_w = if inner >= 720.0 {
+    // Coverage by module, best first. Two columns when there is room: coverage and
+    // routes at the left, the runtime box at the right.
+    let two = inner >= 720.0;
+    let column_w = if two {
         ((inner - 14.0) / 2.0).floor()
     } else {
         inner
     };
+    let columns_top = y;
+    let mut left_bottom = None;
     if coverage.is_some() {
         let mut covered: Vec<(&str, u8)> = app
             .modules
@@ -351,16 +367,78 @@ fn all_modules(
             })
             .collect();
         let note = strings::tests(app.tests());
-        y = bar_box(
-            ui,
-            pal,
-            pos2(left, y),
-            column_w,
-            strings::COVERAGE_BY_MODULE,
-            &note,
-            &bars,
-            paint,
-        ) + 12.0;
+        let title = strings::COVERAGE_BY_MODULE;
+        let at = pos2(left, y);
+        y = bar_box(ui, pal, at, column_w, title, &note, &bars, None, paint) + 12.0;
+        left_bottom = Some(y);
+    }
+
+    // Routes by module, from the mappings of the running app. A route is counted for
+    // a module when its action is a class of the module.
+    if let Some(answered) = runtime.runtime() {
+        let at = pos2(left, y);
+        y = match &answered.routes {
+            Some(routes) => {
+                let (by_module, outside) = routes_by_module(app, routes);
+                let most = by_module.first().map_or(1, |(_, count)| (*count).max(1)) as f32;
+                let bars: Vec<Bar> = by_module
+                    .iter()
+                    .map(|(name, count)| Bar {
+                        label: name,
+                        share: *count as f32 / most,
+                        value: strings::count(*count as u64),
+                        low: false,
+                    })
+                    .collect();
+                let note = strings::routes_read_from(routes.len(), &environment);
+                let footer = Some((strings::NOT_IN_A_MODULE, strings::count(outside as u64)));
+                let title = strings::ROUTES_BY_MODULE;
+                bar_box(ui, pal, at, column_w, title, &note, &bars, footer, paint)
+            }
+            None => {
+                let text = strings::endpoint_not_exposed("mappings", &environment);
+                let title = strings::ROUTES_BY_MODULE;
+                runtime_view::message_box(ui, pal, at, column_w, title, &text, paint)
+            }
+        } + 12.0;
+        left_bottom = Some(y);
+    }
+
+    // The runtime box: beside the two boxes above, or under them in a narrow window.
+    let runtime_at = match left_bottom {
+        Some(_) if two => pos2(left + column_w + 14.0, columns_top),
+        _ => pos2(left, y),
+    };
+    let (runtime_bottom, asked) = runtime_view::runtime_box(
+        ui,
+        pal,
+        runtime_at,
+        column_w,
+        app,
+        runtime,
+        shared.keyboard,
+        paint,
+    );
+    if asked.is_some() {
+        shared.asked = asked;
+    }
+    y = y.max(runtime_bottom + 12.0);
+
+    // Scheduled tasks, across both columns.
+    if let Some(answered) = runtime.runtime() {
+        let at = pos2(left, y);
+        y = match &answered.tasks {
+            Some(tasks) => {
+                let note = strings::tasks_read_from(tasks.len(), &environment);
+                let tasks: Vec<_> = tasks.iter().collect();
+                runtime_view::tasks_box(ui, pal, at, inner, &note, &tasks, Some(app), now, paint)
+            }
+            None => {
+                let text = strings::endpoint_not_exposed("scheduledtasks", &environment);
+                let title = strings::SCHEDULED_TASKS;
+                runtime_view::message_box(ui, pal, at, inner, title, &text, paint)
+            }
+        } + 12.0;
     }
 
     // By module: a table that sorts.
@@ -393,9 +471,19 @@ fn one_module(
     width: f32,
     app: &AppSnapshot,
     module: &Module,
-    now: i64,
+    shared: &mut Shared<'_>,
     paint: bool,
 ) -> f32 {
+    let now = shared.now;
+    let answered = shared.runtime.runtime();
+    let environment = shared.runtime.environment();
+    let routes = answered
+        .and_then(|runtime| runtime.routes.as_deref())
+        .map(|routes| routes_of(app, &module.name, routes));
+    let tasks = answered
+        .and_then(|runtime| runtime.tasks.as_deref())
+        .map(|tasks| tasks_of(app, &module.name, tasks))
+        .unwrap_or_default();
     let left = origin.x + 16.0;
     let inner = width - 32.0;
     let mut top = origin.y + 14.0;
@@ -432,6 +520,7 @@ fn one_module(
         strings::FILES_BY_KIND,
         &note,
         &bars,
+        None,
         paint,
     );
 
@@ -462,6 +551,17 @@ fn one_module(
     ));
     let coverage = percent(module).map_or(strings::UNKNOWN.to_owned(), strings::percent);
     lines.push((strings::TEST_COVERAGE, coverage, pal.ink, StateMark::None));
+    // The routes of the module, when the running app gave its mappings.
+    if let Some(routes) = &routes {
+        let with = |name: &str| {
+            routes
+                .iter()
+                .filter(|route| route.middleware.iter().any(|middleware| middleware == name))
+                .count()
+        };
+        let value = strings::routes_of_module(routes.len(), with("api"), with("web"));
+        lines.push((strings::ROUTES, value, pal.ink, StateMark::None));
+    }
     // Which migrations ran needs PHP. Until then: how many files there are.
     let migrations = module
         .kinds
@@ -552,6 +652,18 @@ fn one_module(
         }
         bottom += 12.0 + text_h;
     }
+
+    // What the running app says about the module: its scheduled tasks and its routes.
+    if !tasks.is_empty() {
+        let note = strings::tasks_count(tasks.len());
+        let at = pos2(left, bottom + 12.0);
+        bottom = runtime_view::tasks_box(ui, pal, at, inner, &note, &tasks, None, now, paint);
+    }
+    if let Some(routes) = routes.filter(|routes| !routes.is_empty()) {
+        let note = strings::routes_read_from(routes.len(), environment);
+        let at = pos2(left, bottom + 12.0);
+        bottom = runtime_view::routes_box(ui, pal, at, inner, &note, &routes, paint);
+    }
     bottom + 16.0 - origin.y
 }
 
@@ -580,17 +692,46 @@ fn stats(
     min: eframe::egui::Pos2,
     width: f32,
     cells: &[Stat],
+    runtime: Option<(Brief, &str)>,
     paint: bool,
 ) -> f32 {
-    let cell_w = (width / 5.0)
-        .floor()
-        .max(150.0)
-        .min(width / cells.len() as f32);
-    let strip = Rect::from_min_size(min, vec2(cell_w * cells.len() as f32, 60.0));
+    let count = cells.len() + usize::from(runtime.is_some());
+    let cell_w = (width / 5.0).floor().max(150.0).min(width / count as f32);
+    let strip = Rect::from_min_size(min, vec2(cell_w * count as f32, 60.0));
     if !paint {
         return strip.bottom();
     }
     draw::outlined(ui, strip, radius::CONTROL, Color32::TRANSPARENT, pal.line_2);
+    if let Some((brief, environment)) = runtime {
+        // Runtime: a stroke mark, the word of the status, and where it was asked.
+        let x = strip.left() + cells.len() as f32 * cell_w;
+        draw::vline(ui, x, strip.top() + 1.0..strip.bottom() - 1.0, pal.line);
+        draw::label(
+            ui,
+            pos2(x + 12.0, strip.top() + 9.0),
+            Align2::LEFT_TOP,
+            strings::RUNTIME,
+            ty::SECONDARY,
+            pal.ink_2,
+        );
+        let mid = strip.top() + 9.0 + 16.0 + 13.0;
+        let color = brief.tone.color(pal);
+        let mark = Rect::from_min_size(pos2(x + 12.0, mid - 6.0), Vec2::splat(size::STATE_MARK));
+        draw::runtime_mark(ui, mark, brief.mark, color);
+        let word_type = Type {
+            size: 12.0,
+            ..ty::LABEL
+        };
+        let at = pos2(mark.right() + 5.0, mid);
+        let word = draw::paint_text(ui, at, Align2::LEFT_CENTER, brief.word, word_type, color);
+        let on = strings::on_environment(environment);
+        let room = strip.right() - 8.0 - (word.right() + 8.0);
+        let on = draw::galley_elided(ui, &on, ty::SECONDARY, pal.ink_2, room);
+        let on = draw::paint_galley(ui, pos2(word.right() + 8.0, mid), Align2::LEFT_CENTER, on);
+        // Read aloud as one thing: "Up on local".
+        let said = strings::runtime_tooltip(brief.word, environment, None);
+        draw::announce(ui, mark.union(word).union(on), Role::Label, &said);
+    }
     for (i, cell) in cells.iter().enumerate() {
         let x = strip.left() + i as f32 * cell_w;
         if i > 0 {
@@ -684,12 +825,45 @@ fn bar_box(
     title: &str,
     note: &str,
     bars: &[Bar<'_>],
+    footer: Option<(&str, String)>,
     paint: bool,
 ) -> f32 {
     const ROW: f32 = 21.0;
-    let rect = Rect::from_min_size(min, vec2(width, 41.0 + bars.len() as f32 * ROW + 8.0));
+    // The footer: a line of its own under a hairline, for what is in no bar.
+    let footer_h = if footer.is_some() {
+        4.0 + size::LIST_LINE_H - 6.0
+    } else {
+        0.0
+    };
+    let height = 41.0 + bars.len() as f32 * ROW + 8.0 + footer_h;
+    let rect = Rect::from_min_size(min, vec2(width, height));
     if !paint {
         return rect.bottom();
+    }
+    if let Some((name, value)) = &footer {
+        let top = rect.bottom() - 8.0 - footer_h + 4.0;
+        draw::hline(ui, rect.left() + 13.0..rect.right() - 13.0, top, pal.line);
+        let mid = top + 1.0 + (size::LIST_LINE_H - 6.0) / 2.0 + 2.0;
+        draw::label(
+            ui,
+            pos2(rect.left() + 13.0, mid),
+            Align2::LEFT_CENTER,
+            name,
+            ty::BODY,
+            pal.ink,
+        );
+        let value_type = Type {
+            size: 11.5,
+            ..ty::CODE
+        };
+        draw::label(
+            ui,
+            pos2(rect.right() - 13.0, mid),
+            Align2::RIGHT_CENTER,
+            value,
+            value_type,
+            pal.ink,
+        );
     }
     let mut y = draw::box_head(ui, pal, rect, title, note);
     let label_type = Type {

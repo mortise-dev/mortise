@@ -366,3 +366,230 @@ fn milestone_6_settings() {
     let mut harness = desk.start();
     save("text-size-150-light", &mut harness);
 }
+
+/// The runtime box in each of its states, by what the stub answers.
+fn runtime_state(letter: char) -> Option<mortise_core::testing::StubActuator> {
+    use mortise_core::testing::{Reply, StubActuator};
+    let stub = common::shop_api_actuator();
+    match letter {
+        'c' => return None,
+        'd' => {
+            stub.expose(&["health"]);
+            stub.set("/actuator/health", Reply::ok(r#"{"status":"UP"}"#));
+        }
+        'e' => stub.require_header("authorization", "Bearer right"),
+        'f' => stub.set("/actuator/health", Reply::ok(r#"{"status":"UP"}"#)),
+        'g' => stub.set(
+            "/actuator/health",
+            Reply::status(
+                503,
+                r#"{"status":"DOWN","components":{"ping":{"status":"UP"},"readinessState":{"status":"UP"},
+                "diskSpace":{"status":"UP","details":{"total":494384795648,"free":213212008448}},
+                "db":{"status":"DOWN","details":{"error":"Illuminate\\Database\\QueryException: SQLSTATE[HY000] [2002] Connection refused."}},
+                "cache":{"status":"UP","details":{"store":"redis"}}}}"#,
+            ),
+        ),
+        'h' => stub.set(
+            "/actuator/health",
+            Reply::status(
+                503,
+                r#"{"status":"OUT_OF_SERVICE","components":{"ping":{"status":"UP"},
+                "readinessState":{"status":"OUT_OF_SERVICE"},
+                "diskSpace":{"status":"UP","details":{"total":494384795648,"free":213212008448}},
+                "db":{"status":"UP","details":{"connection":"mysql"}},
+                "cache":{"status":"UP","details":{"store":"redis"}}}}"#,
+            ),
+        ),
+        'i' => stub.set("/actuator/health", Reply::status(500, r#"{"message":"Server Error"}"#)),
+        _ => return Some(StubActuator::healthy()),
+    }
+    Some(stub)
+}
+
+#[test]
+#[ignore = "writes PNG files for a person to look at"]
+fn milestone_7_summary() {
+    for (theme, suffix) in [(Theme::Light, "light"), (Theme::Dark, "dark")] {
+        // S4.2 with a running app, and S4.3 for two modules.
+        let stub = common::shop_api_actuator();
+        let staging = common::shop_api_actuator();
+        let mut desk = Desk::new();
+        desk.theme = theme;
+        desk.size = egui::vec2(1280.0, 1100.0);
+        let root = desk.app("shop-api");
+        desk.knows(&[(&root, "SA")]);
+        desk.connect(&[
+            common::environment("local", &stub),
+            common::environment("staging", &staging),
+            common::environment("production", &staging),
+        ]);
+        let mut harness = desk.start();
+        common::wait_for_answer(&mut harness);
+        save(&format!("s4.2-runtime-{suffix}"), &mut harness);
+        harness
+            .get_by_role_and_label(Role::ListBoxOption, "Checkout")
+            .click();
+        save(&format!("s4.3-runtime-checkout-{suffix}"), &mut harness);
+        harness
+            .get_by_role_and_label(Role::ListBoxOption, "Inventory")
+            .click();
+        save(&format!("s4.3-runtime-inventory-{suffix}"), &mut harness);
+    }
+}
+
+#[test]
+#[ignore = "writes PNG files for a person to look at"]
+fn milestone_7_states() {
+    for (theme, suffix) in [(Theme::Light, "light"), (Theme::Dark, "dark")] {
+        // a. The package is not installed.
+        let mut desk = Desk::new();
+        desk.theme = theme;
+        let root = desk.app("shop-api");
+        let lock = std::fs::read_to_string(root.join("composer.lock")).unwrap();
+        std::fs::write(
+            root.join("composer.lock"),
+            lock.replace("laravel-actuator", "laravel-other"),
+        )
+        .unwrap();
+        desk.knows(&[(&root, "SA")]);
+        let mut harness = desk.start();
+        save(&format!("s6.5a-{suffix}"), &mut harness);
+
+        // b. Installed, no environment yet.
+        let mut desk = Desk::new();
+        desk.theme = theme;
+        let root = desk.app("shop-api");
+        desk.knows(&[(&root, "SA")]);
+        let mut harness = desk.start();
+        save(&format!("s6.5b-{suffix}"), &mut harness);
+
+        for letter in ['c', 'd', 'e', 'f', 'g', 'h', 'i'] {
+            let stub = runtime_state(letter);
+            let mut desk = Desk::new();
+            desk.theme = theme;
+            let root = desk.app("shop-api");
+            desk.knows(&[(&root, "SA")]);
+            let environment = match &stub {
+                Some(stub) => common::environment("local", stub),
+                None => mortise_core::Environment {
+                    name: "local".into(),
+                    base_url: "http://127.0.0.1:9".into(),
+                    path: "actuator".into(),
+                    credentials: mortise_core::Credentials::None,
+                },
+            };
+            desk.connect(&[environment]);
+            let mut harness = desk.start();
+            common::wait_for_answer(&mut harness);
+            save(&format!("s6.5{letter}-{suffix}"), &mut harness);
+        }
+    }
+}
+
+#[test]
+#[ignore = "writes PNG files for a person to look at"]
+fn milestone_7_settings() {
+    use mortise_core::{Credentials, Environment};
+    for (theme, suffix) in [(Theme::Light, "light"), (Theme::Dark, "dark")] {
+        let local = common::shop_api_actuator();
+        let staging = common::shop_api_actuator();
+        staging.require_header("authorization", "Bearer s3cret-token");
+        let production = common::shop_api_actuator();
+        production.require_header("authorization", "Basic nothing");
+        let mut desk = Desk::new();
+        desk.theme = theme;
+        let shop = desk.app("shop-api");
+        let crm = desk.app("crm");
+        desk.knows(&[(&shop, "SA"), (&crm, "CR")]);
+        desk.connect(&[
+            common::environment("local", &local),
+            Environment {
+                credentials: Credentials::Bearer,
+                ..common::environment("staging", &staging)
+            },
+            Environment {
+                credentials: Credentials::Basic {
+                    user: "mortise".into(),
+                },
+                ..common::environment("production", &production)
+            },
+        ]);
+        let mut harness = desk.start();
+        common::wait_for_answer(&mut harness);
+
+        // S8.1: the environments of the app, staging being edited.
+        harness.key_press_modifiers(Modifiers::COMMAND, Key::Comma);
+        harness.run_steps(3);
+        harness
+            .get_by_role_and_label(Role::Row, "Environment staging")
+            .click();
+        harness.run_steps(3);
+        // S8.5 b: the token as it is typed.
+        harness
+            .get_by_role_and_label(Role::PasswordInput, "Token")
+            .focus();
+        harness.run_steps(2);
+        harness
+            .get_by_role_and_label(Role::PasswordInput, "Token")
+            .type_text("s3cret-token");
+        save(&format!("s8.5b-typing-{suffix}"), &mut harness);
+        // Leaving the field keeps the secret, and it is not shown again.
+        harness
+            .get_by_role_and_label(Role::TextInput, "Environment name")
+            .focus();
+        harness.run_steps(3);
+        harness.get_by_role_and_label(Role::Button, "Test").click();
+        wait_until(&mut harness, "the test of staging", |_| true);
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        harness.run_steps(3);
+        // Production: a test that is refused.
+        harness
+            .get_by_role_and_label(Role::Row, "Environment production")
+            .click();
+        harness.run_steps(3);
+        harness.get_by_role_and_label(Role::Button, "Test").click();
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        harness.run_steps(3);
+        save(&format!("s8.5c-basic-{suffix}"), &mut harness);
+        harness
+            .get_by_role_and_label(Role::Row, "Environment staging")
+            .click();
+        save(&format!("s8.1-environments-{suffix}"), &mut harness);
+        harness
+            .get_by_role_and_label(Role::RadioButton, "Custom header")
+            .click();
+        save(&format!("s8.5d-header-{suffix}"), &mut harness);
+        harness
+            .get_by_role_and_label(Role::Row, "Environment local")
+            .click();
+        save(&format!("s8.5a-none-{suffix}"), &mut harness);
+
+        // S1.3: the add panel with the runtime section.
+        let stub = common::shop_api_actuator();
+        stub.require_header("authorization", "Bearer s3cret-token");
+        let mut desk = Desk::new();
+        desk.theme = theme;
+        let root = desk.app("booking-engine");
+        std::fs::write(root.join(".env"), format!("APP_URL={}\n", stub.base_url)).unwrap();
+        desk.picks.borrow_mut().push_back(root);
+        let mut harness = desk.start();
+        harness.key_press_modifiers(Modifiers::COMMAND, Key::O);
+        harness.run_steps(3);
+        save(&format!("s1.3-runtime-none-{suffix}"), &mut harness);
+        harness
+            .get_by_role_and_label(Role::RadioButton, "Bearer token")
+            .click();
+        harness.run_steps(3);
+        harness
+            .get_by_role_and_label(Role::PasswordInput, "Token")
+            .focus();
+        harness.run_steps(2);
+        harness
+            .get_by_role_and_label(Role::PasswordInput, "Token")
+            .type_text("s3cret-token");
+        harness.run_steps(2);
+        harness.get_by_role_and_label(Role::Button, "Test").click();
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        save(&format!("s1.3-runtime-{suffix}"), &mut harness);
+    }
+}

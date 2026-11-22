@@ -187,6 +187,8 @@ pub enum Icon {
     Folder,
     App,
     List,
+    Lock,
+    Plus,
 }
 
 /// One stroke of an icon: points on the 16 px grid.
@@ -299,6 +301,15 @@ impl Icon {
             open(&[[2.5, 8.0], [13.5, 8.0]]),
             open(&[[2.5, 12.0], [9.5, 12.0]]),
         ];
+        const LOCK_BODY: [[f32; 2]; 4] = square(4.25, 7.25, 7.5, 6.0);
+        const LOCK: &[Path] = &[
+            closed(&LOCK_BODY),
+            open(&[[5.75, 7.25], [5.75, 4.25], [10.25, 4.25], [10.25, 7.25]]),
+        ];
+        const PLUS: &[Path] = &[
+            open(&[[8.0, 3.0], [8.0, 13.0]]),
+            open(&[[3.0, 8.0], [13.0, 8.0]]),
+        ];
         const CLOSE: &[Path] = &[
             open(&[[3.5, 3.5], [12.5, 12.5]]),
             open(&[[12.5, 3.5], [3.5, 12.5]]),
@@ -318,6 +329,8 @@ impl Icon {
             Icon::Folder => FOLDER,
             Icon::App => APP,
             Icon::List => LIST,
+            Icon::Lock => LOCK,
+            Icon::Plus => PLUS,
         }
     }
 }
@@ -484,6 +497,109 @@ pub fn mark_warn(ui: &Ui, rect: Rect, color: Color32) {
     let points = vec![at(6.0, 1.0), at(11.4, 10.8), at(0.6, 10.8)];
     ui.painter()
         .add(Shape::convex_polygon(points, color, Stroke::NONE));
+}
+
+// ---------------------------------------------------------------------------
+// Runtime marks (C9). What the running app reports is drawn in strokes, never as
+// a solid silhouette: a runtime mark cannot be taken for a finding mark.
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RuntimeMark {
+    /// Up: an arrow up.
+    Up,
+    /// Down: an arrow down.
+    Down,
+    /// Out of service: two bars.
+    Bars,
+    /// Unknown, no answer, not authorized: three dashes.
+    Dashes,
+}
+
+/// Paints a runtime mark into `rect`. 12 px.
+pub fn runtime_mark(ui: &Ui, rect: Rect, mark: RuntimeMark, color: Color32) {
+    let scale = rect.width() / size::STATE_MARK;
+    let at = |x: f32, y: f32| rect.min + vec2(x, y) * scale;
+    let painter = ui.painter();
+    let line = |width: f32| Stroke::new(width * scale, color);
+    match mark {
+        RuntimeMark::Up => {
+            painter.line_segment([at(6.0, 11.0), at(6.0, 2.4)], line(1.7));
+            painter.add(Shape::line(
+                vec![at(2.4, 6.0), at(6.0, 2.4), at(9.6, 6.0)],
+                line(1.7),
+            ));
+        }
+        RuntimeMark::Down => {
+            painter.line_segment([at(6.0, 1.0), at(6.0, 9.6)], line(1.7));
+            painter.add(Shape::line(
+                vec![at(2.4, 6.0), at(6.0, 9.6), at(9.6, 6.0)],
+                line(1.7),
+            ));
+        }
+        RuntimeMark::Bars => {
+            painter.line_segment([at(3.6, 1.5), at(3.6, 10.5)], line(2.0));
+            painter.line_segment([at(8.4, 1.5), at(8.4, 10.5)], line(2.0));
+        }
+        RuntimeMark::Dashes => {
+            for (from, to) in [(1.0, 3.2), (4.9, 7.1), (8.8, 11.0)] {
+                painter.line_segment([at(from, 6.0), at(to, 6.0)], line(1.8));
+            }
+        }
+    }
+}
+
+/// A runtime mark and its word, with the right end of the word at `right_center`.
+/// Returns the rect of both.
+pub fn runtime_state(
+    ui: &Ui,
+    right_center: Pos2,
+    mark: RuntimeMark,
+    word: &str,
+    color: Color32,
+) -> Rect {
+    let state_type = Type {
+        size: 11.5,
+        ..ty::LABEL
+    };
+    let text = label(
+        ui,
+        right_center,
+        Align2::RIGHT_CENTER,
+        word,
+        state_type,
+        color,
+    );
+    let at = Rect::from_min_size(
+        pos2(
+            text.left() - 5.0 - size::STATE_MARK,
+            right_center.y - size::STATE_MARK / 2.0,
+        ),
+        Vec2::splat(size::STATE_MARK),
+    );
+    runtime_mark(ui, at, mark, color);
+    at.union(text)
+}
+
+// ---------------------------------------------------------------------------
+// Code block: text to copy or to read as the app wrote it
+
+/// The height a code block takes for `text` in `width`.
+pub fn code_block_height(ui: &Ui, text: &str, width: f32) -> f32 {
+    galley_wrapped(ui, text, ty::CODE, Color32::PLACEHOLDER, width - 24.0)
+        .size()
+        .y
+        + 20.0
+}
+
+/// Paints a code block with its top left at `min`: code fill, mono text that wraps.
+/// Returns its rect.
+pub fn code_block(ui: &Ui, pal: &Palette, min: Pos2, width: f32, text: &str) -> Rect {
+    let galley = galley_wrapped(ui, text, ty::CODE, pal.code_fg, width - 24.0);
+    let rect = Rect::from_min_size(min, vec2(width, galley.size().y + 20.0));
+    ui.painter().rect_filled(rect, radius::CONTROL, pal.code_bg);
+    let text_rect = paint_galley(ui, rect.min + vec2(12.0, 10.0), Align2::LEFT_TOP, galley);
+    announce(ui, text_rect, Role::Label, text);
+    rect
 }
 
 /// Several runs of text in one wrapped paragraph, each in its own type and colour.
@@ -888,6 +1004,33 @@ pub fn text_field(
     mono: bool,
     keyboard: bool,
 ) -> Response {
+    field(ui, pal, rect, name, text, mono, false, keyboard)
+}
+
+/// A text field for a secret: what is typed is drawn as dots, and there is no way
+/// to reveal it.
+pub fn secret_field(
+    ui: &mut Ui,
+    pal: &Palette,
+    rect: Rect,
+    name: &str,
+    text: &mut String,
+    keyboard: bool,
+) -> Response {
+    field(ui, pal, rect, name, text, true, true, keyboard)
+}
+
+#[expect(clippy::too_many_arguments)]
+fn field(
+    ui: &mut Ui,
+    pal: &Palette,
+    rect: Rect,
+    name: &str,
+    text: &mut String,
+    mono: bool,
+    secret: bool,
+    keyboard: bool,
+) -> Response {
     let id = ui.scope_id().with(("field", name));
     let focused = ui.memory(|memory| memory.has_focus(id));
     let outline = if focused {
@@ -901,6 +1044,7 @@ pub fn text_field(
     let font = if mono { ty::CODE } else { ty::BODY };
     let edit = eframe::egui::TextEdit::singleline(text)
         .id(id)
+        .password(secret)
         .frame(eframe::egui::Frame::NONE)
         .margin(eframe::egui::Margin::ZERO)
         .font(eframe::egui::FontId::new(font.size, font.face.family()))
@@ -908,7 +1052,12 @@ pub fn text_field(
         .desired_width(rect.width() - 18.0)
         .align(Align2::LEFT_CENTER);
     let response = ui.put(rect.shrink2(vec2(9.0, 1.0)), edit);
-    response.widget_info(|| WidgetInfo::labeled(Role::TextInput, true, name));
+    let role = if secret {
+        Role::PasswordInput
+    } else {
+        Role::TextInput
+    };
+    response.widget_info(|| WidgetInfo::labeled(role, true, name));
     if keyboard && focused {
         focus_ring(ui, pal, rect, radius::CONTROL);
     }

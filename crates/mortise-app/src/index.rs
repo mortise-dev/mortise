@@ -8,8 +8,9 @@ use mortise_core::{ALL_CODE, AppSnapshot, FindingState, IndexRows, Module, Modul
 
 use crate::app::Selection;
 use crate::draw::{self, Icon, StampState};
+use crate::runtime_view::Brief;
 use crate::strings;
-use crate::theme::{Face, Palette, radius, size, stroke, ty};
+use crate::theme::{Face, Palette, Type, radius, size, stroke, ty};
 
 /// Above this many modules a row has one line.
 const TWO_LINE_LIMIT: usize = 20;
@@ -32,6 +33,17 @@ pub struct IndexState<'a> {
     /// Two lines a row, one line, or one line above 20 modules.
     pub rows: IndexRows,
     pub mac: bool,
+    /// The runtime status of the chosen environment, when one is connected.
+    pub runtime: Option<IndexRuntime<'a>>,
+}
+
+/// The line under the versions: what the running app reports, and where.
+#[derive(Debug, Clone, Copy)]
+pub struct IndexRuntime<'a> {
+    pub brief: Brief,
+    pub environment: &'a str,
+    /// How many seconds ago the app was asked.
+    pub checked: Option<u64>,
 }
 
 /// What a row says at its right end.
@@ -122,6 +134,7 @@ pub fn index(
         problems_first,
         rows,
         mac,
+        runtime,
     } = state;
     let mut toggle_order = false;
 
@@ -152,7 +165,7 @@ pub fn index(
         draw::keycap(ui, pal, pos2(cap_right, foot_top + 16.0), &keys);
         (rect.top(), foot_top)
     } else {
-        let head_bottom = head(ui, pal, rect, app, filter, focus_filter, keyboard);
+        let head_bottom = head(ui, pal, rect, app, filter, runtime, focus_filter, keyboard);
         // Foot: how many modules the filter leaves, or the order of the list.
         let foot_top = rect.bottom() - (8.0 + 15.0 + 8.0 + 1.0);
         draw::hline(ui, inner.clone(), foot_top, pal.line);
@@ -313,12 +326,14 @@ fn group_heading(ui: &mut Ui, pal: &Palette, name: &str, count: usize) {
 
 /// The head of the index: the app, how many modules are on, the versions, the filter.
 /// Returns its bottom edge.
+#[expect(clippy::too_many_arguments)]
 fn head(
     ui: &mut Ui,
     pal: &Palette,
     rect: Rect,
     app: &AppSnapshot,
     filter: &mut String,
+    runtime: Option<IndexRuntime<'_>>,
     focus_filter: bool,
     keyboard: bool,
 ) -> f32 {
@@ -349,11 +364,52 @@ fn head(
         pal.ink_2,
     );
 
+    // What the running app reports: a stroke mark, its word, and the environment.
+    let mut runtime_h = 0.0;
+    if let Some(IndexRuntime {
+        brief,
+        environment,
+        checked,
+    }) = runtime
+    {
+        runtime_h = 20.0;
+        let mid = rect.top() + 12.0 + 20.0 + 1.0 + 16.0 + 3.0 + 8.0;
+        let color = brief.tone.color(pal);
+        let mark = Rect::from_min_size(pos2(left, mid - 6.0), Vec2::splat(size::STATE_MARK));
+        draw::runtime_mark(ui, mark, brief.mark, color);
+        let word_type = Type {
+            size: 11.5,
+            ..ty::LABEL
+        };
+        let at = pos2(mark.right() + 5.0, mid);
+        let word = draw::paint_text(ui, at, Align2::LEFT_CENTER, brief.word, word_type, color);
+        let on = strings::on_environment(environment);
+        let on = draw::galley_elided(
+            ui,
+            &on,
+            ty::SECONDARY,
+            pal.ink_2,
+            right - word.right() - 6.0,
+        );
+        let on = draw::paint_galley(ui, pos2(word.right() + 6.0, mid), Align2::LEFT_CENTER, on);
+        // One thing to read aloud, and to point at for when it was checked.
+        let said = strings::runtime_tooltip(brief.word, environment, None);
+        let line = draw::announce(ui, mark.union(word).union(on), Role::Label, &said);
+        draw::tooltip(
+            line,
+            pal,
+            &strings::runtime_tooltip(brief.word, environment, checked),
+        );
+    }
+
     // The filter field (C3): 26 px high, a search icon, a key hint that says how to
     // get in and, once inside, how to get out.
     let field = Rect::from_min_max(
-        pos2(left, rect.top() + 12.0 + 20.0 + 1.0 + 16.0 + 9.0),
-        pos2(right, rect.top() + 84.0),
+        pos2(
+            left,
+            rect.top() + 12.0 + 20.0 + 1.0 + 16.0 + 9.0 + runtime_h,
+        ),
+        pos2(right, rect.top() + 84.0 + runtime_h),
     );
     let id = filter_id(ui);
     let focused = ui.memory(|memory| memory.has_focus(id));

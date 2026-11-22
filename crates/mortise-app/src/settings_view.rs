@@ -6,9 +6,15 @@
 use eframe::egui::{
     Align2, Color32, Rect, Role, ScrollArea, Sense, Ui, UiBuilder, Vec2, WidgetInfo, pos2, vec2,
 };
-use mortise_core::{AppEntry, Editor, General, IndexRows, Motion, Settings, ThemeChoice};
+use std::collections::BTreeMap;
+
+use mortise_core::{
+    AppEntry, Credentials, Editor, General, IndexRows, Kept, Motion, Secrets, Settings, ThemeChoice,
+};
 
 use crate::draw::{self, Button, Icon};
+use crate::environment_form::{EnvironmentForm, FormEvent, FormOptions, environment_form};
+use crate::runtime_view::Brief;
 use crate::strings;
 use crate::theme::{Face, Palette, Type, radius, size, ty};
 
@@ -42,7 +48,7 @@ impl Section {
 }
 
 /// What Settings keep while they are open.
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct SettingsState {
     pub section: Section,
     /// The app whose form is shown in the Apps section.
@@ -55,6 +61,24 @@ pub struct SettingsState {
     editor_command_set: bool,
     /// The text of the shortcut filter.
     pub shortcut_filter: String,
+    /// The environment of that app whose form is shown.
+    pub environment: usize,
+    /// A new environment is added to that app in the next frame.
+    pub add_environment: bool,
+    /// The form of that environment, and the app and place it was filled from.
+    environment_form: Option<(usize, usize, EnvironmentForm)>,
+}
+
+/// What Settings show about an app besides what they keep.
+pub struct AppInfo<'a> {
+    /// `Laravel 13.2, package 13.3.0`
+    pub versions: String,
+    /// The app has `nwidart/laravel-actuator`.
+    pub actuator: bool,
+    /// `APP_URL` of the app, to propose the base URL of a new environment.
+    pub app_url: Option<String>,
+    /// The last answer of each environment in this run, by its name.
+    pub last: &'a mut BTreeMap<String, Brief>,
 }
 
 #[derive(Debug, Default)]
@@ -259,7 +283,8 @@ pub fn section(
     rect: Rect,
     state: &mut SettingsState,
     settings: &mut Settings,
-    versions: &[String],
+    infos: &mut [AppInfo<'_>],
+    secrets: &Secrets,
     custom_frame: bool,
     keyboard: bool,
     mac: bool,
@@ -310,7 +335,9 @@ pub fn section(
                         custom_frame,
                         &mut action,
                     ),
-                    Section::Apps => form.apps(ui, top, state, settings, versions, &mut action),
+                    Section::Apps => {
+                        form.apps(ui, top, state, settings, infos, secrets, &mut action)
+                    }
                     Section::Keyboard => form.keyboard(ui, top, state, mac),
                 };
                 ui.allocate_rect(
@@ -557,13 +584,15 @@ impl Form<'_> {
 
     // --- Apps (S8.1) ---
 
+    #[expect(clippy::too_many_arguments)]
     fn apps(
         &self,
         ui: &mut Ui,
         mut y: f32,
         state: &mut SettingsState,
         settings: &mut Settings,
-        versions: &[String],
+        infos: &mut [AppInfo<'_>],
+        secrets: &Secrets,
         action: &mut Option<SettingsAction>,
     ) -> f32 {
         let pal = self.pal;
@@ -591,12 +620,14 @@ impl Form<'_> {
         draw::outlined(ui, table, radius::CONTROL, Color32::TRANSPARENT, pal.line_2);
         let name_x = table.left() + 14.0;
         let folder_x = (table.left() + table.width() * 0.30).round();
-        let versions_x = (table.left() + table.width() * 0.66).round();
+        let versions_x = (table.left() + table.width() * 0.60).round();
+        let environments_x = (table.left() + table.width() * 0.86).round();
         let head_mid = table.top() + size::TABLE_HEAD_H / 2.0;
         for (x, label) in [
             (name_x, "App"),
             (folder_x, "Folder"),
             (versions_x, "Versions"),
+            (environments_x, "Environments"),
         ] {
             draw::label(
                 ui,
@@ -673,19 +704,37 @@ impl Form<'_> {
                 versions_x - 12.0 - folder_x,
             );
             draw::paint_galley(ui, pos2(folder_x, mid), Align2::LEFT_CENTER, folder);
-            let version_text = versions.get(i).map_or("", String::as_str);
+            let version_text = infos.get(i).map_or("", |info| info.versions.as_str());
             let version = draw::galley_elided(
                 ui,
                 version_text,
                 ty::BODY,
                 pal.ink_2,
-                table.right() - 12.0 - versions_x,
+                environments_x - 12.0 - versions_x,
             );
             let version_rect =
                 draw::paint_galley(ui, pos2(versions_x, mid), Align2::LEFT_CENTER, version);
             if !version_text.is_empty() {
                 draw::announce(ui, version_rect, Role::Label, version_text);
             }
+            // How many environments the app has.
+            let count = match app.environments.len() {
+                0 => strings::NONE.to_owned(),
+                n => n.to_string(),
+            };
+            let color = if app.environments.is_empty() {
+                pal.ink_3
+            } else {
+                pal.ink
+            };
+            draw::paint_text(
+                ui,
+                pos2(environments_x, mid),
+                Align2::LEFT_CENTER,
+                &count,
+                ty::BODY,
+                color,
+            );
         }
         y = table.bottom() + 16.0;
 
@@ -885,7 +934,15 @@ impl Form<'_> {
                 changed = Some(true);
             }
         }
-        y = report.bottom() + 16.0;
+        y = report.bottom() + 20.0;
+
+        if let Some(info) = infos.get_mut(index) {
+            let (bottom, kept) = self.environments(ui, y, state, index, entry, info, secrets);
+            y = bottom + 20.0;
+            if kept {
+                changed = changed.or(Some(false));
+            }
+        }
 
         // Removing an app: the folder and its files stay as they are.
         let label = format!("Remove {} from Mortise", entry.name);
@@ -905,6 +962,342 @@ impl Form<'_> {
             });
         }
         y + size::CONTROL_H
+    }
+
+    // --- The environments of an app (S8.1, S8.5) ---
+
+    /// Paints the environments of the app at `index`: a table, and under it the form
+    /// of the selected one. Returns the bottom edge, and true when the settings changed.
+    #[expect(clippy::too_many_arguments)]
+    fn environments(
+        &self,
+        ui: &mut Ui,
+        mut y: f32,
+        state: &mut SettingsState,
+        index: usize,
+        entry: &mut AppEntry,
+        info: &mut AppInfo<'_>,
+        secrets: &Secrets,
+    ) -> (f32, bool) {
+        let pal = self.pal;
+        let mut changed = false;
+        let heading = strings::environments_of(&entry.name);
+        let heading_rect = draw::paint_text(
+            ui,
+            pos2(self.left, y + 5.0),
+            Align2::LEFT_TOP,
+            &heading,
+            ty::BODY.with_face(Face::Sans700),
+            pal.ink,
+        );
+        draw::announce(ui, heading_rect, Role::Heading, &heading);
+        if !info.actuator {
+            // Without the package there is nothing to connect to.
+            let line = heading_rect.bottom() + 6.0;
+            draw::hline(ui, self.left..self.left + self.width, line, pal.line);
+            let text = draw::paragraph(
+                ui,
+                pos2(self.left, line + 9.0),
+                &strings::actuator_not_installed(&entry.name),
+                ty::BODY,
+                pal.ink_2,
+                self.width.min(560.0),
+            );
+            return (text.bottom(), false);
+        }
+        let add = Button {
+            label: strings::ADD_ENVIRONMENT,
+            icon: Some(Icon::Plus),
+            ..Default::default()
+        };
+        let add_at = pos2(self.left + self.width - add.width(ui), y);
+        if add.show(ui, pal, add_at, self.keyboard).clicked() || state.add_environment {
+            // A name no other environment of the app has.
+            let taken = |name: &str| entry.environments.iter().any(|e| e.name == name);
+            let name = ["local", "staging", "production"]
+                .into_iter()
+                .map(str::to_owned)
+                .chain((2..).map(|n| format!("environment {n}")))
+                .find(|name| !taken(name))
+                .expect("a free name");
+            let base_url = info
+                .app_url
+                .clone()
+                .filter(|_| entry.environments.is_empty());
+            let new = EnvironmentForm::new(&name, base_url.as_deref().unwrap_or_default());
+            entry.environments.push(new.environment());
+            if entry.environments.len() == 1 {
+                entry.environment = Some(name);
+            }
+            state.environment = entry.environments.len() - 1;
+            state.environment_form = None;
+            changed = true;
+        }
+        state.add_environment = false;
+        y += size::CONTROL_H + 6.0;
+        draw::hline(ui, self.left..self.left + self.width, y, pal.line);
+        y += 9.0;
+        if entry.environments.is_empty() {
+            let text = draw::paragraph(
+                ui,
+                pos2(self.left, y),
+                &strings::no_environment(&entry.name),
+                ty::BODY,
+                pal.ink_2,
+                self.width.min(560.0),
+            );
+            return (text.bottom(), changed);
+        }
+        state.environment = state.environment.min(entry.environments.len() - 1);
+
+        // The table: one row per environment, the selected one has its form below.
+        let table = Rect::from_min_size(
+            pos2(self.left, y),
+            vec2(
+                self.width,
+                size::TABLE_HEAD_H + entry.environments.len() as f32 * size::TABLE_ROW_H + 1.0,
+            ),
+        );
+        draw::outlined(ui, table, radius::CONTROL, Color32::TRANSPARENT, pal.line_2);
+        let w = table.width();
+        let wide = w >= 620.0;
+        let name_x = table.left() + 14.0;
+        let url_x = (table.left() + w * 0.16).round().max(name_x + 90.0);
+        let path_x = (table.left() + w * 0.50).round();
+        let credentials_x = (table.left() + w * 0.60).round();
+        let answer_x = (table.left() + w * 0.84).round();
+        let url_end = if wide { path_x } else { answer_x };
+        let head_mid = table.top() + size::TABLE_HEAD_H / 2.0;
+        let mut heads = vec![
+            (name_x, strings::COL_ENVIRONMENT),
+            (url_x, strings::BASE_URL),
+            (answer_x, strings::COL_LAST_ANSWER),
+        ];
+        if wide {
+            heads.push((path_x, strings::COL_PATH));
+            heads.push((credentials_x, strings::CREDENTIALS));
+        }
+        for (x, label) in heads {
+            draw::label(
+                ui,
+                pos2(x, head_mid),
+                Align2::LEFT_CENTER,
+                label,
+                ty::LABEL,
+                pal.ink_2,
+            );
+        }
+        draw::hline(
+            ui,
+            table.left() + 1.0..table.right() - 1.0,
+            table.top() + size::TABLE_HEAD_H - 1.0,
+            pal.line_2,
+        );
+        let cell_code = Type {
+            size: 11.5,
+            ..ty::CODE
+        };
+        for (i, environment) in entry.environments.iter().enumerate() {
+            let top = table.top() + size::TABLE_HEAD_H + i as f32 * size::TABLE_ROW_H;
+            let row = Rect::from_min_max(
+                pos2(table.left() + 1.0, top),
+                pos2(table.right() - 1.0, top + size::TABLE_ROW_H),
+            );
+            let selected = i == state.environment;
+            let id = ui.scope_id().with(("settings-environment", index, i));
+            let response = ui.interact(row, id, Sense::click());
+            let said = format!("{} {}", strings::COL_ENVIRONMENT, environment.name);
+            response.widget_info(|| WidgetInfo::selected(Role::Row, true, selected, &said));
+            if response.clicked() {
+                state.environment = i;
+            }
+            if selected {
+                ui.painter().rect_filled(row, 0, pal.well);
+                draw::hline(ui, row.left()..row.right(), row.top() - 1.0, pal.line_2);
+                draw::hline(ui, row.left()..row.right(), row.bottom() - 1.0, pal.line_2);
+                draw::peg(ui, pal, row);
+            } else {
+                if response.hovered() {
+                    ui.painter().rect_filled(row, 0, pal.well);
+                }
+                if i + 1 < entry.environments.len() {
+                    draw::hline(ui, row.left()..row.right(), row.bottom() - 1.0, pal.line);
+                }
+            }
+            let mid = row.center().y;
+            let cell = |ui: &Ui, x: f32, end: f32, text: &str, ty: Type, color: Color32| {
+                let galley = draw::galley_elided(ui, text, ty, color, end - 10.0 - x);
+                draw::paint_galley(ui, pos2(x, mid), Align2::LEFT_CENTER, galley)
+            };
+            let name_type = ty::BODY.with_face(Face::Sans600);
+            cell(ui, name_x, url_x, &environment.name, name_type, pal.ink);
+            cell(
+                ui,
+                url_x,
+                url_end,
+                &environment.base_url,
+                cell_code,
+                pal.ink,
+            );
+            if wide {
+                cell(
+                    ui,
+                    path_x,
+                    credentials_x,
+                    &environment.path,
+                    cell_code,
+                    pal.ink,
+                );
+                let kind = match environment.credentials {
+                    Credentials::None => 0,
+                    Credentials::Bearer => 1,
+                    Credentials::Basic { .. } => 2,
+                    Credentials::Header { .. } => 3,
+                };
+                let saved = kind != 0 && secrets.has(&entry.root, &environment.name);
+                let mut x = credentials_x;
+                if saved {
+                    let lock = Rect::from_min_size(pos2(x, mid - 6.0), Vec2::splat(12.0));
+                    draw::icon(ui, lock, Icon::Lock, pal.ink_2);
+                    x = lock.right() + 5.0;
+                }
+                let text = strings::credentials_saved(strings::CREDENTIAL_KINDS[kind], saved);
+                let text_rect = cell(ui, x, answer_x, &text, ty::BODY, pal.ink);
+                draw::announce(ui, text_rect, Role::Cell, &text);
+            }
+            // The last answer of this run: a runtime mark and its word.
+            match info.last.get(&environment.name) {
+                Some(brief) => {
+                    let color = brief.tone.color(pal);
+                    let mark = Rect::from_min_size(
+                        pos2(answer_x, mid - 6.0),
+                        Vec2::splat(size::STATE_MARK),
+                    );
+                    draw::runtime_mark(ui, mark, brief.mark, color);
+                    let word_type = Type {
+                        size: 11.5,
+                        ..ty::LABEL
+                    };
+                    let at = pos2(mark.right() + 5.0, mid);
+                    let word =
+                        draw::paint_text(ui, at, Align2::LEFT_CENTER, brief.word, word_type, color);
+                    let said = format!("{} {}", strings::COL_LAST_ANSWER, brief.word);
+                    draw::announce(ui, word, Role::Cell, &said);
+                }
+                None => {
+                    cell(
+                        ui,
+                        answer_x,
+                        table.right(),
+                        strings::NOT_ASKED,
+                        ty::BODY,
+                        pal.ink_3,
+                    );
+                }
+            }
+        }
+        y = table.bottom() + 12.0;
+
+        // The form of the selected environment. It follows the settings until it is edited.
+        let place = state.environment;
+        if state
+            .environment_form
+            .as_ref()
+            .is_none_or(|(app, at, _)| *app != index || *at != place)
+        {
+            let environment = &entry.environments[place];
+            let saved = environment.credentials.needs_secret()
+                && secrets.has(&entry.root, &environment.name);
+            let form = EnvironmentForm::of(environment, saved);
+            state.environment_form = Some((index, place, form));
+        }
+        let Some((_, _, form)) = &mut state.environment_form else {
+            return (y, changed);
+        };
+        let options = FormOptions {
+            keyboard: self.keyboard,
+            from_env: false,
+            keep_typed: false,
+            salt: "",
+        };
+        let form_w = self.width.min(720.0);
+        let (bottom, events) = environment_form(ui, pal, pos2(self.left, y), form_w, form, options);
+        y = bottom + 12.0;
+        let before = entry.environments[place].clone();
+        for event in events {
+            match event {
+                FormEvent::Changed => {
+                    let mut now = form.environment();
+                    // A name is what the environment is known by: not empty, and not
+                    // that of another one.
+                    let taken = entry
+                        .environments
+                        .iter()
+                        .enumerate()
+                        .any(|(i, other)| i != place && other.name == now.name);
+                    if now.name.is_empty() || taken {
+                        now.name = before.name.clone();
+                        form.name = before.name.clone();
+                    }
+                    if now != before {
+                        if now.name != before.name {
+                            // The secret is kept under the name: it moves with it.
+                            if let Some(secret) = secrets.get(&entry.root, &before.name) {
+                                secrets.set(&entry.root, &now.name, &secret);
+                                secrets.remove(&entry.root, &before.name);
+                            }
+                            if entry.environment.as_ref() == Some(&before.name) {
+                                entry.environment = Some(now.name.clone());
+                            }
+                            if let Some(last) = info.last.remove(&before.name) {
+                                info.last.insert(now.name.clone(), last);
+                            }
+                        }
+                        entry.environments[place] = now;
+                        changed = true;
+                    }
+                }
+                FormEvent::Secret(secret) => {
+                    let name = entry.environments[place].name.clone();
+                    form.until_close = secrets.set(&entry.root, &name, &secret) == Kept::UntilClose;
+                    changed = true;
+                }
+                FormEvent::RemoveSecret => {
+                    secrets.remove(&entry.root, &entry.environments[place].name);
+                    changed = true;
+                }
+                FormEvent::Test => {
+                    let secret = secrets.get(&entry.root, &entry.environments[place].name);
+                    form.start_test(secret, ui.ctx());
+                }
+            }
+        }
+        // The answer of a test is the last answer of the environment.
+        if let Some(answer) = form.tested() {
+            let name = entry.environments[place].name.clone();
+            info.last.insert(name, Brief::of_answer(answer));
+        }
+
+        let remove = Button {
+            label: strings::REMOVE_ENVIRONMENT,
+            small: true,
+            ..Default::default()
+        };
+        if remove
+            .show(ui, pal, pos2(self.left, y), self.keyboard)
+            .clicked()
+        {
+            let removed = entry.environments.remove(place);
+            secrets.remove(&entry.root, &removed.name);
+            info.last.remove(&removed.name);
+            if entry.environment.as_ref() == Some(&removed.name) {
+                entry.environment = entry.environments.first().map(|e| e.name.clone());
+            }
+            state.environment = 0;
+            state.environment_form = None;
+            changed = true;
+        }
+        (y + size::CONTROL_SM_H, changed)
     }
 
     // --- Keyboard (S8.4) ---
