@@ -1879,6 +1879,17 @@ fn style(ctx: &egui::Context) {
     }
 }
 
+/// The icon of the window and the taskbar, and of the Dock on macOS: eframe sets it
+/// even in a bundle, and shows the egui logo without it. macOS takes the drawing on
+/// its own grid. `tools/app-icon.mjs` makes both files.
+fn app_icon() -> egui::IconData {
+    #[cfg(target_os = "macos")]
+    let png = include_bytes!("../../../assets/icon/macos/mortise-512.png");
+    #[cfg(not(target_os = "macos"))]
+    let png = include_bytes!("../../../assets/icon/linux/hicolor/256x256/apps/mortise.png");
+    eframe::icon_data::from_png_bytes(png).expect("the app icon is a valid PNG")
+}
+
 /// Starts the app. `folder` is an app folder to open, if any.
 pub fn run(chrome: Chrome, folder: Option<PathBuf>) -> eframe::Result {
     let viewport = chrome.viewport(
@@ -1887,7 +1898,8 @@ pub fn run(chrome: Chrome, folder: Option<PathBuf>) -> eframe::Result {
             .with_app_id("mortise")
             .with_inner_size([1280.0, 800.0])
             .with_min_inner_size([size::WINDOW_MIN_W, size::WINDOW_MIN_H])
-            .with_drag_and_drop(true),
+            .with_drag_and_drop(true)
+            .with_icon(app_icon()),
     );
     let options = eframe::NativeOptions {
         viewport,
@@ -1918,4 +1930,14 @@ pub fn run(chrome: Chrome, folder: Option<PathBuf>) -> eframe::Result {
             Ok(Box::new(app))
         }),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn the_app_icon_is_a_square_image() {
+        let icon = super::app_icon();
+        assert_eq!(icon.width, icon.height);
+        assert!(icon.width >= 256);
+    }
 }

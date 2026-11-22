@@ -1,0 +1,94 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- The Mortise app icon: an oak block with the walnut and ash joint of the mark.
+       The joint is the mark of the title bar (24 unit grid), at 31 px a unit:
+       x = 233 + (u - 3) * 31, y = 264 + (v - 4) * 31.
+       The block is 928 px with a margin of 48 px for its shadow. Windows and Linux
+       use this layout; tools/app-icon.mjs scales it to the grid of macOS. -->
+  <defs>
+    <linearGradient id="oak" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#E2BF86"/>
+      <stop offset="1" stop-color="#C59855"/>
+    </linearGradient>
+    <radialGradient id="oak-light" cx="0.3" cy="0.12" r="0.9">
+      <stop offset="0" stop-color="#FFF6E0" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#FFF6E0" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="walnut" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#6E4732"/>
+      <stop offset="1" stop-color="#4A2D1E"/>
+    </linearGradient>
+    <linearGradient id="ash" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#F6EFDF"/>
+      <stop offset="1" stop-color="#E1D3B5"/>
+    </linearGradient>
+    <linearGradient id="bevel" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.16"/>
+      <stop offset="0.5" stop-color="#FFFFFF" stop-opacity="0"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0.10"/>
+    </linearGradient>
+    <clipPath id="block">
+      <rect x="48" y="48" width="928" height="928" rx="208"/>
+    </clipPath>
+    <clipPath id="walnut-piece">
+      <path id="walnut-shape" d="M233 264H512V388H388V636H512V760H233Z"/>
+    </clipPath>
+    <clipPath id="ash-piece">
+      <path id="ash-shape" d="M791 264V760H543V605H419V419H543V264Z"/>
+    </clipPath>
+    <filter id="block-shadow" x="-10%" y="-10%" width="120%" height="125%">
+      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#2B1A0C" flood-opacity="0.35"/>
+    </filter>
+    <filter id="piece-shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="9" stdDeviation="9" flood-color="#5A3610" flood-opacity="0.45"/>
+    </filter>
+  </defs>
+
+  <!-- The oak block. -->
+  <g filter="url(#block-shadow)">
+    <rect x="48" y="48" width="928" height="928" rx="208" fill="url(#oak)"/>
+  </g>
+  <g clip-path="url(#block)">
+    <!-- Grain, running across the block. -->
+    <g fill="none" stroke="#9C6A33" stroke-linecap="round" opacity="0.22">
+      <path d="M40 150C260 130 420 175 620 158S900 120 1000 140" stroke-width="5"/>
+      <path d="M40 205C240 196 430 232 640 214S880 186 1000 200" stroke-width="3"/>
+      <path d="M40 300C230 286 410 318 600 306S860 276 1000 292" stroke-width="4"/>
+      <path d="M40 470C250 456 430 498 640 480S890 444 1000 462" stroke-width="3"/>
+      <path d="M40 560C220 548 420 590 610 572S880 540 1000 556" stroke-width="5"/>
+      <path d="M40 690C250 676 440 714 650 696S890 664 1000 680" stroke-width="3"/>
+      <path d="M40 820C230 806 420 846 620 828S870 792 1000 810" stroke-width="4"/>
+      <path d="M40 890C250 880 430 914 640 900S890 870 1000 884" stroke-width="3"/>
+    </g>
+    <rect x="48" y="48" width="928" height="928" fill="url(#oak-light)"/>
+  </g>
+  <rect x="50" y="50" width="924" height="924" rx="206" fill="none" stroke="#7A5226" stroke-opacity="0.25" stroke-width="4"/>
+
+  <!-- The joint: walnut takes the mortise, ash carries the tenon. The gap between
+       them is the dark line of the joint, so it still shows at 24 and 32 px. -->
+  <rect x="233" y="264" width="558" height="496" fill="#8E6234"/>
+  <g filter="url(#piece-shadow)">
+    <use href="#walnut-shape" fill="url(#walnut)"/>
+    <use href="#ash-shape" fill="url(#ash)"/>
+  </g>
+  <g fill="none" stroke-linecap="round">
+    <g clip-path="url(#walnut-piece)" stroke="#2E1A10" opacity="0.3">
+      <path d="M220 296C320 290 420 306 520 300" stroke-width="3"/>
+      <path d="M220 344C320 340 420 352 520 346" stroke-width="2.5"/>
+      <path d="M296 380C292 480 306 560 300 650" stroke-width="3"/>
+      <path d="M346 380C342 470 352 570 348 650" stroke-width="2.5"/>
+      <path d="M220 696C320 690 420 708 520 702" stroke-width="3"/>
+      <path d="M220 734C320 730 420 740 520 736" stroke-width="2.5"/>
+    </g>
+    <!-- Ash is the rail: its grain runs along the tenon. -->
+    <g clip-path="url(#ash-piece)" stroke="#B9A073" opacity="0.32">
+      <path d="M410 300C540 292 660 312 800 302" stroke-width="2.5"/>
+      <path d="M410 372C540 366 650 384 800 376" stroke-width="3"/>
+      <path d="M410 452C520 446 660 462 800 454" stroke-width="2.5"/>
+      <path d="M410 528C540 522 660 540 800 532" stroke-width="3"/>
+      <path d="M410 640C540 632 650 652 800 644" stroke-width="2.5"/>
+      <path d="M410 716C530 710 660 726 800 718" stroke-width="3"/>
+    </g>
+  </g>
+  <use href="#walnut-shape" fill="url(#bevel)"/>
+  <use href="#ash-shape" fill="url(#bevel)"/>
+</svg>

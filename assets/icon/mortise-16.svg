@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" shape-rendering="crispEdges">
+  <!-- The app icon drawn for 16 px: whole pixels, no grain, no shadow.
+       The joint keeps a gap of one pixel all round. -->
+  <rect x="1" y="1" width="14" height="14" rx="3" fill="#D3AB6D" shape-rendering="geometricPrecision"/>
+  <rect x="1.5" y="1.5" width="13" height="13" rx="2.5" fill="none" stroke="#8E6230" stroke-opacity="0.5" shape-rendering="geometricPrecision"/>
+  <path d="M3 3H8V5H5V11H8V13H3Z" fill="#553524"/>
+  <path d="M13 3V13H9V10H6V6H9V3Z" fill="#F3EBDA"/>
+</svg>
