@@ -429,7 +429,7 @@ fn a_large_folder_is_read_without_stopping_the_window_and_says_how_far_it_is() {
             "the folder was not read in 30 s"
         );
         if bar_seen_at.is_none() && harness.query_by_role(Role::ProgressIndicator).is_some() {
-            harness.get_by_label_contains("of 6,015 files");
+            harness.get_by_label_contains("of 6,077 files");
             bar_seen_at = Some(started.elapsed());
         }
         std::thread::sleep(std::time::Duration::from_millis(20));

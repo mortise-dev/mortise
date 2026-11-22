@@ -173,7 +173,14 @@ pub fn code_is_for(code: &str, module: &str) -> String {
 pub fn tilde(path: &Path) -> String {
     match std::env::home_dir().and_then(|home| path.strip_prefix(home).ok().map(Path::to_owned)) {
         Some(rest) if rest.as_os_str().is_empty() => "~".to_owned(),
-        Some(rest) => format!("~/{}", rest.display()),
+        // `/` between the parts on every platform, as after the `~`.
+        Some(rest) => {
+            let parts: Vec<_> = rest
+                .components()
+                .map(|part| part.as_os_str().to_string_lossy())
+                .collect();
+            format!("~/{}", parts.join("/"))
+        }
         None => path.display().to_string(),
     }
 }
