@@ -316,7 +316,8 @@ pub fn sections(
     response.clicked().then_some(SettingsAction::Close)
 }
 
-/// Paints the open section into the workspace.
+/// Paints the open section into the workspace. Returns what it asks for, in the
+/// order to do it: a change comes before the action of the button that was clicked.
 #[expect(clippy::too_many_arguments)]
 pub fn section(
     ui: &mut Ui,
@@ -329,7 +330,7 @@ pub fn section(
     custom_frame: bool,
     keyboard: bool,
     mac: bool,
-) -> Option<SettingsAction> {
+) -> Vec<SettingsAction> {
     ui.painter().rect_filled(rect, 0, pal.surface);
     let head = Rect::from_min_size(rect.min, vec2(rect.width(), 46.0));
     ui.painter().rect_filled(head, 0, pal.panel);
@@ -351,7 +352,7 @@ pub fn section(
     draw::announce(ui, title, Role::Heading, label);
 
     let body = Rect::from_min_max(pos2(rect.left(), head.bottom()), rect.max);
-    let mut action = None;
+    let mut actions = Vec::new();
     ui.scope_builder(UiBuilder::new().max_rect(body), |ui| {
         ScrollArea::vertical()
             .id_salt(("settings", label))
@@ -374,10 +375,10 @@ pub fn section(
                         state,
                         &mut settings.general,
                         custom_frame,
-                        &mut action,
+                        &mut actions,
                     ),
                     Section::Apps => {
-                        form.apps(ui, top, state, settings, infos, secrets, &mut action)
+                        form.apps(ui, top, state, settings, infos, secrets, &mut actions)
                     }
                     Section::Keyboard => form.keyboard(ui, top, state, mac),
                 };
@@ -387,7 +388,7 @@ pub fn section(
                 );
             });
     });
-    action
+    actions
 }
 
 struct Form<'a> {
@@ -453,7 +454,7 @@ impl Form<'_> {
         state: &mut SettingsState,
         general: &mut General,
         custom_frame: bool,
-        action: &mut Option<SettingsAction>,
+        actions: &mut Vec<SettingsAction>,
     ) -> f32 {
         let mut changed = false;
 
@@ -618,7 +619,7 @@ impl Form<'_> {
         }
 
         if changed {
-            *action = Some(SettingsAction::Changed { reread: None });
+            actions.push(SettingsAction::Changed { reread: None });
         }
         y
     }
@@ -634,7 +635,7 @@ impl Form<'_> {
         settings: &mut Settings,
         infos: &mut [AppInfo<'_>],
         secrets: &Secrets,
-        action: &mut Option<SettingsAction>,
+        actions: &mut Vec<SettingsAction>,
     ) -> f32 {
         let pal = self.pal;
         if settings.apps.is_empty() {
@@ -999,16 +1000,17 @@ impl Form<'_> {
             label: &label,
             ..Default::default()
         };
-        if remove
+        let remove_clicked = remove
             .show(ui, pal, pos2(self.left, y), self.keyboard)
-            .clicked()
-        {
-            *action = Some(SettingsAction::RemoveApp(index));
-        }
+            .clicked();
+        // The click that asks to remove may also leave an edited field: that edit first.
         if let Some(reread) = changed {
-            *action = Some(SettingsAction::Changed {
+            actions.push(SettingsAction::Changed {
                 reread: reread.then_some(index),
             });
+        }
+        if remove_clicked {
+            actions.push(SettingsAction::RemoveApp(index));
         }
         y + size::CONTROL_H
     }

@@ -1282,7 +1282,7 @@ impl eframe::App for MortiseApp {
         let (index_w, index_collapsed) =
             index_width(window.width(), self.index_choice, set_index_w);
         let mut new_index_w = None;
-        let mut settings_action = None;
+        let mut settings_actions = Vec::new();
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |since| since.as_secs() as i64);
@@ -1348,7 +1348,9 @@ impl eframe::App for MortiseApp {
             );
             let in_list =
                 settings_view::sections(ui, pal, index_rect, state, shown_name, self.keyboard);
-            settings_action = in_section.or(in_list);
+            // A click on "Back" can also leave an edited field: the edit comes first.
+            settings_actions = in_section;
+            settings_actions.extend(in_list);
         } else if let Some(current) = self.current {
             let open = &mut self.apps[current];
             match open.live.state() {
@@ -1640,30 +1642,30 @@ impl eframe::App for MortiseApp {
         if std::mem::take(&mut self.close_settings) {
             self.settings_open = None;
         }
-        match settings_action {
-            Some(SettingsAction::Close) => self.settings_open = None,
-            Some(SettingsAction::Changed { reread }) => {
-                self.save();
-                if let Some(index) = reread {
-                    self.apps[index]
-                        .live
-                        .set_options(read_options(&self.settings.apps[index]));
+        for action in settings_actions {
+            match action {
+                SettingsAction::Close => self.settings_open = None,
+                SettingsAction::Changed { reread } => {
+                    self.save();
+                    if let Some(index) = reread {
+                        self.apps[index]
+                            .live
+                            .set_options(read_options(&self.settings.apps[index]));
+                    }
+                }
+                SettingsAction::RemoveApp(index) => {
+                    let name = self.settings.apps[index].name.clone();
+                    let dialog = Dialog {
+                        title: format!("Remove {name} from Mortise?"),
+                        body: "The folder and its files stay as they are. Mortise forgets the \
+                               app, its environments and its saved credentials."
+                            .to_owned(),
+                        confirm: "Remove app".to_owned(),
+                    };
+                    self.dialog = Some((dialog, Pending::RemoveApp(index)));
+                    self.dialog_opened = true;
                 }
             }
-            Some(SettingsAction::RemoveApp(index)) => {
-                let name = self.settings.apps[index].name.clone();
-                let dialog = Dialog {
-                    title: format!("Remove {name} from Mortise?"),
-                    body:
-                        "The folder and its files stay as they are. Mortise forgets the app, its \
-                           environments and its saved credentials."
-                            .to_owned(),
-                    confirm: "Remove app".to_owned(),
-                };
-                self.dialog = Some((dialog, Pending::RemoveApp(index)));
-                self.dialog_opened = true;
-            }
-            None => {}
         }
         if first_run_add {
             self.adding = Some(AddPanel::empty());
