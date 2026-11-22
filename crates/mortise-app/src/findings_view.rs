@@ -12,15 +12,11 @@ use crate::strings;
 use crate::theme::{Face, Palette, Type, radius, size, ty};
 
 /// Where Enter on a finding lands.
-fn opens(finding: &Finding) -> (&'static str, Option<BoundaryAction>) {
+fn opens(finding: &Finding, app: &AppSnapshot) -> (&'static str, Option<BoundaryAction>) {
     let module = finding.module.clone();
     match (&finding.detail, module) {
-        (Detail::CircularUse { files }, Some(module)) => {
-            let other = files
-                .iter()
-                .map(|(name, _)| name)
-                .find(|name| **name != module)
-                .cloned();
+        (Detail::CircularUse { .. }, Some(module)) => {
+            let other = app.circle_neighbour(&module).map(str::to_owned);
             (
                 strings::BOUNDARY,
                 other.map(|other| BoundaryAction::ShowLink { module, other }),
@@ -181,7 +177,7 @@ fn list(
             pos2(rect.left() + 1.0, y),
             pos2(rect.right() - 1.0, y + row_h),
         );
-        let (place, opens) = opens(finding);
+        let (place, opens) = opens(finding, app);
         let is_selected = index == (*selected).min(last);
         let response = ui.interact(row, nav.id(index), nav.sense(index));
         nav.after(ui, index, &response);
