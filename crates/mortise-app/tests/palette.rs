@@ -94,6 +94,11 @@ fn a_query_finds_modules_and_findings_and_enter_opens_the_first() {
 #[test]
 fn down_moves_to_a_finding_and_enter_opens_it_where_it_lives() {
     let (_desk, mut harness) = shop_api();
+    // Boundary was left on a public surface: a link opens on the links.
+    harness.key_press(Key::J);
+    harness.key_press(Key::Num2);
+    harness.key_press(Key::P);
+    harness.run();
     open_palette(&mut harness);
     type_query(&mut harness, "each other");
     assert_eq!(

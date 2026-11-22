@@ -817,6 +817,7 @@ impl MortiseApp {
                     match other {
                         Some(other) => {
                             open.tab = Tab::Boundary;
+                            open.boundary.surface_view = false;
                             open.boundary.other = Some(other);
                             open.boundary.file = 0;
                         }
@@ -1462,6 +1463,7 @@ impl eframe::App for MortiseApp {
                         Some(BoundaryAction::ShowLink { module, other }) => {
                             open.selection = Selection::Module(module.clone());
                             open.tab = Tab::Boundary;
+                            open.boundary.surface_view = false;
                             open.boundary.other = Some(other.clone());
                             open.boundary.file = 0;
                             self.reveal_next = true;
