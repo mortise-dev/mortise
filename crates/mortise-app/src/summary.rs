@@ -674,8 +674,75 @@ struct Stat {
     findings: Option<(usize, usize)>,
 }
 
+/// The type of a state word in the Findings cell.
+const STATE_TYPE: Type = Type {
+    size: 12.0,
+    ..ty::LABEL
+};
+/// A line of states in the Findings cell, and the gap between two lines.
+const STATE_LINE: f32 = 17.0;
+const STATE_GAP: f32 = 8.0;
+/// The height of the value of a cell, and of the strip with one line of values.
+const VALUE_H: f32 = 26.0;
+const STRIP_H: f32 = 60.0;
+
+/// A state in the Findings cell: its word, its colour and its mark.
+struct StateWord {
+    text: String,
+    color: Color32,
+    mark: FindingState,
+}
+
+fn state_words(pal: &Palette, problems: usize, warnings: usize) -> Vec<StateWord> {
+    let mut words = Vec::new();
+    if problems > 0 {
+        words.push(StateWord {
+            text: strings::problems(problems),
+            color: pal.bad,
+            mark: FindingState::Problems(problems),
+        });
+    }
+    if warnings > 0 {
+        words.push(StateWord {
+            text: strings::warnings(warnings),
+            color: pal.warn,
+            mark: FindingState::Warning,
+        });
+    }
+    if problems + warnings == 0 {
+        words.push(StateWord {
+            text: strings::GOOD.to_owned(),
+            color: pal.good,
+            mark: FindingState::Good,
+        });
+    }
+    words
+}
+
+/// Places the states left to right, and on the next line where the cell has no
+/// `room` left, as the drawings wrap them. Gives the offset of each from the left
+/// of the cell's content, and its line.
+fn place_states(ui: &Ui, words: &[StateWord], room: f32) -> Vec<(f32, usize)> {
+    let mut placed = Vec::new();
+    let (mut at, mut line) = (0.0, 0);
+    for word in words {
+        let text_w = draw::galley(ui, &word.text, STATE_TYPE, word.color)
+            .size()
+            .x;
+        let width = size::STATE_MARK + 5.0 + text_w;
+        if at > 0.0 && at + width > room {
+            at = 0.0;
+            line += 1;
+        }
+        placed.push((at, line));
+        at += width + 8.0;
+    }
+    placed
+}
+
 /// The stats strip: one box, a cell per figure, hairlines between. Each cell keeps
-/// the width it has when all five are there. Returns its bottom edge.
+/// the width it has when all five are there. The strip grows when the states of the
+/// Findings cell take more than one line. Returns its bottom edge.
 fn stats(
     ui: &Ui,
     pal: &Palette,
@@ -687,7 +754,23 @@ fn stats(
 ) -> f32 {
     let count = cells.len() + usize::from(runtime.is_some());
     let cell_w = (width / 5.0).floor().max(150.0).min(width / count as f32);
-    let strip = Rect::from_min_size(min, vec2(cell_w * count as f32, 60.0));
+    let states = cells
+        .iter()
+        .find_map(|cell| cell.findings)
+        .map(|(problems, warnings)| {
+            let words = state_words(pal, problems, warnings);
+            let placed = place_states(ui, &words, cell_w - 24.0);
+            (words, placed)
+        });
+    let lines = states
+        .as_ref()
+        .and_then(|(_, placed)| placed.last())
+        .map_or(1, |(_, line)| line + 1);
+    let value_h = (lines as f32 * STATE_LINE + (lines - 1) as f32 * STATE_GAP).max(VALUE_H);
+    let strip = Rect::from_min_size(
+        min,
+        vec2(cell_w * count as f32, STRIP_H - VALUE_H + value_h),
+    );
     if !paint {
         return strip.bottom();
     }
@@ -735,39 +818,33 @@ fn stats(
             ty::SECONDARY,
             pal.ink_2,
         );
-        if let Some((problems, warnings)) = cell.findings {
-            // Each state has a mark and a word; colour is only state.
-            let mid = strip.top() + 9.0 + 16.0 + 13.0;
-            let mut at = x + 12.0;
-            let state_type = Type {
-                size: 12.0,
-                ..ty::LABEL
-            };
-            let mut state = |ui: &Ui, text: String, color: Color32, kind: u8| {
-                let mark = Rect::from_min_size(pos2(at, mid - 6.0), Vec2::splat(size::STATE_MARK));
-                match kind {
-                    0 => draw::mark_bad(ui, mark, color, pal.surface),
-                    1 => draw::mark_warn(ui, mark, color),
-                    _ => draw::mark_good(ui, mark, color),
+        if let (Some(_), Some((words, placed))) = (cell.findings, &states) {
+            // Each state has a mark and a word; colour is only state. One line sits
+            // in the middle of the value, as the figures of the other cells do.
+            let value_top = strip.top() + 9.0 + 16.0;
+            for (word, (offset, line)) in words.iter().zip(placed) {
+                let mid = if lines == 1 {
+                    value_top + VALUE_H / 2.0
+                } else {
+                    value_top + STATE_LINE / 2.0 + *line as f32 * (STATE_LINE + STATE_GAP)
+                };
+                let mark = Rect::from_min_size(
+                    pos2(x + 12.0 + offset, mid - 6.0),
+                    Vec2::splat(size::STATE_MARK),
+                );
+                match word.mark {
+                    FindingState::Problems(_) => draw::mark_bad(ui, mark, word.color, pal.surface),
+                    FindingState::Warning => draw::mark_warn(ui, mark, word.color),
+                    FindingState::Good => draw::mark_good(ui, mark, word.color),
                 }
-                let word = draw::label(
+                draw::label(
                     ui,
                     pos2(mark.right() + 5.0, mid),
                     Align2::LEFT_CENTER,
-                    &text,
-                    state_type,
-                    color,
+                    &word.text,
+                    STATE_TYPE,
+                    word.color,
                 );
-                at = word.right() + 8.0;
-            };
-            if problems > 0 {
-                state(ui, strings::problems(problems), pal.bad, 0);
-            }
-            if warnings > 0 {
-                state(ui, strings::warnings(warnings), pal.warn, 1);
-            }
-            if problems + warnings == 0 {
-                state(ui, strings::GOOD.to_owned(), pal.good, 2);
             }
             continue;
         }
