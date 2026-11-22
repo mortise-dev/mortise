@@ -56,8 +56,13 @@ What the plan placed in one milestone and was built, or will be built, in anothe
 
 | What | Planned | Now | Why |
 |---|---|---|---|
-| Progress bar (C17), "Reading 312 of 551 files" | 2 | 4 | Reading an app takes milliseconds until PHP files are parsed. The bar is built with the work that can take long |
+| Progress bar (C17), "Reading 312 of 551 files" | 2 | 9 | Reading an app takes milliseconds until PHP files are parsed. The bar is built with the work that can take long |
 | Reordering rail tiles by dragging | 2 | 6 | Settings also changes the order; both are built together |
 | "Open the command palette" on the first run screen (S1.1) | 2 | 6 | The palette is built in milestone 6. A button that opens nothing is not drawn |
 | Removing an app | 2 | 6 | The only place the spec draws it is Settings (S8.1). The core can already remove an app |
 | Settings tile on the rail | 1 | 6 | Drawn when Settings exist |
+| F6 between regions, arrow keys in the graph, J and K inside tables, Enter or Right from the index into the workspace | 6 | 9 | Tab and Shift Tab reach every control and the focus ring shows on all of them. The shorter paths of section 7 are built on top of that |
+| macOS menu bar | 6 | 9 | Needs `muda` and a check on a real bundle |
+| Dragging the index edge between 220 and 320 px | 6 | 9 | The widths of section 5.14 that depend on the window are built |
+| Motion "System" | 6 | 9 | egui does not expose the setting of the operating system (D3). "Reduced" and "Full" work |
+| A shortcut keycap inside a tooltip | 6 | 9 | Tooltips name the control |
