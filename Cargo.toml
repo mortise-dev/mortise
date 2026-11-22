@@ -29,6 +29,9 @@ quick-xml = "0.42"
 mago-syntax = "=1.59.0"
 mago-database = "=1.59.0"
 mago-allocator = "=1.59.0"
+mago-names = "=1.59.0"
+mago-span = "=1.59.0"
+rayon = "1"
 
 egui = { version = "0.37.0", default-features = false }
 eframe = { version = "0.37.0", default-features = false, features = [

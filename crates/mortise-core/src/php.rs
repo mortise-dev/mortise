@@ -3,13 +3,23 @@
 //! The parser's API changes between minor versions, so nothing outside this
 //! file names one of its types. What leaves here is owned, plain data.
 
+use std::borrow::Cow;
+use std::collections::{HashMap, HashSet};
+
 use mago_allocator::LocalArena;
-use mago_database::file::FileId;
+use mago_database::file::{File, FileId, FileType};
+use mago_names::ResolvedNames;
+use mago_names::resolver::NameResolver;
+use mago_span::HasSpan;
 use mago_syntax::cst::{
-    Argument, ArrayElement, Call, Expression, FunctionCall, Literal, Method, Modifier, Statement,
-    TokenSeparatedSequence, TriviaKind,
+    Argument, ArrayElement, Attribute, AttributeList, Binary, BinaryOperator, Call, Class,
+    ClassConstantAccess, Enum, Expression, Extends, FunctionCall, Hint, Identifier, Implements,
+    Instantiation, Interface, Literal, LocalIdentifier, Method, Modifier, Sequence, Statement,
+    StaticMethodCall, StaticMethodPartialApplication, StaticPropertyAccess, TokenSeparatedSequence,
+    Trait, TraitUse, TriviaKind, Use, UseItems,
 };
-use mago_syntax::parser::parse_file_content;
+use mago_syntax::parser::{parse_file_content, parse_file_with_settings};
+use mago_syntax::settings::ParserSettings;
 use mago_syntax::walker::MutWalker;
 
 /// A value in a PHP config file, as far as it can be known without running PHP.
@@ -196,6 +206,250 @@ impl<'ast, 'arena> MutWalker<'ast, 'arena, ()> for TestCounter {
     }
 }
 
+/// A class, interface, trait or enum that a PHP file names.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ClassRef {
+    /// The full name, without a leading backslash: `Modules\Billing\Models\Invoice`.
+    pub(crate) class: String,
+    /// The first line of the file that names it. Lines start at 1.
+    pub(crate) line: u32,
+}
+
+/// What kind of thing a PHP file declares.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DeclaredKind {
+    Class,
+    Interface,
+    Trait,
+    Enum,
+}
+
+/// A class, interface, trait or enum that a PHP file declares.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Declared {
+    pub(crate) class: String,
+    pub(crate) kind: DeclaredKind,
+    /// The full names of the attributes on it, such as `Illuminate\Console\Attributes\Signature`.
+    pub(crate) attributes: Vec<String>,
+}
+
+/// What a PHP file declares and what it names, with names resolved the way PHP
+/// resolves them: through `use`, aliases and the namespace of the file.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct Analysis {
+    pub(crate) declares: Vec<Declared>,
+    /// Every other class the file names, once each, in the order of their first line.
+    pub(crate) refs: Vec<ClassRef>,
+}
+
+/// Reads what a PHP file declares and names. A file with syntax errors gives what
+/// could be read around them; it never fails.
+pub(crate) fn analyze(source: &[u8]) -> Analysis {
+    let arena = LocalArena::new();
+    let file = File::new(
+        Cow::Borrowed(b"file.php"),
+        FileType::Host,
+        None,
+        Cow::Owned(source.to_vec()),
+    );
+    let settings = ParserSettings {
+        recover_incomplete: true,
+        ..ParserSettings::default()
+    };
+    let program = parse_file_with_settings(&arena, &file, settings);
+    let names = NameResolver::new(&arena).resolve(program);
+
+    let mut reader = ClassReader {
+        file: &file,
+        names: &names,
+        seen: HashSet::new(),
+        found: Vec::new(),
+        declares: Vec::new(),
+    };
+    reader.walk_program(program, &mut ());
+
+    // One entry per class: the first line that names it.
+    let declared: HashSet<&str> = reader
+        .declares
+        .iter()
+        .map(|declared| declared.class.as_str())
+        .collect();
+    let mut first: HashMap<&str, u32> = HashMap::new();
+    for found in &reader.found {
+        let line = first.entry(found.class.as_str()).or_insert(found.line);
+        *line = (*line).min(found.line);
+    }
+    let mut refs: Vec<ClassRef> = first
+        .into_iter()
+        .filter(|(class, _)| !declared.contains(class))
+        .map(|(class, line)| ClassRef {
+            class: class.to_owned(),
+            line,
+        })
+        .collect();
+    refs.sort_by(|a, b| a.line.cmp(&b.line).then_with(|| a.class.cmp(&b.class)));
+    Analysis {
+        declares: reader.declares,
+        refs,
+    }
+}
+
+struct ClassReader<'a, 'arena> {
+    file: &'a File,
+    names: &'a ResolvedNames<'arena>,
+    /// Where each name that was taken starts, so that one name is taken once.
+    seen: HashSet<u32>,
+    found: Vec<ClassRef>,
+    declares: Vec<Declared>,
+}
+
+impl<'arena> ClassReader<'_, 'arena> {
+    fn full_name(&self, at: &impl HasSpan, raw: &[u8]) -> String {
+        let resolved = self.names.resolve(&at.span()).unwrap_or(raw);
+        String::from_utf8_lossy(resolved)
+            .trim_start_matches('\\')
+            .to_owned()
+    }
+
+    fn name(&mut self, name: &Identifier<'arena>) {
+        if self.seen.insert(name.span().start.offset) {
+            let line = self.file.line_number(name.span().start.offset) + 1;
+            self.found.push(ClassRef {
+                class: self.full_name(name, name.value()),
+                line,
+            });
+        }
+    }
+
+    /// The class part of `Foo::bar()`, `new Foo` and the like. Not `self`, `static` or a variable.
+    fn class_of(&mut self, expression: &Expression<'arena>) {
+        if let Expression::Identifier(name) = expression {
+            self.name(name);
+        }
+    }
+
+    fn declare(
+        &mut self,
+        kind: DeclaredKind,
+        name: &LocalIdentifier<'arena>,
+        attributes: &Sequence<'arena, AttributeList<'arena>>,
+    ) {
+        let attributes = attributes
+            .iter()
+            .flat_map(|list| list.attributes.iter())
+            .map(|attribute| self.full_name(&attribute.name, attribute.name.value()))
+            .collect();
+        self.declares.push(Declared {
+            class: self.full_name(name, name.value),
+            kind,
+            attributes,
+        });
+    }
+}
+
+impl<'ast, 'arena> MutWalker<'ast, 'arena, ()> for ClassReader<'_, 'arena> {
+    fn walk_in_use(&mut self, r#use: &'ast Use<'arena>, _: &mut ()) {
+        // `use function` and `use const` do not name classes.
+        match &r#use.items {
+            UseItems::Sequence(sequence) => {
+                sequence.items.iter().for_each(|item| self.name(&item.name))
+            }
+            UseItems::MixedList(list) => list
+                .items
+                .iter()
+                .filter(|item| item.r#type.is_none())
+                .for_each(|item| self.name(&item.item.name)),
+            UseItems::TypedSequence(_) | UseItems::TypedList(_) => {}
+        }
+    }
+
+    fn walk_in_class(&mut self, class: &'ast Class<'arena>, _: &mut ()) {
+        self.declare(DeclaredKind::Class, &class.name, &class.attribute_lists);
+    }
+
+    fn walk_in_interface(&mut self, interface: &'ast Interface<'arena>, _: &mut ()) {
+        self.declare(
+            DeclaredKind::Interface,
+            &interface.name,
+            &interface.attribute_lists,
+        );
+    }
+
+    fn walk_in_trait(&mut self, r#trait: &'ast Trait<'arena>, _: &mut ()) {
+        self.declare(DeclaredKind::Trait, &r#trait.name, &r#trait.attribute_lists);
+    }
+
+    fn walk_in_enum(&mut self, r#enum: &'ast Enum<'arena>, _: &mut ()) {
+        self.declare(DeclaredKind::Enum, &r#enum.name, &r#enum.attribute_lists);
+    }
+
+    fn walk_in_extends(&mut self, extends: &'ast Extends<'arena>, _: &mut ()) {
+        extends.types.iter().for_each(|name| self.name(name));
+    }
+
+    fn walk_in_implements(&mut self, implements: &'ast Implements<'arena>, _: &mut ()) {
+        implements.types.iter().for_each(|name| self.name(name));
+    }
+
+    fn walk_in_trait_use(&mut self, trait_use: &'ast TraitUse<'arena>, _: &mut ()) {
+        trait_use
+            .trait_names
+            .iter()
+            .for_each(|name| self.name(name));
+    }
+
+    fn walk_in_attribute(&mut self, attribute: &'ast Attribute<'arena>, _: &mut ()) {
+        self.name(&attribute.name);
+    }
+
+    // Parameter, return, property and constant types, also inside ?T, A|B and A&B,
+    // and the types of a catch.
+    fn walk_in_hint(&mut self, hint: &'ast Hint<'arena>, _: &mut ()) {
+        if let Hint::Identifier(name) = hint {
+            self.name(name);
+        }
+    }
+
+    fn walk_in_instantiation(&mut self, instantiation: &'ast Instantiation<'arena>, _: &mut ()) {
+        self.class_of(instantiation.class);
+    }
+
+    fn walk_in_static_method_call(&mut self, call: &'ast StaticMethodCall<'arena>, _: &mut ()) {
+        self.class_of(call.class);
+    }
+
+    fn walk_in_static_method_partial_application(
+        &mut self,
+        call: &'ast StaticMethodPartialApplication<'arena>,
+        _: &mut (),
+    ) {
+        self.class_of(call.class);
+    }
+
+    fn walk_in_static_property_access(
+        &mut self,
+        access: &'ast StaticPropertyAccess<'arena>,
+        _: &mut (),
+    ) {
+        self.class_of(access.class);
+    }
+
+    // `Foo::class` and `Foo::CONSTANT`.
+    fn walk_in_class_constant_access(
+        &mut self,
+        access: &'ast ClassConstantAccess<'arena>,
+        _: &mut (),
+    ) {
+        self.class_of(access.class);
+    }
+
+    fn walk_in_binary(&mut self, binary: &'ast Binary<'arena>, _: &mut ()) {
+        if matches!(binary.operator, BinaryOperator::Instanceof(_)) {
+            self.class_of(binary.rhs);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -330,6 +584,122 @@ mod tests {
         assert_eq!(count_tests(b""), 0);
         // A call that is not complete is not a test yet.
         assert_eq!(count_tests(b"<?php it("), 0);
+    }
+
+    fn names(analysis: &Analysis) -> Vec<(&str, u32)> {
+        analysis
+            .refs
+            .iter()
+            .map(|found| (found.class.as_str(), found.line))
+            .collect()
+    }
+
+    #[test]
+    fn names_are_resolved_the_way_php_resolves_them() {
+        let analysis = analyze(
+            br#"<?php
+
+namespace Modules\Checkout\Services;
+
+use Modules\Billing\Models\Invoice;
+use Modules\Billing\Events\{InvoicePaid, InvoiceIssued as Issued};
+use Modules\Shipping\Contracts as Shipping;
+use function Modules\Billing\helper;
+
+#[\Modules\Users\Attributes\Audited]
+final class InvoiceSync extends BaseSync implements Shipping\RateCalculator
+{
+    use \Modules\Catalog\Concerns\Priced;
+
+    public function sync(?Invoice $invoice, namespace\Options $options): Issued|InvoicePaid
+    {
+        $paid = new InvoicePaid(1);
+        if ($invoice instanceof \Modules\Billing\Models\CreditNote) {
+            return \Modules\Inventory\Stock::reserve();
+        }
+        try {
+            return Issued::from(Local::class, self::class, static::make());
+        } catch (\Modules\Billing\Exceptions\Late | \RuntimeException $e) {
+            throw $e;
+        }
+    }
+}
+"#,
+        );
+        assert_eq!(
+            analysis.declares,
+            [Declared {
+                class: "Modules\\Checkout\\Services\\InvoiceSync".into(),
+                kind: DeclaredKind::Class,
+                attributes: vec!["Modules\\Users\\Attributes\\Audited".into()],
+            }]
+        );
+        assert_eq!(
+            names(&analysis),
+            [
+                ("Modules\\Billing\\Models\\Invoice", 5),
+                ("Modules\\Billing\\Events\\InvoiceIssued", 6),
+                ("Modules\\Billing\\Events\\InvoicePaid", 6),
+                ("Modules\\Shipping\\Contracts", 7),
+                ("Modules\\Users\\Attributes\\Audited", 10),
+                ("Modules\\Checkout\\Services\\BaseSync", 11),
+                ("Modules\\Shipping\\Contracts\\RateCalculator", 11),
+                ("Modules\\Catalog\\Concerns\\Priced", 13),
+                ("Modules\\Checkout\\Services\\Options", 15),
+                ("Modules\\Billing\\Models\\CreditNote", 18),
+                ("Modules\\Inventory\\Stock", 19),
+                ("Modules\\Checkout\\Services\\Local", 22),
+                ("Modules\\Billing\\Exceptions\\Late", 23),
+                ("RuntimeException", 23),
+            ]
+        );
+    }
+
+    #[test]
+    fn declarations_of_every_kind_are_found() {
+        let analysis = analyze(
+            br#"<?php
+            namespace Modules\Billing\Contracts;
+            interface PaymentGateway {}
+            trait Charges {}
+            enum Currency: string { case Eur = 'eur'; }
+            abstract class Gateway implements PaymentGateway { use Charges; }
+            "#,
+        );
+        let declared: Vec<_> = analysis
+            .declares
+            .iter()
+            .map(|d| (d.class.as_str(), d.kind))
+            .collect();
+        assert_eq!(
+            declared,
+            [
+                (
+                    "Modules\\Billing\\Contracts\\PaymentGateway",
+                    DeclaredKind::Interface
+                ),
+                ("Modules\\Billing\\Contracts\\Charges", DeclaredKind::Trait),
+                ("Modules\\Billing\\Contracts\\Currency", DeclaredKind::Enum),
+                ("Modules\\Billing\\Contracts\\Gateway", DeclaredKind::Class),
+            ]
+        );
+        // What the file declares itself is not a reference.
+        assert!(analysis.refs.is_empty(), "{:?}", analysis.refs);
+    }
+
+    #[test]
+    fn a_file_with_a_syntax_error_gives_what_can_be_read() {
+        let analysis = analyze(
+            br#"<?php
+            namespace Modules\Checkout;
+            use Modules\Billing\Models\Invoice;
+            class Broken {
+                public function a(Invoice $i { return 1 }
+            "#,
+        );
+        assert!(names(&analysis).contains(&("Modules\\Billing\\Models\\Invoice", 3)));
+        let _ = analyze(b"");
+        let _ = analyze(&[0xff, 0x00, b'<', b'?']);
     }
 
     #[test]

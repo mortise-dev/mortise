@@ -2,16 +2,18 @@
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::SystemTime;
 
 use ignore::WalkBuilder;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::clover::Coverage;
 use crate::git::Churn;
 use crate::kind::{Kinds, TESTS};
 use crate::layout::Layout;
-use crate::php::count_tests;
+use crate::php::{Analysis, analyze, count_tests};
 
 /// Whether a module is turned on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -59,6 +61,9 @@ pub struct Module {
     /// The load order the package uses, lowest first.
     pub priority: i64,
     pub manifest: Manifest,
+    /// The namespace the module's classes share: `Modules\Billing`. From the
+    /// module's `composer.json`, else from the config and the module's name.
+    pub namespace: String,
     /// Files in the module's folder. Hidden files, `vendor`, `node_modules` and
     /// whatever `.gitignore` excludes are not counted.
     pub files: u64,
@@ -83,26 +88,31 @@ pub(crate) struct FoundModule {
     pub(crate) description: String,
     pub(crate) priority: i64,
     pub(crate) manifest: Manifest,
+    /// The namespace the module's classes share: `Modules\Billing`.
+    pub(crate) namespace: String,
     pub(crate) scan: Scan,
 }
 
 /// What walking a module's folder gave.
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
+#[derive(Debug, Default, Clone)]
 pub(crate) struct Scan {
     pub(crate) files: u64,
     pub(crate) lines: u64,
     pub(crate) kinds: Vec<KindCount>,
     pub(crate) tests: u32,
+    /// The module's PHP files: the path inside the module, and what the file names.
+    pub(crate) sources: Vec<(String, Arc<Analysis>)>,
 }
 
 /// What was worked out from the content of a file, kept so that a file that did
 /// not change is not read again.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 struct Facts {
     size: u64,
     modified: Option<SystemTime>,
     lines: u64,
     tests: u32,
+    analysis: Arc<Analysis>,
 }
 
 /// The facts of the files read so far, by path.
@@ -151,6 +161,7 @@ pub(crate) fn find_modules(
             };
             Some(FoundModule {
                 scan: scan(&dir, kinds, cache),
+                namespace: read_namespace(&dir, layout, &name),
                 name,
                 dir,
                 state,
@@ -225,11 +236,38 @@ fn read_statuses(path: &Path) -> BTreeMap<String, serde_json::Value> {
         .unwrap_or_default()
 }
 
+/// The namespace of a module: the shortest PSR-4 prefix of its `composer.json`,
+/// which is the one that maps to its app folder. Without one, the namespace of
+/// the config and the name of the module.
+fn read_namespace(dir: &Path, layout: &Layout, name: &str) -> String {
+    let from_composer = std::fs::read(dir.join("composer.json"))
+        .ok()
+        .and_then(|json| serde_json::from_slice::<serde_json::Value>(&json).ok())
+        .and_then(|composer| {
+            let prefixes = composer.get("autoload")?.get("psr-4")?.as_object()?;
+            prefixes.keys().min_by_key(|prefix| prefix.len()).cloned()
+        })
+        .map(|prefix| prefix.trim_matches('\\').to_owned())
+        .filter(|prefix| !prefix.is_empty());
+    from_composer.unwrap_or_else(|| format!("{}\\{name}", layout.namespace.trim_matches('\\')))
+}
+
+/// A file of a module, before its content is read.
+struct Entry {
+    path: PathBuf,
+    /// The path inside the module, with `/` between the parts.
+    relative: String,
+    is_test: bool,
+    size: u64,
+    modified: Option<SystemTime>,
+}
+
 /// Walks a module's folder: counts its files by kind, the lines of its PHP files
-/// and the tests in its test files.
+/// and the tests in its test files, and reads which classes each PHP file names.
 fn scan(dir: &Path, kinds: &Kinds, cache: &mut ReadCache) -> Scan {
     let mut scan = Scan::default();
     let mut by_kind: BTreeMap<String, u32> = BTreeMap::new();
+    let mut php: Vec<Entry> = Vec::new();
 
     let walk = WalkBuilder::new(dir)
         // Apply .gitignore files also when the app is not a git repository.
@@ -252,38 +290,64 @@ fn scan(dir: &Path, kinds: &Kinds, cache: &mut ReadCache) -> Scan {
             .collect::<Vec<_>>()
             .join("/");
         let kind = kinds.of(&relative);
-        scan.files += 1;
         let is_test = kind == TESTS;
+        scan.files += 1;
         *by_kind.entry(kind).or_default() += 1;
 
         // Blade views end in .php but are templates, not PHP files.
-        if !relative.ends_with(".php") || relative.ends_with(".blade.php") {
-            continue;
+        if relative.ends_with(".php") && !relative.ends_with(".blade.php") {
+            let metadata = entry.metadata().ok();
+            php.push(Entry {
+                path: path.to_owned(),
+                relative,
+                is_test,
+                size: metadata.as_ref().map_or(0, std::fs::Metadata::len),
+                modified: metadata.and_then(|metadata| metadata.modified().ok()),
+            });
         }
-        let metadata = entry.metadata().ok();
-        let size = metadata.as_ref().map_or(0, std::fs::Metadata::len);
-        let modified = metadata.and_then(|metadata| metadata.modified().ok());
-        let facts = match cache.files.get(path) {
-            Some(facts)
-                if facts.size == size && facts.modified == modified && modified.is_some() =>
-            {
-                *facts
-            }
-            _ => {
-                let source = std::fs::read(path).unwrap_or_default();
-                let facts = Facts {
-                    size,
-                    modified,
-                    lines: count_lines(&source),
-                    tests: if is_test { count_tests(&source) } else { 0 },
-                };
-                cache.files.insert(path.to_owned(), facts);
-                facts
-            }
+    }
+
+    // Read the files that are new or changed, on all cores.
+    let changed: Vec<&Entry> = php
+        .iter()
+        .filter(|entry| {
+            !cache.files.get(&entry.path).is_some_and(|facts| {
+                facts.size == entry.size
+                    && facts.modified == entry.modified
+                    && entry.modified.is_some()
+            })
+        })
+        .collect();
+    let read: Vec<(PathBuf, Facts)> = changed
+        .par_iter()
+        .map(|entry| {
+            let source = std::fs::read(&entry.path).unwrap_or_default();
+            let facts = Facts {
+                size: entry.size,
+                modified: entry.modified,
+                lines: count_lines(&source),
+                tests: if entry.is_test {
+                    count_tests(&source)
+                } else {
+                    0
+                },
+                analysis: Arc::new(analyze(&source)),
+            };
+            (entry.path.clone(), facts)
+        })
+        .collect();
+    cache.files.extend(read);
+
+    for entry in php {
+        let Some(facts) = cache.files.get(&entry.path) else {
+            continue;
         };
         scan.lines += facts.lines;
         scan.tests += facts.tests;
+        scan.sources
+            .push((entry.relative, Arc::clone(&facts.analysis)));
     }
+    scan.sources.sort_by(|a, b| a.0.cmp(&b.0));
 
     scan.kinds = by_kind
         .into_iter()

@@ -12,7 +12,9 @@ use crate::composer::{Lock, Version};
 use crate::git::{self, Git};
 use crate::kind::Kinds;
 use crate::layout::Layout;
+use crate::links::{self, Cycle, Link, ModuleSource};
 use crate::module::{Module, ModuleState, ReadCache, find_modules};
+use crate::rules::{Rules, RulesSource};
 
 const LARAVEL: &str = "laravel/framework";
 const PACKAGE: &str = "nwidart/laravel-modules";
@@ -48,6 +50,14 @@ pub struct AppSnapshot {
     /// The coverage report, when one was found.
     pub coverage_report: Option<CoverageReport>,
     pub git: Git,
+    /// Which module uses which, by the name of the module that uses and then of the
+    /// one that is used.
+    pub links: Vec<Link>,
+    /// The groups of modules that use each other.
+    pub cycles: Vec<Cycle>,
+    /// The boundary rules the links were checked against.
+    pub rules: Rules,
+    pub rules_source: RulesSource,
 }
 
 impl AppSnapshot {
@@ -81,6 +91,35 @@ impl AppSnapshot {
             total.get_or_insert_default().add(coverage);
         }
         total
+    }
+
+    /// The link from one module to another, if the first uses the second.
+    pub fn link(&self, from: &str, to: &str) -> Option<&Link> {
+        self.links
+            .iter()
+            .find(|link| link.from == from && link.to == to)
+    }
+
+    /// The links of modules that `name` uses.
+    pub fn uses<'a>(&'a self, name: &'a str) -> impl Iterator<Item = &'a Link> {
+        self.links.iter().filter(move |link| link.from == name)
+    }
+
+    /// The links of modules that use `name`.
+    pub fn used_by<'a>(&'a self, name: &'a str) -> impl Iterator<Item = &'a Link> {
+        self.links.iter().filter(move |link| link.to == name)
+    }
+
+    /// The links that break a rule.
+    pub fn problem_links(&self) -> impl Iterator<Item = &Link> {
+        self.links
+            .iter()
+            .filter(|link| link.is_problem(&self.rules))
+    }
+
+    /// The module with this name.
+    pub fn module(&self, name: &str) -> Option<&Module> {
+        self.modules.iter().find(|module| module.name == name)
     }
 
     /// The code of every module, by module name. Store it, and pass it to the next read.
@@ -230,6 +269,38 @@ pub fn read_app_cached(
         total
     };
 
+    // Which module uses which, checked against the rules of the app.
+    let (rules, rules_source) = Rules::load(&root);
+    let sources: Vec<ModuleSource<'_>> = found
+        .iter()
+        .zip(&folders)
+        .map(|(module, folder)| ModuleSource {
+            name: &module.name,
+            namespace: &module.namespace,
+            files: module
+                .scan
+                .sources
+                .iter()
+                .map(|(relative, analysis)| {
+                    (format!("{folder}/{relative}"), analysis.refs.as_slice())
+                })
+                .collect(),
+            declared: module
+                .scan
+                .sources
+                .iter()
+                .flat_map(|(_, analysis)| {
+                    analysis
+                        .declares
+                        .iter()
+                        .map(|declared| declared.class.as_str())
+                })
+                .collect(),
+        })
+        .collect();
+    let (links, cycles) = links::build(&sources, &rules);
+    drop(sources);
+
     let git = git::read(&root);
     let churn = match git {
         Git::Repository { .. } => git::churn(&root, &folders),
@@ -248,6 +319,7 @@ pub fn read_app_cached(
             description: module.description,
             priority: module.priority,
             manifest: module.manifest,
+            namespace: module.namespace,
             files: module.scan.files,
             lines: module.scan.lines,
             kinds: module.scan.kinds,
@@ -276,6 +348,10 @@ pub fn read_app_cached(
             path,
         }),
         git,
+        links,
+        cycles,
+        rules,
+        rules_source,
         root,
     })
 }

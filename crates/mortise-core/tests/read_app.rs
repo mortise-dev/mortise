@@ -463,3 +463,161 @@ fn print_shop_api() {
         );
     }
 }
+
+/// Prints the links of the shop-api fixture. Run with `-- --ignored print_links`.
+#[test]
+#[ignore = "prints the links for a person to read"]
+fn print_links_of_shop_api() {
+    let app = read_app(&fixture("shop-api")).unwrap();
+    for link in &app.links {
+        println!(
+            "{} uses {}: {} refs, {} files, {} internal, circular {}",
+            link.from,
+            link.to,
+            link.refs.len(),
+            link.files(),
+            link.internal_files(),
+            link.circular
+        );
+    }
+    println!("cycles {:?}", app.cycles);
+}
+
+#[test]
+fn finds_which_module_uses_which() {
+    let app = read_app(&fixture("shop-api")).unwrap();
+    let links: Vec<_> = app
+        .links
+        .iter()
+        .map(|link| {
+            (
+                link.from.as_str(),
+                link.to.as_str(),
+                link.files(),
+                link.internal_files(),
+                link.circular,
+            )
+        })
+        .collect();
+    assert_eq!(
+        links,
+        [
+            ("Checkout", "Billing", 6, 3, false),
+            ("Checkout", "Catalog", 1, 0, false),
+            ("Checkout", "Shipping", 2, 0, true),
+            ("Checkout", "Users", 1, 0, false),
+            ("Inventory", "Catalog", 1, 0, false),
+            ("Notifications", "Billing", 1, 0, false),
+            ("Notifications", "Checkout", 1, 0, false),
+            ("Shipping", "Checkout", 4, 0, true),
+        ]
+    );
+
+    // The files of a link: those that read internals first, each with its line.
+    let billing = app.link("Checkout", "Billing").unwrap();
+    let refs: Vec<_> = billing
+        .refs
+        .iter()
+        .map(|reference| {
+            (
+                reference.file.as_str(),
+                reference.line,
+                reference.class.as_str(),
+                reference.internal,
+            )
+        })
+        .collect();
+    assert_eq!(
+        refs,
+        [
+            (
+                "Modules/Checkout/app/Http/Controllers/OrderController.php",
+                5,
+                r"Modules\Billing\Models\Invoice",
+                true
+            ),
+            (
+                "Modules/Checkout/app/Listeners/CreateInvoiceOnPaid.php",
+                5,
+                r"Modules\Billing\Models\Invoice",
+                true
+            ),
+            (
+                "Modules/Checkout/app/Services/InvoiceSync.php",
+                5,
+                r"Modules\Billing\Models\Invoice",
+                true
+            ),
+            (
+                "Modules/Checkout/app/Listeners/MarkOrderPaid.php",
+                5,
+                r"Modules\Billing\Events\InvoicePaid",
+                false
+            ),
+            (
+                "Modules/Checkout/app/Listeners/SendReceipt.php",
+                5,
+                r"Modules\Billing\Events\InvoicePaid",
+                false
+            ),
+            (
+                "Modules/Checkout/app/Services/PaymentService.php",
+                5,
+                r"Modules\Billing\Contracts\PaymentGateway",
+                false
+            ),
+        ]
+    );
+
+    // Checkout and Shipping use each other. Counted on Checkout, the side with fewer files.
+    assert_eq!(app.cycles.len(), 1);
+    assert_eq!(app.cycles[0].modules, ["Checkout", "Shipping"]);
+    assert_eq!(app.cycles[0].carrier, "Checkout");
+    assert_eq!(
+        app.cycles[0].files,
+        [("Checkout".to_owned(), 2), ("Shipping".to_owned(), 4)]
+    );
+
+    let problems: Vec<_> = app
+        .problem_links()
+        .map(|link| (link.from.as_str(), link.to.as_str()))
+        .collect();
+    assert_eq!(
+        problems,
+        [
+            ("Checkout", "Billing"),
+            ("Checkout", "Shipping"),
+            ("Shipping", "Checkout")
+        ]
+    );
+    assert_eq!(app.uses("Checkout").count(), 4);
+    assert_eq!(app.used_by("Checkout").count(), 2);
+    assert_eq!(app.rules_source, mortise_core::RulesSource::Defaults);
+    assert_eq!(app.module("Billing").unwrap().namespace, r"Modules\Billing");
+}
+
+#[test]
+fn the_rules_of_mortise_json_decide_what_is_a_problem() {
+    let app = copy_of("shop-api");
+    std::fs::write(
+        app.path().join("mortise.json"),
+        r#"{"rules": {"no-circular-use": false, "public-surface-only": {"enabled": true, "folders": ["Contracts", "Events", "Models"]}}}"#,
+    )
+    .unwrap();
+    let app = read_app(app.path()).unwrap();
+    assert_eq!(app.rules_source, mortise_core::RulesSource::File);
+    // Models is public now, and a circle is allowed: nothing breaks a rule.
+    assert_eq!(app.problem_links().count(), 0);
+    assert_eq!(app.link("Checkout", "Billing").unwrap().internal_files(), 0);
+    // The circle is still known.
+    assert_eq!(app.cycles.len(), 1);
+}
+
+#[test]
+fn a_module_without_composer_json_takes_its_namespace_from_the_config() {
+    let app = copy_of("shop-api");
+    std::fs::remove_file(app.path().join("Modules/Billing/composer.json")).unwrap();
+    let app = read_app(app.path()).unwrap();
+    assert_eq!(app.module("Billing").unwrap().namespace, r"Modules\Billing");
+    assert_eq!(app.link("Checkout", "Billing").unwrap().files(), 6);
+}

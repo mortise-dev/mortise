@@ -11,10 +11,12 @@ mod composer;
 mod git;
 mod kind;
 mod layout;
+mod links;
 #[cfg(feature = "watch")]
 mod live;
 mod module;
 mod php;
+mod rules;
 mod settings;
 
 pub use app::{AppSnapshot, CoverageReport, ReadError, read_app, read_app_cached, read_app_with};
@@ -24,7 +26,9 @@ pub use composer::Version;
 pub use git::{CHURN_DAYS, Churn, Git};
 pub use kind::{OTHER, TESTS};
 pub use layout::{Layout, LayoutKey};
+pub use links::{Cycle, Link, Reference, columns};
 #[cfg(feature = "watch")]
 pub use live::{LiveApp, LiveState};
 pub use module::{KindCount, Manifest, Module, ModuleState, ReadCache};
+pub use rules::{RULES_FILE, Rules, RulesError, RulesSource};
 pub use settings::{AppEntry, Settings, SettingsError};
