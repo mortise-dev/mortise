@@ -145,6 +145,7 @@ pub enum Icon {
     Maximise,
     Restore,
     Close,
+    Folder,
 }
 
 /// One stroke of an icon: points on the 16 px grid.
@@ -242,6 +243,14 @@ impl Icon {
                 [10.75, 10.75],
             ]),
         ];
+        const FOLDER: &[Path] = &[closed(&[
+            [1.75, 3.75],
+            [6.25, 3.75],
+            [7.75, 5.5],
+            [14.25, 5.5],
+            [14.25, 12.75],
+            [1.75, 12.75],
+        ])];
         const CLOSE: &[Path] = &[
             open(&[[3.5, 3.5], [12.5, 12.5]]),
             open(&[[12.5, 3.5], [3.5, 12.5]]),
@@ -258,6 +267,7 @@ impl Icon {
             Icon::Maximise => MAXIMISE,
             Icon::Restore => RESTORE,
             Icon::Close => CLOSE,
+            Icon::Folder => FOLDER,
         }
     }
 }
@@ -389,4 +399,266 @@ pub fn keycap(ui: &Ui, pal: &Palette, right_center: Pos2, keys: &str) -> Rect {
         pal.ink_2,
     );
     rect
+}
+
+// ---------------------------------------------------------------------------
+// More state marks (C9)
+
+/// The mark of a good state: a check. 12 px.
+pub fn mark_good(ui: &Ui, rect: Rect, color: Color32) {
+    let scale = rect.width() / size::STATE_MARK;
+    let at = |x: f32, y: f32| rect.min + vec2(x, y) * scale;
+    let points = vec![at(1.8, 6.4), at(4.7, 9.3), at(10.2, 2.9)];
+    ui.painter()
+        .add(Shape::line(points, Stroke::new(1.9 * scale, color)));
+}
+
+/// The mark of a problem: a block with a cross cut out of it. 12 px.
+/// `behind` is the fill the mark sits on, which shows through the cross.
+pub fn mark_bad(ui: &Ui, rect: Rect, color: Color32, behind: Color32) {
+    let scale = rect.width() / size::STATE_MARK;
+    let at = |x: f32, y: f32| rect.min + vec2(x, y) * scale;
+    ui.painter()
+        .rect_filled(Rect::from_min_max(at(1.0, 1.0), at(11.0, 11.0)), 0, color);
+    let cut = Stroke::new(1.27 * scale, behind);
+    ui.painter()
+        .line_segment([at(3.75, 3.75), at(8.25, 8.25)], cut);
+    ui.painter()
+        .line_segment([at(8.25, 3.75), at(3.75, 8.25)], cut);
+}
+
+// ---------------------------------------------------------------------------
+// Buttons (C1)
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ButtonKind {
+    /// One per view: ink fill.
+    Primary,
+    /// Surface fill, line-2 outline.
+    #[default]
+    Default,
+    /// No outline, for the quiet choice.
+    Ghost,
+}
+
+/// A button: 26 px high, or 22 px when small.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Button<'a> {
+    pub label: &'a str,
+    pub kind: ButtonKind,
+    pub small: bool,
+    /// The shortcut, shown in a key hint after the label.
+    pub keys: Option<&'a str>,
+    pub icon: Option<Icon>,
+    pub disabled: bool,
+}
+
+impl Button<'_> {
+    fn label_type(&self) -> Type {
+        if self.small {
+            Type {
+                size: 11.5,
+                ..ty::CONTROL
+            }
+        } else {
+            ty::CONTROL
+        }
+    }
+
+    fn padding(&self) -> f32 {
+        if self.small { 8.0 } else { 10.0 }
+    }
+
+    pub fn height(&self) -> f32 {
+        if self.small {
+            size::CONTROL_SM_H
+        } else {
+            size::CONTROL_H
+        }
+    }
+
+    pub fn width(&self, ui: &Ui) -> f32 {
+        let label = galley(ui, self.label, self.label_type(), Color32::PLACEHOLDER)
+            .size()
+            .x;
+        let icon = if self.icon.is_some() {
+            size::ICON_IN_CONTROL + 6.0
+        } else {
+            0.0
+        };
+        let keys = self
+            .keys
+            .map_or(0.0, |keys| 6.0 + 2.0 + keycap_width(ui, keys));
+        (self.padding() * 2.0 + icon + label + keys).ceil()
+    }
+
+    /// Paints the button with its top left at `min`. `keyboard` is true while the
+    /// keyboard is in use: the focus ring shows only then.
+    pub fn show(&self, ui: &Ui, pal: &Palette, min: Pos2, keyboard: bool) -> Response {
+        let rect = Rect::from_min_size(min, vec2(self.width(ui), self.height()));
+        let sense = if self.disabled {
+            Sense::hover()
+        } else {
+            Sense::click()
+        };
+        let response = ui.interact(rect, ui.scope_id().with(("button", self.label)), sense);
+        response.widget_info(|| WidgetInfo::labeled(Role::Button, !self.disabled, self.label));
+
+        let pressed = response.is_pointer_button_down_on();
+        let hovered = response.hovered();
+        let (fill, outline, text) = match (self.kind, self.disabled) {
+            (ButtonKind::Primary, true) => (pal.line, pal.line, pal.ink_2),
+            (_, true) => (Color32::TRANSPARENT, pal.line, pal.ink_3),
+            (ButtonKind::Primary, false) => {
+                let fill = if pressed {
+                    pal.key_press
+                } else if hovered {
+                    pal.key_hover
+                } else {
+                    pal.key
+                };
+                (fill, fill, pal.key_fg)
+            }
+            (kind, false) => {
+                let ghost = kind == ButtonKind::Ghost;
+                let fill = if pressed {
+                    pal.line
+                } else if hovered {
+                    pal.well
+                } else if ghost {
+                    Color32::TRANSPARENT
+                } else {
+                    pal.surface
+                };
+                (
+                    fill,
+                    if ghost {
+                        Color32::TRANSPARENT
+                    } else {
+                        pal.line_2
+                    },
+                    pal.ink,
+                )
+            }
+        };
+        outlined(ui, rect, radius::CONTROL, fill, outline);
+
+        let mid = rect.center().y;
+        let mut x = rect.left() + self.padding();
+        if let Some(glyph) = self.icon {
+            let side = size::ICON_IN_CONTROL;
+            icon(
+                ui,
+                Rect::from_min_size(pos2(x, mid - side / 2.0), Vec2::splat(side)),
+                glyph,
+                text,
+            );
+            x += side + 6.0;
+        }
+        paint_text(
+            ui,
+            pos2(x, mid),
+            Align2::LEFT_CENTER,
+            self.label,
+            self.label_type(),
+            text,
+        );
+        if let Some(keys) = self.keys {
+            keycap(ui, pal, pos2(rect.right() - self.padding(), mid), keys);
+        }
+        if keyboard && response.has_focus() {
+            focus_ring(ui, pal, rect, radius::CONTROL);
+        }
+        response
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Boxes with lines of a name and a value
+
+/// The outline of a box and its heading line: a title at the left, a note at the right.
+/// Returns the y where the content starts.
+pub fn box_head(ui: &Ui, pal: &Palette, rect: Rect, title: &str, note: &str) -> f32 {
+    outlined(ui, rect, radius::CONTROL, Color32::TRANSPARENT, pal.line_2);
+    let mid = rect.top() + 1.0 + 8.0 + 9.0;
+    let title_type = ty::BODY.with_face(crate::theme::Face::Sans700);
+    let title_rect = paint_text(
+        ui,
+        pos2(rect.left() + 13.0, mid),
+        Align2::LEFT_CENTER,
+        title,
+        title_type,
+        pal.ink,
+    );
+    announce(ui, title_rect, Role::Heading, title);
+    if !note.is_empty() {
+        label(
+            ui,
+            pos2(rect.right() - 13.0, mid),
+            Align2::RIGHT_CENTER,
+            note,
+            ty::SECONDARY,
+            pal.ink_2,
+        );
+    }
+    let line = rect.top() + 1.0 + 8.0 + 18.0 + 7.0;
+    hline(ui, rect.left() + 13.0..rect.right() - 13.0, line, pal.line);
+    line + 1.0 + 6.0
+}
+
+/// One line of a box: a name at the left, a value at the right, 27 px high, with a
+/// hairline under it unless it is the last. Returns the y of the next line.
+pub fn box_line(
+    ui: &Ui,
+    pal: &Palette,
+    rect: Rect,
+    y: f32,
+    name: (&str, Type),
+    value: &[(&str, Type, Color32)],
+    last: bool,
+) -> f32 {
+    let mid = y + size::LIST_LINE_H / 2.0;
+    label(
+        ui,
+        pos2(rect.left() + 13.0, mid),
+        Align2::LEFT_CENTER,
+        name.0,
+        name.1,
+        pal.ink,
+    );
+    // The parts of the value are laid out from the right edge.
+    let mut right = rect.right() - 13.0;
+    for (text, ty, color) in value.iter().rev() {
+        let part = label(
+            ui,
+            pos2(right, mid),
+            Align2::RIGHT_CENTER,
+            text,
+            *ty,
+            *color,
+        );
+        right = part.left();
+    }
+    if !last {
+        hline(
+            ui,
+            rect.left() + 13.0..rect.right() - 13.0,
+            y + size::LIST_LINE_H - 1.0,
+            pal.line,
+        );
+    }
+    y + size::LIST_LINE_H
+}
+
+// ---------------------------------------------------------------------------
+// Tooltip (C12)
+
+/// Gives a control a tooltip: key fill, key-fg text, at most 240 px wide, no shadow.
+/// A tooltip names; it does not instruct.
+pub fn tooltip(response: Response, pal: &Palette, text: &str) -> Response {
+    response.on_hover_ui(|ui| {
+        ui.set_max_width(size::TOOLTIP_MAX_W);
+        let format = ty::SECONDARY.format(pal.key_fg);
+        ui.label(LayoutJob::single_section(text.to_owned(), format));
+    })
 }

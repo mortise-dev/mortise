@@ -17,6 +17,7 @@ path = "src/main.rs"
 [dependencies]
 eframe.workspace = true
 mortise-core.workspace = true
+rfd.workspace = true
 
 [dev-dependencies]
 egui_kittest.workspace = true

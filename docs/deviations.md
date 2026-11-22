@@ -49,3 +49,15 @@ Not forced by egui. Each is small; each is what milestone 1 built, so the owner 
 | S5 | Sizes without a token | The app name in the index (14 px, 700), the monogram on a rail tile (11 px, 600) and a path beside a title (Inconsolata at 0.95 of the text size) are in the drawings but not in section 3.3 | Kept as named constants beside the tokens in `mortise-app/src/theme.rs` | No |
 | S6 | Text of the Actions and Metrics tabs in a phase 1 build | S7.4 gives the text for Generate and says the other two use the same block | Written to match: "Actions are not in this version", "Metrics are not in this version", each with one paragraph. In `mortise-app/src/workspace.rs` | Yes, milestone 1 |
 | S7 | Restore | Section 8 names "maximise or restore"; the drawings have no restore icon | Two offset squares | No |
+
+## Moved between milestones
+
+What the plan placed in one milestone and was built, or will be built, in another. Nothing is dropped.
+
+| What | Planned | Now | Why |
+|---|---|---|---|
+| Progress bar (C17), "Reading 312 of 551 files" | 2 | 4 | Reading an app takes milliseconds until PHP files are parsed. The bar is built with the work that can take long |
+| Reordering rail tiles by dragging | 2 | 6 | Settings also changes the order; both are built together |
+| "Open the command palette" on the first run screen (S1.1) | 2 | 6 | The palette is built in milestone 6. A button that opens nothing is not drawn |
+| Removing an app | 2 | 6 | The only place the spec draws it is Settings (S8.1). The core can already remove an app |
+| Settings tile on the rail | 1 | 6 | Drawn when Settings exist |
