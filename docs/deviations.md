@@ -79,6 +79,7 @@ Not forced by egui. Each is small; each is what milestone 1 built, so the owner 
 | S26 | The first control of a tab | K1: Enter or Right moves focus to the first control of the tab | A tab without a control keeps focus in the index | No |
 | S27 | Two "Open in editor" buttons on one screen | S5.1 draws both with the same label | The labels stay. A screen reader hears "Open Checkout in the editor" and "Open the selected file in the editor" | No |
 | S28 | The one file Mortise writes | S5.3, and `AGENTS.md`: `mortise.json` is the only file Mortise writes in an app | Saving the rules writes a short-lived temporary file with a unique name, `.mortise.json.` and random letters, next to `mortise.json`, and then puts it in place of `mortise.json` in one step. So the file is never half written, and no other file of the user is touched. Only a crash during the save can leave the temporary file | No |
+| S29 | The strip when its rows do not fit | S13.1 draws the 76 px strip with 7 modules. C16 floats the scrollbar over the right padding of the content, and the strip has no padding right of its marks | When the rows do not fit, the strip is 86 px: the 10 px track of the scrollbar (`scrollbar-w`) is added at its right, and the workspace gives way. The focus ring of a row in the strip runs beside the marks, inside the strip. Rendered with 20 modules at 960 by 600 | No |
 
 ## Moved between milestones
 
