@@ -162,5 +162,5 @@ def build():
           '<div><b>Order.</b> By name is the default because a module then keeps its place. S switches to problems first and back; the choice is kept per app. The shop-api drawings in the rest of the spec use problems first.</div>'
           '<div><b>Finding state of a row.</b> The worst finding of the module: problem with its count, warning, or good. A circular link is counted once, on the module with fewer files in the circle, because that is the cheaper side to cut; the other module shows the link in its Boundary tab.</div>'
           '<div><b>Groups.</b> Group names and membership are kept by Mortise per app, not by the package. Without groups the list is flat.</div>'
-          '<div><b>Assumes, not in the package today.</b> Only the sixth drawing: <a class="sid" href="open.html#a-P9">P9</a> runtime status per module. Without it the row has one mark.</div></div>') % ref('S6.4')
+          '<div><b>Assumes, met in the packages.</b> Only the sixth drawing: <a class="sid" href="open.html#a-P9">P9</a> runtime status per module (met). Without it, in an app whose package version lacks it, the row has one mark.</div></div>') % ref('S6.4')
     return page('screens-start.html', 'Screens: start', 'Mortise design specification, section 5, part 1. First run, add app, app rail, module index.', b)

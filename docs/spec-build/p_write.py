@@ -10,12 +10,12 @@ GEN = [  # group, [(label, artisan name)]
                         ('Notification', 'module:make-notification'), ('Mail', 'module:make-mail'), ('Channel', 'module:make-channel'), ('Event provider', 'module:make-event-provider')]),
  ('Views', [('View', 'module:make-view'), ('Component class', 'module:make-component'), ('Component view', 'module:make-component-view'),
             ('Inertia page', 'module:make-inertia-page'), ('Inertia component', 'module:make-inertia-component')]),
- ('Classes', [('Class', 'module:make-class'), ('Action', 'module:make-action'), ('Service', 'module:make-service'), ('Interface', 'module:make-interface'),
+ ('Classes', [('Class', 'module:make-class'), ('Health indicator', 'module:make-health-indicator'), ('Action', 'module:make-action'), ('Service', 'module:make-service'), ('Interface', 'module:make-interface'),
               ('Trait', 'module:make-trait'), ('Enum', 'module:make-enum'), ('Helper', 'module:make-helper'), ('Exception', 'module:make-exception')]),
  ('Console and setup', [('Command', 'module:make-command'), ('Config', 'module:make-config'), ('Provider', 'module:make-provider'), ('Stub replacement', 'module:make-replacement')]),
  ('Tests', [('Test', 'module:make-test')]),
 ]
-assert sum(len(g[1]) for g in GEN) == 41
+assert sum(len(g[1]) for g in GEN) == 42
 RUNHINT = '<span class="dim" style="font-size:11.5px">Run with</span>' + kbd('Ctrl Enter')
 
 def picker():
@@ -24,7 +24,7 @@ def picker():
         items += '<div class="gh">%s</div>' % g
         items += ''.join('<div class="gi%s"><b style="font-weight:600">%s</b><span>%s</span></div>' % (' on' if n == 'module:make-model' else '', l, n) for l, n in rows)
     top = ('<div style="display:flex;gap:10px;align-items:center"><div class="filter is-focus" style="margin:0;width:300px">%s<span>Find a generator%s</span>%s</div>'
-           '<span class="dim" style="margin-left:auto;font-size:11.5px">41 generators for Billing, and New module. Enter opens the form.</span></div>') % (ic('search'), CARET, kbd('/'))
+           '<span class="dim" style="margin-left:auto;font-size:11.5px">42 generators for Billing, and New module. Enter opens the form.</span></div>') % (ic('search'), CARET, kbd('/'))
     return win(tbar() + shell(rail(), index('BIL'), work('Generate in Billing', 2, top + '<div class="gen">%s</div>' % items, '', '', 'BIL')))
 
 MODEL_CHKS = [('Controller', '-c', False), ('Factory', '-f', False), ('Migration', '-m', True), ('Request', '-r', False), ('Resource', '-R', False), ('Policy', '-p', True), ('Seeder', '-s', False), ('All of these', '-a', False)]
@@ -34,7 +34,7 @@ def model_form(clash=False):
         extra = ' ' + S('warn', 'exists') if (clash and l == 'Policy') else ''
         cks += chk(l + extra, f, on and not (clash and l == 'Policy'), '', l == 'All of these' and False)
     return ('<div>%s%s%s%s%s</div>') % (
-        field('Generator', '41 available', inp('<b>Model</b> <span class="mono dim">module:make-model</span>', '', kbd('Change'))),
+        field('Generator', '42 available', inp('<b>Model</b> <span class="mono dim">module:make-model</span>', '', kbd('Change'))),
         field('Model name', '', inp('PaymentIntent', 'mono')),
         field('Fillable attributes', '--fillable, comma separated', inp('order_id,amount,currency,status', 'mono')),
         field('Also create', '', '<div class="chks">%s</div>' % cks),
@@ -247,12 +247,12 @@ def build():
     b = ('<p>Section 5, part 3 of 4: everything that runs a command. Generate, Actions and the runner drawer. All of it is phase 2: it needs PHP, and several parts need additions to the package, named under each screen.</p>'
          '<p><strong>The rule for every command.</strong> The exact command is on screen before it runs, it can be copied instead of run, the files or rows it touches are named first where Mortise can know them, and the output is shown as the command wrote it.</p>')
     b += '<h2>5.9 Generate</h2>'
-    b += screen('S9.1', 'Generator picker', 'All 42 make commands of the package by their artisan names: 41 that create a file in the selected module, and <code>module:make</code>, which creates a module. Model is the selected row.', picker(), '2',
+    b += screen('S9.1', 'Generator picker', 'All 43 make commands of the package by their artisan names: 42 that create a file in the selected module, and <code>module:make</code>, which creates a module. Model is the selected row.', picker(), '2',
                 'The list and each form come from the package.', ['P3'],
-                ['<b>Names.</b> Read from <span class="mono">src/Commands/Make</span> of the package on 22 November 2026. Note <span class="mono">module:route-provider</span>, which has no "make-" in its name, and <span class="mono">module:make-component</span>, which creates the component class.',
+                ['<b>Names.</b> Read from <span class="mono">src/Commands/Make</span> of the package on 22 November 2026; <span class="mono">module:make-health-indicator</span> was added on 23 November 2026 from <span class="mono">master</span> at <span class="mono">5b0307af</span>, which is not released. Note <span class="mono">module:route-provider</span>, which has no "make-" in its name, and <span class="mono">module:make-component</span>, which creates the component class.',
                  '<b>Groups.</b> The seven groups are Mortise\'s, not the package\'s. A generator the package adds later appears in a last group, "Other", until Mortise places it.',
                  '<b>Keys.</b> 3 or G opens the tab with the field focused. Typing filters by label and by artisan name. Up, Down, Left and Right move; Enter opens the form; Esc clears the filter.',
-                 '<b>Without P3.</b> Mortise ships a description of the 42 commands for the package version it was built against, and marks the picker "for nwidart/laravel-modules 13.3" when the app has another version.'])
+                 '<b>Without P3.</b> Mortise ships a description of the 43 commands for the package version it was built against, and marks the picker "for nwidart/laravel-modules 13.3" when the app has another version.'])
     b += screen('S9.2', 'The form for module:make-model, with command and file preview', 'Billing is selected, so the module is filled in. Every control is an argument or option of the command: <code>model</code>, <code>module</code>, <code>--fillable</code>, <code>--attributes</code>, the seven files <code>-c -f -m -r -R -p -s</code>, and <code>-a</code> for all seven.', gen_form(), '2',
                 'The command is built from the form on every keystroke. The file list comes from a dry run of the command.', ['P2', 'P3'],
                 ['<b>"All of these".</b> Checking it checks the seven boxes and the command shows <span class="mono">--all</span>. Clearing one box returns to the separate flags.',
@@ -336,7 +336,7 @@ def build():
           '<span class="mono">module:delete</span> removes the module\'s line from the statuses file and deletes its folder; it does not touch the database.</div>'
           '<div><b>Decision: dropping all tables is offered only for the whole app.</b> For one module the command still wipes the whole database and then brings back only the app\'s tables and that module\'s, leaving the other modules without tables. On a module\'s tab the group says so: %s</div>'
           '<div><b>Production.</b> When <span class="mono">APP_ENV</span> is production Mortise does not run any of the four. The button is disabled, the reason is on the panel, and the command can be copied: %s</div>'
-          '<div><b>If the app prohibits them.</b> The package can refuse these commands (<span class="mono">Module::prohibitDestructiveCommands()</span>). Mortise cannot know before running; it shows the refusal: %s</div>'
+          '<div><b>If the app prohibits them.</b> The package can refuse these commands (<span class="mono">Module::prohibitDestructiveCommands()</span> when it was read on 22 November 2026). On <span class="mono">master</span> at <span class="mono">5b0307af</span> each destructive command has its own prohibit flag, so an app can refuse one and allow another. Mortise cannot know before running; it shows the refusal: %s</div>'
           '<div><b>Assumes, not in the package today.</b> <a class="sid" href="open.html#a-P4">P4</a> Migration state as data, for "9 ran" and the list of tables. Without it the panel and the dialog say "every migration of Checkout that ran" and offer the dry run to read the SQL.</div></div>') % (
         t('d.group'), ref('S10.3'), t('d.onefresh'), t('d.prod'), t('d.prohibited'))
     b += '<h3 id="S10.5"><span class="sid">S10.5</span>The strongest confirmation</h3><p class="cap">Over the tab, then each dialog. Reset and refresh name the tables. Dropping all tables and deleting a module also ask for a name to be typed; each is shown before and after typing, in light and in dark.</p>'
