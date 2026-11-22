@@ -428,8 +428,12 @@ fn a_large_folder_is_read_without_stopping_the_window_and_says_how_far_it_is() {
             std::time::Instant::now() < deadline,
             "the folder was not read in 30 s"
         );
-        if bar_seen_at.is_none() && harness.query_by_role(Role::ProgressIndicator).is_some() {
-            harness.get_by_label_contains("of 6,077 files");
+        // The text beside the bar is a node of its own with the same words, so ask the bar.
+        if bar_seen_at.is_none()
+            && let Some(bar) = harness.query_by_role(Role::ProgressIndicator)
+        {
+            let label = bar.accesskit_node().label().unwrap_or_default();
+            assert!(label.ends_with(" of 6,077 files"), "{label}");
             bar_seen_at = Some(started.elapsed());
         }
         std::thread::sleep(std::time::Duration::from_millis(20));
