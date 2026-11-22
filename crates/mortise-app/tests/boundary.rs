@@ -1,0 +1,291 @@
+//! The Boundary tab: links, the files of a link, circles, the rules and the table of links.
+
+mod common;
+
+use common::{Desk, shop_api, wait_until};
+use eframe::egui::{Key, Role};
+use egui_kittest::Harness;
+use egui_kittest::kittest::{NodeT as _, Queryable as _};
+use mortise_app::app::{MortiseApp, Selection};
+use mortise_app::workspace::Tab;
+use mortise_core::{Rules, RulesSource};
+
+fn rows(harness: &Harness<'static, MortiseApp>) -> Vec<String> {
+    harness
+        .query_all_by_role(Role::Row)
+        .filter_map(|row| row.accesskit_node().label())
+        .collect()
+}
+
+#[test]
+fn the_boundary_of_a_module_shows_its_neighbours_and_the_first_broken_link() {
+    let (_desk, mut harness) = shop_api();
+    harness
+        .get_by_role_and_label(Role::ListBoxOption, "Checkout")
+        .click();
+    harness.key_press(Key::Num2);
+    harness.run();
+    assert_eq!(harness.state().tab(), Tab::Boundary);
+
+    harness.get_by_label("Used by, 2");
+    harness.get_by_label("Selected");
+    harness.get_by_label("Uses, 4");
+
+    // The link to Billing breaks a rule, so its files are listed: internals first.
+    harness.get_by_role_and_label(Role::Heading, "Checkout uses Billing");
+    harness.get_by_label("3 of 6 files read internals");
+    assert_eq!(
+        rows(&harness),
+        [
+            "Modules/Checkout/app/Http/Controllers/OrderController.php",
+            "Modules/Checkout/app/Listeners/CreateInvoiceOnPaid.php",
+            "Modules/Checkout/app/Services/InvoiceSync.php",
+            "Modules/Checkout/app/Listeners/MarkOrderPaid.php",
+            "Modules/Checkout/app/Listeners/SendReceipt.php",
+            "Modules/Checkout/app/Services/PaymentService.php",
+        ]
+    );
+    harness
+        .get_by_label_contains("Billing has none yet, so the folders Contracts and Events count.");
+}
+
+#[test]
+fn a_circle_lists_the_files_of_both_directions() {
+    let (_desk, mut harness) = shop_api();
+    harness
+        .get_by_role_and_label(Role::ListBoxOption, "Checkout")
+        .click();
+    harness.key_press(Key::Num2);
+    harness.run();
+    // Shipping is on both sides of Checkout. Either node shows the circle.
+    harness
+        .get_all_by_role_and_label(Role::ListBoxOption, "Shipping")
+        .next()
+        .unwrap()
+        .click();
+    harness.run();
+
+    harness.get_by_role_and_label(Role::Heading, "Checkout and Shipping use each other");
+    harness.get_by_label("Circular, 6 files");
+    harness.get_by_label("Checkout uses Shipping");
+    harness.get_by_label("2 files");
+    harness.get_by_label("Shipping uses Checkout");
+    harness.get_by_label("4 files");
+    assert_eq!(rows(&harness).len(), 6);
+    harness.get_by_label_contains("Reported on Checkout, the side with fewer files to change.");
+}
+
+#[test]
+fn copy_path_copies_the_selected_file_and_says_so() {
+    let (_desk, mut harness) = shop_api();
+    harness
+        .get_by_role_and_label(Role::ListBoxOption, "Checkout")
+        .click();
+    harness.key_press(Key::Num2);
+    harness.run();
+    harness
+        .get_by_role_and_label(
+            Role::Row,
+            "Modules/Checkout/app/Services/PaymentService.php",
+        )
+        .click();
+    harness.run();
+    harness
+        .get_by_role_and_label(Role::Button, "Copy path")
+        .click();
+    harness.run_steps(3);
+    harness.get_by_label("Copied the path.");
+}
+
+#[test]
+fn the_boundary_of_the_app_lists_the_links_that_break_a_rule() {
+    let (_desk, mut harness) = shop_api();
+    harness.key_press(Key::Num2);
+    harness.run();
+
+    harness.get_by_role_and_label(Role::Heading, "8 links between 7 modules");
+    harness.get_by_role_and_label(Role::Heading, "Links that break a rule");
+    harness.get_by_label("2 problems");
+    assert_eq!(
+        rows(&harness),
+        [
+            "Checkout and Shipping use each other",
+            "Checkout reads Billing internals"
+        ]
+    );
+    harness.get_by_role_and_label(Role::Heading, "Rules for shop-api");
+    harness.get_by_label(
+        "Accepted for 0 of 7 modules. For a module without one, these folders count:",
+    );
+
+    // A row lands on the module's Boundary, on that link.
+    harness
+        .get_by_role_and_label(Role::Row, "Checkout and Shipping use each other")
+        .click();
+    harness.run();
+    assert_eq!(
+        harness.state().selection(),
+        Selection::Module("Checkout".into())
+    );
+    assert_eq!(harness.state().tab(), Tab::Boundary);
+    harness.get_by_role_and_label(Role::Heading, "Checkout and Shipping use each other");
+}
+
+#[test]
+fn a_node_of_the_app_graph_selects_its_module() {
+    let (_desk, mut harness) = shop_api();
+    harness.key_press(Key::Num2);
+    harness.run();
+    harness
+        .get_by_role_and_label(Role::Button, "Inventory")
+        .click();
+    harness.run();
+    assert_eq!(
+        harness.state().selection(),
+        Selection::Module("Inventory".into())
+    );
+    harness.get_by_role_and_label(Role::Heading, "Inventory uses Catalog");
+}
+
+#[test]
+fn the_first_change_of_a_rule_asks_before_mortise_json_is_created() {
+    let desk = Desk::new();
+    let root = desk.app("shop-api");
+    desk.knows(&[(&root, "SA")]);
+    let mut harness = desk.start();
+    harness.key_press(Key::Num2);
+    harness.run();
+    let rules_file = root.join("mortise.json");
+
+    // Cancel, by Esc: nothing is written.
+    harness
+        .get_by_role_and_label(Role::CheckBox, "No circular use")
+        .click();
+    harness.run();
+    harness.get_by_role_and_label(Role::Heading, "Create mortise.json in shop-api?");
+    harness.key_press(Key::Escape);
+    harness.run();
+    assert!(
+        harness
+            .query_by_role_and_label(Role::Heading, "Create mortise.json in shop-api?")
+            .is_none()
+    );
+    assert!(!rules_file.exists());
+
+    // Confirm: the file is written and the links are checked again.
+    harness
+        .get_by_role_and_label(Role::CheckBox, "No circular use")
+        .click();
+    harness.run();
+    harness
+        .get_by_role_and_label(Role::Button, "Create mortise.json")
+        .click();
+    wait_until(&mut harness, "the rules are read from the file", |app| {
+        app.app()
+            .is_some_and(|app| app.rules_source == RulesSource::File)
+    });
+    let (rules, _) = Rules::load(&root);
+    assert!(!rules.no_circular_use);
+    assert_eq!(rows(&harness), ["Checkout reads Billing internals"]);
+    harness.get_by_label("1 problem");
+
+    // The file exists now: the next change is written without asking.
+    harness
+        .get_by_role_and_label(
+            Role::CheckBox,
+            "Other modules use only a module's public surface",
+        )
+        .click();
+    wait_until(&mut harness, "no rule is on", |app| {
+        app.app().is_some_and(|app| !app.rules.public_surface_only)
+    });
+    assert!(
+        harness
+            .query_by_role_and_label(Role::Heading, "Create mortise.json in shop-api?")
+            .is_none()
+    );
+    harness.get_by_label("No link breaks a rule.");
+}
+
+#[test]
+fn the_folders_of_the_second_rule_can_be_changed() {
+    let desk = Desk::new();
+    let root = desk.app("shop-api");
+    std::fs::write(root.join("mortise.json"), "{}").unwrap();
+    desk.knows(&[(&root, "SA")]);
+    let mut harness = desk.start();
+    harness.key_press(Key::Num2);
+    harness.run();
+
+    let field = harness.get_by_role_and_label(Role::TextInput, "Folders that count as public");
+    field.focus();
+    field.type_text(", Models");
+    harness.run();
+    // Leaving the field applies the change.
+    harness
+        .get_by_role_and_label(Role::CheckBox, "No circular use")
+        .focus();
+    wait_until(&mut harness, "Models is public", |app| {
+        app.app()
+            .is_some_and(|app| app.rules.public_folders == ["Contracts", "Events", "Models"])
+    });
+    assert_eq!(rows(&harness), ["Checkout and Shipping use each other"]);
+}
+
+#[test]
+fn above_12_modules_the_app_graph_gives_way_to_a_table_of_links() {
+    let desk = Desk::new();
+    let root = common::app_with_modules(&desk, "platform", 14);
+    desk.knows(&[(&root, "PL")]);
+    let mut harness = desk.start();
+    harness.key_press(Key::Num2);
+    harness.run();
+
+    harness.get_by_label_contains(
+        "platform has 14 modules. Above 12 modules the graph of the whole app",
+    );
+    harness.get_by_label("8 links, 3 problems, 8 shown");
+    // Problems first.
+    let all = rows(&harness);
+    assert_eq!(all.len(), 8);
+    assert_eq!(
+        &all[..3],
+        [
+            "Checkout uses Billing",
+            "Shipping uses Checkout",
+            "Checkout uses Shipping"
+        ]
+    );
+
+    harness
+        .get_by_role_and_label(Role::RadioButton, "Problems only")
+        .click();
+    harness.run();
+    assert_eq!(rows(&harness).len(), 3);
+
+    harness
+        .get_by_role_and_label(Role::Row, "Shipping uses Checkout")
+        .click();
+    harness.run();
+    assert_eq!(
+        harness.state().selection(),
+        Selection::Module("Shipping".into())
+    );
+    harness.get_by_role_and_label(Role::Heading, "Checkout and Shipping use each other");
+}
+
+#[test]
+fn the_summary_of_a_module_names_what_it_uses() {
+    let (_desk, mut harness) = shop_api();
+    harness
+        .get_by_role_and_label(Role::ListBoxOption, "Checkout")
+        .click();
+    harness.run();
+    harness.get_by_role_and_label(Role::Heading, "Dependencies");
+    harness.get_by_label("4 out, 2 in");
+    harness.get_by_label("Uses Billing");
+    harness.get_by_label("6 refs, 3 to internals");
+    harness.get_by_label("2 refs, circular");
+    harness.get_by_label("Used by Notifications, Shipping");
+    harness.get_by_label("1, 4 refs");
+}

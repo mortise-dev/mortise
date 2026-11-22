@@ -17,16 +17,20 @@ pub enum Column {
     Lines,
     Tests,
     Coverage,
+    Uses,
+    UsedBy,
     Commits,
 }
 
 impl Column {
-    const ALL: [Column; 6] = [
+    const ALL: [Column; 8] = [
         Column::Module,
         Column::Files,
         Column::Lines,
         Column::Tests,
         Column::Coverage,
+        Column::Uses,
+        Column::UsedBy,
         Column::Commits,
     ];
 
@@ -37,6 +41,8 @@ impl Column {
             Column::Lines => strings::COL_LINES,
             Column::Tests => strings::COL_TESTS,
             Column::Coverage => strings::COL_COVERAGE,
+            Column::Uses => strings::COL_USES,
+            Column::UsedBy => strings::COL_USED_BY,
             Column::Commits => strings::COL_COMMITS,
         }
     }
@@ -48,6 +54,8 @@ impl Column {
             Column::Files | Column::Tests => 56.0,
             Column::Lines => 64.0,
             Column::Coverage => 74.0,
+            Column::Uses => 44.0,
+            Column::UsedBy => 58.0,
             Column::Commits => 116.0,
         }
     }
@@ -92,6 +100,11 @@ impl Sort {
                 Column::Lines => a.lines.cmp(&b.lines),
                 Column::Tests => a.tests.cmp(&b.tests),
                 Column::Coverage => percent(a).cmp(&percent(b)),
+                Column::Uses => app.uses(&a.name).count().cmp(&app.uses(&b.name).count()),
+                Column::UsedBy => app
+                    .used_by(&a.name)
+                    .count()
+                    .cmp(&app.used_by(&b.name).count()),
                 Column::Commits => commits(a).cmp(&commits(b)),
             };
             if self.ascending {
@@ -354,11 +367,17 @@ fn one_module(
         paint,
     );
 
-    // Right, or under it in a narrow window: the state of the module.
-    let state_min = if two {
+    // Right, or under it in a narrow window: what the module uses and what uses it,
+    // then the state of the module.
+    let side = if two {
         pos2(left + column_w + 14.0, top)
     } else {
         pos2(left, kinds_bottom + 12.0)
+    };
+    let dependencies_bottom = dependencies(ui, pal, side, column_w, app, module, paint);
+    let state_min = match dependencies_bottom {
+        Some(bottom) => pos2(side.x, bottom + 12.0),
+        None => side,
     };
     let mut lines: Vec<(&str, String, Color32, StateMark)> = Vec::new();
     let (word, color, mark) = match module.state {
@@ -640,7 +659,7 @@ fn by_module(
     let right = rect.right() - 10.0;
 
     // Columns from the right edge: numbers have fixed widths, the module takes the rest.
-    let mut edges = [(0.0, 0.0); 6];
+    let mut edges = [(0.0, 0.0); 8];
     let mut x = right;
     for (i, column) in Column::ALL.iter().enumerate().rev() {
         if *column == Column::Module {
@@ -786,6 +805,8 @@ fn by_module(
             percent(module).map_or(unknown.clone(), |percent| {
                 (strings::percent(percent), pal.ink)
             }),
+            (app.uses(&module.name).count().to_string(), pal.ink),
+            (app.used_by(&module.name).count().to_string(), pal.ink),
             match (&app.git, commits(module)) {
                 (Git::Repository { .. }, Some(commits)) => {
                     (strings::count(u64::from(commits)), pal.ink)
@@ -826,4 +847,131 @@ fn note_alert(
         draw::announce(ui, text_rect, Role::Label, text);
     }
     rect.bottom()
+}
+
+/// The Dependencies box of a module: one line per module it uses, with the most
+/// references first, then the modules that use it. Nothing when it has no links.
+/// Returns its bottom edge.
+fn dependencies(
+    ui: &Ui,
+    pal: &Palette,
+    min: eframe::egui::Pos2,
+    width: f32,
+    app: &AppSnapshot,
+    module: &Module,
+    paint: bool,
+) -> Option<f32> {
+    let mut uses: Vec<_> = app.uses(&module.name).collect();
+    uses.sort_by(|a, b| {
+        b.refs
+            .len()
+            .cmp(&a.refs.len())
+            .then_with(|| a.to.cmp(&b.to))
+    });
+    let used_by: Vec<_> = app.used_by(&module.name).collect();
+    if uses.is_empty() && used_by.is_empty() {
+        return None;
+    }
+    let lines = uses.len() + usize::from(!used_by.is_empty());
+    let rect = Rect::from_min_size(
+        min,
+        vec2(width, 41.0 + lines as f32 * size::LIST_LINE_H + 8.0),
+    );
+    if !paint {
+        return Some(rect.bottom());
+    }
+    let note = strings::out_in(uses.len(), used_by.len());
+    let mut y = draw::box_head(ui, pal, rect, strings::DEPENDENCIES, &note);
+    let mono = Type {
+        size: 11.5,
+        ..ty::CODE
+    };
+    for (i, link) in uses.iter().enumerate() {
+        let mid = y + size::LIST_LINE_H / 2.0;
+        let text = strings::a_uses_b(strings::USES, &link.to).replacen(" uses ", " ", 1);
+        let name = draw::label(
+            ui,
+            pos2(rect.left() + 13.0, mid),
+            Align2::LEFT_CENTER,
+            &text,
+            ty::BODY,
+            pal.ink,
+        );
+        if let Some(used) = app.module(&link.to) {
+            let state = StampState {
+                selected: false,
+                off: used.state == ModuleState::Off,
+            };
+            draw::stamp(
+                ui,
+                pal,
+                pos2(name.right() + 7.0, (mid - size::STAMP_H / 2.0).round()),
+                &used.code,
+                state,
+            );
+        }
+        let problem = link.is_problem(&app.rules);
+        let refs = strings::refs_state(link, &app.rules);
+        let (value_type, color) = if problem {
+            (ty::LABEL, pal.bad)
+        } else {
+            (mono, pal.ink_2)
+        };
+        let value = draw::label(
+            ui,
+            pos2(rect.right() - 13.0, mid),
+            Align2::RIGHT_CENTER,
+            &refs,
+            value_type,
+            color,
+        );
+        if problem {
+            let mark = Rect::from_min_size(
+                pos2(
+                    value.left() - 5.0 - size::STATE_MARK,
+                    mid - size::STATE_MARK / 2.0,
+                ),
+                Vec2::splat(size::STATE_MARK),
+            );
+            draw::mark_bad(ui, mark, pal.bad, pal.surface);
+        }
+        if i + 1 < lines {
+            draw::hline(
+                ui,
+                rect.left() + 13.0..rect.right() - 13.0,
+                y + size::LIST_LINE_H - 1.0,
+                pal.line,
+            );
+        }
+        y += size::LIST_LINE_H;
+    }
+    if !used_by.is_empty() {
+        let mid = y + size::LIST_LINE_H / 2.0;
+        let names: Vec<&str> = used_by.iter().map(|link| link.from.as_str()).collect();
+        let counts: Vec<String> = used_by
+            .iter()
+            .map(|link| link.refs.len().to_string())
+            .collect();
+        let total: usize = used_by.iter().map(|link| link.refs.len()).sum();
+        let plural = if total == 1 { "ref" } else { "refs" };
+        let text = format!("{} {}", strings::USED_BY, names.join(", "));
+        draw::label(
+            ui,
+            pos2(rect.left() + 13.0, mid),
+            Align2::LEFT_CENTER,
+            &text,
+            ty::BODY,
+            pal.ink,
+        );
+        let value = format!("{} {plural}", counts.join(", "));
+        draw::label(
+            ui,
+            pos2(rect.right() - 13.0, mid),
+            Align2::RIGHT_CENTER,
+            &value,
+            mono,
+            pal.ink_2,
+        );
+    }
+    Some(rect.bottom())
 }

@@ -2,6 +2,7 @@
 
 use std::collections::BTreeMap;
 use std::path::{Component, Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -42,6 +43,7 @@ enum Command {
 /// [`LiveApp::state`] and is told through `on_change` that a newer one is there.
 pub struct LiveApp {
     state: Arc<Mutex<LiveState>>,
+    watching: Arc<AtomicBool>,
     commands: Sender<Command>,
 }
 
@@ -54,6 +56,7 @@ impl LiveApp {
         on_change: impl Fn() + Send + 'static,
     ) -> Self {
         let state = Arc::new(Mutex::new(LiveState::Reading));
+        let watching = Arc::new(AtomicBool::new(false));
         let (commands, inbox) = channel();
         let worker = Worker {
             root,
@@ -66,12 +69,22 @@ impl LiveApp {
             on_change: Box::new(on_change),
             watcher: None,
             watched: Vec::new(),
+            watching: Arc::clone(&watching),
         };
         std::thread::Builder::new()
             .name("mortise-app-reader".to_owned())
             .spawn(move || worker.run())
             .expect("a thread can be started");
-        Self { state, commands }
+        Self {
+            state,
+            watching,
+            commands,
+        }
+    }
+
+    /// True once the watcher that [`LiveApp::watch`] asked for is in place.
+    pub fn is_watching(&self) -> bool {
+        self.watching.load(Ordering::Relaxed)
     }
 
     /// The current state. Cheap: a snapshot is shared, not copied.
@@ -113,6 +126,7 @@ struct Worker {
     watcher: Option<Debouncer<RecommendedWatcher, RecommendedCache>>,
     /// What the watcher watches. Empty while it is off.
     watched: Vec<Watched>,
+    watching: Arc<AtomicBool>,
 }
 
 impl Worker {
@@ -129,6 +143,7 @@ impl Worker {
                 Command::Watch(false) => {
                     self.watcher = None;
                     self.watched.clear();
+                    self.watching.store(false, Ordering::Relaxed);
                 }
                 Command::Stop => break,
             }
@@ -203,6 +218,7 @@ impl Worker {
             let _ = watcher.watch(folder, *mode);
         }
         self.watcher = Some(watcher);
+        self.watching.store(true, Ordering::Relaxed);
     }
 }
 

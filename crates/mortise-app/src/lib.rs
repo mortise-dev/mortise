@@ -4,7 +4,9 @@
 
 pub mod add;
 pub mod app;
+pub mod boundary;
 pub mod chrome;
+pub mod dialog;
 pub mod draw;
 pub mod fonts;
 pub mod index;

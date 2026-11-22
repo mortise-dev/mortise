@@ -328,8 +328,11 @@ fn a_change_on_disk_shows_without_asking() {
     desk.knows(&[(&root, "SA")]);
     let mut harness = desk.start();
     harness.get_by_label("7 of 7 on");
-    // The watcher starts on the reader's thread; give it a moment to be in place.
-    std::thread::sleep(std::time::Duration::from_millis(500));
+    wait_until(&mut harness, "the watcher is in place", |app| {
+        app.is_watching()
+    });
+    // The operating system needs a moment before it reports changes.
+    std::thread::sleep(std::time::Duration::from_millis(300));
 
     common::turn_off(&root, "Checkout");
     wait_until(&mut harness, "Checkout is off", |app| {

@@ -405,6 +405,233 @@ pub fn git_found(git: &mortise_core::Git) -> (String, String) {
     }
 }
 
+pub const DEPENDENCIES: &str = "Dependencies";
+pub const USED_BY: &str = "Used by";
+pub const USES: &str = "Uses";
+pub const SELECTED: &str = "Selected";
+pub const ALL_LINKS: &str = "All links";
+pub const PROBLEMS_ONLY: &str = "Problems only";
+pub const LINKS_THAT_BREAK: &str = "Links that break a rule";
+pub const RULE_NO_CIRCULAR: &str = "No circular use";
+pub const RULE_PUBLIC_SURFACE: &str = "Other modules use only a module's public surface";
+pub const RULE_FAIL_CI: &str = "Fail CI when a rule breaks";
+pub const RULE_FAIL_CI_HINT: &str = "Needs the command line tool, which does not exist yet.";
+pub const RULES_KEPT: &str = "kept in mortise.json in the app folder";
+pub const GRAPH_CAPTION: &str = "Arrow points at the module that is used. A square with a cross marks a link that breaks a rule.";
+pub const COPY_PATH: &str = "Copy path";
+/// Not in the spec: the toast after "Copy path".
+pub const COPIED_PATH: &str = "Copied the path.";
+pub const COL_FILE: &str = "File";
+pub const COL_LINE: &str = "Line";
+pub const COL_READS: &str = "Reads";
+pub const COL_FROM: &str = "From";
+pub const COL_USES: &str = "Uses";
+pub const COL_USED_BY: &str = "Used by";
+pub const COL_REFS: &str = "Refs";
+pub const COL_STATE: &str = "State";
+pub const GOOD: &str = "Good";
+pub const CIRCULAR: &str = "Circular";
+pub const FILTER_LINKS: &str = "Filter links";
+/// The name of the folders field of the second rule, for a screen reader. Not in the spec.
+pub const PUBLIC_FOLDERS: &str = "Folders that count as public";
+/// Not in the spec: the button of the dialog that asks before mortise.json is created.
+pub const CREATE_RULES_FILE: &str = "Create mortise.json";
+
+/// `Used by, 2`
+pub fn used_by_count(n: usize) -> String {
+    format!("Used by, {n}")
+}
+
+/// `Uses, 4`
+pub fn uses_count(n: usize) -> String {
+    format!("Uses, {n}")
+}
+
+/// `4 out, 2 in`
+pub fn out_in(out: usize, into: usize) -> String {
+    format!("{out} out, {into} in")
+}
+
+/// `14 refs`
+pub fn refs(n: usize) -> String {
+    if n == 1 {
+        "1 ref".to_owned()
+    } else {
+        format!("{n} refs")
+    }
+}
+
+/// `6 refs, 3 to internals` and `2 refs, circular`
+pub fn refs_state(link: &mortise_core::Link, rules: &mortise_core::Rules) -> String {
+    let internal = link
+        .refs
+        .iter()
+        .filter(|reference| reference.internal)
+        .count();
+    if rules.public_surface_only && internal > 0 {
+        format!("{}, {internal} to internals", refs(link.refs.len()))
+    } else if rules.no_circular_use && link.circular {
+        format!("{}, circular", refs(link.refs.len()))
+    } else {
+        refs(link.refs.len())
+    }
+}
+
+/// `Checkout uses Billing`
+pub fn a_uses_b(a: &str, b: &str) -> String {
+    format!("{a} uses {b}")
+}
+
+/// `Checkout and Shipping use each other`
+pub fn use_each_other(a: &str, b: &str) -> String {
+    format!("{a} and {b} use each other")
+}
+
+/// Not in the spec: a circle of more than two modules.
+pub fn use_each_other_in_a_circle(modules: &[String]) -> String {
+    match modules {
+        [rest @ .., last] => format!("{} and {last} use each other in a circle", rest.join(", ")),
+        [] => String::new(),
+    }
+}
+
+/// `Checkout reads Billing internals`
+pub fn reads_internals(a: &str, b: &str) -> String {
+    format!("{a} reads {b} internals")
+}
+
+/// `3 of 6 files read internals`
+pub fn files_read_internals(internal: usize, files_count: usize) -> String {
+    format!("{internal} of {} read internals", files(files_count as u64))
+}
+
+/// `3 files read internals`
+pub fn n_files_read_internals(internal: usize) -> String {
+    if internal == 1 {
+        "1 file reads internals".to_owned()
+    } else {
+        format!("{internal} files read internals")
+    }
+}
+
+/// `Circular, 6 files`
+pub fn circular_files(files_count: usize) -> String {
+    format!("Circular, {}", files(files_count as u64))
+}
+
+/// `9 links between 7 modules`
+pub fn links_between(links: usize, modules_count: usize) -> String {
+    let links = if links == 1 {
+        "1 link".to_owned()
+    } else {
+        format!("{links} links")
+    };
+    format!("{links} between {}", modules(modules_count))
+}
+
+/// `2 problems`
+pub fn problems(n: usize) -> String {
+    if n == 1 {
+        "1 problem".to_owned()
+    } else {
+        format!("{n} problems")
+    }
+}
+
+/// `214 links, 5 problems, 14 shown`
+pub fn links_shown(links: usize, problem_count: usize, shown: usize) -> String {
+    let links = if links == 1 {
+        "1 link".to_owned()
+    } else {
+        format!("{links} links")
+    };
+    format!("{links}, {}, {shown} shown", problems(problem_count))
+}
+
+/// `12 more`
+pub fn more(n: usize) -> String {
+    format!("{n} more")
+}
+
+/// `Rules for shop-api`
+pub fn rules_for(app: &str) -> String {
+    format!("Rules for {app}")
+}
+
+/// `Accepted for 0 of 7 modules. For a module without one, these folders count:`
+pub fn accepted_for(accepted: usize, total: usize) -> String {
+    format!(
+        "Accepted for {accepted} of {}. For a module without one, these folders count:",
+        modules(total)
+    )
+}
+
+/// `Rule: other modules use only a module's public surface. Billing has none yet, so the
+/// folders Contracts and Events count.`
+pub fn rule_of_link(module: &str, rules: &mortise_core::Rules) -> String {
+    if !rules.public_surface_only {
+        // Not in the spec: the rule is turned off.
+        return "The rule about a module's public surface is turned off for this app.".to_owned();
+    }
+    let folders = match rules.public_folders.as_slice() {
+        [] => "no folders count".to_owned(),
+        [one] => format!("the folder {one} counts"),
+        [rest @ .., last] => format!("the folders {} and {last} count", rest.join(", ")),
+    };
+    format!(
+        "Rule: other modules use only a module's public surface. {module} has none yet, so {folders}."
+    )
+}
+
+/// `Reported on Checkout, the side with fewer files to change.`
+pub fn reported_on(module: &str) -> String {
+    format!(
+        "Reported on {module}, the side with fewer files to change. Every file in a circle is \
+         marked: removing either direction ends it."
+    )
+}
+
+/// `platform has 60 modules. Above 12 modules the graph of the whole app gives way to this table.`
+pub fn many_modules(app: &str, modules_count: usize) -> String {
+    format!(
+        "{app} has {modules_count} modules. Above 12 modules the graph of the whole app gives way \
+         to this table. Select one module for its own graph."
+    )
+}
+
+/// Not in the spec: an app whose modules do not use each other.
+pub fn no_links(app: &str) -> String {
+    format!("No module of {app} uses another.")
+}
+
+/// Not in the spec: a module that uses no other module and is used by none.
+pub fn no_links_of(module: &str) -> String {
+    format!("{module} uses no other module, and no other module uses it.")
+}
+
+/// Not in the spec: the dialog before the rules file is created.
+pub fn create_rules_title(app: &str) -> String {
+    format!("Create mortise.json in {app}?")
+}
+
+/// Not in the spec.
+pub fn create_rules_body(app: &str) -> String {
+    format!(
+        "Mortise keeps the boundary rules of {app} in mortise.json in the app folder, so a team \
+         shares them. It is the only file Mortise writes into the app without a command."
+    )
+}
+
+/// Not in the spec: mortise.json could not be written. The system's message is quoted.
+pub fn rules_not_saved(error: &mortise_core::RulesError) -> String {
+    format!("The rules were not saved: {error}.")
+}
+
+/// Not in the spec: mortise.json is there but cannot be read as rules.
+pub fn rules_invalid(message: &str) -> String {
+    format!("mortise.json is not valid: {message}. The default rules apply until it is corrected.")
+}
+
 /// The modifier of app shortcuts as a word: `Cmd` on macOS, `Ctrl` elsewhere.
 pub fn command_key(mac: bool) -> &'static str {
     if mac { "Cmd" } else { "Ctrl" }

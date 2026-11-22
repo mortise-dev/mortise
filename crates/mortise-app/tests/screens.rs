@@ -203,3 +203,52 @@ fn milestone_3() {
     harness.key_press(Key::J);
     save("s3.1-30-modules-light", &mut harness);
 }
+
+#[test]
+#[ignore = "writes PNG files for a person to look at"]
+fn milestone_4() {
+    for (theme, suffix) in [(Theme::Light, "light"), (Theme::Dark, "dark")] {
+        let mut desk = Desk::new();
+        desk.theme = theme;
+        let root = desk.app("shop-api");
+        desk.knows(&[(&root, "SA")]);
+        let mut harness = desk.start();
+        // S5.3: the Boundary of "All modules".
+        harness.key_press(Key::Num2);
+        save(&format!("s5.3-all-{suffix}"), &mut harness);
+        // S5.1: the Boundary of Checkout, on its link with Billing.
+        harness
+            .get_by_role_and_label(Role::ListBoxOption, "Checkout")
+            .click();
+        save(&format!("s5.1-checkout-{suffix}"), &mut harness);
+        // S5.2: the circle with Shipping.
+        harness
+            .get_all_by_role_and_label(Role::ListBoxOption, "Shipping")
+            .next()
+            .unwrap()
+            .click();
+        save(&format!("s5.2-circle-{suffix}"), &mut harness);
+        // S4.3: the Summary with its Dependencies.
+        harness.key_press(Key::Num1);
+        save(&format!("s4.3-dependencies-{suffix}"), &mut harness);
+    }
+
+    let desk = Desk::new();
+    let root = desk.app("shop-api");
+    desk.knows(&[(&root, "SA")]);
+    let mut harness = desk.start();
+    harness.key_press(Key::Num2);
+    harness.run_steps(2);
+    harness
+        .get_by_role_and_label(Role::CheckBox, "No circular use")
+        .click();
+    save("c14-dialog-light", &mut harness);
+
+    // S5.4: more than 12 modules.
+    let desk = Desk::new();
+    let root = common::app_with_modules(&desk, "platform", 16);
+    desk.knows(&[(&root, "PL")]);
+    let mut harness = desk.start();
+    harness.key_press(Key::Num2);
+    save("s5.4-table-light", &mut harness);
+}

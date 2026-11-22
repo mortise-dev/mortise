@@ -5,12 +5,15 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use eframe::egui::{self, Event, Key, KeyboardShortcut, Modifiers, Rect, Theme, Ui, pos2, vec2};
+use mortise_core::Rules;
 use mortise_core::{
     AppEntry, AppSnapshot, LiveApp, LiveState, Settings, SettingsError, propose_monogram, read_app,
 };
 
 use crate::add::{self, AddAction, AddPanel, Checked};
+use crate::boundary::{BoundaryAction, BoundaryState};
 use crate::chrome::{self, Chrome};
+use crate::dialog::{Answer, Dialog};
 use crate::draw::{Button, ButtonKind};
 use crate::index::{self, IndexState};
 use crate::rail::{self, RailAction, Tile};
@@ -18,7 +21,7 @@ use crate::strings;
 use crate::summary::{Sort, SummaryState};
 use crate::theme::{self, radius, size};
 use crate::toast::Toast;
-use crate::workspace::{self, EmptyMark, Tab};
+use crate::workspace::{self, EmptyMark, Tab, WorkState};
 
 /// The row of the index that is selected: the whole app or one module.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -49,6 +52,8 @@ struct OpenApp {
     filter_seen: String,
     /// The order of the "By module" table.
     sort: Sort,
+    /// What the Boundary tab keeps.
+    boundary: BoundaryState,
     /// The snapshot that was looked at last, to notice a newer one.
     seen: Option<Arc<AppSnapshot>>,
 }
@@ -75,6 +80,10 @@ pub struct MortiseApp {
     focus_filter: bool,
     /// The filter field had focus at the end of the last frame.
     filter_was_focused: bool,
+    /// A dialog that asks before the rules file is created, with the rules to write.
+    dialog: Option<(Dialog, Rules)>,
+    /// The dialog opened in this frame: focus goes to its button.
+    dialog_opened: bool,
 }
 
 impl MortiseApp {
@@ -120,6 +129,8 @@ impl MortiseApp {
             index_collapsed: false,
             focus_filter: false,
             filter_was_focused: false,
+            dialog: None,
+            dialog_opened: false,
         };
         let first = if app.apps.is_empty() { None } else { Some(0) };
         if let Some(index) = app.settings.current.or(first) {
@@ -157,6 +168,12 @@ impl MortiseApp {
             LiveState::Ready(app) => Some(app),
             _ => None,
         }
+    }
+
+    /// True once the app on screen is watched for changes.
+    pub fn is_watching(&self) -> bool {
+        self.current
+            .is_some_and(|current| self.apps[current].live.is_watching())
     }
 
     /// True once every app has been read at least once.
@@ -299,6 +316,38 @@ impl MortiseApp {
         }
     }
 
+    // --- Rules ---
+
+    /// Changes the rules of the current app. The first change asks before
+    /// `mortise.json` is created.
+    fn set_rules(&mut self, rules: Rules) {
+        let Some(app) = self.app() else {
+            return;
+        };
+        if app.root.join(mortise_core::RULES_FILE).exists() {
+            self.save_rules(&rules);
+        } else {
+            let dialog = Dialog {
+                title: strings::create_rules_title(&app.name),
+                body: strings::create_rules_body(&app.name),
+                confirm: strings::CREATE_RULES_FILE.to_owned(),
+            };
+            self.dialog = Some((dialog, rules));
+            self.dialog_opened = true;
+        }
+    }
+
+    /// Writes the rules to `mortise.json` and reads the app again.
+    fn save_rules(&mut self, rules: &Rules) {
+        let (Some(app), Some(current)) = (self.app(), self.current) else {
+            return;
+        };
+        match rules.save(&app.root) {
+            Ok(()) => self.apps[current].live.refresh(),
+            Err(error) => self.toast = Some(Toast::failed(strings::rules_not_saved(&error))),
+        }
+    }
+
     // --- Keys ---
 
     fn keys(&mut self, ui: &Ui) {
@@ -331,7 +380,9 @@ impl MortiseApp {
         let filter_focused = ui.memory(|memory| memory.has_focus(filter_id));
         if chord(Modifiers::NONE, Key::Escape) {
             let open = self.current.map(|current| &mut self.apps[current]);
-            if self.adding.is_some() {
+            if self.dialog.is_some() {
+                self.dialog = None;
+            } else if self.adding.is_some() {
                 self.adding = None;
             } else if self.toast.is_some() {
                 self.toast = None;
@@ -342,7 +393,8 @@ impl MortiseApp {
                 self.focus_filter = self.filter_was_focused;
             }
         }
-        if self.adding.is_some() {
+        // A dialog and the add panel hold the keys until they close.
+        if self.adding.is_some() || self.dialog.is_some() {
             return;
         }
 
@@ -523,6 +575,7 @@ impl eframe::App for MortiseApp {
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |since| since.as_secs() as i64);
         let mut add_action = None;
+        let mut work_action = None;
         let mut first_run_add = false;
         let monogram = self.monogram_preview();
         if let Some(panel) = &mut self.adding {
@@ -535,22 +588,38 @@ impl eframe::App for MortiseApp {
                     let work_rect =
                         Rect::from_min_max(pos2(index_rect.right(), rest.top()), rest.max);
                     // The workspace first: the selected row of the index is painted over its edge.
-                    let summary = SummaryState {
-                        sort: &mut open.sort,
-                        now,
+                    let state = WorkState {
+                        summary: SummaryState {
+                            sort: &mut open.sort,
+                            now,
+                        },
+                        boundary: &mut open.boundary,
+                        keyboard: self.keyboard,
                     };
-                    let chosen = workspace::workspace(
+                    work_action = workspace::workspace(
                         ui,
                         pal,
                         work_rect,
                         &app,
                         &open.selection,
                         &mut open.tab,
-                        summary,
+                        state,
                     );
-                    if let Some(module) = chosen {
-                        open.selection = Selection::Module(module);
-                        self.reveal = true;
+                    // A module chosen in the workspace is selected before the index is
+                    // painted, so that the joint is in the right place in this frame.
+                    match &work_action {
+                        Some(BoundaryAction::Select(module)) => {
+                            open.selection = Selection::Module(module.clone());
+                            self.reveal = true;
+                        }
+                        Some(BoundaryAction::ShowLink { module, other }) => {
+                            open.selection = Selection::Module(module.clone());
+                            open.tab = Tab::Boundary;
+                            open.boundary.other = Some(other.clone());
+                            open.boundary.file = 0;
+                            self.reveal = true;
+                        }
+                        _ => {}
                     }
                     let state = IndexState {
                         selection: &mut open.selection,
@@ -610,6 +679,28 @@ impl eframe::App for MortiseApp {
         {
             self.toast = None;
         }
+        // A dialog, over everything else.
+        if let Some((dialog, rules)) = &self.dialog {
+            match dialog.show(ui, pal, self.dialog_opened, self.keyboard) {
+                Some(Answer::Confirm) => {
+                    let rules = rules.clone();
+                    self.dialog = None;
+                    self.save_rules(&rules);
+                }
+                Some(Answer::Cancel) => self.dialog = None,
+                None => {}
+            }
+            self.dialog_opened = false;
+        }
+        match work_action {
+            Some(BoundaryAction::SetRules(rules)) => self.set_rules(rules),
+            Some(BoundaryAction::CopyPath(path)) => {
+                ctx.copy_text(path);
+                self.toast = Some(Toast::done(strings::COPIED_PATH));
+            }
+            _ => {}
+        }
+
         chrome::resize_edges(ui, self.chrome);
         self.focus_filter = false;
         let filter_id = index::filter_id(ui);
@@ -651,6 +742,7 @@ fn open_app(ctx: &egui::Context, entry: &AppEntry) -> OpenApp {
         filter: String::new(),
         filter_seen: String::new(),
         sort: Sort::default(),
+        boundary: BoundaryState::default(),
         seen: None,
     }
 }

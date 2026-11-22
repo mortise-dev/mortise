@@ -129,24 +129,27 @@ pub fn shop_api() -> (Desk, Harness<'static, MortiseApp>) {
     (desk, harness)
 }
 
-/// Runs frames until `done` holds for the app, for at most 10 s. Work on other
-/// threads (reading an app, the file watcher) needs real time to pass.
+/// Waits until `done` holds for the app, for at most 10 s. Work on other threads
+/// (reading an app, the file watcher) needs real time to pass, but few frames:
+/// each frame moves the clock of the interface on, and a toast leaves after 4 s of it.
 pub fn wait_until(
     harness: &mut Harness<'static, MortiseApp>,
     what: &str,
     done: impl Fn(&MortiseApp) -> bool,
 ) {
     let deadline = Instant::now() + Duration::from_secs(10);
-    loop {
-        harness.step();
-        if done(harness.state()) {
-            // A few more frames, so that what the app took in is on screen.
-            harness.run_steps(3);
-            return;
-        }
+    harness.step();
+    let mut waited = 0;
+    while !done(harness.state()) {
         assert!(Instant::now() < deadline, "waited 10 s for: {what}");
         std::thread::sleep(Duration::from_millis(10));
+        waited += 1;
+        if waited % 25 == 0 {
+            harness.step();
+        }
     }
+    // A few frames, so that what the app took in is on screen.
+    harness.run_steps(3);
 }
 
 pub fn turn_off(root: &Path, module: &str) {
@@ -267,9 +270,25 @@ pub fn app_with_modules(desk: &Desk, folder: &str, count: usize) -> PathBuf {
         };
         let dir = root.join("Modules").join(&name);
         copy_dir(&root.join("Modules/Catalog"), &dir);
-        std::fs::write(dir.join("module.json"), format!("{{\"name\": \"{name}\"}}")).unwrap();
+        rename_in_files(&dir, "Catalog", &name);
         statuses[&name] = serde_json::Value::Bool(i % 9 != 0);
     }
     std::fs::write(root.join("modules_statuses.json"), statuses.to_string()).unwrap();
     root
+}
+
+/// Replaces a module name in every file under a folder, so that a copied module
+/// has its own name and namespace.
+fn rename_in_files(dir: &Path, from: &str, to: &str) {
+    for entry in std::fs::read_dir(dir).unwrap() {
+        let path = entry.unwrap().path();
+        if path.is_dir() {
+            rename_in_files(&path, from, to);
+        } else if let Ok(text) = std::fs::read_to_string(&path) {
+            let text = text
+                .replace(from, to)
+                .replace(&from.to_lowercase(), &to.to_lowercase());
+            std::fs::write(&path, text).unwrap();
+        }
+    }
 }

@@ -4,6 +4,7 @@ use eframe::egui::{Align2, Color32, Pos2, Rect, Role, Sense, Ui, Vec2, WidgetInf
 use mortise_core::AppSnapshot;
 
 use crate::app::Selection;
+use crate::boundary::{self, BoundaryAction, BoundaryState};
 use crate::draw::{self, Icon, StampState};
 use crate::strings;
 use crate::summary::{self, SummaryState};
@@ -53,13 +54,7 @@ impl Tab {
     fn explanation(self) -> Option<(Icon, &'static str, &'static str)> {
         match self {
             Tab::Summary => None,
-            // Not in the spec, and only until milestone 4 builds the tab.
-            Tab::Boundary => Some((
-                Icon::Boundary,
-                "Boundary is not built yet",
-                "Boundary shows which module uses which, and where a rule is broken. \
-                 It arrives with milestone 4 of this version.",
-            )),
+            Tab::Boundary => None,
             Tab::Generate => Some((
                 Icon::Generate,
                 "Generate is not in this version",
@@ -89,7 +84,15 @@ impl Tab {
 }
 
 /// Paints the workspace into `rect`.
-/// Returns the name of a module that was chosen in the workspace, to select it in the index.
+/// What the tabs of the workspace keep between frames.
+pub struct WorkState<'a> {
+    pub summary: SummaryState<'a>,
+    pub boundary: &'a mut BoundaryState,
+    /// True while the keyboard is in use: focus rings are drawn.
+    pub keyboard: bool,
+}
+
+/// Returns what was asked for in the workspace, such as a module to select in the index.
 pub fn workspace(
     ui: &mut Ui,
     pal: &Palette,
@@ -97,8 +100,8 @@ pub fn workspace(
     app: &AppSnapshot,
     selection: &Selection,
     tab: &mut Tab,
-    summary: SummaryState<'_>,
-) -> Option<String> {
+    state: WorkState<'_>,
+) -> Option<BoundaryAction> {
     ui.painter().rect_filled(rect, 0, pal.surface);
     let module = match selection {
         Selection::All => None,
@@ -231,12 +234,17 @@ pub fn workspace(
     }
 
     let body = Rect::from_min_max(pos2(rect.left(), head.bottom()), rect.max);
-    match tab.explanation() {
-        Some((icon, title, text)) => {
+    match (*tab, tab.explanation()) {
+        (_, Some((icon, title, text))) => {
             empty_state(ui, pal, body, EmptyMark::Icon(icon), title, &[text], 0.0);
             None
         }
-        None => summary::summary(ui, pal, body, app, module, summary),
+        (Tab::Boundary, None) => {
+            boundary::boundary(ui, pal, body, app, module, state.boundary, state.keyboard)
+        }
+        (_, None) => {
+            summary::summary(ui, pal, body, app, module, state.summary).map(BoundaryAction::Select)
+        }
     }
 }
 

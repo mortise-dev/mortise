@@ -51,6 +51,18 @@ fn open(codes: BTreeMap<String, String>) -> Opened {
 }
 
 impl Opened {
+    /// Turns the watcher on and waits until it is in place.
+    fn start_watching(&self) {
+        self.live.watch(true);
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while !self.live.is_watching() {
+            assert!(Instant::now() < deadline, "waited 10 s for the watcher");
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        // The operating system needs a moment before it reports changes.
+        std::thread::sleep(Duration::from_millis(300));
+    }
+
     /// Waits until the app is read and `wanted` holds for the snapshot.
     fn wait_for(
         &self,
@@ -106,9 +118,7 @@ fn refresh_reads_again_without_a_watcher() {
 fn a_change_of_the_statuses_file_is_seen() {
     let opened = open(BTreeMap::new());
     opened.wait_for("the first read", |_| true);
-    opened.live.watch(true);
-    // The watcher starts on the worker thread; give it a moment to be in place.
-    std::thread::sleep(Duration::from_millis(500));
+    opened.start_watching();
 
     let statuses = opened.root.join("modules_statuses.json");
     let json = std::fs::read_to_string(&statuses).unwrap();
@@ -131,8 +141,7 @@ fn a_change_of_the_statuses_file_is_seen() {
 fn a_new_file_and_a_new_module_are_seen() {
     let opened = open(BTreeMap::new());
     opened.wait_for("the first read", |_| true);
-    opened.live.watch(true);
-    std::thread::sleep(Duration::from_millis(500));
+    opened.start_watching();
 
     let before = opened.wait_for("the first read", |_| true).modules[0].clone();
     let model = opened.root.join("Modules/Billing/app/Models/Receipt.php");
@@ -184,8 +193,7 @@ fn a_new_coverage_report_is_seen() {
     let opened = open(BTreeMap::new());
     let app = opened.wait_for("the first read", |_| true);
     assert_eq!(app.coverage().unwrap().percent(), Some(68));
-    opened.live.watch(true);
-    std::thread::sleep(Duration::from_millis(500));
+    opened.start_watching();
 
     // The tests ran again and cover every statement of Users.
     let report = opened.root.join("build/coverage/clover.xml");

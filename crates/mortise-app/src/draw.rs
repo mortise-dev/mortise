@@ -662,3 +662,186 @@ pub fn tooltip(response: Response, pal: &Palette, text: &str) -> Response {
         ui.label(LayoutJob::single_section(text.to_owned(), format));
     })
 }
+
+// ---------------------------------------------------------------------------
+// Segmented control (C5)
+
+/// Paints a segmented control with its top left at `min`: a 26 px track with
+/// segments of 20 px. The selected segment is a surface piece with an ink outline.
+/// Returns its rect and the segment that was clicked.
+pub fn segmented(
+    ui: &Ui,
+    pal: &Palette,
+    min: Pos2,
+    name: &str,
+    labels: &[&str],
+    selected: usize,
+    keyboard: bool,
+) -> (Rect, Option<usize>) {
+    let label_type = Type {
+        size: 12.0,
+        line: 12.0,
+        ..ty::CONTROL
+    };
+    let widths: Vec<f32> = labels
+        .iter()
+        .map(|label| (galley(ui, label, label_type, Color32::PLACEHOLDER).size().x + 20.0).ceil())
+        .collect();
+    let width = 3.0 + widths.iter().sum::<f32>() + 2.0 * (labels.len() as f32 - 1.0) + 3.0;
+    let track = Rect::from_min_size(min, vec2(width, size::CONTROL_H));
+    outlined(ui, track, radius::CONTROL, pal.well, pal.line_2);
+
+    let mut clicked = None;
+    let mut x = track.left() + 3.0;
+    for (i, label) in labels.iter().enumerate() {
+        let segment = Rect::from_min_size(pos2(x, track.top() + 3.0), vec2(widths[i], 20.0));
+        x += widths[i] + 2.0;
+        let response = ui.interact(
+            segment,
+            ui.scope_id().with(("segment", name, i)),
+            Sense::click(),
+        );
+        response
+            .widget_info(|| WidgetInfo::selected(Role::RadioButton, true, i == selected, *label));
+        if response.clicked() {
+            clicked = Some(i);
+        }
+        let color = if i == selected {
+            outlined(ui, segment, radius::STAMP, pal.surface, pal.ink);
+            pal.ink
+        } else if response.hovered() {
+            pal.ink
+        } else {
+            pal.ink_2
+        };
+        paint_text(
+            ui,
+            segment.center(),
+            Align2::CENTER_CENTER,
+            label,
+            label_type,
+            color,
+        );
+        if keyboard && response.has_focus() {
+            focus_ring(ui, pal, segment, radius::STAMP);
+        }
+    }
+    (track, clicked)
+}
+
+// ---------------------------------------------------------------------------
+// Checkbox (C4)
+
+/// Paints a checkbox row with its top left at `min`: a 14 px box and a label, 24 px
+/// high. The whole row is the target. Returns its response; `clicked` switches it.
+pub fn checkbox(
+    ui: &Ui,
+    pal: &Palette,
+    min: Pos2,
+    label: &str,
+    checked: bool,
+    disabled: bool,
+    keyboard: bool,
+) -> Response {
+    let text = galley(
+        ui,
+        label,
+        ty::BODY,
+        if disabled { pal.ink_3 } else { pal.ink },
+    );
+    let row = Rect::from_min_size(
+        min,
+        vec2(size::CHECKBOX + 8.0 + text.size().x, size::HIT_MIN),
+    );
+    let sense = if disabled {
+        Sense::hover()
+    } else {
+        Sense::click()
+    };
+    let response = ui.interact(row, ui.scope_id().with(("checkbox", label)), sense);
+    response.widget_info(|| WidgetInfo::selected(Role::CheckBox, !disabled, checked, label));
+
+    let mark = Rect::from_min_size(
+        pos2(row.left(), (row.center().y - size::CHECKBOX / 2.0).round()),
+        Vec2::splat(size::CHECKBOX),
+    );
+    let (fill, outline, tick) = match (checked, disabled) {
+        (true, true) => (pal.line, pal.line, pal.ink_2),
+        (false, true) => (pal.well, pal.line, pal.ink_2),
+        (true, false) => (pal.key, pal.key, pal.key_fg),
+        (false, false) => (
+            pal.surface,
+            if response.hovered() {
+                pal.ink
+            } else {
+                pal.line_2
+            },
+            pal.key_fg,
+        ),
+    };
+    ui.painter().rect(
+        mark,
+        CornerRadius::same(radius::STAMP),
+        fill,
+        Stroke::new(stroke::CHECKBOX, outline),
+        StrokeKind::Inside,
+    );
+    if checked {
+        // The tick, on a 10 px grid inside the box.
+        let at = |x: f32, y: f32| mark.min + vec2(2.0 + x, 2.0 + y);
+        let points = vec![at(1.6, 5.2), at(4.0, 7.6), at(8.4, 2.6)];
+        ui.painter()
+            .add(Shape::line(points, Stroke::new(1.8, tick)));
+    }
+    paint_galley(
+        ui,
+        pos2(mark.right() + 8.0, row.center().y),
+        Align2::LEFT_CENTER,
+        text,
+    );
+    if keyboard && response.has_focus() {
+        focus_ring(ui, pal, row, radius::STAMP);
+    }
+    response
+}
+
+// ---------------------------------------------------------------------------
+// Text field (C2)
+
+/// Paints a text field into `rect`: 28 px high, an outline that is ink with focus
+/// and bad with an error. Paths, names and commands are set in Inconsolata.
+pub fn text_field(
+    ui: &mut Ui,
+    pal: &Palette,
+    rect: Rect,
+    name: &str,
+    text: &mut String,
+    mono: bool,
+    keyboard: bool,
+) -> Response {
+    let id = ui.scope_id().with(("field", name));
+    let focused = ui.memory(|memory| memory.has_focus(id));
+    let outline = if focused {
+        pal.ink
+    } else if ui.rect_contains_pointer(rect) {
+        pal.ink_2
+    } else {
+        pal.line_2
+    };
+    outlined(ui, rect, radius::CONTROL, pal.surface, outline);
+    let font = if mono { ty::CODE } else { ty::BODY };
+    let edit = eframe::egui::TextEdit::singleline(text)
+        .id(id)
+        .frame(eframe::egui::Frame::NONE)
+        .margin(eframe::egui::Margin::ZERO)
+        .font(eframe::egui::FontId::new(font.size, font.face.family()))
+        .text_color(pal.ink)
+        .desired_width(rect.width() - 18.0)
+        .align(Align2::LEFT_CENTER);
+    let response = ui.put(rect.shrink2(vec2(9.0, 1.0)), edit);
+    response.widget_info(|| WidgetInfo::labeled(Role::TextInput, true, name));
+    if keyboard && focused {
+        focus_ring(ui, pal, rect, radius::CONTROL);
+    }
+    response
+}
