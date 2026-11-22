@@ -251,11 +251,13 @@ impl View<'_> {
     ) -> f32 {
         let pal = self.pal;
         let rules = &self.app.rules;
+        // Links that break a rule first, so that the "more" node never hides one.
+        // Then the most references, then by name.
         let by_weight = |links: &mut Vec<&Link>, name: fn(&Link) -> &str| {
             links.sort_by(|a, b| {
-                b.refs
-                    .len()
-                    .cmp(&a.refs.len())
+                b.is_problem(rules)
+                    .cmp(&a.is_problem(rules))
+                    .then_with(|| b.refs.len().cmp(&a.refs.len()))
                     .then_with(|| name(a).cmp(name(b)))
             });
         };

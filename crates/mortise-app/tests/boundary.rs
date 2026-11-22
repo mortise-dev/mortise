@@ -367,15 +367,29 @@ fn above_12_modules_the_app_graph_gives_way_to_a_table_of_links() {
 }
 
 #[test]
-fn the_summary_of_a_module_names_what_it_uses() {
+fn a_module_with_many_users_names_them_and_keeps_problems_in_the_graph() {
     let desk = Desk::new();
     let root = desk.app("shop-api");
-    // Four copies of Notifications also use Checkout: its users take more than a line.
-    for name in ["Alerts", "Mailers", "Reminders", "Webhooks"] {
+    // Seven copies of Notifications also use Checkout: its users take more than a line
+    // in the summary and more than 8 nodes in the graph. Webhooks reads an internal class.
+    for name in [
+        "Alerts",
+        "Audit",
+        "Exports",
+        "Mailers",
+        "Reminders",
+        "Reports",
+        "Webhooks",
+    ] {
         let dir = root.join("Modules").join(name);
         common::copy_dir(&root.join("Modules/Notifications"), &dir);
         common::rename_in_files(&dir, "Notifications", name);
     }
+    common::rename_in_files(
+        &root.join("Modules/Webhooks"),
+        "Checkout\\Events\\OrderPaid",
+        "Checkout\\Models\\Order",
+    );
     desk.knows(&[(&root, "SA")]);
     let mut harness = desk.start();
     harness
@@ -383,17 +397,34 @@ fn the_summary_of_a_module_names_what_it_uses() {
         .click();
     harness.run();
     harness.get_by_role_and_label(Role::Heading, "Dependencies");
-    harness.get_by_label("4 out, 6 in");
+    harness.get_by_label("4 out, 9 in");
     harness.get_by_label("Uses Billing");
     harness.get_by_label("6 refs, 3 to internals");
     harness.get_by_label("2 refs, circular");
     // The names wrap in the room the counts leave them.
     let names = harness
-        .get_by_label("Used by Alerts, Mailers, Notifications, Reminders, Shipping, Webhooks")
+        .get_by_label(
+            "Used by Alerts, Audit, Exports, Mailers, Notifications, Reminders, Reports, \
+             Shipping, Webhooks",
+        )
         .rect();
-    let counts = harness.get_by_label("1, 1, 1, 1, 4, 1 refs").rect();
+    let counts = harness
+        .get_by_label("1, 1, 1, 1, 1, 1, 1, 4, 1 refs")
+        .rect();
     assert!(
         names.right() + 10.0 <= counts.left(),
         "{names:?} {counts:?}"
+    );
+
+    // The graph draws the links that break a rule before the "2 more" node: Webhooks
+    // has a node beside its row in the index.
+    harness.key_press(Key::Num2);
+    harness.run();
+    harness.get_by_label("2 more");
+    assert_eq!(
+        harness
+            .get_all_by_role_and_label(Role::ListBoxOption, "Webhooks")
+            .count(),
+        2
     );
 }
