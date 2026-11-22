@@ -302,6 +302,21 @@ fn each_kind_of_credentials_is_sent_as_its_header() {
             answered(ask(&environment, &Some("s3cret".into()))).status,
             Status::Up
         );
+
+        // A redirect is not followed, so the secret does not go to another host.
+        let other = StubActuator::healthy();
+        stub.set(
+            "/actuator",
+            Reply::redirect(&format!("{}/actuator/env", other.base_url)),
+        );
+        assert_eq!(
+            ask(&environment, &Some("s3cret".into())),
+            Answer::Unexpected {
+                url: format!("{}/actuator", stub.base_url),
+                status: 302
+            }
+        );
+        assert!(other.asked().is_empty());
     }
 }
 
