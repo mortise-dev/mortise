@@ -48,24 +48,26 @@ impl Toast {
 
     /// Paints the toast at the bottom right of `area`. Returns false once it has
     /// left or was closed.
-    pub fn show(&mut self, ui: &mut Ui, pal: &Palette, area: Rect) -> bool {
+    pub fn show(&mut self, ui: &mut Ui, pal: &Palette, area: Rect, reduced_motion: bool) -> bool {
         let now = ui.input(|input| input.time);
         let age = now - *self.shown.get_or_insert(now);
 
         // In: 8 px up over 120 ms, ease out. Out: fades over 160 ms.
-        let slide = if age < SLIDE_IN {
+        // With reduced motion the toast appears and disappears; the dwell stays.
+        let slide = if age < SLIDE_IN && !reduced_motion {
             let left = 1.0 - (age / SLIDE_IN) as f32;
             8.0 * left * left
         } else {
             0.0
         };
+        let fade = if reduced_motion { 0.0 } else { FADE_OUT };
         let opacity = match self.kind {
-            ToastKind::Done if age > DWELL + FADE_OUT => return false,
+            ToastKind::Done if age > DWELL + fade => return false,
             ToastKind::Done if age > DWELL => 1.0 - ((age - DWELL) / FADE_OUT) as f32,
             _ => 1.0,
         };
         match self.kind {
-            _ if age < SLIDE_IN || opacity < 1.0 => ui.ctx().request_repaint(),
+            _ if (age < SLIDE_IN && !reduced_motion) || opacity < 1.0 => ui.ctx().request_repaint(),
             ToastKind::Done => {
                 let wait = std::time::Duration::from_secs_f64(DWELL - age);
                 ui.ctx().request_repaint_after(wait);

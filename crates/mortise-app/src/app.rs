@@ -14,7 +14,7 @@ use crate::add::{self, AddAction, AddPanel, Checked};
 use crate::boundary::{BoundaryAction, BoundaryState};
 use crate::chrome::{self, Chrome};
 use crate::dialog::{Answer, Dialog};
-use crate::draw::{Button, ButtonKind};
+use crate::draw::{self, Button, ButtonKind};
 use crate::index::{self, IndexState};
 use crate::palette::{self, Command, PaletteAction, PaletteState};
 use crate::rail::{self, RailAction, Tile};
@@ -787,6 +787,8 @@ impl eframe::App for MortiseApp {
             self.index_choice = None;
         }
         let chrome = self.apply_general(&ctx);
+        // "System" cannot be read from egui yet, so it moves as "Full" does.
+        let reduced_motion = self.settings.general.motion == mortise_core::Motion::Reduced;
 
         let bar = Rect::from_min_size(window.min, vec2(window.width(), size::TITLEBAR_H));
         let app_name = self
@@ -976,7 +978,7 @@ impl eframe::App for MortiseApp {
         }
 
         if let Some(toast) = &mut self.toast
-            && !toast.show(ui, pal, rest)
+            && !toast.show(ui, pal, rest, reduced_motion)
         {
             self.toast = None;
         }
@@ -1058,6 +1060,10 @@ impl eframe::App for MortiseApp {
             _ => {}
         }
 
+        // Focus is always visible while the keyboard is in use.
+        if self.keyboard {
+            draw::focus_ring_for_the_rest(ui, pal);
+        }
         chrome::resize_edges(ui, chrome);
         self.focus_filter = false;
         let filter_id = index::filter_id(ui);

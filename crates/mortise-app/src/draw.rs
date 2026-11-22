@@ -115,9 +115,48 @@ pub fn outlined(ui: &Ui, rect: Rect, radius: u8, fill: Color32, outline: Color32
 
 /// The keyboard focus ring: 2 px of ink, 1 px outside the control, over everything else.
 pub fn focus_ring(ui: &Ui, pal: &Palette, rect: Rect, radius: u8) {
+    // Tell the frame that the focused control drew its own ring.
+    ui.ctx()
+        .data_mut(|data| data.insert_temp(ring_drawn_id(), true));
     ui.painter().rect_stroke(
         rect.expand(stroke::FOCUS_OFFSET),
         CornerRadius::same(radius + stroke::FOCUS_OFFSET as u8),
+        Stroke::new(stroke::FOCUS_RING, pal.ink),
+        StrokeKind::Outside,
+    );
+}
+
+fn ring_drawn_id() -> eframe::egui::Id {
+    eframe::egui::Id::unique("mortise-focus-ring-drawn")
+}
+
+/// Draws the focus ring around the focused control when that control did not
+/// draw one itself, so that focus is visible on every focusable thing. Call at
+/// the end of a frame, while the keyboard is in use.
+pub fn focus_ring_for_the_rest(ui: &Ui, pal: &Palette) {
+    let ctx = ui.ctx();
+    let drawn = ctx
+        .data_mut(|data| data.remove_temp::<bool>(ring_drawn_id()))
+        .unwrap_or(false);
+    if drawn || ctx.text_edit_focused() {
+        return;
+    }
+    let Some(focused) = ctx.memory(|memory| memory.focused()) else {
+        return;
+    };
+    let Some(response) = ctx.read_response(focused) else {
+        return;
+    };
+    // Not for a control that is scrolled out of sight.
+    if response.interact_rect.width() < response.rect.width() - 1.0
+        || response.interact_rect.height() < response.rect.height() - 1.0
+    {
+        return;
+    }
+    let layer = eframe::egui::LayerId::new(eframe::egui::Order::Tooltip, ring_drawn_id());
+    ctx.layer_painter(layer).rect_stroke(
+        response.rect.expand(stroke::FOCUS_OFFSET),
+        CornerRadius::same(stroke::FOCUS_OFFSET as u8),
         Stroke::new(stroke::FOCUS_RING, pal.ink),
         StrokeKind::Outside,
     );
