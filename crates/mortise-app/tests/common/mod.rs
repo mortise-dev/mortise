@@ -43,6 +43,9 @@ pub struct Desk {
     pub size: egui::Vec2,
     pub scale: f32,
     pub os: egui::os::OperatingSystem,
+    /// How long the window waits for a folder before it goes on without the result.
+    /// Long, so that a test sees the folder in the frame it chose it in.
+    pub quick_read: Duration,
 }
 
 impl Desk {
@@ -57,6 +60,7 @@ impl Desk {
             size: egui::vec2(1280.0, 800.0),
             scale: 1.0,
             os: egui::os::OperatingSystem::Nix,
+            quick_read: Duration::from_secs(30),
         }
     }
 
@@ -125,6 +129,7 @@ impl Desk {
             pick_folder: Box::new(move || picks.borrow_mut().pop_front()),
             // Never the credential store of the computer the tests run on.
             secrets: Secrets::memory(),
+            quick_read: self.quick_read,
         };
         let mut harness = Harness::builder()
             .with_size(self.size)

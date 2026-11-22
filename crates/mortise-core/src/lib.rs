@@ -53,7 +53,7 @@ pub use links::{Cycle, Link, Reference, columns};
 #[cfg(feature = "watch")]
 pub use live::{LiveApp, LiveState};
 pub use matcher::fuzzy;
-pub use module::{KindCount, Manifest, Module, ModuleState, ReadCache};
+pub use module::{KindCount, Manifest, Module, ModuleState, Progress, ReadCache};
 pub use rules::{RULES_FILE, Rules, RulesError, RulesSource};
 #[cfg(feature = "actuator")]
 pub use runtime::{

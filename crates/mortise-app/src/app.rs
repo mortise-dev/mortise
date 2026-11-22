@@ -6,7 +6,8 @@ use std::sync::Arc;
 
 use eframe::egui::{self, Event, Key, KeyboardShortcut, Modifiers, Rect, Theme, Ui, pos2, vec2};
 use mortise_core::{
-    AppEntry, AppSnapshot, LiveApp, LiveState, Settings, SettingsError, propose_monogram, read_app,
+    AppEntry, AppSnapshot, LiveApp, LiveState, ReadCache, Settings, SettingsError,
+    propose_monogram, read_app_cached,
 };
 use mortise_core::{
     Environment, LiveRuntime, ReadOptions, Rules, RuntimeState, Secret, Secrets, ThemeChoice,
@@ -47,6 +48,9 @@ pub struct Config {
     pub pick_folder: Box<dyn FnMut() -> Option<PathBuf>>,
     /// Where the secrets of the environments are kept.
     pub secrets: Secrets,
+    /// How long the window waits for a folder to be read before it goes on without
+    /// the result. A folder that is read within this time shows in the same frame.
+    pub quick_read: std::time::Duration,
 }
 
 /// An environment that is asked for its runtime status, and what it was opened with.
@@ -81,7 +85,19 @@ struct OpenApp {
     runtime: Option<Connected>,
     /// The last answer of each environment in this run, by its name.
     last_answers: BTreeMap<String, Brief>,
+    /// When the app was opened, to show how far its first read is only when it takes long.
+    since: std::time::Instant,
 }
+
+/// A folder that is read for the add panel.
+struct Reading {
+    result: std::sync::mpsc::Receiver<Checked>,
+    progress: Arc<mortise_core::Progress>,
+    since: std::time::Instant,
+}
+
+/// A progress bar is drawn only after this time, so that quick work does not flash.
+const SHOW_PROGRESS_AFTER: std::time::Duration = std::time::Duration::from_millis(300);
 
 pub struct MortiseApp {
     chrome: Chrome,
@@ -92,6 +108,9 @@ pub struct MortiseApp {
     current: Option<usize>,
     /// The add panel, while it is open.
     adding: Option<AddPanel>,
+    /// The folder of the add panel, while it is read on another thread.
+    reading: Option<Reading>,
+    quick_read: std::time::Duration,
     toast: Option<Toast>,
     pick_folder: Box<dyn FnMut() -> Option<PathBuf>>,
     /// True while the keyboard is in use, false once the pointer is. The focus ring
@@ -164,6 +183,8 @@ impl MortiseApp {
             settings_path: config.settings_path,
             apps,
             adding: None,
+            reading: None,
+            quick_read: config.quick_read,
             toast,
             pick_folder: config.pick_folder,
             // At start, focus is on the selected row of the index.
@@ -191,9 +212,9 @@ impl MortiseApp {
         if let Some(folder) = config.folder {
             let folder = std::path::absolute(&folder).unwrap_or(folder);
             // A folder given at start that is an app already is opened, not asked about.
-            match app.check(&folder) {
-                Checked::Known { index, .. } => app.select_app(index),
-                checked => app.adding = Some(AddPanel::checked(strings::tilde(&folder), checked)),
+            match app.settings.position(&folder) {
+                Some(index) => app.select_app(index),
+                None => app.open_folder(&cc.egui_ctx, &folder),
             }
         }
         app
@@ -392,24 +413,76 @@ impl MortiseApp {
         }
     }
 
-    /// Reads a folder for the add panel.
-    fn check(&self, folder: &Path) -> Checked {
+    /// Reads a folder for the add panel, on another thread. A folder that is read
+    /// in a moment gives its result at once; a larger one gives `None`, and the
+    /// result arrives in a later frame.
+    fn check(&mut self, ctx: &egui::Context, folder: &Path) -> Option<Checked> {
+        self.reading = None;
         if let Some(index) = self.settings.position(folder) {
-            return Checked::Known {
+            return Some(Checked::Known {
                 index,
                 name: self.settings.apps[index].name.clone(),
-            };
+            });
         }
-        match read_app(folder) {
-            Ok(app) => Checked::Found(Box::new(app)),
-            Err(error) => Checked::Failed(error),
+        let mut cache = ReadCache::default();
+        let progress = cache.progress();
+        let (sender, result) = std::sync::mpsc::channel();
+        let (root, ctx) = (folder.to_owned(), ctx.clone());
+        std::thread::Builder::new()
+            .name("mortise-add-reader".to_owned())
+            .spawn(move || {
+                let read =
+                    read_app_cached(&root, &BTreeMap::new(), &ReadOptions::default(), &mut cache);
+                let _ = sender.send(match read {
+                    Ok(app) => Checked::Found(Box::new(app)),
+                    Err(error) => Checked::Failed(error),
+                });
+                ctx.request_repaint();
+            })
+            .expect("a thread can be started");
+        match result.recv_timeout(self.quick_read) {
+            Ok(checked) => Some(checked),
+            Err(_) => {
+                self.reading = Some(Reading {
+                    result,
+                    progress,
+                    since: std::time::Instant::now(),
+                });
+                None
+            }
         }
     }
 
     /// Opens the add panel on a folder that was chosen or dropped.
-    fn open_folder(&mut self, folder: &Path) {
-        let checked = self.check(folder);
-        self.adding = Some(AddPanel::checked(strings::tilde(folder), checked));
+    fn open_folder(&mut self, ctx: &egui::Context, folder: &Path) {
+        let path = strings::tilde(folder);
+        self.adding = Some(match self.check(ctx, folder) {
+            Some(checked) => AddPanel::checked(path, checked),
+            None => AddPanel::reading(path),
+        });
+    }
+
+    /// Takes in the folder of the add panel once it is read.
+    fn take_in_folder(&mut self, ctx: &egui::Context) {
+        let Some(reading) = &self.reading else {
+            return;
+        };
+        match reading.result.try_recv() {
+            Ok(checked) => {
+                self.reading = None;
+                if let Some(panel) = self.adding.as_mut().filter(|panel| panel.reading) {
+                    panel.set_checked(checked);
+                }
+            }
+            // The bar moves while the files are read.
+            Err(std::sync::mpsc::TryRecvError::Empty) => {
+                ctx.request_repaint_after(std::time::Duration::from_millis(50));
+            }
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => self.reading = None,
+        }
+        if self.adding.is_none() {
+            self.reading = None;
+        }
     }
 
     /// Adds the app the panel found, shows it and says so.
@@ -975,7 +1048,7 @@ impl MortiseApp {
     /// Opens the folder dialog and, if a folder is chosen, the add panel on it.
     fn pick(&mut self, ctx: &egui::Context) {
         if let Some(folder) = (self.pick_folder)() {
-            self.open_folder(&folder);
+            self.open_folder(ctx, &folder);
             ctx.request_repaint();
         }
     }
@@ -988,9 +1061,15 @@ impl MortiseApp {
                 let Some(path) = self.adding.as_ref().map(|panel| expand(panel.path.trim())) else {
                     return;
                 };
-                let checked = self.check(&path);
+                let checked = self.check(ctx, &path);
                 if let Some(panel) = &mut self.adding {
-                    panel.set_checked(checked);
+                    match checked {
+                        Some(checked) => panel.set_checked(checked),
+                        None => {
+                            panel.checked = None;
+                            panel.reading = true;
+                        }
+                    }
                 }
             }
             AddAction::Add => self.add_found(ctx),
@@ -1033,8 +1112,9 @@ impl eframe::App for MortiseApp {
                 .map(|file| file.path().to_owned())
         });
         if let Some(folder) = dropped {
-            self.open_folder(&folder);
+            self.open_folder(&ctx, &folder);
         }
+        self.take_in_folder(&ctx);
 
         let window = ui.max_rect();
         ui.painter().rect_filled(window, 0, pal.frame);
@@ -1092,7 +1172,22 @@ impl eframe::App for MortiseApp {
         let mut first_run_add = false;
         let monogram = self.monogram_preview();
         if let Some(panel) = &mut self.adding {
-            add_action = add::add_panel(ui, pal, rest, panel, &monogram, self.keyboard, mac);
+            // The bar is drawn only after 300 ms, so quick work does not flash.
+            let progress = self
+                .reading
+                .as_ref()
+                .filter(|reading| reading.since.elapsed() >= SHOW_PROGRESS_AFTER)
+                .map(|reading| reading.progress.get());
+            add_action = add::add_panel(
+                ui,
+                pal,
+                rest,
+                panel,
+                &monogram,
+                progress,
+                self.keyboard,
+                mac,
+            );
         } else if let Some(state) = &mut self.settings_open {
             // Settings take the place of the index and the workspace.
             let index_rect = Rect::from_min_size(rest.min, vec2(size::INDEX_W, rest.height()));
@@ -1244,6 +1339,22 @@ impl eframe::App for MortiseApp {
                 }
                 LiveState::Reading => {
                     ui.painter().rect_filled(rest, 0, pal.surface);
+                    // The first read of a large app: say how far it is.
+                    let (read, total) = open.live.progress();
+                    if open.since.elapsed() >= SHOW_PROGRESS_AFTER && total > 0 {
+                        let label = strings::reading_files(read, total);
+                        let share = read as f32 / total as f32;
+                        let at = rest.min + vec2(16.0, 14.0);
+                        draw::progress(
+                            ui,
+                            pal,
+                            at,
+                            320.0_f32.min(rest.width() - 32.0),
+                            &label,
+                            share,
+                        );
+                    }
+                    ctx.request_repaint_after(std::time::Duration::from_millis(50));
                 }
                 LiveState::Failed(error) => {
                     ui.painter().rect_filled(rest, 0, pal.surface);
@@ -1449,6 +1560,7 @@ fn open_app(ctx: &egui::Context, entry: &AppEntry) -> OpenApp {
         seen: None,
         runtime: None,
         last_answers: BTreeMap::new(),
+        since: std::time::Instant::now(),
     }
 }
 
@@ -1610,6 +1722,7 @@ pub fn run(chrome: Chrome, folder: Option<PathBuf>) -> eframe::Result {
                     Ok("memory") => Secrets::memory(),
                     _ => Secrets::os(),
                 },
+                quick_read: std::time::Duration::from_millis(60),
             };
             Ok(Box::new(MortiseApp::new(cc, config)))
         }),

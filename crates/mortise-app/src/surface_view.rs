@@ -7,7 +7,7 @@
 use std::time::Instant;
 
 use eframe::egui::{
-    Align2, Key, KeyboardShortcut, Modifiers, Rect, Role, Sense, Ui, Vec2, WidgetInfo, pos2, vec2,
+    Align2, Key, KeyboardShortcut, Modifiers, Rect, Role, Ui, Vec2, WidgetInfo, pos2, vec2,
 };
 use mortise_core::{AppSnapshot, Module, Proposal, SurfaceEntry, SurfaceKind, SurfaceScan};
 
@@ -520,7 +520,7 @@ fn scanning(
     let left = place.left;
     let mut y = place.area.top();
 
-    // The progress bar (C17): a label, a share, a 6 px track with an ink fill.
+    // The progress bar (C17).
     let (read, total) = (scan.read(), scan.total());
     let share = if total == 0 {
         1.0
@@ -528,39 +528,7 @@ fn scanning(
         read as f32 / total as f32
     };
     let label = strings::reading_files(read, total);
-    draw::label(
-        ui,
-        pos2(left, y),
-        Align2::LEFT_TOP,
-        &label,
-        ty::SECONDARY,
-        pal.ink,
-    );
-    let percent = format!("{}%", (share * 100.0).round() as u32);
-    let percent_type = Type {
-        size: 11.0,
-        ..ty::CODE
-    };
-    draw::paint_text(
-        ui,
-        pos2(left + width, y),
-        Align2::RIGHT_TOP,
-        &percent,
-        percent_type,
-        pal.ink_2,
-    );
-    y += ty::SECONDARY.line + 6.0;
-    let track = Rect::from_min_size(pos2(left, y), vec2(width, size::BAR_H));
-    ui.painter().rect_filled(track, 0, pal.well);
-    let fill = Rect::from_min_size(track.min, vec2((width * share).round(), size::BAR_H));
-    ui.painter().rect_filled(fill, 0, pal.ink);
-    let bar = ui.interact(
-        track,
-        ui.scope_id().with("surface-progress"),
-        Sense::hover(),
-    );
-    bar.widget_info(|| WidgetInfo::labeled(Role::ProgressIndicator, true, &label));
-    y = track.bottom() + 12.0;
+    y = draw::progress(ui, pal, pos2(left, y), width, &label, share) + 12.0;
 
     // What was found so far. What is known in full carries the check.
     let counts = scan.counts();

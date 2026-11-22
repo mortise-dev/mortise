@@ -392,3 +392,55 @@ fn settings_that_cannot_be_read_are_kept_aside() {
     );
     assert_eq!(Settings::load(&path).unwrap(), Settings::default());
 }
+
+#[test]
+fn a_large_folder_is_read_without_stopping_the_window_and_says_how_far_it_is() {
+    let mut desk = Desk::new();
+    // The window does not wait for the folder at all.
+    desk.quick_read = std::time::Duration::ZERO;
+    let root = desk.app("platform");
+    // Enough files that the read takes longer than a moment.
+    common::pad_module(&root, "Billing", 6000);
+    desk.picks.borrow_mut().push_back(root);
+    let mut harness = desk.start();
+
+    let started = std::time::Instant::now();
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::O);
+    harness.run_steps(2);
+    // The window answers while the folder is read: the panel is there, and nothing
+    // can be added yet.
+    assert!(harness.state().is_adding());
+    harness.get_by_role_and_label(Role::Heading, "Add app");
+    assert!(
+        harness
+            .query_by_role_and_label(Role::Button, "Add platform")
+            .is_none()
+    );
+
+    // The bar is drawn only after 300 ms.
+    let mut bar_seen_at = None;
+    let deadline = started + std::time::Duration::from_secs(30);
+    while harness
+        .query_by_role_and_label(Role::Button, "Add platform")
+        .is_none()
+    {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the folder was not read in 30 s"
+        );
+        if bar_seen_at.is_none() && harness.query_by_role(Role::ProgressIndicator).is_some() {
+            harness.get_by_label_contains("of 6,015 files");
+            bar_seen_at = Some(started.elapsed());
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        harness.step();
+    }
+    println!(
+        "read in {:?}, bar first seen at {bar_seen_at:?}",
+        started.elapsed()
+    );
+    if let Some(at) = bar_seen_at {
+        assert!(at >= std::time::Duration::from_millis(300), "{at:?}");
+    }
+    harness.get_by_label("nwidart/laravel-modules");
+}

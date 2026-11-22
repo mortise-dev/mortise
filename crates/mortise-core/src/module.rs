@@ -3,6 +3,7 @@
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::SystemTime;
 
 use ignore::WalkBuilder;
@@ -115,16 +116,40 @@ struct Facts {
     analysis: Arc<Analysis>,
 }
 
+/// How far a read of an app is: how many of its PHP files are read.
+#[derive(Debug, Default)]
+pub struct Progress {
+    read: AtomicUsize,
+    total: AtomicUsize,
+}
+
+impl Progress {
+    /// The files read so far, and the files there are. Both are 0 before a read
+    /// has found the modules.
+    pub fn get(&self) -> (usize, usize) {
+        (
+            self.read.load(Ordering::Relaxed),
+            self.total.load(Ordering::Relaxed),
+        )
+    }
+}
+
 /// The facts of the files read so far, by path.
 #[derive(Debug, Default)]
 pub struct ReadCache {
     files: HashMap<PathBuf, Facts>,
+    progress: Arc<Progress>,
 }
 
 impl ReadCache {
     /// Forgets everything, so that the next read reads every file.
     pub fn clear(&mut self) {
         self.files.clear();
+    }
+
+    /// How far the read that uses this cache is. Another thread can watch it.
+    pub fn progress(&self) -> Arc<Progress> {
+        Arc::clone(&self.progress)
     }
 }
 
@@ -143,10 +168,25 @@ pub(crate) fn find_modules(
     let Ok(entries) = std::fs::read_dir(&layout.modules_dir) else {
         return (Vec::new(), listed);
     };
-    let mut modules: Vec<FoundModule> = entries
+    let dirs: Vec<PathBuf> = entries
         .filter_map(Result::ok)
         .map(|entry| entry.path())
         .filter(|dir| dir.join("module.json").is_file())
+        .collect();
+    // How many PHP files there are, so that a watcher can say how far the read is.
+    let total: usize = dirs
+        .iter()
+        .map(|dir| {
+            files_of(dir)
+                .iter()
+                .filter(|(_, relative)| is_php(relative))
+                .count()
+        })
+        .sum();
+    cache.progress.read.store(0, Ordering::Relaxed);
+    cache.progress.total.store(total, Ordering::Relaxed);
+    let mut modules: Vec<FoundModule> = dirs
+        .into_iter()
         .filter_map(|dir| {
             let folder = dir.file_name()?.to_str()?.to_owned();
             // The package's glob does not match folders that start with a dot.
@@ -334,10 +374,15 @@ fn scan(dir: &Path, kinds: &Kinds, cache: &mut ReadCache) -> Scan {
             })
         })
         .collect();
+    let progress = Arc::clone(&cache.progress);
+    progress
+        .read
+        .fetch_add(php.len() - changed.len(), Ordering::Relaxed);
     let read: Vec<(PathBuf, Facts)> = changed
         .par_iter()
         .map(|entry| {
             let source = std::fs::read(&entry.path).unwrap_or_default();
+            progress.read.fetch_add(1, Ordering::Relaxed);
             let facts = Facts {
                 size: entry.size,
                 modified: entry.modified,

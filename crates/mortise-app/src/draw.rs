@@ -844,6 +844,37 @@ pub fn box_line(
 }
 
 // ---------------------------------------------------------------------------
+// Progress (C17)
+
+/// Paints a progress bar with its top left at `min`: a label, the share in per
+/// cent, and a 6 px track with an ink fill. Returns its bottom edge.
+pub fn progress(ui: &Ui, pal: &Palette, min: Pos2, width: f32, label: &str, share: f32) -> f32 {
+    let share = share.clamp(0.0, 1.0);
+    crate::draw::label(ui, min, Align2::LEFT_TOP, label, ty::SECONDARY, pal.ink);
+    let percent = format!("{}%", (share * 100.0).round() as u32);
+    let percent_type = Type {
+        size: 11.0,
+        ..ty::CODE
+    };
+    let at = pos2(min.x + width, min.y);
+    paint_text(ui, at, Align2::RIGHT_TOP, &percent, percent_type, pal.ink_2);
+    let track = Rect::from_min_size(
+        pos2(min.x, min.y + ty::SECONDARY.line + 6.0),
+        vec2(width, size::BAR_H),
+    );
+    ui.painter().rect_filled(track, 0, pal.well);
+    let fill = Rect::from_min_size(track.min, vec2((width * share).round(), size::BAR_H));
+    ui.painter().rect_filled(fill, 0, pal.ink);
+    let bar = ui.interact(
+        track,
+        ui.scope_id().with(("progress", label)),
+        Sense::hover(),
+    );
+    bar.widget_info(|| WidgetInfo::labeled(Role::ProgressIndicator, true, label));
+    track.bottom()
+}
+
+// ---------------------------------------------------------------------------
 // One stop in the Tab order (K1): a list, a table, the tab row and a segmented
 // control each take one Tab press. Arrows, or J and K, move inside them.
 

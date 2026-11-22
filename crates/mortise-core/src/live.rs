@@ -11,7 +11,7 @@ use notify::{RecommendedWatcher, RecursiveMode};
 use notify_debouncer_full::{DebounceEventResult, Debouncer, RecommendedCache, new_debouncer};
 
 use crate::app::{AppSnapshot, ReadError, ReadOptions, read_app_cached};
-use crate::module::ReadCache;
+use crate::module::{Progress, ReadCache};
 
 /// How long file changes are collected before the app is read again.
 const QUIET: Duration = Duration::from_millis(300);
@@ -47,6 +47,7 @@ pub struct LiveApp {
     state: Arc<Mutex<LiveState>>,
     watching: Arc<AtomicBool>,
     commands: Sender<Command>,
+    progress: Arc<Progress>,
 }
 
 impl LiveApp {
@@ -61,11 +62,13 @@ impl LiveApp {
         let state = Arc::new(Mutex::new(LiveState::Reading));
         let watching = Arc::new(AtomicBool::new(false));
         let (commands, inbox) = channel();
+        let cache = ReadCache::default();
+        let progress = cache.progress();
         let worker = Worker {
             root,
             codes,
             options,
-            cache: ReadCache::default(),
+            cache,
             state: Arc::clone(&state),
             inbox,
             // The watcher reports into the same inbox.
@@ -83,7 +86,13 @@ impl LiveApp {
             state,
             watching,
             commands,
+            progress,
         }
+    }
+
+    /// How far the read that is going on is: the PHP files read, and how many there are.
+    pub fn progress(&self) -> (usize, usize) {
+        self.progress.get()
     }
 
     /// True once the watcher that [`LiveApp::watch`] asked for is in place.

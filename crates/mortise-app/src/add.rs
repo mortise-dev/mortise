@@ -41,6 +41,8 @@ pub struct AddPanel {
     focus: Option<Focus>,
     /// The runtime connection of the app that was found, when it has the actuator.
     pub runtime: Option<EnvironmentForm>,
+    /// The folder is being read on another thread.
+    pub reading: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -70,6 +72,18 @@ impl AddPanel {
             checked_path: String::new(),
             focus: Some(Focus::Field),
             runtime: None,
+            reading: false,
+        }
+    }
+
+    /// The panel while a folder is read.
+    pub fn reading(path: String) -> Self {
+        Self {
+            checked_path: path.clone(),
+            path,
+            reading: true,
+            focus: None,
+            ..Self::empty()
         }
     }
 
@@ -81,6 +95,7 @@ impl AddPanel {
             runtime: runtime_form(&checked),
             checked: Some(checked),
             focus: Some(Focus::Primary),
+            reading: false,
         }
     }
 
@@ -92,6 +107,7 @@ impl AddPanel {
         };
         self.runtime = runtime_form(&checked);
         self.checked = Some(checked);
+        self.reading = false;
     }
 }
 
@@ -108,12 +124,15 @@ fn runtime_form(checked: &Checked) -> Option<EnvironmentForm> {
 }
 
 /// Paints the panel into `rect`. `monogram` is what the app would get on the rail.
+/// `progress` is how far the read of the folder is, once it took longer than a moment.
+#[expect(clippy::too_many_arguments)]
 pub fn add_panel(
     ui: &mut Ui,
     pal: &Palette,
     rect: Rect,
     panel: &mut AddPanel,
     monogram: &str,
+    progress: Option<(usize, usize)>,
     keyboard: bool,
     mac: bool,
 ) -> Option<AddAction> {
@@ -261,6 +280,20 @@ pub fn add_panel(
     let primary_label;
     let mut primary_action = AddAction::Add;
     match &panel.checked {
+        None if panel.reading => {
+            // Reading the folder. The bar is drawn only when it takes longer than a
+            // moment, so that quick work does not flash.
+            if let Some((read, total)) = progress {
+                let share = if total == 0 {
+                    0.0
+                } else {
+                    read as f32 / total as f32
+                };
+                let label = strings::reading_files(read, total);
+                draw::progress(ui, pal, pos2(left, y + 12.0), column_w, &label, share);
+            }
+            return action;
+        }
         None => {
             y += 12.0;
             let choose = Button {

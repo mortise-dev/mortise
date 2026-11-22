@@ -249,3 +249,19 @@ fn other_options_are_read_with_at_once() {
     assert_eq!(app.coverage().unwrap().percent(), Some(10));
     assert_eq!(app.findings.warnings(), 1);
 }
+
+#[test]
+fn a_read_says_how_far_it_is() {
+    let opened = open(BTreeMap::new());
+    let app = opened.wait_for("the first read", |_| true);
+    // When the read is over every PHP file of the modules is read.
+    let (read, total) = opened.live.progress();
+    assert_eq!(read, total);
+    let php: u64 = app.modules.iter().map(|module| module.files).sum();
+    assert!(total > 0 && total as u64 <= php, "{total} of {php}");
+
+    // A second read counts again from the start, also for files it does not read again.
+    opened.live.refresh();
+    std::thread::sleep(Duration::from_millis(300));
+    assert_eq!(opened.live.progress(), (total, total));
+}
