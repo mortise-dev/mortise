@@ -190,9 +190,17 @@ impl Worker {
         (self.on_change)();
     }
 
+    /// The statuses file the config names, or the default one before the first read.
+    fn statuses_file(&self) -> PathBuf {
+        match &*self.state.lock().expect("the state is never poisoned") {
+            LiveState::Ready(app) => app.layout.statuses_file.clone(),
+            _ => self.root.join("modules_statuses.json"),
+        }
+    }
+
     /// What should be watched: the app folder and its config folder for the few files
-    /// Mortise reads there, the whole modules folder, the folder of the coverage
-    /// report, and git's folder for a new commit or another branch.
+    /// Mortise reads there, the whole modules folder, the folders of the statuses file
+    /// and of the coverage report, and git's folder for a new commit or another branch.
     fn wanted(&self) -> Vec<Watched> {
         let (modules_dir, report) = match &*self.state.lock().expect("the state is never poisoned")
         {
@@ -210,6 +218,16 @@ impl Worker {
             (self.root.join(".git"), RecursiveMode::NonRecursive),
             (modules_dir, RecursiveMode::Recursive),
         ];
+        let statuses = self.statuses_file();
+        if let Some(folder) = statuses.parent() {
+            let covered = wanted.iter().any(|(watched, mode)| {
+                watched == folder
+                    || (*mode == RecursiveMode::Recursive && folder.starts_with(watched))
+            });
+            if !covered {
+                wanted.push((folder.to_owned(), RecursiveMode::NonRecursive));
+            }
+        }
         if let Some(folder) = report.as_deref().and_then(Path::parent) {
             wanted.push((folder.to_owned(), RecursiveMode::NonRecursive));
         }
@@ -222,11 +240,23 @@ impl Worker {
 
         let outbox = self.outbox.clone();
         let root = self.root.clone();
+        let statuses = self.statuses_file();
+        // The statuses file counts wherever it is, also in `storage`. On macOS the
+        // watcher reports paths without symbolic links, so that form counts too.
+        let real_statuses = statuses
+            .parent()
+            .and_then(|folder| std::fs::canonicalize(folder).ok())
+            .zip(statuses.file_name())
+            .map(|(folder, name)| folder.join(name));
+        let statuses: Vec<PathBuf> = std::iter::once(statuses).chain(real_statuses).collect();
         let handler = move |result: DebounceEventResult| {
             let relevant = result.is_ok_and(|events| {
-                events
-                    .iter()
-                    .any(|event| event.paths.iter().any(|path| is_relevant(&root, path)))
+                events.iter().any(|event| {
+                    event
+                        .paths
+                        .iter()
+                        .any(|path| statuses.contains(path) || is_relevant(&root, path))
+                })
             });
             if relevant {
                 let _ = outbox.send(Command::Changed);

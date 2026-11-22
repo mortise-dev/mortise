@@ -140,6 +140,35 @@ fn a_change_of_the_statuses_file_is_seen() {
         .find(|module| module.name == "Checkout")
         .unwrap();
     assert_eq!(checkout.state, ModuleState::Off);
+
+    // The config moves the statuses file to a folder that is not watched yet, and
+    // one that holds logs and caches.
+    let moved = opened.root.join("storage/runtime/statuses.json");
+    std::fs::create_dir_all(moved.parent().unwrap()).unwrap();
+    let json = std::fs::read_to_string(&statuses).unwrap();
+    std::fs::write(
+        &moved,
+        json.replace("\"Billing\": true", "\"Billing\": false"),
+    )
+    .unwrap();
+    let config = opened.root.join("config/modules.php");
+    let php = std::fs::read_to_string(&config).unwrap();
+    std::fs::write(
+        &config,
+        php.replace(
+            "base_path('modules_statuses.json')",
+            "base_path('storage/runtime/statuses.json')",
+        ),
+    )
+    .unwrap();
+    opened.wait_for("the moved statuses file", |app| app.modules_on() == 5);
+    // The watcher is put in place again after the read.
+    std::thread::sleep(Duration::from_millis(500));
+
+    std::fs::write(&moved, json).unwrap();
+    opened.wait_for("Billing turned on in the moved file", |app| {
+        app.modules_on() == 6
+    });
 }
 
 #[test]
