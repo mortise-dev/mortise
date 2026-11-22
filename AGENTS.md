@@ -2,6 +2,28 @@
 
 Instructions for coding agents that work on Mortise. `README.md` describes the project for people.
 
+## Orchestration
+
+Act as the lead orchestrator for this project.
+
+Review the entire specification and break it down into small, independently executable tasks with clear dependencies, acceptance criteria, and expected outcomes.
+
+Before starting any task, evaluate its complexity, reasoning requirements, risk, and implementation scope. Determine the most appropriate model for each change rather than defaulting everything to Fable 5.2.
+
+Use Sonnet for simple, repetitive, and well-defined changes that require minimal reasoning.
+
+Use Opus for standard implementation, feature development, refactoring, test creation, and moderately complex debugging.
+
+Use Fable 5.2 for architectural decisions, difficult debugging, ambiguous requirements, complex reasoning, and changes with significant system-wide impact.
+
+Assign work to the most appropriate model wherever model-specific delegation is supported. Run independent tasks in parallel when appropriate, respect dependencies, and avoid conflicting changes.
+
+Maintain responsibility for coordination, integration, code review, and final verification. Escalate work to a stronger model only when complexity, risk, or failed attempts justify it.
+
+Before execution, show me the complete task breakdown, the model selected for each task, and a brief explanation of why that model is the best choice.
+
+Your goal is to complete the entire specification with maximum quality while minimizing unnecessary token usage, execution time, and cost. Never use Fable 5.2 for work that Sonnet or Opus can reliably handle.
+
 ## What Mortise is
 
 A desktop app, written in Rust with egui and eframe, for Laravel apps that use
