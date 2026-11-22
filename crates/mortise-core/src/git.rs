@@ -38,8 +38,22 @@ pub struct Churn {
     pub last_commit: Option<i64>,
 }
 
+/// A `git` command with no input and no console window.
+fn command() -> Command {
+    let mut command = Command::new("git");
+    command.stdin(Stdio::null());
+    // The app has no console on Windows, so each run of git would open a window.
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+    command
+}
+
 fn git(root: &Path, args: &[&str]) -> Option<String> {
-    let output = Command::new("git")
+    let output = command()
         .arg("-C")
         .arg(root)
         // Paths as they are, not quoted and escaped.
@@ -48,7 +62,6 @@ fn git(root: &Path, args: &[&str]) -> Option<String> {
         // Never take a lock or write the index: Mortise only reads.
         .env("GIT_OPTIONAL_LOCKS", "0")
         .env("GIT_TERMINAL_PROMPT", "0")
-        .stdin(Stdio::null())
         .stderr(Stdio::null())
         .output()
         .ok()?;
@@ -60,9 +73,8 @@ fn git(root: &Path, args: &[&str]) -> Option<String> {
 
 /// Reads the branch and commit of the app in `root`.
 pub(crate) fn read(root: &Path) -> Git {
-    let started = Command::new("git")
+    let started = command()
         .arg("--version")
-        .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status()
