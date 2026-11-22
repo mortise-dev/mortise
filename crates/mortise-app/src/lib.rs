@@ -11,6 +11,7 @@ pub mod draw;
 pub mod findings_view;
 pub mod fonts;
 pub mod index;
+pub mod palette;
 pub mod rail;
 pub mod strings;
 pub mod summary;

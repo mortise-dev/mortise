@@ -16,6 +16,7 @@ use crate::chrome::{self, Chrome};
 use crate::dialog::{Answer, Dialog};
 use crate::draw::{Button, ButtonKind};
 use crate::index::{self, IndexState};
+use crate::palette::{self, Command, PaletteAction, PaletteState};
 use crate::rail::{self, RailAction, Tile};
 use crate::strings;
 use crate::summary::{Sort, SummaryState};
@@ -54,6 +55,8 @@ struct OpenApp {
     sort: Sort,
     /// What the Boundary tab keeps.
     boundary: BoundaryState,
+    /// The modules opened last, the latest first, for the palette.
+    recent: Vec<String>,
     /// The Findings list is open.
     findings_open: bool,
     /// The row of the Findings list that is selected.
@@ -84,6 +87,9 @@ pub struct MortiseApp {
     focus_filter: bool,
     /// The filter field had focus at the end of the last frame.
     filter_was_focused: bool,
+    /// The command palette, while it is open, and the app it searches.
+    palette: Option<PaletteState>,
+    palette_scope: usize,
     /// A dialog that asks before the rules file is created, with the rules to write.
     dialog: Option<(Dialog, Rules)>,
     /// The dialog opened in this frame: focus goes to its button.
@@ -133,6 +139,8 @@ impl MortiseApp {
             index_collapsed: false,
             focus_filter: false,
             filter_was_focused: false,
+            palette: None,
+            palette_scope: 0,
             dialog: None,
             dialog_opened: false,
         };
@@ -335,6 +343,73 @@ impl MortiseApp {
         }
     }
 
+    // --- Palette ---
+
+    fn open_palette(&mut self) {
+        self.palette = Some(PaletteState::default());
+        self.palette_scope = self.current.unwrap_or(0);
+    }
+
+    /// Runs a row of the palette, in the app the palette searched.
+    fn run(&mut self, command: Command) {
+        self.palette = None;
+        let scope = self.palette_scope;
+        // Commands about modules and findings act in the app the palette searched.
+        if matches!(
+            command,
+            Command::Module(_) | Command::AllModules | Command::Findings | Command::Finding { .. }
+        ) {
+            if self.current != Some(scope) {
+                self.select_app(scope);
+            }
+            self.adding = None;
+        }
+        match command {
+            Command::Module(name) => {
+                if let Some(open) = self.apps.get_mut(scope) {
+                    open.selection = Selection::Module(name);
+                    self.reveal = true;
+                }
+            }
+            Command::AllModules => {
+                if let Some(open) = self.apps.get_mut(scope) {
+                    open.selection = Selection::All;
+                    open.tab = Tab::Summary;
+                    open.findings_open = false;
+                }
+            }
+            Command::Findings => {
+                if let Some(open) = self.apps.get_mut(scope) {
+                    open.selection = Selection::All;
+                    open.tab = Tab::Summary;
+                    open.findings_open = true;
+                    open.finding_row = 0;
+                }
+            }
+            Command::Finding { module, other } => {
+                if let Some(open) = self.apps.get_mut(scope) {
+                    open.selection = Selection::Module(module);
+                    match other {
+                        Some(other) => {
+                            open.tab = Tab::Boundary;
+                            open.boundary.other = Some(other);
+                            open.boundary.file = 0;
+                        }
+                        None => open.tab = Tab::Summary,
+                    }
+                    self.reveal = true;
+                }
+            }
+            Command::App(index) => self.select_app(index),
+            Command::AddApp => self.adding = Some(AddPanel::empty()),
+            Command::Settings => {}
+            Command::Theme(theme) => {
+                self.settings.general.theme = theme;
+                self.save();
+            }
+        }
+    }
+
     // --- Rules ---
 
     /// Changes the rules of the current app. The first change asks before
@@ -389,8 +464,16 @@ impl MortiseApp {
             ui.input_mut(|input| input.consume_shortcut(&KeyboardShortcut::new(modifiers, key)))
         };
 
+        // The command palette, from anywhere. The same key closes it.
+        if chord(Modifiers::COMMAND, Key::K) {
+            if self.palette.is_some() {
+                self.palette = None;
+            } else if self.dialog.is_none() {
+                self.open_palette();
+            }
+        }
         // Add app: the folder dialog opens at once.
-        if chord(Modifiers::COMMAND, Key::O) {
+        if self.palette.is_none() && chord(Modifiers::COMMAND, Key::O) {
             self.pick(ui.ctx());
         }
         // Esc closes the topmost thing: the add panel, then the toast, then the text
@@ -401,6 +484,8 @@ impl MortiseApp {
             let open = self.current.map(|current| &mut self.apps[current]);
             if self.dialog.is_some() {
                 self.dialog = None;
+            } else if self.palette.is_some() {
+                self.palette = None;
             } else if self.adding.is_some() {
                 self.adding = None;
             } else if self.toast.is_some() {
@@ -417,8 +502,8 @@ impl MortiseApp {
                 }
             }
         }
-        // A dialog and the add panel hold the keys until they close.
-        if self.adding.is_some() || self.dialog.is_some() {
+        // A dialog, the palette and the add panel hold the keys until they close.
+        if self.adding.is_some() || self.dialog.is_some() || self.palette.is_some() {
             return;
         }
 
@@ -587,7 +672,9 @@ impl eframe::App for MortiseApp {
             .current
             .map(|current| self.settings.apps[current].name.clone());
         let shown_name = app_name.as_deref().unwrap_or(strings::NO_APP);
-        chrome::title_bar(ui, pal, bar, self.chrome, frame, Some(shown_name));
+        if chrome::title_bar(ui, pal, bar, self.chrome, frame, Some(shown_name)) {
+            self.open_palette();
+        }
 
         let below = Rect::from_min_max(pos2(window.left(), bar.bottom()), window.max);
         let rail_rect = Rect::from_min_size(below.min, vec2(size::RAIL_W, below.height()));
@@ -689,6 +776,14 @@ impl eframe::App for MortiseApp {
                         mac,
                     };
                     toggle_order = index::index(ui, pal, index_rect, &app, state);
+                    // The palette offers the modules that were opened last.
+                    if let Selection::Module(name) = &open.selection
+                        && open.recent.first() != Some(name)
+                    {
+                        open.recent.retain(|recent| recent != name);
+                        open.recent.insert(0, name.clone());
+                        open.recent.truncate(3);
+                    }
                     // A change of the filter selects its first match, so Enter opens it.
                     if open.filter != open.filter_seen {
                         open.filter_seen = open.filter.clone();
@@ -737,6 +832,57 @@ impl eframe::App for MortiseApp {
         {
             self.toast = None;
         }
+        // The palette, over the workbench.
+        let mut palette_action = None;
+        if let Some(palette) = &mut self.palette {
+            let scope = self.palette_scope.min(self.apps.len().saturating_sub(1));
+            let snapshot = self
+                .apps
+                .get(scope)
+                .and_then(|open| match open.live.state() {
+                    LiveState::Ready(app) => Some(app),
+                    _ => None,
+                });
+            let names: Vec<(String, usize)> = self
+                .settings
+                .apps
+                .iter()
+                .zip(&self.apps)
+                .map(|(entry, open)| {
+                    let problems = match open.live.state() {
+                        LiveState::Ready(app) => app.findings.problems(),
+                        _ => 0,
+                    };
+                    (entry.name.clone(), problems)
+                })
+                .collect();
+            let recent = self
+                .apps
+                .get(scope)
+                .map_or(&[][..], |open| open.recent.as_slice());
+            let source = palette::Source {
+                scope: snapshot.as_deref().map(|app| (scope, app)),
+                apps: &names,
+                recent,
+                mac,
+            };
+            let scope_name = names
+                .get(scope)
+                .map_or(strings::NO_APP, |(name, _)| name.as_str());
+            palette_action = palette::palette(ui, pal, palette, &source, scope_name);
+        }
+        match palette_action {
+            Some(PaletteAction::Close) => self.palette = None,
+            Some(PaletteAction::NextApp) if !self.apps.is_empty() => {
+                self.palette_scope = (self.palette_scope + 1) % self.apps.len();
+                if let Some(palette) = &mut self.palette {
+                    palette.row = 0;
+                }
+            }
+            Some(PaletteAction::Run(command)) => self.run(command),
+            _ => {}
+        }
+
         // A dialog, over everything else.
         if let Some((dialog, rules)) = &self.dialog {
             match dialog.show(ui, pal, self.dialog_opened, self.keyboard) {
@@ -809,6 +955,7 @@ fn open_app(ctx: &egui::Context, entry: &AppEntry) -> OpenApp {
         filter_seen: String::new(),
         sort: Sort::default(),
         boundary: BoundaryState::default(),
+        recent: Vec::new(),
         findings_open: false,
         finding_row: 0,
         seen: None,

@@ -291,3 +291,28 @@ fn milestone_5() {
     harness.key_press(Key::S);
     save("s3.1-needs-attention-light", &mut harness);
 }
+
+#[test]
+#[ignore = "writes PNG files for a person to look at"]
+fn milestone_6_palette() {
+    for (theme, suffix) in [(Theme::Light, "light"), (Theme::Dark, "dark")] {
+        let mut desk = Desk::new();
+        desk.theme = theme;
+        let shop = desk.app("shop-api");
+        let crm = desk.app("crm");
+        desk.knows(&[(&shop, "SA"), (&crm, "CR")]);
+        let mut harness = desk.start();
+        harness
+            .get_by_role_and_label(Role::ListBoxOption, "Checkout")
+            .click();
+        harness.run_steps(2);
+        // S12.2 a: an empty query.
+        harness.key_press_modifiers(Modifiers::COMMAND, Key::K);
+        save(&format!("s12.2-empty-{suffix}"), &mut harness);
+        // S12.1: grouped results.
+        harness
+            .get_by_role_and_label(Role::TextInput, "Search or run a command")
+            .type_text("check");
+        save(&format!("s12.1-results-{suffix}"), &mut harness);
+    }
+}

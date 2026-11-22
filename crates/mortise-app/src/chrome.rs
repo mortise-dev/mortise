@@ -56,7 +56,7 @@ pub fn title_bar(
     chrome: Chrome,
     frame: &eframe::Frame,
     app_name: Option<&str>,
-) {
+) -> bool {
     ui.painter().rect_filled(bar, 0, pal.frame);
     draw::hline(ui, bar.left()..bar.right(), bar.bottom() - 1.0, pal.line_2);
 
@@ -135,7 +135,11 @@ pub fn title_bar(
     let find_w = if narrow { 200.0 } else { 320.0 };
     let find = Rect::from_center_size(pos2(bar.center().x.round(), mid), vec2(find_w, 22.0));
     // On frame, an outline is ink-2: line-2 is under 3 to 1 there in the light theme.
-    draw::outlined(ui, find, radius::CONTROL, pal.panel, pal.ink_2);
+    // The entry opens the command palette.
+    let entry = ui.interact(find, ui.scope_id().with("palette-entry"), Sense::click());
+    entry.widget_info(|| WidgetInfo::labeled(Role::Button, true, strings::SEARCH));
+    let fill = if entry.hovered() { pal.well } else { pal.panel };
+    draw::outlined(ui, find, radius::CONTROL, fill, pal.ink_2);
     let glass = Rect::from_min_size(pos2(find.left() + 8.0, mid - 6.5), vec2(13.0, 13.0));
     draw::icon(ui, glass, Icon::Search, pal.ink_2);
     draw::label(
@@ -165,6 +169,7 @@ pub fn title_bar(
             pal.ink_2,
         );
     }
+    entry.clicked()
 }
 
 /// Minimise, maximise or restore, and close: 44 px wide each, the full height of the bar.
