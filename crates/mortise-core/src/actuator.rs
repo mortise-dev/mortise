@@ -301,6 +301,11 @@ fn reason(error: &ureq::Error) -> String {
                 return "the connection was closed".to_owned();
             }
             ErrorKind::TimedOut => return timeout(),
+            // WSAHOST_NOT_FOUND and WSANO_DATA: the name does not resolve.
+            #[cfg(windows)]
+            _ if matches!(error.raw_os_error(), Some(11001 | 11004)) => {
+                return "the host was not found".to_owned();
+            }
             _ => error.to_string(),
         },
         other => other.to_string(),
