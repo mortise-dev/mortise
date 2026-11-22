@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, channel};
 use std::time::{Duration, Instant};
 
-use mortise_core::{AppSnapshot, LiveApp, LiveState, ModuleState, ReadError};
+use mortise_core::{AppSnapshot, LiveApp, LiveState, ModuleState, ReadError, ReadOptions};
 
 fn fixture(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -39,7 +39,7 @@ fn open(codes: BTreeMap<String, String>) -> Opened {
     let root = dir.path().join("shop-api");
     copy_dir(&fixture("shop-api"), &root);
     let (tell, changed) = channel();
-    let live = LiveApp::open(root.clone(), codes, move || {
+    let live = LiveApp::open(root.clone(), codes, ReadOptions::default(), move || {
         let _ = tell.send(());
     });
     Opened {
@@ -94,9 +94,14 @@ fn the_first_read_arrives_and_tells() {
 fn a_folder_that_is_not_an_app_fails_and_tells() {
     let dir = tempfile::tempdir().unwrap();
     let (tell, changed) = channel();
-    let live = LiveApp::open(dir.path().to_owned(), BTreeMap::new(), move || {
-        let _ = tell.send(());
-    });
+    let live = LiveApp::open(
+        dir.path().to_owned(),
+        BTreeMap::new(),
+        ReadOptions::default(),
+        move || {
+            let _ = tell.send(());
+        },
+    );
     changed.recv_timeout(Duration::from_secs(10)).unwrap();
     let LiveState::Failed(error) = live.state() else {
         panic!("expected a failure");
@@ -210,4 +215,37 @@ fn a_new_coverage_report_is_seen() {
             .any(|module| module.name == "Users" && module.coverage.unwrap().percent() == Some(100))
     });
     assert_eq!(app.coverage().unwrap().percent(), Some(70));
+}
+
+#[test]
+fn other_options_are_read_with_at_once() {
+    let opened = open(BTreeMap::new());
+    let app = opened.wait_for("the first read", |_| true);
+    assert_eq!(app.findings.warnings(), 1);
+
+    // A lower limit: Notifications, at 39%, is no longer under it.
+    opened.live.set_options(ReadOptions {
+        coverage_limit: 30,
+        coverage_report: None,
+    });
+    let app = opened.wait_for("the lower limit", |app| app.coverage_limit == 30);
+    assert_eq!(app.findings.warnings(), 0);
+
+    // A report the user names is read instead of the one Mortise finds.
+    std::fs::write(
+        opened.root.join("other.xml"),
+        r#"<coverage><project><file name="/x/Modules/Users/app/A.php"><metrics statements="10" coveredstatements="1"/></file></project></coverage>"#,
+    )
+    .unwrap();
+    opened.live.set_options(ReadOptions {
+        coverage_limit: 30,
+        coverage_report: Some("other.xml".into()),
+    });
+    let app = opened.wait_for("the named report", |app| {
+        app.coverage_report
+            .as_ref()
+            .is_some_and(|report| report.path.ends_with("other.xml"))
+    });
+    assert_eq!(app.coverage().unwrap().percent(), Some(10));
+    assert_eq!(app.findings.warnings(), 1);
 }

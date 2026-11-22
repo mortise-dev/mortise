@@ -85,9 +85,12 @@ impl Desk {
                     monogram: (*monogram).to_owned(),
                     codes: BTreeMap::new(),
                     problems_first: false,
+                    coverage_limit: 50,
+                    coverage_report: None,
                 })
                 .collect(),
             current: Some(0),
+            general: mortise_core::General::default(),
         };
         settings.save(&self.settings_path()).unwrap();
     }

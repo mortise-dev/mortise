@@ -191,7 +191,31 @@ pub fn read_app_with(
     root: &Path,
     codes: &BTreeMap<String, String>,
 ) -> Result<AppSnapshot, ReadError> {
-    read_app_cached(root, codes, &mut ReadCache::default())
+    read_app_cached(
+        root,
+        codes,
+        &ReadOptions::default(),
+        &mut ReadCache::default(),
+    )
+}
+
+/// What the user set for an app in Mortise, as far as reading it is concerned.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReadOptions {
+    /// A module covered less than this many per cent is a warning.
+    pub coverage_limit: u8,
+    /// The clover report, relative to the app folder or absolute. `None` looks in
+    /// `phpunit.xml` and the usual places.
+    pub coverage_report: Option<PathBuf>,
+}
+
+impl Default for ReadOptions {
+    fn default() -> Self {
+        Self {
+            coverage_limit: DEFAULT_COVERAGE_LIMIT,
+            coverage_report: None,
+        }
+    }
 }
 
 /// Reads the app in `root`. Files that did not change since they were put in
@@ -199,6 +223,7 @@ pub fn read_app_with(
 pub fn read_app_cached(
     root: &Path,
     codes: &BTreeMap<String, String>,
+    options: &ReadOptions,
     cache: &mut ReadCache,
 ) -> Result<AppSnapshot, ReadError> {
     let root = std::path::absolute(root).map_err(|source| ReadError::Io {
@@ -255,7 +280,13 @@ pub fn read_app_cached(
         .map(|module| shown(&root, &module.dir))
         .collect();
 
-    let report_path = clover::find_report(&root);
+    // The report the user named, if it is there; else the one Mortise finds.
+    let report_path = options
+        .coverage_report
+        .as_ref()
+        .map(|path| root.join(path))
+        .filter(|path| path.is_file())
+        .or_else(|| clover::find_report(&root));
     let report = report_path
         .as_ref()
         .and_then(|path| std::fs::read(path).ok())
@@ -343,7 +374,7 @@ pub fn read_app_cached(
         status_entries: &status_entries,
         statuses_file: &shown(&root, &layout.statuses_file),
         has_coverage_report: report_path.is_some(),
-        coverage_limit: DEFAULT_COVERAGE_LIMIT,
+        coverage_limit: options.coverage_limit,
     });
 
     Ok(AppSnapshot {
@@ -370,7 +401,7 @@ pub fn read_app_cached(
         rules,
         rules_source,
         findings,
-        coverage_limit: DEFAULT_COVERAGE_LIMIT,
+        coverage_limit: options.coverage_limit,
         root,
     })
 }

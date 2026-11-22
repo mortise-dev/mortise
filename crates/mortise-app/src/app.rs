@@ -5,10 +5,10 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use eframe::egui::{self, Event, Key, KeyboardShortcut, Modifiers, Rect, Theme, Ui, pos2, vec2};
-use mortise_core::Rules;
 use mortise_core::{
     AppEntry, AppSnapshot, LiveApp, LiveState, Settings, SettingsError, propose_monogram, read_app,
 };
+use mortise_core::{ReadOptions, Rules};
 
 use crate::add::{self, AddAction, AddPanel, Checked};
 use crate::boundary::{BoundaryAction, BoundaryState};
@@ -795,9 +795,14 @@ impl eframe::App for MortiseApp {
 fn open_app(ctx: &egui::Context, entry: &AppEntry) -> OpenApp {
     let ctx = ctx.clone();
     OpenApp {
-        live: LiveApp::open(entry.root.clone(), entry.codes.clone(), move || {
-            ctx.request_repaint();
-        }),
+        live: LiveApp::open(
+            entry.root.clone(),
+            entry.codes.clone(),
+            read_options(entry),
+            move || {
+                ctx.request_repaint();
+            },
+        ),
         selection: Selection::All,
         tab: Tab::Summary,
         filter: String::new(),
@@ -807,6 +812,14 @@ fn open_app(ctx: &egui::Context, entry: &AppEntry) -> OpenApp {
         findings_open: false,
         finding_row: 0,
         seen: None,
+    }
+}
+
+/// What the user set for an app, as the reader takes it.
+fn read_options(entry: &AppEntry) -> ReadOptions {
+    ReadOptions {
+        coverage_limit: entry.coverage_limit,
+        coverage_report: entry.coverage_report.as_ref().map(PathBuf::from),
     }
 }
 

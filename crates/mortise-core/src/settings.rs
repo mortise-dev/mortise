@@ -9,6 +9,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::app::AppSnapshot;
 use crate::code::propose_monogram;
+use crate::editor::Editor;
+use crate::findings::DEFAULT_COVERAGE_LIMIT;
 
 /// An app Mortise knows.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -25,6 +27,90 @@ pub struct AppEntry {
     /// The order of the module index: problems first, or by name.
     #[serde(default)]
     pub problems_first: bool,
+    /// A module covered less than this many per cent is a warning.
+    #[serde(default = "default_coverage_limit")]
+    pub coverage_limit: u8,
+    /// The clover report, relative to the app folder or absolute. `None` lets Mortise
+    /// look in `phpunit.xml` and the usual places.
+    #[serde(default)]
+    pub coverage_report: Option<String>,
+}
+
+fn default_coverage_limit() -> u8 {
+    DEFAULT_COVERAGE_LIMIT
+}
+
+/// The theme of the interface.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ThemeChoice {
+    /// Follows the operating system and changes with it.
+    #[default]
+    System,
+    Light,
+    Dark,
+}
+
+/// Whether things move.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Motion {
+    /// Follows the reduced motion setting of the operating system.
+    #[default]
+    System,
+    Reduced,
+    Full,
+}
+
+/// How high the rows of the module index are.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum IndexRows {
+    /// Two lines up to 20 modules, one line above.
+    #[default]
+    Automatic,
+    TwoLines,
+    OneLine,
+}
+
+/// What applies to Mortise as a whole, not to one app.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct General {
+    pub theme: ThemeChoice,
+    /// 100, 110, 125 or 150: every size in the interface scales with it.
+    pub text_size: u16,
+    pub motion: Motion,
+    pub index_rows: IndexRows,
+    pub editor: Editor,
+    /// The command for [`Editor::Custom`], with `{file}` and `{line}`.
+    pub editor_command: String,
+    /// On Linux: the window controls sit on the left.
+    pub window_controls_left: bool,
+    /// The platform's own title bar, with Mortise's bar under it.
+    pub system_title_bar: bool,
+}
+
+impl Default for General {
+    fn default() -> Self {
+        Self {
+            theme: ThemeChoice::System,
+            text_size: 100,
+            motion: Motion::System,
+            index_rows: IndexRows::Automatic,
+            editor: Editor::VsCode,
+            editor_command: String::new(),
+            window_controls_left: false,
+            system_title_bar: false,
+        }
+    }
+}
+
+impl General {
+    /// The command that opens a file, with `{file}` and `{line}` where they go.
+    pub fn editor_command(&self) -> &str {
+        self.editor.command().unwrap_or(&self.editor_command)
+    }
 }
 
 /// Everything Mortise keeps between runs.
@@ -36,6 +122,8 @@ pub struct Settings {
     /// The app that was open last, as an index into `apps`.
     #[serde(default)]
     pub current: Option<usize>,
+    #[serde(default)]
+    pub general: General,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -124,6 +212,8 @@ impl Settings {
             monogram: propose_monogram(&app.name, &taken),
             codes: app.codes(),
             problems_first: false,
+            coverage_limit: DEFAULT_COVERAGE_LIMIT,
+            coverage_report: None,
         });
         self.apps.len() - 1
     }
@@ -158,6 +248,8 @@ mod tests {
             monogram: monogram.into(),
             codes: BTreeMap::from([("Checkout".to_owned(), "CHK".to_owned())]),
             problems_first: false,
+            coverage_limit: 50,
+            coverage_report: None,
         }
     }
 
@@ -178,6 +270,11 @@ mod tests {
         let settings = Settings {
             apps: vec![entry("shop-api", "SA"), entry("crm", "CR")],
             current: Some(1),
+            general: General {
+                text_size: 125,
+                theme: ThemeChoice::Dark,
+                ..General::default()
+            },
         };
         settings.save(&path).unwrap();
         assert_eq!(Settings::load(&path).unwrap(), settings);
@@ -213,6 +310,7 @@ mod tests {
         let mut settings = Settings {
             apps: vec![entry("a", "AA"), entry("b", "BB"), entry("c", "CC")],
             current: Some(2),
+            general: General::default(),
         };
         assert_eq!(settings.remove(0).name, "a");
         assert_eq!(settings.current, Some(1));
@@ -231,6 +329,7 @@ mod tests {
                 ..entry("shop-api", "SA")
             }],
             current: None,
+            general: General::default(),
         };
         assert_eq!(settings.position(&root), Some(0));
         assert_eq!(

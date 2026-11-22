@@ -10,7 +10,7 @@ use std::time::Duration;
 use notify::{RecommendedWatcher, RecursiveMode};
 use notify_debouncer_full::{DebounceEventResult, Debouncer, RecommendedCache, new_debouncer};
 
-use crate::app::{AppSnapshot, ReadError, read_app_cached};
+use crate::app::{AppSnapshot, ReadError, ReadOptions, read_app_cached};
 use crate::module::ReadCache;
 
 /// How long file changes are collected before the app is read again.
@@ -34,6 +34,8 @@ enum Command {
     Changed,
     /// Watch the files of the app, or stop watching.
     Watch(bool),
+    /// Read with other options from now on, and read again.
+    Options(ReadOptions),
     Stop,
 }
 
@@ -53,6 +55,7 @@ impl LiveApp {
     pub fn open(
         root: PathBuf,
         codes: BTreeMap<String, String>,
+        options: ReadOptions,
         on_change: impl Fn() + Send + 'static,
     ) -> Self {
         let state = Arc::new(Mutex::new(LiveState::Reading));
@@ -61,6 +64,7 @@ impl LiveApp {
         let worker = Worker {
             root,
             codes,
+            options,
             cache: ReadCache::default(),
             state: Arc::clone(&state),
             inbox,
@@ -100,6 +104,11 @@ impl LiveApp {
         let _ = self.commands.send(Command::Refresh);
     }
 
+    /// Changes what the user set for the app, and reads it again.
+    pub fn set_options(&self, options: ReadOptions) {
+        let _ = self.commands.send(Command::Options(options));
+    }
+
     /// Starts or stops reading the app again when its files change.
     pub fn watch(&self, on: bool) {
         let _ = self.commands.send(Command::Watch(on));
@@ -118,6 +127,7 @@ type Watched = (PathBuf, RecursiveMode);
 struct Worker {
     root: PathBuf,
     codes: BTreeMap<String, String>,
+    options: ReadOptions,
     cache: ReadCache,
     state: Arc<Mutex<LiveState>>,
     inbox: Receiver<Command>,
@@ -139,6 +149,10 @@ impl Worker {
                     self.read();
                 }
                 Command::Changed => self.read(),
+                Command::Options(options) => {
+                    self.options = options;
+                    self.read();
+                }
                 Command::Watch(true) => self.start_watching(),
                 Command::Watch(false) => {
                     self.watcher = None;
@@ -151,7 +165,7 @@ impl Worker {
     }
 
     fn read(&mut self) {
-        let state = match read_app_cached(&self.root, &self.codes, &mut self.cache) {
+        let state = match read_app_cached(&self.root, &self.codes, &self.options, &mut self.cache) {
             Ok(app) => {
                 // A code is kept once given, also for a module that is gone for a while.
                 self.codes.extend(app.codes());
