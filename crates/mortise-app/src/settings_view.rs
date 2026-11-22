@@ -122,7 +122,11 @@ const SHORTCUTS: &[(&str, &str, &str)] = &[
     ),
     ("Add app", "Ctrl O", "Anywhere"),
     ("Settings", "Ctrl ,", "Anywhere"),
-    ("Read the app again, from disk", "Ctrl R", "Anywhere"),
+    (
+        "Read the app again, from disk and from the actuator",
+        "Ctrl R",
+        "Anywhere",
+    ),
     ("Close the topmost thing", "Esc", "Anywhere"),
     (
         "Next or previous module",
@@ -140,6 +144,21 @@ const SHORTCUTS: &[(&str, &str, &str)] = &[
     ("Findings list of the app", "F", "Main window"),
     ("Open the selected module in the editor", "E", "Main window"),
     ("Show the shortcuts", "?", "Main window"),
+    (
+        "Switch between Links and Public surface",
+        "P",
+        "Boundary, one module",
+    ),
+    (
+        "Scan the public surface",
+        "Ctrl Enter",
+        "Boundary, Public surface",
+    ),
+    (
+        "Add an entry to the proposal by hand",
+        "A",
+        "Boundary, Public surface",
+    ),
     (
         "Move, run, close",
         "Up  Down  Enter  Esc",

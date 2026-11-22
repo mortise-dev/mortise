@@ -308,3 +308,47 @@ fn listing(dir: &Path) -> Vec<(PathBuf, u64, std::time::SystemTime)> {
     files.sort();
     files
 }
+
+/// Scans every module of the owner's two real apps. Only reads. Run with:
+/// `MORTISE_REAL_APPS=/path/to/apps cargo test -p mortise-core --test surface -- --ignored real_apps --nocapture`
+#[test]
+#[ignore = "needs MORTISE_REAL_APPS, the folder that holds laravel-12 and laravel-13"]
+fn real_apps_scan_without_failing() {
+    let apps = PathBuf::from(std::env::var("MORTISE_REAL_APPS").expect("MORTISE_REAL_APPS"));
+    for folder in ["laravel-13", "laravel-12"] {
+        let root = apps.join(folder);
+        let before = listing(&root.join("Modules"));
+        let app = read_app(&root).unwrap();
+        for module in &app.modules {
+            let mut scan = SurfaceScan::start(&app, &module.name).unwrap();
+            while !scan.step(8) {}
+            let total = scan.total();
+            let proposal = scan.finish(None, &[]);
+            println!(
+                "{folder} {}: {total} files read\n{}",
+                module.name,
+                proposal.as_text()
+            );
+        }
+        assert_eq!(
+            listing(&root.join("Modules")),
+            before,
+            "{folder}: the scan wrote something"
+        );
+    }
+}
+
+#[test]
+#[ignore = "prints the proposals of the fixture for a person to read"]
+fn print_fixture_proposals() {
+    let app = read_app(&shop_api()).unwrap();
+    for module in &app.modules {
+        let mut scan = SurfaceScan::start(&app, &module.name).unwrap();
+        while !scan.step(8) {}
+        println!(
+            "{}: {} entries",
+            module.name,
+            scan.finish(None, &[]).found()
+        );
+    }
+}

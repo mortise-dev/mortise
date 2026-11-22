@@ -389,6 +389,18 @@ pub fn with_git_history(root: &Path) {
     }
 }
 
+/// Gives a module more PHP files, so that reading it takes more than one frame.
+pub fn pad_module(root: &Path, module: &str, files: usize) {
+    let dir = root.join("Modules").join(module).join("app/Services");
+    std::fs::create_dir_all(&dir).unwrap();
+    for i in 0..files {
+        let source = format!(
+            "<?php\n\nnamespace Modules\\{module}\\Services;\n\nclass Service{i}\n{{\n    public function run(): int\n    {{\n        return {i};\n    }}\n}}\n"
+        );
+        std::fs::write(dir.join(format!("Service{i}.php")), source).unwrap();
+    }
+}
+
 /// Copies the shop-api fixture and gives it `count` modules, by copying Catalog
 /// under other names.
 pub fn app_with_modules(desk: &Desk, folder: &str, count: usize) -> PathBuf {

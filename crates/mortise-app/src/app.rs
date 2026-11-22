@@ -24,6 +24,7 @@ use crate::runtime_view::{Brief, RuntimeAction, RuntimeView};
 use crate::settings_view::{self, AppInfo, Section, SettingsAction, SettingsState};
 use crate::strings;
 use crate::summary::{Sort, SummaryState};
+use crate::surface_view::SurfaceInputs;
 use crate::theme::{self, radius, size};
 use crate::toast::Toast;
 use crate::workspace::{self, EmptyMark, Tab, WorkState};
@@ -582,7 +583,11 @@ impl MortiseApp {
         // Commands about modules and findings act in the app the palette searched.
         if matches!(
             command,
-            Command::Module(_) | Command::AllModules | Command::Findings | Command::Finding { .. }
+            Command::Module(_)
+                | Command::Surface(_)
+                | Command::AllModules
+                | Command::Findings
+                | Command::Finding { .. }
         ) {
             if self.current != Some(scope) {
                 self.select_app(scope);
@@ -593,6 +598,14 @@ impl MortiseApp {
             Command::Module(name) => {
                 if let Some(open) = self.apps.get_mut(scope) {
                     open.selection = Selection::Module(name);
+                    self.reveal = true;
+                }
+            }
+            Command::Surface(name) => {
+                if let Some(open) = self.apps.get_mut(scope) {
+                    open.selection = Selection::Module(name);
+                    open.tab = Tab::Boundary;
+                    open.boundary.surface_view = true;
                     self.reveal = true;
                 }
             }
@@ -716,7 +729,18 @@ impl MortiseApp {
             } else if self.toast.is_some() {
                 self.toast = None;
             } else if let Some(open) = open {
-                if !open.filter.is_empty() {
+                // A scan of the public surface on screen: Esc stops it.
+                let scanning = match &open.selection {
+                    Selection::Module(name) if open.tab == Tab::Boundary => open
+                        .boundary
+                        .surfaces
+                        .get_mut(name)
+                        .filter(|surface| open.boundary.surface_view && surface.is_scanning()),
+                    _ => None,
+                };
+                if let Some(surface) = scanning {
+                    surface.stop();
+                } else if !open.filter.is_empty() {
                     // Esc clears the text first and leaves the field second. egui has
                     // already taken focus from the field for this Esc: give it back.
                     open.filter.clear();
@@ -1065,6 +1089,8 @@ impl eframe::App for MortiseApp {
                         findings_open: &mut open.findings_open,
                         finding_row: &mut open.finding_row,
                         keyboard: self.keyboard,
+                        surface: surface_inputs(&app, &open.selection, &runtime),
+                        mac,
                     };
                     work_action = workspace::workspace(
                         ui,
@@ -1244,6 +1270,10 @@ impl eframe::App for MortiseApp {
             }
             Some(BoundaryAction::OpenInEditor { path, line }) => self.open_in_editor(&path, line),
             Some(BoundaryAction::Runtime(action)) => self.runtime_action(&ctx, action),
+            Some(BoundaryAction::Copy { text, said }) => {
+                ctx.copy_text(text);
+                self.toast = Some(Toast::done(said));
+            }
             _ => {}
         }
 
@@ -1334,6 +1364,46 @@ fn open_app(ctx: &egui::Context, entry: &AppEntry) -> OpenApp {
         seen: None,
         runtime: None,
         last_answers: BTreeMap::new(),
+    }
+}
+
+/// What a scan of the public surface takes from the running app: the routes of the
+/// selected module and the scheduled tasks, when the chosen environment gave them.
+fn surface_inputs<'a>(
+    app: &AppSnapshot,
+    selection: &Selection,
+    runtime: &'a RuntimeView<'a>,
+) -> SurfaceInputs<'a> {
+    let answered = runtime.runtime();
+    let routes = match (
+        selection,
+        answered.and_then(|answered| answered.routes.as_deref()),
+    ) {
+        (Selection::Module(name), Some(routes)) => Some(
+            mortise_core::routes_of(app, name, routes)
+                .into_iter()
+                .map(|route| route.uri.clone())
+                .collect(),
+        ),
+        _ => None,
+    };
+    let scheduled = answered
+        .and_then(|answered| answered.tasks.as_deref())
+        .unwrap_or_default()
+        .iter()
+        .map(|task| {
+            let schedule = match (&task.expression, task.interval_ms) {
+                (Some(expression), _) => expression.clone(),
+                (None, Some(interval)) => strings::every(interval),
+                (None, None) => String::new(),
+            };
+            (task.target.clone(), schedule)
+        })
+        .collect();
+    SurfaceInputs {
+        routes,
+        scheduled,
+        environment: runtime.environment(),
     }
 }
 

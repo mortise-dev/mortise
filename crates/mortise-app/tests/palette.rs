@@ -73,7 +73,8 @@ fn a_query_finds_modules_and_findings_and_enter_opens_the_first() {
         [
             "Checkout",
             "Checkout and Shipping use each other",
-            "3 files in Checkout read Billing internals"
+            "3 files in Checkout read Billing internals",
+            "Scan the public surface of Checkout"
         ]
     );
     harness.key_press(Key::Enter);

@@ -1,9 +1,11 @@
 //! The Boundary tab (S5.1 to S5.4): which module uses which, the files that make a
 //! link, the links that break a rule, and the rules.
 
+use std::collections::BTreeMap;
+
 use eframe::egui::{
-    Align2, Color32, Pos2, Rect, Role, ScrollArea, Sense, Shape, Stroke, Ui, UiBuilder, Vec2,
-    WidgetInfo, pos2, vec2,
+    Align2, Color32, Key, Modifiers, Pos2, Rect, Role, ScrollArea, Sense, Shape, Stroke, Ui,
+    UiBuilder, Vec2, WidgetInfo, pos2, vec2,
 };
 use mortise_core::{
     AppSnapshot, Link, Module, ModuleState, Reference, Rules, RulesSource, columns,
@@ -11,6 +13,7 @@ use mortise_core::{
 
 use crate::draw::{self, Button, ButtonKind, StampState};
 use crate::strings;
+use crate::surface_view::{self, ModuleSurface, Place, SurfaceInputs};
 use crate::theme::{Face, Palette, Type, radius, size, stroke, ty};
 
 /// Above this many modules the graph of the whole app gives way to a table of links.
@@ -19,8 +22,12 @@ pub const GRAPH_LIMIT: usize = 12;
 const NEIGHBOUR_LIMIT: usize = 8;
 
 /// What the Boundary tab keeps for one app.
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct BoundaryState {
+    /// The second view of one module is shown: its public surface, not its links.
+    pub surface_view: bool,
+    /// What the public surface view keeps, by module.
+    pub surfaces: BTreeMap<String, ModuleSurface>,
     /// The neighbour whose link is shown under the graph of one module.
     pub other: Option<String>,
     /// The row of the file list that is selected.
@@ -50,9 +57,12 @@ pub enum BoundaryAction {
     OpenInEditor { path: std::path::PathBuf, line: u32 },
     /// Something about the runtime of the app: another environment, a new try.
     Runtime(crate::runtime_view::RuntimeAction),
+    /// Copy a text and say so.
+    Copy { text: String, said: &'static str },
 }
 
 /// Paints the Boundary tab into `body`, which scrolls.
+#[expect(clippy::too_many_arguments)]
 pub fn boundary(
     ui: &mut Ui,
     pal: &Palette,
@@ -60,9 +70,18 @@ pub fn boundary(
     app: &AppSnapshot,
     module: Option<&Module>,
     state: &mut BoundaryState,
+    surface: &SurfaceInputs<'_>,
     keyboard: bool,
+    mac: bool,
 ) -> Option<BoundaryAction> {
     let mut action = None;
+    // P switches between the links of a module and its public surface.
+    if module.is_some()
+        && !ui.ctx().text_edit_focused()
+        && ui.input_mut(|input| input.consume_key(Modifiers::NONE, Key::P))
+    {
+        state.surface_view = !state.surface_view;
+    }
     let salt = module.map_or("all", |module| module.name.as_str());
     ui.scope_builder(UiBuilder::new().max_rect(body), |ui| {
         ScrollArea::vertical()
@@ -83,7 +102,33 @@ pub fn boundary(
                 if let RulesSource::Invalid(message) = &app.rules_source {
                     y = view.note(ui, y, &strings::rules_invalid(message)) + 12.0;
                 }
+                // One module has two views: its links and its public surface.
+                if let Some(module) = module {
+                    let scanned = state
+                        .surfaces
+                        .get(&module.name)
+                        .filter(|_| state.surface_view)
+                        .and_then(ModuleSurface::scanned);
+                    y = view.views(ui, y, &mut state.surface_view, scanned) + 12.0;
+                }
                 let bottom = match module {
+                    Some(module) if state.surface_view => {
+                        let place = Place {
+                            pal,
+                            area: Rect::from_min_max(pos2(origin.x, y), origin + body.size()),
+                            left: view.left,
+                            width: view.width,
+                            keyboard,
+                            mac,
+                        };
+                        let of_module = state.surfaces.entry(module.name.clone()).or_default();
+                        let (bottom, asked) =
+                            surface_view::surface(ui, &place, app, module, of_module, surface);
+                        if asked.is_some() {
+                            action = asked;
+                        }
+                        bottom
+                    }
                     Some(module) => view.one_module(ui, y, module, state, &mut action),
                     None if app.modules.len() > GRAPH_LIMIT => {
                         view.links_table(ui, y, state, &mut action)
@@ -150,6 +195,48 @@ impl View<'_> {
             draw::paint_galley(ui, rect.min + vec2(12.0, 9.0), Align2::LEFT_TOP, galley);
         draw::announce(ui, text_rect, Role::Label, text);
         rect.bottom()
+    }
+
+    /// The control that switches between the two views of a module, with the key
+    /// that does the same. Returns its bottom edge.
+    fn views(&self, ui: &Ui, y: f32, surface_view: &mut bool, scanned: Option<u64>) -> f32 {
+        let pal = self.pal;
+        let labels = [strings::LINKS, strings::PUBLIC_SURFACE];
+        let selected = usize::from(*surface_view);
+        let (track, clicked) = draw::segmented(
+            ui,
+            pal,
+            pos2(self.left, y),
+            "View",
+            &labels,
+            selected,
+            self.keyboard,
+        );
+        if let Some(clicked) = clicked {
+            *surface_view = clicked == 1;
+        }
+        let mid = track.center().y;
+        let hint = draw::label(
+            ui,
+            pos2(track.right() + 10.0, mid),
+            Align2::LEFT_CENTER,
+            strings::SWITCH_WITH,
+            ty::SECONDARY,
+            pal.ink_2,
+        );
+        let cap_w = draw::keycap_width(ui, "P");
+        draw::keycap(ui, pal, pos2(hint.right() + 4.0 + cap_w, mid), "P");
+        if let Some(seconds) = scanned {
+            draw::label(
+                ui,
+                pos2(self.left + self.width, mid),
+                Align2::RIGHT_CENTER,
+                &strings::scanned_ago(seconds),
+                ty::SECONDARY,
+                pal.ink_2,
+            );
+        }
+        track.bottom()
     }
 
     // --- One module (S5.1, S5.2) ---

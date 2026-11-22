@@ -593,3 +593,73 @@ fn milestone_7_settings() {
         save(&format!("s1.3-runtime-{suffix}"), &mut harness);
     }
 }
+
+#[test]
+#[ignore = "writes PNG files for a person to look at"]
+fn milestone_8() {
+    for (theme, suffix) in [(Theme::Light, "light"), (Theme::Dark, "dark")] {
+        let stub = common::shop_api_actuator();
+        let mut desk = Desk::new();
+        desk.theme = theme;
+        let root = desk.app("shop-api");
+        desk.knows(&[(&root, "SA")]);
+        desk.connect(&[common::environment("local", &stub)]);
+        let mut harness = desk.start();
+        common::wait_for_answer(&mut harness);
+        harness
+            .get_by_role_and_label(Role::ListBoxOption, "Billing")
+            .click();
+        harness.run_steps(2);
+        harness.key_press(Key::Num2);
+        harness.run_steps(2);
+        save(&format!("s5.1-links-control-{suffix}"), &mut harness);
+        // S5.5: not scanned yet.
+        harness.key_press(Key::P);
+        save(&format!("s5.5-not-scanned-{suffix}"), &mut harness);
+        // S5.7: the proposal.
+        harness.key_press_modifiers(Modifiers::COMMAND, Key::Enter);
+        save(&format!("s5.7-proposal-{suffix}"), &mut harness);
+
+        // S5.6: the scan as it reads, in a module of 96 files. One frame reads 8.
+        let mut desk = Desk::new();
+        desk.theme = theme;
+        let root = desk.app("shop-api");
+        common::pad_module(&root, "Billing", 81);
+        desk.knows(&[(&root, "SA")]);
+        desk.connect(&[common::environment("local", &stub)]);
+        let mut harness = desk.start();
+        common::wait_for_answer(&mut harness);
+        harness
+            .get_by_role_and_label(Role::ListBoxOption, "Billing")
+            .click();
+        harness.run_steps(2);
+        harness.key_press(Key::Num2);
+        harness.key_press(Key::P);
+        harness.run_steps(2);
+        harness.key_press_modifiers(Modifiers::COMMAND, Key::Enter);
+        harness.step();
+        harness.step();
+        harness.step();
+        let out = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/screens");
+        harness
+            .render()
+            .unwrap()
+            .save(out.join(format!("s5.6-scanning-{suffix}.png")))
+            .unwrap();
+    }
+
+    // Without an environment the routes are not read.
+    let desk = Desk::new();
+    let root = desk.app("shop-api");
+    desk.knows(&[(&root, "SA")]);
+    let mut harness = desk.start();
+    harness
+        .get_by_role_and_label(Role::ListBoxOption, "Billing")
+        .click();
+    harness.run_steps(2);
+    harness.key_press(Key::Num2);
+    harness.key_press(Key::P);
+    harness.run_steps(2);
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::Enter);
+    save("s5.7-proposal-no-routes-light", &mut harness);
+}

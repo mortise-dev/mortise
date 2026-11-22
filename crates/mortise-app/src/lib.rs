@@ -18,6 +18,7 @@ pub mod runtime_view;
 pub mod settings_view;
 pub mod strings;
 pub mod summary;
+pub mod surface_view;
 pub mod theme;
 pub mod toast;
 pub mod workspace;

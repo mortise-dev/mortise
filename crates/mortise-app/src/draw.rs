@@ -189,6 +189,7 @@ pub enum Icon {
     List,
     Lock,
     Plus,
+    Stop,
 }
 
 /// One stroke of an icon: points on the 16 px grid.
@@ -310,6 +311,8 @@ impl Icon {
             open(&[[8.0, 3.0], [8.0, 13.0]]),
             open(&[[3.0, 8.0], [13.0, 8.0]]),
         ];
+        const STOP_BOX: [[f32; 2]; 4] = square(4.25, 4.25, 7.5, 7.5);
+        const STOP: &[Path] = &[closed(&STOP_BOX)];
         const CLOSE: &[Path] = &[
             open(&[[3.5, 3.5], [12.5, 12.5]]),
             open(&[[12.5, 3.5], [3.5, 12.5]]),
@@ -331,6 +334,7 @@ impl Icon {
             Icon::List => LIST,
             Icon::Lock => LOCK,
             Icon::Plus => PLUS,
+            Icon::Stop => STOP,
         }
     }
 }
@@ -950,17 +954,35 @@ pub fn checkbox(
         pos2(row.left(), (row.center().y - size::CHECKBOX / 2.0).round()),
         Vec2::splat(size::CHECKBOX),
     );
+    checkbox_box(ui, pal, mark, checked, disabled, response.hovered());
+    paint_galley(
+        ui,
+        pos2(mark.right() + 8.0, row.center().y),
+        Align2::LEFT_CENTER,
+        text,
+    );
+    if keyboard && response.has_focus() {
+        focus_ring(ui, pal, row, radius::STAMP);
+    }
+    response
+}
+
+/// Paints the 14 px box of a checkbox into `mark`, with its tick when checked.
+pub fn checkbox_box(
+    ui: &Ui,
+    pal: &Palette,
+    mark: Rect,
+    checked: bool,
+    disabled: bool,
+    hovered: bool,
+) {
     let (fill, outline, tick) = match (checked, disabled) {
         (true, true) => (pal.line, pal.line, pal.ink_2),
         (false, true) => (pal.well, pal.line, pal.ink_2),
         (true, false) => (pal.key, pal.key, pal.key_fg),
         (false, false) => (
             pal.surface,
-            if response.hovered() {
-                pal.ink
-            } else {
-                pal.line_2
-            },
+            if hovered { pal.ink } else { pal.line_2 },
             pal.key_fg,
         ),
     };
@@ -978,16 +1000,6 @@ pub fn checkbox(
         ui.painter()
             .add(Shape::line(points, Stroke::new(1.8, tick)));
     }
-    paint_galley(
-        ui,
-        pos2(mark.right() + 8.0, row.center().y),
-        Align2::LEFT_CENTER,
-        text,
-    );
-    if keyboard && response.has_focus() {
-        focus_ring(ui, pal, row, radius::STAMP);
-    }
-    response
 }
 
 // ---------------------------------------------------------------------------

@@ -31,6 +31,8 @@ pub struct PaletteState {
 pub enum Command {
     /// Open a module of the app in scope.
     Module(String),
+    /// The public surface of a module of the app in scope. The scan is not started.
+    Surface(String),
     /// The Summary of "All modules" of the app in scope.
     AllModules,
     /// The Findings list of the app in scope.
@@ -183,6 +185,17 @@ pub fn entries(query: &str, source: &Source<'_>) -> Vec<Entry> {
                 ))
             });
             add(strings::FINDINGS, findings.collect());
+
+            // The public surface of a module. Opening the view does not start the scan.
+            let surfaces = app.modules.iter().filter_map(|module| {
+                let label = strings::scan_the_surface_of(&module.name);
+                let score = fuzzy(query, &format!("{label} {}", module.code))?;
+                let command = Command::Surface(module.name.clone());
+                let mut entry = entry(label, strings::BOUNDARY, command);
+                entry.code = Some(module.code.clone());
+                Some((score, entry))
+            });
+            add(strings::PUBLIC_SURFACE, surfaces.collect());
         }
     }
 

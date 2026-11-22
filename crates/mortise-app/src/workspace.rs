@@ -9,6 +9,7 @@ use crate::draw::{self, Button, ButtonKind, Icon, StampState};
 use crate::findings_view;
 use crate::strings;
 use crate::summary::{self, SummaryState};
+use crate::surface_view::SurfaceInputs;
 use crate::theme::{Face, Palette, size, ty};
 
 /// The five tabs. They are in every build, in this order, with the keys 1 to 5.
@@ -95,6 +96,9 @@ pub struct WorkState<'a> {
     pub finding_row: &'a mut usize,
     /// True while the keyboard is in use: focus rings are drawn.
     pub keyboard: bool,
+    /// What a scan of the public surface takes from the running app.
+    pub surface: SurfaceInputs<'a>,
+    pub mac: bool,
 }
 
 /// Returns what was asked for in the workspace, such as a module to select in the index.
@@ -296,7 +300,16 @@ pub fn workspace(
             None
         }
         (Tab::Boundary, None) => {
-            boundary::boundary(ui, pal, body, app, module, state.boundary, state.keyboard)
+            let WorkState {
+                boundary,
+                surface,
+                keyboard,
+                mac,
+                ..
+            } = state;
+            boundary::boundary(
+                ui, pal, body, app, module, boundary, &surface, keyboard, mac,
+            )
         }
         (_, None) => summary::summary(ui, pal, body, app, module, state.summary),
     };

@@ -39,6 +39,9 @@ Facts the spec was unsure of, which turned out to hold.
   minimized or occluded. The worker that asks the app stops when no frame was drawn for 3 s and
   starts again with the next frame. No platform code is needed. Tested with a stub, not in a real
   hidden window.
+- The public surface scan reads 8 files in each frame, in the interface's own thread, so that it
+  can show how far it is and be stopped without a second thread. A module of 15 files is read in two
+  frames; the scanning view is then on screen for a moment only.
 - HTTPS uses the certificates the computer trusts (`rustls-platform-verifier`), so a local site with
   its own certificate authority, such as a Herd `.test` site, works as it does in the browser.
 
@@ -64,6 +67,13 @@ Not forced by egui. Each is small; each is what milestone 1 built, so the owner 
 | S14 | Layout of the app form in Settings | S8.1 draws name, monogram, folder, coverage report and limit in one row, and the credentials beside the secret | Stacked, at most 560 px wide; the environment form at most 720 px. The same form is in the add panel, as S1.3 draws it | No |
 | S15 | `APP_ENV` | S1.3: Mortise reads `APP_URL` and `APP_ENV` from `.env` | Only `APP_URL` is read. `APP_ENV` is for asking before a command in production, which is phase 2 | No |
 | S16 | Environment names | No rule | Unique in an app and not empty; a rename that breaks this is not taken. The first three are proposed as local, staging, production | No |
+| S17 | The palette and the scan | S5.5: the palette starts the scan with "Scan the public surface of Billing". F6: Enter on that row opens the view and does not start the scan | The row has the words of S5.5 and does what F6 says: it opens the view. A scan never starts by itself | Yes, milestone 8 |
+| S18 | Copying the proposal | S5.7: until the package can store a surface "the proposal can be copied as text". No control is drawn | A "Copy as text" button left of "Scan again". It copies the entries that are checked, by kind | Yes, milestone 8 |
+| S19 | Who runs a command | S5.7 draws "the scheduler, daily at 06:00" | "the scheduler, 0 6 * * *": the schedule as the app wrote it. Mortise does not put a cron expression into words | Yes, milestone 8 |
+| S20 | The lines of the scanning view | S5.6 draws "reading from local, 1.2 s" for routes and "waiting" for commands | Routes are those the chosen environment already gave, so their line is complete at once. Interfaces, events and commands are counted as the files are read, in one pass | No |
+| S21 | An entry added by hand | S5.7: "checked against the module's files as it is typed" | A line under the field says what the name is in the module. Enter adds it only when the module has it: a class it declares, a command, or a pattern that some of its routes are under | No |
+| S22 | Route patterns | S5.7 draws `api/billing/*` and `billing/*` and gives no rule | A route is proposed under its first part, or its first two parts when the first is `api`. A route whose first part is a parameter stands for itself | No |
+| S23 | A scan that finds nothing | No drawing | The table holds one sentence that says so | No |
 
 ## Moved between milestones
 
@@ -81,3 +91,4 @@ What the plan placed in one milestone and was built, or will be built, in anothe
 | Dragging the index edge between 220 and 320 px | 6 | 9 | The widths of section 5.14 that depend on the window are built |
 | Motion "System" | 6 | 9 | egui does not expose the setting of the operating system (D3). "Reduced" and "Full" work |
 | A shortcut keycap inside a tooltip | 6 | 9 | Tooltips name the control |
+| J and K through the entries of a proposal | 8 | 9 | With the other table keys. Tab and Shift Tab reach every entry, Space takes it in or leaves it out, and focus is on the first entry when a scan ends |

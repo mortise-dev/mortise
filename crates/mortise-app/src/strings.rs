@@ -1482,3 +1482,204 @@ mod runtime_tests {
         );
     }
 }
+
+// --- The public surface of a module ---
+
+pub const LINKS: &str = "Links";
+pub const PUBLIC_SURFACE: &str = "Public surface";
+pub const SWITCH_WITH: &str = "Switch with";
+pub const SCAN_AGAIN: &str = "Scan again";
+pub const STOP_THE_SCAN: &str = "Stop the scan";
+pub const NOTHING_IS_WRITTEN: &str = "nothing is written";
+pub const CLASSES_OTHERS_USE: &str = "Classes that other modules use";
+pub const CONTRACTS: &str = "Contracts";
+pub const EVENTS: &str = "Events";
+pub const OTHER_CLASSES: &str = "Other classes that other modules use";
+pub const CONSOLE_COMMANDS: &str = "Console commands";
+pub const COL_ENTRY: &str = "Entry";
+pub const COL_WHY: &str = "Why it is here";
+pub const COL_USED_TODAY: &str = "Used today by";
+pub const AN_EVENT: &str = "an event";
+pub const ROUTES_WITH_PREFIX: &str = "routes with this prefix";
+pub const A_CONSOLE_COMMAND: &str = "a console command";
+pub const NOT_USED_OUTSIDE: &str = "not used outside yet";
+pub const ADD_BY_HAND: &str = "Add a class, a route or a command";
+pub const CANNOT_STORE_SURFACE: &str = "The package cannot store a public surface yet";
+pub const ROUTES_NOT_READ: &str =
+    "Routes were not read. Connect an environment or set how PHP runs, then scan again.";
+/// Not in the spec as a control. The spec says that the proposal can be copied as text.
+pub const COPY_AS_TEXT: &str = "Copy as text";
+/// Not in the spec: what the toast says after "Copy as text".
+pub const COPIED_PROPOSAL: &str = "Copied the proposal.";
+/// Not in the spec: an entry the developer added.
+pub const ADDED_BY_HAND: &str = "added by hand";
+/// Not in the spec: the routes line of the scanning view when no environment is connected.
+pub const NOT_READ: &str = "not read";
+
+/// `Billing has no public surface yet`
+pub fn no_surface_yet(module: &str) -> String {
+    format!("{module} has no public surface yet")
+}
+
+pub fn scan_explained(module: &str, folders: &[String]) -> String {
+    let names: Vec<&str> = folders.iter().map(String::as_str).collect();
+    let rule = match names.len() {
+        0 => "Until then the rule has no folders that count as public.".to_owned(),
+        1 => format!("Until then the rule uses the folder {}.", names[0]),
+        _ => format!("Until then the rule uses the folders {}.", and_list(&names)),
+    };
+    format!(
+        "A scan reads the files of {module} and proposes what other modules, HTTP clients and \
+         the command line may use. Nothing is written until you accept the proposal. {rule}"
+    )
+}
+
+/// `Scan Billing`
+pub fn scan_module(module: &str) -> String {
+    format!("Scan {module}")
+}
+
+/// `Scan the public surface of Billing`
+pub fn scan_the_surface_of(module: &str) -> String {
+    format!("Scan the public surface of {module}")
+}
+
+/// `Scanning Billing`
+pub fn scanning(module: &str) -> String {
+    format!("Scanning {module}")
+}
+
+/// `Reading 61 of 96 files`
+pub fn reading_files(read: usize, total: usize) -> String {
+    format!("Reading {read} of {}", files(total as u64))
+}
+
+/// `3 classes in 6 files`
+pub fn classes_in_files(classes: usize, in_files: usize) -> String {
+    let classes = match classes {
+        1 => "1 class".to_owned(),
+        n => format!("{n} classes"),
+    };
+    format!("{classes} in {}", files(in_files as u64))
+}
+
+/// `2 interfaces`
+pub fn interfaces(n: usize) -> String {
+    match n {
+        1 => "1 interface".to_owned(),
+        n => format!("{n} interfaces"),
+    }
+}
+
+/// `3 events`
+pub fn events(n: usize) -> String {
+    match n {
+        1 => "1 event".to_owned(),
+        n => format!("{n} events"),
+    }
+}
+
+/// `2 commands`
+pub fn commands(n: usize) -> String {
+    match n {
+        1 => "1 command".to_owned(),
+        n => format!("{n} commands"),
+    }
+}
+
+/// `Proposed public surface of Billing`
+pub fn proposed_surface_of(module: &str) -> String {
+    format!("Proposed public surface of {module}")
+}
+
+/// `22 found, 21 proposed`
+pub fn found_proposed(found: usize, proposed: usize) -> String {
+    format!("{found} found, {proposed} proposed")
+}
+
+/// `scanned just now`
+pub fn scanned_ago(seconds: u64) -> String {
+    match seconds {
+        0..60 => "scanned just now".to_owned(),
+        _ => format!("scanned {}", ago(seconds as i64, 0)),
+    }
+}
+
+/// `an interface in Contracts`
+pub fn an_interface_in(folder: &str) -> String {
+    format!("an interface in {folder}")
+}
+
+/// `Checkout, 3 files`
+pub fn used_by_modules(used_by: &[(String, usize)]) -> String {
+    let names: Vec<&str> = used_by.iter().map(|(module, _)| module.as_str()).collect();
+    let total: usize = used_by.iter().map(|(_, n)| n).sum();
+    format!("{}, {}", names.join(", "), files(total as u64))
+}
+
+/// `in Models, used by Checkout, 3 files`
+pub fn in_folder_used_by(folder: &str, used_by: &[(String, usize)]) -> String {
+    match (folder.is_empty(), used_by.is_empty()) {
+        (false, false) => format!("in {folder}, used by {}", used_by_modules(used_by)),
+        (true, false) => format!("used by {}", used_by_modules(used_by)),
+        (false, true) => format!("in {folder}, {ADDED_BY_HAND}"),
+        (true, true) => ADDED_BY_HAND.to_owned(),
+    }
+}
+
+pub fn not_proposed(modules: &[(String, usize)]) -> String {
+    let names: Vec<&str> = modules.iter().map(|(module, _)| module.as_str()).collect();
+    format!(
+        "Used from outside, not proposed. Include it to allow these reads, or leave it out and \
+         keep the finding on {}.",
+        and_list(&names)
+    )
+}
+
+/// Not in the spec: a scan that found nothing.
+pub fn nothing_to_propose(module: &str) -> String {
+    format!(
+        "The scan found no interface, no event and no console command in {module}, and no \
+         class that another module uses."
+    )
+}
+
+/// `Routes, read from local`
+pub fn routes_group(environment: &str) -> String {
+    format!("Routes, read from {environment}")
+}
+
+/// `9 routes, HTTP clients`
+pub fn routes_for_clients(n: usize) -> String {
+    match n {
+        1 => "1 route, HTTP clients".to_owned(),
+        n => format!("{n} routes, HTTP clients"),
+    }
+}
+
+/// `the scheduler, 0 6 * * *`. The schedule is as the app wrote it.
+pub fn the_scheduler(schedule: &str) -> String {
+    format!("the scheduler, {schedule}")
+}
+
+/// `Accept 21 entries`
+pub fn accept_entries(n: usize) -> String {
+    match n {
+        1 => "Accept 1 entry".to_owned(),
+        n => format!("Accept {n} entries"),
+    }
+}
+
+/// Not in the spec: what a name typed by hand turned out to be.
+pub fn typed_verdict(typed: &mortise_core::Typed, module: &str) -> String {
+    use mortise_core::Typed;
+    match typed {
+        Typed::Class { folder } if folder.is_empty() => "A class. Enter adds it.".to_owned(),
+        Typed::Class { folder } => format!("A class in {folder}. Enter adds it."),
+        Typed::Command => "A console command. Enter adds it.".to_owned(),
+        Typed::Route { routes: 1 } => "1 route. Enter adds it.".to_owned(),
+        Typed::Route { routes } => format!("{routes} routes. Enter adds it."),
+        Typed::Listed => "It is in the list.".to_owned(),
+        Typed::Unknown => format!("Nothing in {module} has this name."),
+    }
+}
