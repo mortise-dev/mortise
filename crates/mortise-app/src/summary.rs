@@ -1,7 +1,10 @@
 //! The Summary tab (S4.1 to S4.3), as far as files, the coverage report and git give it.
 
+use std::sync::Arc;
+
 use eframe::egui::{
-    Align2, Color32, Rect, Role, ScrollArea, Sense, Ui, UiBuilder, Vec2, WidgetInfo, pos2, vec2,
+    Align2, Color32, Galley, Rect, Role, ScrollArea, Sense, Ui, UiBuilder, Vec2, WidgetInfo, pos2,
+    vec2,
 };
 use mortise_core::{
     AppSnapshot, Check, FindingState, Git, Module, ModuleState, Severity, routes_by_module,
@@ -1268,6 +1271,117 @@ fn note_alert(
     rect.bottom()
 }
 
+/// A line of the Dependencies box, laid out before it is painted: a name with the
+/// stamp of the module, and a value at the right.
+struct DependencyLine<'a> {
+    name: String,
+    name_galley: Arc<Galley>,
+    stamp: Option<(&'a str, StampState)>,
+    value: String,
+    value_galley: Arc<Galley>,
+    problem: bool,
+    height: f32,
+}
+
+impl<'a> DependencyLine<'a> {
+    /// Lays out the value first, then wraps the name in the room the value and the
+    /// stamp leave, as the row of the drawings does. A value wider than half the
+    /// line wraps too. The line grows from 27 px by the lines the taller of the two adds.
+    fn new(
+        ui: &Ui,
+        pal: &Palette,
+        width: f32,
+        name: String,
+        stamp: Option<(&'a str, StampState)>,
+        value: String,
+        problem: bool,
+    ) -> Self {
+        let mono = Type {
+            size: 11.5,
+            ..ty::CODE
+        };
+        let (value_type, color) = if problem {
+            (ty::LABEL, pal.bad)
+        } else {
+            (mono, pal.ink_2)
+        };
+        let mark_w = if problem { size::STATE_MARK + 5.0 } else { 0.0 };
+        let value_galley = draw::galley_wrapped(
+            ui,
+            &value,
+            value_type,
+            color,
+            (width / 2.0).floor() - mark_w,
+        );
+        let stamp_w = if stamp.is_some() {
+            7.0 + size::STAMP_W
+        } else {
+            0.0
+        };
+        let room = width - value_galley.size().x - mark_w - 10.0 - stamp_w;
+        let name_galley = draw::galley_wrapped(ui, &name, ty::BODY, pal.ink, room);
+        // Each line of text past the first adds its height to the 27 px line.
+        let more = (name_galley.size().y - ty::BODY.line)
+            .max(value_galley.size().y - value_type.line)
+            .max(0.0);
+        Self {
+            name,
+            name_galley,
+            stamp,
+            value,
+            value_galley,
+            problem,
+            height: size::LIST_LINE_H + more,
+        }
+    }
+
+    /// Paints the line with its top at `y`, with a hairline under it unless it is the last.
+    fn paint(self, ui: &Ui, pal: &Palette, rect: Rect, y: f32, last: bool) {
+        let mid = y + self.height / 2.0;
+        let name = draw::paint_galley(
+            ui,
+            pos2(rect.left() + 13.0, mid),
+            Align2::LEFT_CENTER,
+            self.name_galley,
+        );
+        draw::announce(ui, name, Role::Label, &self.name);
+        if let Some((code, state)) = self.stamp {
+            draw::stamp(
+                ui,
+                pal,
+                pos2(name.right() + 7.0, (mid - size::STAMP_H / 2.0).round()),
+                code,
+                state,
+            );
+        }
+        let value = draw::paint_galley(
+            ui,
+            pos2(rect.right() - 13.0, mid),
+            Align2::RIGHT_CENTER,
+            self.value_galley,
+        );
+        draw::announce(ui, value, Role::Label, &self.value);
+        if self.problem {
+            let mark = Rect::from_min_size(
+                pos2(
+                    value.left() - 5.0 - size::STATE_MARK,
+                    mid - size::STATE_MARK / 2.0,
+                ),
+                Vec2::splat(size::STATE_MARK),
+            );
+            draw::mark_bad(ui, mark, pal.bad, pal.surface);
+        }
+        if !last {
+            draw::hline(
+                ui,
+                rect.left() + 13.0..rect.right() - 13.0,
+                y + self.height - 1.0,
+                pal.line,
+            );
+        }
+    }
+}
+
 /// The Dependencies box of a module: one line per module it uses, with the most
 /// references first, then the modules that use it. Nothing when it has no links.
 /// Returns its bottom edge.
@@ -1291,81 +1405,24 @@ fn dependencies(
     if uses.is_empty() && used_by.is_empty() {
         return None;
     }
-    let lines = uses.len() + usize::from(!used_by.is_empty());
-    let rect = Rect::from_min_size(
-        min,
-        vec2(width, 41.0 + lines as f32 * size::LIST_LINE_H + 8.0),
-    );
-    if !paint {
-        return Some(rect.bottom());
-    }
-    let note = strings::out_in(uses.len(), used_by.len());
-    let mut y = draw::box_head(ui, pal, rect, strings::DEPENDENCIES, &note);
-    let mono = Type {
-        size: 11.5,
-        ..ty::CODE
-    };
-    for (i, link) in uses.iter().enumerate() {
-        let mid = y + size::LIST_LINE_H / 2.0;
-        let text = strings::a_uses_b(strings::USES, &link.to).replacen(" uses ", " ", 1);
-        let name = draw::label(
-            ui,
-            pos2(rect.left() + 13.0, mid),
-            Align2::LEFT_CENTER,
-            &text,
-            ty::BODY,
-            pal.ink,
-        );
-        if let Some(used) = app.module(&link.to) {
-            let state = StampState {
-                selected: false,
-                off: used.state == ModuleState::Off,
-            };
-            draw::stamp(
-                ui,
-                pal,
-                pos2(name.right() + 7.0, (mid - size::STAMP_H / 2.0).round()),
-                &used.code,
-                state,
-            );
-        }
-        let problem = link.is_problem(&app.rules);
-        let refs = strings::refs_state(link, &app.rules);
-        let (value_type, color) = if problem {
-            (ty::LABEL, pal.bad)
-        } else {
-            (mono, pal.ink_2)
-        };
-        let value = draw::label(
-            ui,
-            pos2(rect.right() - 13.0, mid),
-            Align2::RIGHT_CENTER,
-            &refs,
-            value_type,
-            color,
-        );
-        if problem {
-            let mark = Rect::from_min_size(
-                pos2(
-                    value.left() - 5.0 - size::STATE_MARK,
-                    mid - size::STATE_MARK / 2.0,
-                ),
-                Vec2::splat(size::STATE_MARK),
-            );
-            draw::mark_bad(ui, mark, pal.bad, pal.surface);
-        }
-        if i + 1 < lines {
-            draw::hline(
-                ui,
-                rect.left() + 13.0..rect.right() - 13.0,
-                y + size::LIST_LINE_H - 1.0,
-                pal.line,
-            );
-        }
-        y += size::LIST_LINE_H;
-    }
+    let room = width - 26.0;
+    let mut lines: Vec<DependencyLine<'_>> = uses
+        .iter()
+        .map(|link| {
+            let name = strings::a_uses_b(strings::USES, &link.to).replacen(" uses ", " ", 1);
+            let stamp = app.module(&link.to).map(|used| {
+                let state = StampState {
+                    selected: false,
+                    off: used.state == ModuleState::Off,
+                };
+                (used.code.as_str(), state)
+            });
+            let problem = link.is_problem(&app.rules);
+            let value = strings::refs_state(link, &app.rules);
+            DependencyLine::new(ui, pal, room, name, stamp, value, problem)
+        })
+        .collect();
     if !used_by.is_empty() {
-        let mid = y + size::LIST_LINE_H / 2.0;
         let names: Vec<&str> = used_by.iter().map(|link| link.from.as_str()).collect();
         let counts: Vec<String> = used_by
             .iter()
@@ -1373,24 +1430,22 @@ fn dependencies(
             .collect();
         let total: usize = used_by.iter().map(|link| link.refs.len()).sum();
         let plural = if total == 1 { "ref" } else { "refs" };
-        let text = format!("{} {}", strings::USED_BY, names.join(", "));
-        draw::label(
-            ui,
-            pos2(rect.left() + 13.0, mid),
-            Align2::LEFT_CENTER,
-            &text,
-            ty::BODY,
-            pal.ink,
-        );
+        let name = format!("{} {}", strings::USED_BY, names.join(", "));
         let value = format!("{} {plural}", counts.join(", "));
-        draw::label(
-            ui,
-            pos2(rect.right() - 13.0, mid),
-            Align2::RIGHT_CENTER,
-            &value,
-            mono,
-            pal.ink_2,
-        );
+        lines.push(DependencyLine::new(ui, pal, room, name, None, value, false));
+    }
+    let height: f32 = lines.iter().map(|line| line.height).sum();
+    let rect = Rect::from_min_size(min, vec2(width, 41.0 + height + 8.0));
+    if !paint {
+        return Some(rect.bottom());
+    }
+    let note = strings::out_in(uses.len(), used_by.len());
+    let mut y = draw::box_head(ui, pal, rect, strings::DEPENDENCIES, &note);
+    let count = lines.len();
+    for (i, line) in lines.into_iter().enumerate() {
+        let height = line.height;
+        line.paint(ui, pal, rect, y, i + 1 == count);
+        y += height;
     }
     Some(rect.bottom())
 }

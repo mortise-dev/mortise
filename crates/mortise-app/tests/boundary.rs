@@ -322,16 +322,32 @@ fn above_12_modules_the_app_graph_gives_way_to_a_table_of_links() {
 
 #[test]
 fn the_summary_of_a_module_names_what_it_uses() {
-    let (_desk, mut harness) = shop_api();
+    let desk = Desk::new();
+    let root = desk.app("shop-api");
+    // Four copies of Notifications also use Checkout: its users take more than a line.
+    for name in ["Alerts", "Mailers", "Reminders", "Webhooks"] {
+        let dir = root.join("Modules").join(name);
+        common::copy_dir(&root.join("Modules/Notifications"), &dir);
+        common::rename_in_files(&dir, "Notifications", name);
+    }
+    desk.knows(&[(&root, "SA")]);
+    let mut harness = desk.start();
     harness
         .get_by_role_and_label(Role::ListBoxOption, "Checkout")
         .click();
     harness.run();
     harness.get_by_role_and_label(Role::Heading, "Dependencies");
-    harness.get_by_label("4 out, 2 in");
+    harness.get_by_label("4 out, 6 in");
     harness.get_by_label("Uses Billing");
     harness.get_by_label("6 refs, 3 to internals");
     harness.get_by_label("2 refs, circular");
-    harness.get_by_label("Used by Notifications, Shipping");
-    harness.get_by_label("1, 4 refs");
+    // The names wrap in the room the counts leave them.
+    let names = harness
+        .get_by_label("Used by Alerts, Mailers, Notifications, Reminders, Shipping, Webhooks")
+        .rect();
+    let counts = harness.get_by_label("1, 1, 1, 1, 4, 1 refs").rect();
+    assert!(
+        names.right() + 10.0 <= counts.left(),
+        "{names:?} {counts:?}"
+    );
 }
