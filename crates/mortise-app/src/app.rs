@@ -762,6 +762,10 @@ impl MortiseApp {
     /// Runs a row of the palette, in the app the palette searched.
     fn run(&mut self, command: Command) {
         self.palette = None;
+        // A command that goes somewhere leaves Settings.
+        if !matches!(command, Command::Settings | Command::Theme(_)) {
+            self.settings_open = None;
+        }
         let scope = self.palette_scope;
         // Commands about modules and findings act in the app the palette searched.
         if matches!(

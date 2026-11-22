@@ -158,6 +158,9 @@ fn tab_searches_in_the_next_app_and_a_row_of_it_opens_that_app() {
     desk.knows(&[(&shop, "SA"), (&crm, "CR")]);
     let mut harness = desk.start();
 
+    // From Settings: a command that goes somewhere leaves them.
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::Comma);
+    harness.run();
     open_palette(&mut harness);
     harness.key_press(Key::Tab);
     harness.run_steps(3);
@@ -170,6 +173,11 @@ fn tab_searches_in_the_next_app_and_a_row_of_it_opens_that_app() {
     assert_eq!(
         harness.state().selection(),
         Selection::Module("Users".into())
+    );
+    assert!(
+        harness
+            .query_by_role_and_label(Role::Heading, "Settings")
+            .is_none()
     );
 }
 
