@@ -613,6 +613,10 @@ impl MortiseApp {
     #[cfg(target_os = "macos")]
     fn menu_actions(&mut self, ctx: &egui::Context, chosen: Vec<crate::menu::MenuAction>) {
         use crate::menu::MenuAction;
+        // The choices run after this frame was painted: the next frame shows them.
+        if !chosen.is_empty() {
+            ctx.request_repaint();
+        }
         for action in chosen {
             self.palette_scope = self.current.unwrap_or(0);
             match action {
