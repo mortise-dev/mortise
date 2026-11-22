@@ -1337,6 +1337,12 @@ impl eframe::App for MortiseApp {
             let open = &mut self.apps[current];
             match open.live.state() {
                 LiveState::Ready(app) => {
+                    let rows = self.settings.general.index_rows;
+                    let index_w = if index_collapsed {
+                        index::strip_width(&app, &open.filter, rows, rest.height())
+                    } else {
+                        index_w
+                    };
                     let index_rect = Rect::from_min_size(rest.min, vec2(index_w, rest.height()));
                     let work_rect =
                         Rect::from_min_max(pos2(index_rect.right(), rest.top()), rest.max);
@@ -1367,7 +1373,7 @@ impl eframe::App for MortiseApp {
                         reveal: self.reveal,
                         collapsed: index_collapsed,
                         problems_first,
-                        rows: self.settings.general.index_rows,
+                        rows,
                         mac,
                         name: &entry.name,
                         runtime: runtime.brief().map(|brief| IndexRuntime {
