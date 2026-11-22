@@ -5,46 +5,194 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
+# A new push to a pull request cancels its older run. Runs on main never cancel each other.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # git-cliff builds CHANGELOG.md from these subjects, so a release depends on them.
+  commits:
+    name: Check Conventional Commits
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check commit subjects
+        env:
+          RANGE: ${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}
+        run: |
+          pattern='^(feat|fix|perf|refactor|revert|docs|build|ci|chore|style|test)(\([a-z0-9_,-]+\))?!?: .+'
+          bad=$(git log --no-merges --format=%s "$RANGE" | grep -Ev "$pattern" || true)
+          if [ -n "$bad" ]; then
+            echo "::error::Commit subjects must follow Conventional Commits (https://www.conventionalcommits.org):"
+            echo "$bad"
+            exit 1
+          fi
+
+  # Markdown-only changes skip the build and the tests. A job skipped by `if:` still passes required checks.
+  changes:
+    name: Detect code changes
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+      openspec: ${{ steps.filter.outputs.openspec }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          predicate-quantifier: 'every'
+          filters: |
+            code:
+              - '**'
+              - '!**/*.md'
+            openspec:
+              - 'openspec/**'
+
+  # Validates every OpenSpec change and spec. A requirement without a scenario fails under --strict.
+  openspec:
+    name: Validate OpenSpec
+    needs: changes
+    if: needs.changes.outputs.openspec == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npx --yes @fission-ai/openspec@1.16.0 validate --all --strict --no-interactive
+
+  # Fails on a RustSec vulnerability in Cargo.lock. It runs on every change, Markdown too,
+  # because new advisories arrive without a change here.
+  audit:
+    name: Audit dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: taiki-e/install-action@cargo-audit
+      - run: cargo audit
+
+  # Fails on a verified, unverified or unknown secret anywhere in the git history.
+  # It runs on every change, Markdown too, because a secret can sit in any file.
+  # Cargo.lock is left out: its checksums look like keys to some detectors.
+  secrets:
+    name: Scan for secrets
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      # An empty base with a head scans the whole history, so a push never compares a commit with itself.
+      # The action already passes --fail and --no-update, and a repeated flag is an error.
+      - uses: trufflesecurity/trufflehog@v3.99.8
+        with:
+          base: ''
+          head: HEAD
+          version: 3.99.8
+          extra_args: --results=verified,unknown,unverified --exclude-paths=.github/trufflehog-exclude.txt
+
+  # rustfmt.toml holds the style. Run `cargo fmt --all` before you commit.
+  fmt:
+    name: Check formatting
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      # rust-toolchain.toml names the version and the components.
+      - run: rustup toolchain install
+      - run: cargo fmt --all --check
+
+  # licenses/THIRD-PARTY.md must list the crates of Cargo.lock. Run tools/third-party-licenses.py after a dependency changed.
+  licenses:
+    name: Check the licence list
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install
+      - run: python3 tools/third-party-licenses.py
+      - name: Compare with the committed list
+        run: |
+          if ! git diff --exit-code -- licenses; then
+            echo "::error::licenses/THIRD-PARTY.md is out of date. Run python3 tools/third-party-licenses.py and commit the result."
+            exit 1
+          fi
+
+  # The image tests compare with macOS baselines, so only the macOS job runs them, and it measures coverage.
+  # Linux and Windows run the same tests, where the image tests compile to nothing.
   test:
-    name: Test on ${{ matrix.os }}
+    name: Build and test (${{ matrix.name }})
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        include:
+          - name: macOS
+            os: macos-latest
+          - name: Linux
+            os: ubuntu-latest
+          - name: Windows
+            os: windows-latest
     steps:
-      - uses: actions/checkout@v4
-
-      # rust-toolchain.toml names the version and the components.
-      - name: Install Rust
-        run: rustup show active-toolchain || rustup toolchain install
-
+      # Build scripts and tests come from the pull request, so they get no token in the Git config.
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install
       - uses: Swatinem/rust-cache@v2
 
-      # What eframe links against, and a software Vulkan driver so the headless
-      # interface tests can render without a graphics card.
+      # What eframe links against, and a software Vulkan driver so the headless interface tests can draw.
       - name: Install Linux packages
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y libxkbcommon-dev libwayland-dev mesa-vulkan-drivers
 
-      - name: Format
-        if: runner.os == 'Linux'
-        run: cargo fmt --all --check
-
-      - name: Clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
       - name: Test
-        run: cargo test --workspace
+        if: runner.os != 'macOS'
+        run: cargo test --workspace --locked --no-fail-fast
 
-      # The image tests run on macOS only. When an image differs, the new image
-      # and the difference are kept, to be looked at.
+      - name: Install cargo-llvm-cov
+        if: runner.os == 'macOS'
+        uses: taiki-e/install-action@cargo-llvm-cov
+      - name: Test with coverage
+        if: runner.os == 'macOS'
+        run: |
+          rustup component add llvm-tools-preview
+          cargo llvm-cov --workspace --locked --no-fail-fast --no-report
+
+      # A failing image test writes the new image and the difference: keep them to look at.
       - name: Keep the images that differ
         if: failure() && runner.os == 'macOS'
         uses: actions/upload-artifact@v4
@@ -55,5 +203,20 @@ jobs:
             crates/mortise-app/tests/snapshots/*.diff.png
           if-no-files-found: ignore
 
-      - name: Build the release binary
-        run: cargo build --release -p mortise-app
+      - name: Write the coverage summary
+        if: runner.os == 'macOS'
+        run: |
+          {
+            echo '```'
+            cargo llvm-cov report --summary-only
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Write the coverage report
+        if: runner.os == 'macOS'
+        run: cargo llvm-cov report --html
+      - uses: actions/upload-artifact@v4
+        if: runner.os == 'macOS'
+        with:
+          name: coverage
+          path: target/llvm-cov/html
+          if-no-files-found: error

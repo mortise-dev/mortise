@@ -30,6 +30,15 @@ cargo test --workspace
 ```
 
 CI runs these on Linux, macOS and Windows (`.github/workflows/ci.yml`). Run all of them before a commit.
+CI also checks the commit subjects, `licenses/THIRD-PARTY.md` (run `python3 tools/third-party-licenses.py`
+after a dependency changed), `cargo audit`, secrets in the history and OpenSpec.
+
+The installers come from cargo-packager, configured in `crates/mortise-app/Cargo.toml`:
+
+```
+cargo install cargo-packager --locked --version 0.11.8
+cargo packager -p mortise-app --release --formats app,dmg
+```
 
 The image tests in `crates/mortise-app/tests/images.rs` run on macOS only. After a change that is meant
 to be seen, make the images again and look at each changed image before you commit it:
@@ -64,7 +73,8 @@ Environment for work on Mortise itself:
 | `docs/spec` | The design specification (HTML). Screen ids such as S4.2 refer to it |
 | `docs/spec-build` | The scripts that build `docs/spec` |
 | `docs/deviations.md` | Where the build differs from the specification, and why |
-| `licenses`, `tools` | Third-party licences and the script that writes the list |
+| `licenses`, `tools` | Third-party licences, the script that writes the list, the icon script and the release scripts |
+| `.github/workflows` | `ci.yml` checks every change. `installers.yml` builds the installers. `release.yml` and `tag-release.yml` make a release (see `CONTRIBUTING.md`) |
 | `openspec` | Specifications and change proposals (see below) |
 
 ## Design and text
