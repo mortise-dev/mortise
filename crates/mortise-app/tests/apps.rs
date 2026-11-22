@@ -298,7 +298,14 @@ fn the_rail_selects_apps_by_click_and_by_key() {
     let shop = desk.app("shop-api");
     let crm = desk.app("crm");
     let pages = desk.app("landing-pages");
-    desk.knows(&[(&shop, "SA"), (&crm, "CR"), (&pages, "LP")]);
+    // Another folder with the same name.
+    let other_crm = desk.app("elsewhere/crm");
+    desk.knows(&[
+        (&shop, "SA"),
+        (&crm, "CR"),
+        (&pages, "LP"),
+        (&other_crm, "C2"),
+    ]);
     let mut harness = desk.start();
 
     // The title bar names the app on screen.
@@ -315,8 +322,19 @@ fn the_rail_selects_apps_by_click_and_by_key() {
     });
     harness.get_by_role_and_label(Role::Heading, "landing-pages");
 
+    // Two apps with the same name are two tiles, each of its own app.
+    let tiles: Vec<_> = harness
+        .get_all_by_role_and_label(Role::ListBoxOption, "crm")
+        .collect();
+    assert_eq!(tiles.len(), 2);
+    tiles[1].click();
+    wait_until(&mut harness, "the other crm is on screen", |app| {
+        app.current() == Some(3)
+    });
     harness
-        .get_by_role_and_label(Role::ListBoxOption, "crm")
+        .get_all_by_role_and_label(Role::ListBoxOption, "crm")
+        .next()
+        .unwrap()
         .click();
     wait_until(&mut harness, "crm is on screen", |app| {
         app.current() == Some(1)
