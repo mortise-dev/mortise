@@ -548,6 +548,7 @@ impl View<'_> {
         };
         let open = Button {
             label: "Open in editor",
+            said: Some(strings::OPEN_FILE_IN_EDITOR),
             kind: ButtonKind::Primary,
             ..Default::default()
         };

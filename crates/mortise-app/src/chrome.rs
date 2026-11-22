@@ -136,7 +136,11 @@ pub fn title_bar(
     let find = Rect::from_center_size(pos2(bar.center().x.round(), mid), vec2(find_w, 22.0));
     // On frame, an outline is ink-2: line-2 is under 3 to 1 there in the light theme.
     // The entry opens the command palette.
-    let entry = ui.interact(find, ui.scope_id().with("palette-entry"), Sense::click());
+    let entry = ui.interact(
+        draw::hit_target(find),
+        ui.scope_id().with("palette-entry"),
+        Sense::click(),
+    );
     entry.widget_info(|| WidgetInfo::labeled(Role::Button, true, strings::SEARCH));
     let fill = if entry.hovered() { pal.well } else { pal.panel };
     draw::outlined(ui, find, radius::CONTROL, fill, pal.ink_2);

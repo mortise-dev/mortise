@@ -236,9 +236,7 @@ fn an_editor_that_starts_is_given_the_file_and_the_line() {
     harness.key_press(Key::Num2);
     harness.run();
     harness
-        .get_all_by_role_and_label(Role::Button, "Open in editor")
-        .last()
-        .unwrap()
+        .get_by_role_and_label(Role::Button, "Open the selected file in the editor")
         .click();
     harness.run_steps(2);
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);

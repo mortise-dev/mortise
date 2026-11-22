@@ -421,6 +421,13 @@ pub const RULE_FAIL_CI_HINT: &str = "Needs the command line tool, which does not
 pub const RULES_KEPT: &str = "kept in mortise.json in the app folder";
 pub const GRAPH_CAPTION: &str = "Arrow points at the module that is used. A square with a cross marks a link that breaks a rule.";
 pub const COPY_PATH: &str = "Copy path";
+/// What a screen reader says for "Open in editor" under the files of a link.
+pub const OPEN_FILE_IN_EDITOR: &str = "Open the selected file in the editor";
+
+/// What a screen reader says for "Open in editor" in the header of a module.
+pub fn open_module_in_editor(module: &str) -> String {
+    format!("Open {module} in the editor")
+}
 /// Not in the spec: the toast after "Copy path".
 pub const COPIED_PATH: &str = "Copied the path.";
 pub const COL_FILE: &str = "File";

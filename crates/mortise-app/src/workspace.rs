@@ -196,9 +196,11 @@ pub fn workspace(
     // first control after the tab row is the first control of the tab.
     let mut header_action = None;
     if let Some(module) = module {
+        let said = strings::open_module_in_editor(&module.name);
         let open = Button {
             label: "Open in editor",
             small: true,
+            said: Some(&said),
             ..Default::default()
         };
         let at = pos2(head.right() - 16.0 - open.width(ui), head.top() + 12.0);

@@ -503,4 +503,63 @@ mod tests {
         assert_eq!(spec["stroke"]["focus-offset"], stroke::FOCUS_OFFSET);
         assert_eq!(spec["stroke"]["problem-link"], stroke::PROBLEM_LINK);
     }
+
+    /// The contrast of two colours, as WCAG 2 works it out.
+    fn contrast(a: Color32, b: Color32) -> f32 {
+        let channel = |c: u8| {
+            let c = f32::from(c) / 255.0;
+            if c <= 0.04045 {
+                c / 12.92
+            } else {
+                ((c + 0.055) / 1.055).powf(2.4)
+            }
+        };
+        let luminance = |c: Color32| {
+            0.2126 * channel(c.r()) + 0.7152 * channel(c.g()) + 0.0722 * channel(c.b())
+        };
+        let (a, b) = (luminance(a), luminance(b));
+        (a.max(b) + 0.05) / (a.min(b) + 0.05)
+    }
+
+    #[test]
+    fn text_is_4_5_to_1_and_marks_and_outlines_are_3_to_1() {
+        let mut low = Vec::new();
+        for (theme, pal) in [("light", &LIGHT), ("dark", &DARK)] {
+            // Text, on each fill it is drawn on. Disabled text and placeholders are
+            // held to 4.5 to 1 as well.
+            let fills = [
+                ("surface", pal.surface),
+                ("panel", pal.panel),
+                ("well", pal.well),
+            ];
+            let texts = [
+                ("ink", pal.ink),
+                ("ink-2", pal.ink_2),
+                ("ink-3", pal.ink_3),
+                ("good", pal.good),
+                ("bad", pal.bad),
+                ("warn", pal.warn),
+                ("off", pal.off),
+            ];
+            let mut pairs: Vec<(String, Color32, Color32, f32)> = Vec::new();
+            for (fill_name, fill) in fills {
+                for (text_name, text) in texts {
+                    pairs.push((format!("{text_name} on {fill_name}"), text, fill, 4.5));
+                }
+                // An outline, and a mark, on the same fills.
+                pairs.push((format!("line-2 on {fill_name}"), pal.line_2, fill, 3.0));
+            }
+            pairs.push(("ink on frame".into(), pal.ink, pal.frame, 4.5));
+            pairs.push(("ink-2 on frame".into(), pal.ink_2, pal.frame, 4.5));
+            pairs.push(("key-fg on key".into(), pal.key_fg, pal.key, 4.5));
+            pairs.push(("code-fg on code-bg".into(), pal.code_fg, pal.code_bg, 4.5));
+            for (name, a, b, least) in pairs {
+                let ratio = contrast(a, b);
+                if ratio < least {
+                    low.push(format!("{theme}: {name} is {ratio:.2} to 1, under {least}"));
+                }
+            }
+        }
+        assert!(low.is_empty(), "\n{}", low.join("\n"));
+    }
 }

@@ -620,6 +620,13 @@ pub fn rich_galley(ui: &Ui, parts: &[(&str, Type, Color32)], width: f32) -> Arc<
     ui.painter().layout_job(job)
 }
 
+/// The pointer target of a control: at least 24 by 24 px, also where the control is
+/// drawn smaller. The target extends beyond the drawing on both sides.
+pub fn hit_target(drawn: Rect) -> Rect {
+    let grow = |side: f32| ((size::HIT_MIN - side) / 2.0).max(0.0);
+    drawn.expand2(vec2(grow(drawn.width()), grow(drawn.height())))
+}
+
 // ---------------------------------------------------------------------------
 // Buttons (C1)
 
@@ -644,6 +651,9 @@ pub struct Button<'a> {
     pub keys: Option<&'a str>,
     pub icon: Option<Icon>,
     pub disabled: bool,
+    /// The name a screen reader says, where the label alone does not tell this
+    /// button from another on the same screen.
+    pub said: Option<&'a str>,
 }
 
 impl Button<'_> {
@@ -694,8 +704,14 @@ impl Button<'_> {
         } else {
             Sense::click()
         };
-        let response = ui.interact(rect, ui.scope_id().with(("button", self.label)), sense);
-        response.widget_info(|| WidgetInfo::labeled(Role::Button, !self.disabled, self.label));
+        // A small button is drawn 22 px high; its target is 24 px.
+        let response = ui.interact(
+            hit_target(rect),
+            ui.scope_id().with(("button", self.label)),
+            sense,
+        );
+        let said = self.said.unwrap_or(self.label);
+        response.widget_info(|| WidgetInfo::labeled(Role::Button, !self.disabled, said));
 
         let pressed = response.is_pointer_button_down_on();
         let hovered = response.hovered();
@@ -1108,7 +1124,9 @@ pub fn segmented(
         let segment = Rect::from_min_size(pos2(x, track.top() + 3.0), vec2(widths[i], 20.0));
         x += widths[i] + 2.0;
         let id = ui.scope_id().with(("segment", name, i));
-        let response = ui.interact(segment, id, one_stop(i == selected));
+        // A segment is drawn 20 px high; its target is as high as the track.
+        let target = segment.expand2(vec2(0.0, 3.0));
+        let response = ui.interact(target, id, one_stop(i == selected));
         response
             .widget_info(|| WidgetInfo::selected(Role::RadioButton, true, i == selected, *label));
         if response.clicked() {
