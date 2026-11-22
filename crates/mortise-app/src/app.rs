@@ -137,6 +137,9 @@ pub struct MortiseApp {
     window_w: f32,
     /// Settings, while they are open.
     settings_open: Option<SettingsState>,
+    /// Esc closes Settings once they are drawn: a field that loses focus to that
+    /// Esc keeps its edit first.
+    close_settings: bool,
     /// The window has the platform's decorations at this moment.
     decorated: bool,
     /// The filter field takes focus in this frame.
@@ -204,6 +207,7 @@ impl MortiseApp {
             index_choice: None,
             window_w: 0.0,
             settings_open: None,
+            close_settings: false,
             decorated: config.chrome == Chrome::System,
             focus_filter: false,
             filter_was_focused: false,
@@ -918,8 +922,8 @@ impl MortiseApp {
         if self.palette.is_none() && chord(Modifiers::COMMAND, Key::O) {
             self.pick(ui.ctx());
         }
-        // Esc closes the topmost thing: the add panel, then the toast, then the text
-        // of the filter, then the filter field itself.
+        // Esc closes the topmost thing: the add panel, then the toast, then Settings,
+        // then the text of the filter, then the filter field itself.
         let filter_id = index::filter_id(ui);
         let filter_focused = ui.memory(|memory| memory.has_focus(filter_id));
         if chord(Modifiers::NONE, Key::Escape) {
@@ -932,6 +936,9 @@ impl MortiseApp {
                 self.adding = None;
             } else if self.toast.is_some() {
                 self.toast = None;
+            } else if self.settings_open.is_some() {
+                // Settings take the place of the workbench, so they are above it.
+                self.close_settings = true;
             } else if let Some(open) = open {
                 // A scan of the public surface on screen: Esc stops it.
                 let scanning = match &open.selection {
@@ -952,11 +959,7 @@ impl MortiseApp {
                 } else if !self.filter_was_focused && open.findings_open {
                     // Back from a second view.
                     open.findings_open = false;
-                } else if !self.filter_was_focused {
-                    self.settings_open = None;
                 }
-            } else {
-                self.settings_open = None;
             }
         }
         // A dialog, the palette and the add panel hold the keys until they close.
@@ -1608,6 +1611,9 @@ impl eframe::App for MortiseApp {
             Some(RailAction::Settings) if self.settings_open.is_some() => self.settings_open = None,
             Some(RailAction::Settings) => self.open_settings(Section::Apps),
             None => {}
+        }
+        if std::mem::take(&mut self.close_settings) {
+            self.settings_open = None;
         }
         match settings_action {
             Some(SettingsAction::Close) => self.settings_open = None,

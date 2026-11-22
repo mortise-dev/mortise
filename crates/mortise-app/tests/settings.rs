@@ -37,6 +37,19 @@ fn settings_take_the_place_of_the_workbench_and_esc_returns() {
     harness.key_press(Key::Escape);
     harness.run();
     harness.get_by_role_and_label(Role::Heading, "All modules");
+
+    // Over the Findings list, Esc closes Settings and leaves the list as it was.
+    harness.key_press(Key::F);
+    harness.run();
+    open_settings(&mut harness);
+    harness.key_press(Key::Escape);
+    harness.run();
+    assert!(
+        harness
+            .query_by_role_and_label(Role::Heading, "Settings")
+            .is_none()
+    );
+    assert!(harness.state().findings_open());
 }
 
 #[test]
@@ -118,6 +131,48 @@ fn the_fields_of_an_app_apply_when_they_lose_focus() {
         .focus();
     harness.run();
     assert_eq!(desk.saved().apps[0].monogram, "SH");
+
+    // A monogram that is not letters and digits is not taken: the field shows the saved one.
+    harness
+        .get_by_role_and_label(Role::TextInput, "Monogram")
+        .focus();
+    harness.run();
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::A);
+    harness
+        .get_by_role_and_label(Role::TextInput, "Monogram")
+        .type_text("?!");
+    harness.run();
+    harness
+        .get_by_role_and_label(Role::TextInput, "Name")
+        .focus();
+    harness.run_steps(2);
+    assert_eq!(desk.saved().apps[0].monogram, "SH");
+    assert_eq!(
+        harness
+            .get_by_role_and_label(Role::TextInput, "Monogram")
+            .value()
+            .as_deref(),
+        Some("SH")
+    );
+
+    // Esc in a field keeps what was typed, then closes Settings.
+    harness
+        .get_by_role_and_label(Role::TextInput, "Coverage limit")
+        .focus();
+    harness.run();
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::A);
+    harness
+        .get_by_role_and_label(Role::TextInput, "Coverage limit")
+        .type_text("25");
+    harness.run();
+    harness.key_press(Key::Escape);
+    harness.run();
+    assert_eq!(desk.saved().apps[0].coverage_limit, 25);
+    assert!(
+        harness
+            .query_by_role_and_label(Role::Heading, "Settings")
+            .is_none()
+    );
 }
 
 #[test]
