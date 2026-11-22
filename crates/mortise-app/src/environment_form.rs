@@ -454,8 +454,15 @@ pub fn environment_form(
                     draw::paint_galley(ui, text_at, Align2::LEFT_CENTER, line)
                 } else {
                     // Too long for the room beside the word, such as the address a
-                    // redirect sends to: it wraps on lines of its own under it.
-                    let galley = draw::galley_wrapped(ui, &text, ty::SECONDARY, pal.ink_2, width);
+                    // redirect sends to: it wraps on lines of its own under it. Two
+                    // lines at most, so that the buttons under the form stay in view.
+                    let mut job = egui::text::LayoutJob::single_section(
+                        text.clone(),
+                        ty::SECONDARY.format(pal.ink_2),
+                    );
+                    job.wrap.max_width = width;
+                    job.wrap.max_rows = 2;
+                    let galley = ui.painter().layout_job(job);
                     let top = y.max(at.y + size::CONTROL_H / 2.0) + 6.0;
                     let rect = draw::paint_galley(ui, pos2(left, top), Align2::LEFT_TOP, galley);
                     y = rect.bottom();
