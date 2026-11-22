@@ -202,8 +202,14 @@ jobs:
           name: linux
           path: dist
 
+      # Each installer also goes up under a name with no version, so releases/latest/download/<name>
+      # always links to the newest one. The checksums list both names.
       - name: Write checksums
         run: |
+          cp "dist/Mortise-$TAG-macos-arm64.dmg" dist/Mortise-macos-arm64.dmg
+          cp "dist/Mortise-$TAG-windows-x64-setup.exe" dist/Mortise-windows-x64-setup.exe
+          cp "dist/Mortise-$TAG-linux-x86_64.AppImage" dist/Mortise-linux-x86_64.AppImage
+          cp "dist/Mortise-$TAG-linux-amd64.deb" dist/Mortise-linux-amd64.deb
           cd dist
           sha256sum -- * > "Mortise-$TAG-SHA256SUMS.txt"
           cat "Mortise-$TAG-SHA256SUMS.txt"
@@ -225,14 +231,8 @@ jobs:
           git push origin "refs/tags/$TAG"
 
       # A re-run after this step failed finds the release, and uploads the files again.
-      # Each installer also goes up under a name with no version, so releases/latest/download/<name>
-      # always links to the newest one.
       - name: Create the GitHub release
         run: |
-          cp "dist/Mortise-$TAG-macos-arm64.dmg" dist/Mortise-macos-arm64.dmg
-          cp "dist/Mortise-$TAG-windows-x64-setup.exe" dist/Mortise-windows-x64-setup.exe
-          cp "dist/Mortise-$TAG-linux-x86_64.AppImage" dist/Mortise-linux-x86_64.AppImage
-          cp "dist/Mortise-$TAG-linux-amd64.deb" dist/Mortise-linux-amd64.deb
           if gh release view "$TAG" > /dev/null 2>&1; then
             gh release upload "$TAG" dist/* --clobber
           else
