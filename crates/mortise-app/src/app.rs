@@ -1156,17 +1156,17 @@ impl MortiseApp {
                 let Some(path) = self.adding.as_ref().map(|panel| expand(panel.path.trim())) else {
                     return;
                 };
-                let checked = self.check(ctx, &path);
                 if let Some(panel) = &mut self.adding {
-                    match checked {
-                        Some(checked) => panel.set_checked(checked),
-                        None => {
-                            panel.checked = None;
-                            panel.reading = true;
-                        }
-                    }
+                    panel.start_reading();
+                }
+                let checked = self.check(ctx, &path);
+                if let (Some(panel), Some(checked)) = (&mut self.adding, checked) {
+                    panel.set_checked(checked);
                 }
             }
+            // What was found is used only while it belongs to the path in the field.
+            AddAction::Add | AddAction::Open(_) | AddAction::Test
+                if !self.adding.as_ref().is_some_and(AddPanel::is_current) => {}
             AddAction::Add => self.add_found(ctx),
             AddAction::Open(index) => self.select_app(index),
             AddAction::CopyCommand => {
