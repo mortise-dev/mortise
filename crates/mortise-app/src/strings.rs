@@ -1246,8 +1246,30 @@ fn path_of(url: &str) -> &str {
     rest.find('/').map_or("/", |at| &rest[at..])
 }
 
-pub fn answered_unexpected(environment: &str, url: &str, status: u16) -> String {
+/// What a test in the environment form gave, when the app answered with a status.
+/// `http://shop.test/actuator answered 301 and sends to https://shop.test/actuator.`
+pub fn tested(url: &str, status: u16, location: Option<&str>) -> String {
+    match location {
+        // Not in the spec: a redirect, which Mortise does not follow.
+        Some(location) => format!("{url} answered {status} and sends to {location}."),
+        None => format!("{url} answered {status}."),
+    }
+}
+
+pub fn answered_unexpected(
+    environment: &str,
+    url: &str,
+    status: u16,
+    location: Option<&str>,
+) -> String {
     let path = path_of(url);
+    if let Some(location) = location {
+        // Not in the spec: a redirect, which Mortise does not follow.
+        return format!(
+            "{environment} answered {status} for {path} and sends to {location}. Correct the \
+             base URL or the actuator path in Settings to match that address."
+        );
+    }
     match status {
         500..600 => format!(
             "{environment} answered {status} for {path}. The actuator configuration has an \
@@ -1530,9 +1552,19 @@ mod runtime_tests {
              exposure.include in config/actuator.php."
         );
         assert_eq!(
-            answered_unexpected("local", "https://shop-api.test/actuator/health", 500),
+            answered_unexpected("local", "https://shop-api.test/actuator/health", 500, None),
             "local answered 500 for /actuator/health. The actuator configuration has an error. \
              Read the app log."
+        );
+        assert_eq!(
+            answered_unexpected(
+                "local",
+                "http://shop-api.test/actuator",
+                301,
+                Some("https://shop-api.test/actuator")
+            ),
+            "local answered 301 for /actuator and sends to https://shop-api.test/actuator. \
+             Correct the base URL or the actuator path in Settings to match that address."
         );
     }
 }

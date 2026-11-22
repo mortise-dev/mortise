@@ -440,9 +440,12 @@ pub fn environment_form(
                 let text = match answer {
                     Answer::Answered(runtime) => strings::exposed(&runtime.exposed),
                     Answer::NoAnswer { url, message } => format!("{url}: {message}."),
-                    Answer::NotAuthorized { url, status } | Answer::Unexpected { url, status } => {
-                        format!("{url} answered {status}.")
-                    }
+                    Answer::NotAuthorized { url, status } => strings::tested(url, *status, None),
+                    Answer::Unexpected {
+                        url,
+                        status,
+                        location,
+                    } => strings::tested(url, *status, location.as_deref()),
                 };
                 let room = left + width - (word.right() + 8.0);
                 let galley = draw::galley_elided(ui, &text, ty::SECONDARY, pal.ink_2, room);
