@@ -6,6 +6,12 @@ A desktop companion for developers who build Laravel apps with
 Mortise opens the folder of an app, lists its modules, and shows what is in each one.
 It reads files only: it needs no PHP and changes nothing in the app.
 
+When the app also has [`nwidart/laravel-actuator`](https://github.com/nWidart/laravel-actuator)
+and is running, Mortise can ask it for its runtime status, its routes and its scheduled tasks.
+This is optional. Mortise asks for `health`, `info`, `mappings` and `scheduledtasks`, and never
+for `env`. A token or a password goes to the credential store of the operating system and is
+never written to a file.
+
 Status: phase 1 (read only) is being built. See `docs/plan/phase-1.md`.
 
 ## Run

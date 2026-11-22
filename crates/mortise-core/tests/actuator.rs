@@ -214,6 +214,24 @@ fn no_answer_names_the_address_and_the_reason() {
 }
 
 #[test]
+fn a_host_that_does_not_exist_is_said_in_plain_words() {
+    // `.invalid` never resolves.
+    let environment = Environment {
+        name: "local".into(),
+        base_url: "http://shop-api.invalid".into(),
+        path: "actuator".into(),
+        credentials: Credentials::None,
+    };
+    assert_eq!(
+        ask(&environment, &None),
+        Answer::NoAnswer {
+            url: "http://shop-api.invalid/actuator".into(),
+            message: "the host was not found".into()
+        }
+    );
+}
+
+#[test]
 fn a_500_and_a_404_are_not_statuses_of_the_app() {
     let stub = StubActuator::healthy();
     stub.set(
@@ -496,4 +514,24 @@ fn a_live_environment_that_gave_no_answer_asks_for_everything_when_it_can() {
         unreachable!()
     };
     assert_eq!(up.routes.as_ref().map(Vec::len), Some(5));
+}
+
+#[test]
+#[ignore = "asks a site over HTTPS; run by hand, with MORTISE_HTTPS_URL for a site of your own"]
+fn https_works_with_the_certificates_this_computer_trusts() {
+    let environment = Environment {
+        name: "public".into(),
+        base_url: std::env::var("MORTISE_HTTPS_URL").unwrap_or("https://example.com".into()),
+        path: "actuator".into(),
+        credentials: Credentials::None,
+    };
+    // That the site answers at all, with or without an actuator, shows that TLS works.
+    let answer = ask(&environment, &None);
+    assert!(
+        matches!(
+            answer,
+            Answer::Unexpected { .. } | Answer::Answered(_) | Answer::NotAuthorized { .. }
+        ),
+        "expected an HTTP status, got {answer:?}"
+    );
 }

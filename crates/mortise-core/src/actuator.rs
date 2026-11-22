@@ -289,20 +289,29 @@ const TIMEOUT: Duration = Duration::from_secs(10);
 /// Why nothing came back, in a few words.
 fn reason(error: &ureq::Error) -> String {
     use std::io::ErrorKind;
-    match error {
-        ureq::Error::Timeout(_) => format!("no answer in {} s", TIMEOUT.as_secs()),
-        ureq::Error::HostNotFound => "the host was not found".to_owned(),
-        ureq::Error::ConnectionFailed => "connection failed".to_owned(),
-        ureq::Error::BadUri(_) => "the URL is not valid".to_owned(),
+    let timeout = || format!("no answer in {} s", TIMEOUT.as_secs());
+    let text = match error {
+        ureq::Error::Timeout(_) => return timeout(),
+        ureq::Error::HostNotFound => return "the host was not found".to_owned(),
+        ureq::Error::ConnectionFailed => return "connection failed".to_owned(),
+        ureq::Error::BadUri(_) => return "the URL is not valid".to_owned(),
         ureq::Error::Io(error) => match error.kind() {
-            ErrorKind::ConnectionRefused => "connection refused".to_owned(),
+            ErrorKind::ConnectionRefused => return "connection refused".to_owned(),
             ErrorKind::ConnectionReset | ErrorKind::ConnectionAborted => {
-                "the connection was closed".to_owned()
+                return "the connection was closed".to_owned();
             }
-            ErrorKind::TimedOut => format!("no answer in {} s", TIMEOUT.as_secs()),
+            ErrorKind::TimedOut => return timeout(),
             _ => error.to_string(),
         },
         other => other.to_string(),
+    };
+    // What is left comes as the text of the operating system or of the TLS library.
+    if text.contains("lookup address") {
+        "the host was not found".to_owned()
+    } else if text.contains("invalid peer certificate") {
+        "the certificate is not trusted on this computer".to_owned()
+    } else {
+        text
     }
 }
 
@@ -334,6 +343,10 @@ pub fn ask_status(environment: &Environment, secret: &Secret, earlier: &Runtime)
 fn plain(value: &Value) -> String {
     match value {
         Value::String(text) => text.clone(),
+        // The certificate check of the operating system said no.
+        other if other.to_string().starts_with("invalid peer certificate") => {
+            "the certificate is not trusted on this computer".to_owned()
+        }
         other => other.to_string(),
     }
 }

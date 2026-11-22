@@ -35,6 +35,12 @@ Facts the spec was unsure of, which turned out to hold.
   This was D6; it is closed.
 - On macOS the window runs with the system's three buttons over Mortise's bar, centred in its 34 px.
   Looked at in the running app on 22 November 2026 (milestone 1).
+- "health every 15 s while the window is visible": egui 0.37 does not run `App::ui` while a window is
+  minimized or occluded. The worker that asks the app stops when no frame was drawn for 3 s and
+  starts again with the next frame. No platform code is needed. Tested with a stub, not in a real
+  hidden window.
+- HTTPS uses the certificates the computer trusts (`rustls-platform-verifier`), so a local site with
+  its own certificate authority, such as a Herd `.test` site, works as it does in the browser.
 
 ## Where the specification leaves a choice, or its drawings and its text differ
 
@@ -49,6 +55,15 @@ Not forced by egui. Each is small; each is what milestone 1 built, so the owner 
 | S5 | Sizes without a token | The app name in the index (14 px, 700), the monogram on a rail tile (11 px, 600) and a path beside a title (Inconsolata at 0.95 of the text size) are in the drawings but not in section 3.3 | Kept as named constants beside the tokens in `mortise-app/src/theme.rs` | No |
 | S6 | Text of the Actions and Metrics tabs in a phase 1 build | S7.4 gives the text for Generate and says the other two use the same block | Written to match: "Actions are not in this version", "Metrics are not in this version", each with one paragraph. In `mortise-app/src/workspace.rs` | Yes, milestone 1 |
 | S7 | Restore | Section 8 names "maximise or restore"; the drawings have no restore icon | Two offset squares | No |
+| S8 | Routes of a module | S4.3: "18 routes, 8 shown". No control shows the other ten | Every route of the module is listed; the Summary scrolls | Yes, milestone 7 |
+| S9 | A way to remove one environment | S8.1 draws "Add environment" and no way to remove one | A small "Remove environment" button under the form of the selected environment | Yes, milestone 7 |
+| S10 | "Last answer" in the table of environments | S8.1 draws a status for each environment. Only the chosen environment is asked regularly | The last answer of this run: from the regular check, or from "Test". An environment that was not asked reads "not asked yet" | Yes, milestone 7 |
+| S11 | The index header where the app refuses the credentials | S6.5 text: the header reads "No answer on local" in c and e. The runtime box and the Runtime stat read "Not authorized" in e | As written: the header reads "No answer", the box and the stat read "Not authorized" | No |
+| S12 | The runtime box before the first answer | No drawing | The status line reads "asking" until the first answer is there | No |
+| S13 | An address with no actuator (404) | S6.5 i gives the sentence for 500 only | "local answered 404 for /actuator. Correct the base URL or the actuator path in Settings.", with "Open settings" | No |
+| S14 | Layout of the app form in Settings | S8.1 draws name, monogram, folder, coverage report and limit in one row, and the credentials beside the secret | Stacked, at most 560 px wide; the environment form at most 720 px. The same form is in the add panel, as S1.3 draws it | No |
+| S15 | `APP_ENV` | S1.3: Mortise reads `APP_URL` and `APP_ENV` from `.env` | Only `APP_URL` is read. `APP_ENV` is for asking before a command in production, which is phase 2 | No |
+| S16 | Environment names | No rule | Unique in an app and not empty; a rename that breaks this is not taken. The first three are proposed as local, staging, production | No |
 
 ## Moved between milestones
 
