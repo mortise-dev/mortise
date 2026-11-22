@@ -448,9 +448,19 @@ pub fn environment_form(
                     } => strings::tested(url, *status, location.as_deref()),
                 };
                 let room = left + width - (word.right() + 8.0);
-                let galley = draw::galley_elided(ui, &text, ty::SECONDARY, pal.ink_2, room);
-                let text_at = pos2(word.right() + 8.0, at.y);
-                let text_rect = draw::paint_galley(ui, text_at, Align2::LEFT_CENTER, galley);
+                let line = draw::galley(ui, &text, ty::SECONDARY, pal.ink_2);
+                let text_rect = if line.size().x <= room {
+                    let text_at = pos2(word.right() + 8.0, at.y);
+                    draw::paint_galley(ui, text_at, Align2::LEFT_CENTER, line)
+                } else {
+                    // Too long for the room beside the word, such as the address a
+                    // redirect sends to: it wraps on lines of its own under it.
+                    let galley = draw::galley_wrapped(ui, &text, ty::SECONDARY, pal.ink_2, width);
+                    let top = y.max(at.y + size::CONTROL_H / 2.0) + 6.0;
+                    let rect = draw::paint_galley(ui, pos2(left, top), Align2::LEFT_TOP, galley);
+                    y = rect.bottom();
+                    rect
+                };
                 draw::announce(ui, text_rect, egui::Role::Label, &text);
             }
             None => {
