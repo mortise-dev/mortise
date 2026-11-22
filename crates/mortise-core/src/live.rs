@@ -75,7 +75,7 @@ impl LiveApp {
             outbox: commands.clone(),
             on_change: Box::new(on_change),
             watcher: None,
-            watched: Vec::new(),
+            watched: Plan::default(),
             watching: Arc::clone(&watching),
         };
         std::thread::Builder::new()
@@ -133,6 +133,18 @@ impl Drop for LiveApp {
 /// A folder to watch, and whether the folders inside it are watched too.
 type Watched = (PathBuf, RecursiveMode);
 
+/// What the watcher is set to watch.
+#[derive(Debug, Default, PartialEq)]
+struct Plan {
+    /// The folders that are watched. Each one is there.
+    folders: Vec<Watched>,
+    /// The wanted folders that are not there yet, each with the folder above it that
+    /// is watched in its place.
+    missing: Vec<(PathBuf, PathBuf)>,
+    /// The statuses file the config names.
+    statuses: PathBuf,
+}
+
 struct Worker {
     root: PathBuf,
     codes: BTreeMap<String, String>,
@@ -144,7 +156,7 @@ struct Worker {
     on_change: Box<dyn Fn() + Send>,
     watcher: Option<Debouncer<RecommendedWatcher, RecommendedCache>>,
     /// What the watcher watches. Empty while it is off.
-    watched: Vec<Watched>,
+    watched: Plan,
     watching: Arc<AtomicBool>,
 }
 
@@ -165,7 +177,7 @@ impl Worker {
                 Command::Watch(true) => self.start_watching(),
                 Command::Watch(false) => {
                     self.watcher = None;
-                    self.watched.clear();
+                    self.watched = Plan::default();
                     self.watching.store(false, Ordering::Relaxed);
                 }
                 Command::Stop => break,
@@ -183,8 +195,9 @@ impl Worker {
             Err(error) => LiveState::Failed(Arc::new(error)),
         };
         *self.state.lock().expect("the state is never poisoned") = state;
-        // The modules folder or the coverage report can move when a config changes.
-        if self.watcher.is_some() && self.wanted() != self.watched {
+        // The modules folder, the statuses file or the coverage report can move when a
+        // config changes, and a wanted folder can appear.
+        if self.watcher.is_some() && self.plan() != self.watched {
             self.start_watching();
         }
         (self.on_change)();
@@ -241,28 +254,77 @@ impl Worker {
         wanted
     }
 
+    /// What to watch now. A wanted folder that is not there is watched through the
+    /// nearest folder above it, so that its creation is seen.
+    fn plan(&self) -> Plan {
+        let mut plan = Plan {
+            statuses: self.statuses_file(),
+            ..Plan::default()
+        };
+        for (folder, mode) in self.wanted() {
+            let watched = if folder.is_dir() {
+                (folder, mode)
+            } else if folder.exists() {
+                // Not a folder, such as `.git` in a worktree.
+                continue;
+            } else {
+                // When the nearest path above is a file, the folder cannot appear.
+                let Some(above) = folder
+                    .ancestors()
+                    .find(|path| path.exists())
+                    .filter(|path| path.is_dir())
+                else {
+                    continue;
+                };
+                plan.missing.push((folder.clone(), above.to_owned()));
+                (above.to_owned(), RecursiveMode::NonRecursive)
+            };
+            if !plan.folders.iter().any(|(folder, _)| *folder == watched.0) {
+                plan.folders.push(watched);
+            }
+        }
+        plan
+    }
+
     fn start_watching(&mut self) {
         self.watcher = None;
-        self.watched = self.wanted();
+        let mut plan = self.plan();
 
         let outbox = self.outbox.clone();
         let root = self.root.clone();
-        let statuses = self.statuses_file();
         // The statuses file counts wherever it is, also in `storage`. On macOS the
         // watcher reports paths without symbolic links, so that form counts too.
-        let real_statuses = statuses
+        let real_statuses = plan
+            .statuses
             .parent()
-            .and_then(|folder| std::fs::canonicalize(folder).ok())
-            .zip(statuses.file_name())
+            .and_then(real)
+            .zip(plan.statuses.file_name())
             .map(|(folder, name)| folder.join(name));
-        let statuses: Vec<PathBuf> = std::iter::once(statuses).chain(real_statuses).collect();
+        let statuses: Vec<PathBuf> = std::iter::once(plan.statuses.clone())
+            .chain(real_statuses)
+            .collect();
+        // A missing folder counts when it, or a folder on the way to it, appears.
+        let missing: Vec<(PathBuf, PathBuf)> = plan
+            .missing
+            .iter()
+            .cloned()
+            .chain(
+                plan.missing
+                    .iter()
+                    .filter_map(|(folder, above)| Some((real(folder)?, real(above)?))),
+            )
+            .collect();
+        let appears = move |path: &Path| {
+            missing
+                .iter()
+                .any(|(folder, above)| folder.starts_with(path) && path != above)
+        };
         let handler = move |result: DebounceEventResult| {
             let relevant = result.is_ok_and(|events| {
                 events.iter().any(|event| {
-                    event
-                        .paths
-                        .iter()
-                        .any(|path| statuses.contains(path) || is_relevant(&root, path))
+                    event.paths.iter().any(|path| {
+                        statuses.contains(path) || is_relevant(&root, path) || appears(path)
+                    })
                 })
             });
             if relevant {
@@ -272,14 +334,22 @@ impl Worker {
         let Ok(mut watcher) = new_debouncer(QUIET, None, handler) else {
             return;
         };
-        for (folder, mode) in &self.watched {
-            // A folder that does not exist cannot be watched. That is not an error here:
-            // the app folder is watched, so its creation is seen.
-            let _ = watcher.watch(folder, *mode);
-        }
+        // Only the folders that are watched are kept, so that a read after a failure
+        // tries again.
+        plan.folders
+            .retain(|(folder, mode)| watcher.watch(folder, *mode).is_ok());
+        self.watched = plan;
         self.watcher = Some(watcher);
         self.watching.store(true, Ordering::Relaxed);
     }
+}
+
+/// A path as the watcher reports it: without symbolic links, which macOS resolves.
+/// The part that is not there yet is kept as it is.
+fn real(path: &Path) -> Option<PathBuf> {
+    let there = path.ancestors().find(|path| path.exists())?;
+    let rest = path.strip_prefix(there).ok()?;
+    Some(std::fs::canonicalize(there).ok()?.join(rest))
 }
 
 /// False for what Mortise never reads and what changes in bulk: installed packages,

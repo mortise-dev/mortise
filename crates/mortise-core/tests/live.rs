@@ -165,9 +165,60 @@ fn a_change_of_the_statuses_file_is_seen() {
     // The watcher is put in place again after the read.
     std::thread::sleep(Duration::from_millis(500));
 
-    std::fs::write(&moved, json).unwrap();
+    std::fs::write(&moved, &json).unwrap();
     opened.wait_for("Billing turned on in the moved file", |app| {
         app.modules_on() == 6
+    });
+
+    // The config names another file in the same folder.
+    let renamed = opened.root.join("storage/runtime/renamed.json");
+    std::fs::write(
+        &renamed,
+        json.replace("\"Billing\": true", "\"Billing\": false"),
+    )
+    .unwrap();
+    let php = std::fs::read_to_string(&config).unwrap();
+    std::fs::write(
+        &config,
+        php.replace(
+            "storage/runtime/statuses.json",
+            "storage/runtime/renamed.json",
+        ),
+    )
+    .unwrap();
+    opened.wait_for("the renamed statuses file", |app| app.modules_on() == 5);
+    std::thread::sleep(Duration::from_millis(500));
+    std::fs::write(&renamed, &json).unwrap();
+    opened.wait_for("Billing turned on in the renamed file", |app| {
+        app.modules_on() == 6
+    });
+
+    // The config names a file in a folder that is not there yet: every module is off.
+    let php = std::fs::read_to_string(&config).unwrap();
+    std::fs::write(
+        &config,
+        php.replace(
+            "storage/runtime/renamed.json",
+            "storage/later/statuses.json",
+        ),
+    )
+    .unwrap();
+    opened.wait_for("no statuses file", |app| app.modules_on() == 0);
+    std::thread::sleep(Duration::from_millis(500));
+    let later = opened.root.join("storage/later/statuses.json");
+    std::fs::create_dir_all(later.parent().unwrap()).unwrap();
+    std::fs::write(&later, &json).unwrap();
+    opened.wait_for("the statuses file in the new folder", |app| {
+        app.modules_on() == 6
+    });
+    std::thread::sleep(Duration::from_millis(500));
+    std::fs::write(
+        &later,
+        json.replace("\"Billing\": true", "\"Billing\": false"),
+    )
+    .unwrap();
+    opened.wait_for("Billing turned off in the new folder", |app| {
+        app.modules_on() == 5
     });
 }
 
