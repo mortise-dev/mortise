@@ -111,6 +111,9 @@ pub(crate) struct Scan {
 struct Facts {
     size: u64,
     modified: Option<SystemTime>,
+    /// Whether the file counted as a test file when it was read. Its tests are
+    /// counted only then.
+    is_test: bool,
     lines: u64,
     tests: u32,
     analysis: Arc<Analysis>,
@@ -371,6 +374,7 @@ fn scan(dir: &Path, kinds: &Kinds, cache: &mut ReadCache) -> Scan {
                 facts.size == entry.size
                     && facts.modified == entry.modified
                     && entry.modified.is_some()
+                    && facts.is_test == entry.is_test
             })
         })
         .collect();
@@ -386,6 +390,7 @@ fn scan(dir: &Path, kinds: &Kinds, cache: &mut ReadCache) -> Scan {
             let facts = Facts {
                 size: entry.size,
                 modified: entry.modified,
+                is_test: entry.is_test,
                 lines: count_lines(&source),
                 tests: if entry.is_test {
                     count_tests(&source)
@@ -527,6 +532,19 @@ mod tests {
 
         cache.clear();
         assert_eq!(scan(dir.path(), &kinds, &mut cache).lines, 3);
+
+        // The config makes a folder hold tests: its files are read again.
+        write(
+            &dir.path().join("spec/Unit/PostTest.php"),
+            "<?php class PostTest { function testTitle() {} }",
+        );
+        assert_eq!(scan(dir.path(), &kinds, &mut cache).tests, 0);
+        let config = crate::php::read_config(
+            br#"<?php return ['paths' => ['generator' => ['test-unit' => 'spec/Unit']]];"#,
+        )
+        .unwrap();
+        let moved = Kinds::new(Some(&config), "app/");
+        assert_eq!(scan(dir.path(), &moved, &mut cache).tests, 1);
     }
 
     #[test]
