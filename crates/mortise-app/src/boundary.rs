@@ -518,29 +518,28 @@ impl View<'_> {
     ) -> f32 {
         let pal = self.pal;
         let rules = &self.app.rules;
-        let circle = out.zip(back).filter(|(out, _)| out.circular);
-
-        // One section for a plain link, two for a circle.
-        let sections: Vec<(&Link, bool)> = match (circle, out, back) {
-            (Some((out, back)), ..) => vec![(out, true), (back, true)],
-            (None, Some(out), _) => vec![(out, false)],
-            (None, None, Some(back)) => vec![(back, false)],
-            (None, None, None) => return y,
+        // One section for a link one way, two when the modules use each other.
+        // Two modules that use each other are always in one circle.
+        let sections: Vec<&Link> = out.into_iter().chain(back).collect();
+        let Some(&first_link) = sections.first() else {
+            return y;
         };
-        let rows: usize = sections.iter().map(|(link, _)| link.refs.len()).sum();
+        // A link one way is part of a circle too when the circle runs through other modules.
+        let circle = self
+            .app
+            .cycles
+            .iter()
+            .find(|cycle| cycle.modules.iter().any(|member| member == module))
+            .filter(|_| first_link.circular);
+        let rows: usize = sections.iter().map(|link| link.refs.len()).sum();
         let titled = sections.len() > 1;
         let section_head = if titled { 30.0 } else { 0.0 };
         let footer_text = match circle {
-            Some(_) => {
-                let carrier = self
-                    .app
-                    .cycles
-                    .iter()
-                    .find(|cycle| cycle.modules.iter().any(|member| member == module))
-                    .map_or(module, |cycle| cycle.carrier.as_str());
-                strings::reported_on(carrier)
+            Some(cycle) if cycle.modules.len() > 2 => {
+                strings::reported_on_in_circle(&cycle.carrier)
             }
-            None => strings::rule_of_link(&sections[0].0.to, rules),
+            Some(cycle) => strings::reported_on(&cycle.carrier),
+            None => strings::rule_of_link(&first_link.to, rules),
         };
         let copy = Button {
             label: strings::COPY_PATH,
@@ -563,13 +562,10 @@ impl View<'_> {
         let panel = Rect::from_min_size(pos2(self.left, y), vec2(self.width, height));
 
         // Head: what the link is, and how much of it breaks a rule.
-        let (title, note, bad) = match circle {
-            Some((out, back)) => {
+        let (title, note, bad) = match (circle, sections.as_slice()) {
+            (Some(cycle), [out, back]) => {
                 // The same sentence from either side: the module that carries the finding first.
-                let carrier_first = self.app.cycles.iter().any(|cycle| {
-                    cycle.carrier == other && cycle.modules.iter().any(|member| member == module)
-                });
-                let (first, second) = if carrier_first {
+                let (first, second) = if cycle.carrier == other {
                     (other, module)
                 } else {
                     (module, other)
@@ -580,8 +576,13 @@ impl View<'_> {
                     rules.no_circular_use,
                 )
             }
-            None => {
-                let link = sections[0].0;
+            (Some(_), _) => (
+                strings::a_uses_b(&first_link.from, &first_link.to),
+                strings::circular_files(first_link.files()),
+                rules.no_circular_use,
+            ),
+            (None, _) => {
+                let link = first_link;
                 let internal = link.internal_files();
                 if rules.public_surface_only && internal > 0 {
                     (
@@ -625,7 +626,7 @@ impl View<'_> {
         // The files are one stop: J and K move through them, Enter opens the file.
         let nav = draw::ListNav::over(ui, ("files", module, other), rows, &mut state.file);
         let mut opened = false;
-        for (link, _) in &sections {
+        for link in &sections {
             if titled {
                 let mid = row_y + section_head / 2.0;
                 ui.painter().rect_filled(
