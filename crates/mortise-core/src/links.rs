@@ -73,6 +73,15 @@ pub struct Cycle {
     pub files: Vec<(String, usize)>,
 }
 
+/// The module of the circle of `module` that `module` uses directly. Every member of a
+/// circle uses another member, so no module of a circle is left without one.
+pub(crate) fn circle_neighbour<'a>(links: &'a [Link], module: &str) -> Option<&'a str> {
+    links
+        .iter()
+        .find(|link| link.circular && link.from == module)
+        .map(|link| link.to.as_str())
+}
+
 /// The PHP files of one module, as the links need them.
 pub(crate) struct ModuleSource<'a> {
     pub(crate) name: &'a str,
@@ -513,6 +522,9 @@ mod tests {
         assert_eq!(cycles[0].carrier, "A");
         let to_d = links.iter().find(|link| link.to == "D").unwrap();
         assert!(!to_d.circular);
+        // B is shown with the member it uses, not the first other member by name.
+        assert_eq!(circle_neighbour(&links, "B"), Some("C"));
+        assert_eq!(circle_neighbour(&links, "D"), None);
     }
 
     #[test]

@@ -157,7 +157,7 @@ pub fn entries(query: &str, source: &Source<'_>) -> Vec<Entry> {
                     Detail::CircularUse { files } => {
                         let names: Vec<String> =
                             files.iter().map(|(name, _)| name.clone()).collect();
-                        let other = names.iter().find(|name| **name != module).cloned();
+                        let other = app.circle_neighbour(&module).map(str::to_owned);
                         let label = match names.as_slice() {
                             [a, b] => strings::use_each_other(a, b),
                             names => strings::use_each_other_in_a_circle(names),
