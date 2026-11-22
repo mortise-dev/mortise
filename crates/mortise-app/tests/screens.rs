@@ -316,3 +316,53 @@ fn milestone_6_palette() {
         save(&format!("s12.1-results-{suffix}"), &mut harness);
     }
 }
+
+#[test]
+#[ignore = "writes PNG files for a person to look at"]
+fn milestone_6_settings() {
+    for (theme, suffix) in [(Theme::Light, "light"), (Theme::Dark, "dark")] {
+        let mut desk = Desk::new();
+        desk.theme = theme;
+        let shop = desk.app("shop-api");
+        let crm = desk.app("crm");
+        let pages = desk.app("landing-pages");
+        desk.knows(&[(&shop, "SA"), (&crm, "CR"), (&pages, "LP")]);
+        let mut harness = desk.start();
+        // S8.1: Apps.
+        harness.key_press_modifiers(Modifiers::COMMAND, Key::Comma);
+        save(&format!("s8.1-apps-{suffix}"), &mut harness);
+        // S8.3: General.
+        harness
+            .get_by_role_and_label(Role::ListBoxOption, "General")
+            .click();
+        save(&format!("s8.3-general-{suffix}"), &mut harness);
+        // S8.4: Keyboard.
+        harness
+            .get_by_role_and_label(Role::ListBoxOption, "Keyboard")
+            .click();
+        save(&format!("s8.4-keyboard-{suffix}"), &mut harness);
+    }
+
+    // S13.1: the minimum window, with the strip and with the index opened by hand.
+    let mut desk = Desk::new();
+    desk.size = egui::vec2(960.0, 600.0);
+    let root = desk.app("shop-api");
+    desk.knows(&[(&root, "SA")]);
+    let mut harness = desk.start();
+    harness
+        .get_by_role_and_label(Role::ListBoxOption, "Checkout")
+        .click();
+    save("s13.1a-960-strip-light", &mut harness);
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::B);
+    save("s13.1b-960-open-light", &mut harness);
+
+    // Text size 150%.
+    let desk = Desk::new();
+    let root = desk.app("shop-api");
+    desk.knows(&[(&root, "SA")]);
+    let mut settings = desk.saved();
+    settings.general.text_size = 150;
+    settings.save(&desk.settings_path()).unwrap();
+    let mut harness = desk.start();
+    save("text-size-150-light", &mut harness);
+}

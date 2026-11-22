@@ -102,6 +102,18 @@ impl Desk {
 
     /// Starts Mortise with an app folder on the command line.
     pub fn start_with(&self, folder: Option<PathBuf>) -> Harness<'static, MortiseApp> {
+        // The theme of a test is a choice in Settings, as it is for a user: left to
+        // "System", a headless run has no system to follow.
+        // A settings file that cannot be read is left for the app to deal with.
+        if let Ok(mut settings) = Settings::load(&self.settings_path())
+            && settings.general.theme == mortise_core::ThemeChoice::System
+        {
+            settings.general.theme = match self.theme {
+                Theme::Light => mortise_core::ThemeChoice::Light,
+                Theme::Dark => mortise_core::ThemeChoice::Dark,
+            };
+            settings.save(&self.settings_path()).unwrap();
+        }
         let picks = Rc::clone(&self.picks);
         let config = Config {
             chrome: self.chrome,

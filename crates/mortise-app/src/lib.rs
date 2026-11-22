@@ -13,6 +13,7 @@ pub mod fonts;
 pub mod index;
 pub mod palette;
 pub mod rail;
+pub mod settings_view;
 pub mod strings;
 pub mod summary;
 pub mod theme;

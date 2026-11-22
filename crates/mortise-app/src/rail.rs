@@ -21,6 +21,7 @@ pub struct Tile<'a> {
 pub enum RailAction {
     Select(usize),
     Add,
+    Settings,
 }
 
 /// The gap between two tiles.
@@ -35,6 +36,7 @@ pub fn rail(
     tiles: &[Tile<'_>],
     current: Option<usize>,
     adding: bool,
+    settings_open: bool,
 ) -> Option<RailAction> {
     ui.painter().rect_filled(rect, 0, pal.frame);
     draw::vline(
@@ -47,6 +49,12 @@ pub fn rail(
     let mut action = None;
     let x = rect.left() + ((rect.width() - 1.0 - size::RAIL_TILE) / 2.0).round();
     let step = size::RAIL_TILE + GAP;
+    // Settings stay at the bottom of the rail.
+    let settings = Rect::from_min_size(
+        pos2(x, rect.bottom() - 10.0 - size::RAIL_TILE),
+        Vec2::splat(size::RAIL_TILE),
+    );
+    let rect = Rect::from_min_max(rect.min, pos2(rect.right(), settings.top()));
     let fits = 10.0 + tiles.len() as f32 * step + size::RAIL_TILE + 10.0 <= rect.height();
 
     // When the tiles do not fit, the add tile stays at the bottom and the tiles scroll above it.
@@ -106,6 +114,9 @@ pub fn rail(
         adding,
     ) {
         action = Some(RailAction::Add);
+    }
+    if settings_tile(ui, pal, settings, settings_open) {
+        action = Some(RailAction::Settings);
     }
     action
 }
@@ -206,5 +217,33 @@ fn add_tile(ui: &Ui, pal: &Palette, rect: Rect, active: bool) -> bool {
 
     let clicked = response.clicked();
     draw::tooltip(response, pal, strings::ADD_APP);
+    clicked
+}
+
+/// The Settings tile: an icon without an outline. Selected, it is a key block.
+fn settings_tile(ui: &Ui, pal: &Palette, rect: Rect, selected: bool) -> bool {
+    let response = ui.interact(rect, ui.scope_id().with("rail-settings"), Sense::click());
+    response.widget_info(|| WidgetInfo::selected(Role::Button, true, selected, "Settings"));
+    let (fill, color) = if selected {
+        (pal.key, pal.key_fg)
+    } else if response.is_pointer_button_down_on() {
+        (pal.line, pal.ink)
+    } else if response.hovered() {
+        (pal.well, pal.ink)
+    } else {
+        (Color32::TRANSPARENT, pal.ink)
+    };
+    ui.painter().rect_filled(rect, radius::CONTROL, fill);
+    draw::icon(
+        ui,
+        Rect::from_center_size(rect.center(), Vec2::splat(size::ICON)),
+        draw::Icon::Settings,
+        color,
+    );
+    if response.has_focus() {
+        draw::focus_ring(ui, pal, rect, radius::CONTROL);
+    }
+    let clicked = response.clicked();
+    draw::tooltip(response, pal, "Settings");
     clicked
 }

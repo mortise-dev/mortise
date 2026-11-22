@@ -269,11 +269,28 @@ pub fn workspace(
         );
     }
 
+    // In this version the header of a module has one action.
+    let mut header_action = None;
+    if let Some(module) = module {
+        let open = Button {
+            label: "Open in editor",
+            small: true,
+            ..Default::default()
+        };
+        let at = pos2(head.right() - 16.0 - open.width(ui), head.top() + 12.0);
+        if open.show(ui, pal, at, state.keyboard).clicked() {
+            header_action = Some(BoundaryAction::OpenInEditor {
+                path: module.dir.clone(),
+                line: 1,
+            });
+        }
+    }
+
     let body = Rect::from_min_max(pos2(rect.left(), head.bottom()), rect.max);
     if findings {
         return findings_view::findings(ui, pal, body, app, state.finding_row);
     }
-    match (*tab, tab.explanation()) {
+    let in_body = match (*tab, tab.explanation()) {
         (_, Some((icon, title, text))) => {
             empty_state(ui, pal, body, EmptyMark::Icon(icon), title, &[text], 0.0);
             None
@@ -282,7 +299,8 @@ pub fn workspace(
             boundary::boundary(ui, pal, body, app, module, state.boundary, state.keyboard)
         }
         (_, None) => summary::summary(ui, pal, body, app, module, state.summary),
-    }
+    };
+    in_body.or(header_action)
 }
 
 /// What stands above the title of an empty-state block.

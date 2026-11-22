@@ -4,7 +4,7 @@ use eframe::egui::{
     self, Align2, FontId, Rect, RichText, Role, ScrollArea, Sense, Stroke, StrokeKind, Ui,
     UiBuilder, Vec2, WidgetInfo, pos2, vec2,
 };
-use mortise_core::{ALL_CODE, AppSnapshot, FindingState, Module, ModuleState};
+use mortise_core::{ALL_CODE, AppSnapshot, FindingState, IndexRows, Module, ModuleState};
 
 use crate::app::Selection;
 use crate::draw::{self, Icon, StampState};
@@ -29,6 +29,8 @@ pub struct IndexState<'a> {
     pub collapsed: bool,
     /// The order: problems, then warnings, then the rest by name. False is by name.
     pub problems_first: bool,
+    /// Two lines a row, one line, or one line above 20 modules.
+    pub rows: IndexRows,
     pub mac: bool,
 }
 
@@ -118,6 +120,7 @@ pub fn index(
         reveal,
         collapsed,
         problems_first,
+        rows,
         mac,
     } = state;
     let mut toggle_order = false;
@@ -185,7 +188,11 @@ pub fn index(
 
     // The list reaches the right edge of the index, so that the selected row can cover the joint.
     let list = Rect::from_min_max(pos2(rect.left(), head_bottom), pos2(rect.right(), foot_top));
-    let compact = app.modules.len() > TWO_LINE_LIMIT;
+    let compact = match rows {
+        IndexRows::Automatic => app.modules.len() > TWO_LINE_LIMIT,
+        IndexRows::TwoLines => false,
+        IndexRows::OneLine => true,
+    };
     let row_h = if compact {
         size::INDEX_ROW_COMPACT_H
     } else {

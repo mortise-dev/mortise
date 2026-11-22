@@ -146,6 +146,8 @@ pub enum Icon {
     Restore,
     Close,
     Folder,
+    App,
+    List,
 }
 
 /// One stroke of an icon: points on the 16 px grid.
@@ -251,6 +253,13 @@ impl Icon {
             [14.25, 12.75],
             [1.75, 12.75],
         ])];
+        const APP_BOX: [[f32; 2]; 4] = square(2.25, 3.25, 11.5, 9.5);
+        const APP: &[Path] = &[closed(&APP_BOX), open(&[[2.25, 6.25], [13.75, 6.25]])];
+        const LIST: &[Path] = &[
+            open(&[[2.5, 4.0], [13.5, 4.0]]),
+            open(&[[2.5, 8.0], [13.5, 8.0]]),
+            open(&[[2.5, 12.0], [9.5, 12.0]]),
+        ];
         const CLOSE: &[Path] = &[
             open(&[[3.5, 3.5], [12.5, 12.5]]),
             open(&[[12.5, 3.5], [3.5, 12.5]]),
@@ -268,6 +277,8 @@ impl Icon {
             Icon::Restore => RESTORE,
             Icon::Close => CLOSE,
             Icon::Folder => FOLDER,
+            Icon::App => APP,
+            Icon::List => LIST,
         }
     }
 }

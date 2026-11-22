@@ -9,7 +9,7 @@ use mortise_core::{
     AppSnapshot, Link, Module, ModuleState, Reference, Rules, RulesSource, columns,
 };
 
-use crate::draw::{self, Button, StampState};
+use crate::draw::{self, Button, ButtonKind, StampState};
 use crate::strings;
 use crate::theme::{Face, Palette, Type, radius, size, stroke, ty};
 
@@ -46,6 +46,8 @@ pub enum BoundaryAction {
     CopyPath(String),
     /// Open the Findings list of the app.
     ShowFindings,
+    /// Open a file or a folder in the editor, at a line.
+    OpenInEditor { path: std::path::PathBuf, line: u32 },
 }
 
 /// Paints the Boundary tab into `body`, which scrolls.
@@ -455,7 +457,12 @@ impl View<'_> {
             label: strings::COPY_PATH,
             ..Default::default()
         };
-        let footer_w = self.width - 26.0 - copy.width(ui) - 16.0;
+        let open = Button {
+            label: "Open in editor",
+            kind: ButtonKind::Primary,
+            ..Default::default()
+        };
+        let footer_w = self.width - 26.0 - copy.width(ui) - 8.0 - open.width(ui) - 16.0;
         let footer = draw::galley_wrapped(ui, &footer_text, ty::SECONDARY, pal.ink_2, footer_w);
         let footer_h = (footer.size().y + 20.0).max(46.0);
 
@@ -604,7 +611,7 @@ impl View<'_> {
                     state.file = index;
                 }
                 if selected {
-                    selected_path = Some(reference.file.clone());
+                    selected_path = Some((reference.file.clone(), reference.line));
                 }
                 index += 1;
                 row_y += size::TABLE_ROW_H;
@@ -629,8 +636,18 @@ impl View<'_> {
             foot.right() - 12.0 - copy.width(ui),
             foot.center().y - copy.height() / 2.0,
         );
+        let open_min = pos2(copy_min.x - 8.0 - open.width(ui), copy_min.y);
+        if open.show(ui, pal, open_min, self.keyboard).clicked()
+            && let Some((file, line)) = &selected_path
+        {
+            // The file at the line that names the class.
+            *action = Some(BoundaryAction::OpenInEditor {
+                path: self.app.root.join(file),
+                line: *line,
+            });
+        }
         if copy.show(ui, pal, copy_min, self.keyboard).clicked()
-            && let Some(path) = selected_path
+            && let Some((path, _)) = selected_path
         {
             *action = Some(BoundaryAction::CopyPath(path));
         }

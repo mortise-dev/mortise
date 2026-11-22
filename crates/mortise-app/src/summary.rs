@@ -759,6 +759,7 @@ fn bar_box(
 }
 
 /// The table of modules (C8): a header whose cells sort, then a row per module.
+/// In a narrow workspace the columns that say least give way to the module name.
 fn by_module(
     ui: &Ui,
     pal: &Palette,
@@ -771,17 +772,39 @@ fn by_module(
     let left = rect.left() + 14.0;
     let right = rect.right() - 10.0;
 
-    // Columns from the right edge: numbers have fixed widths, the module takes the rest.
-    let mut edges = [(0.0, 0.0); 9];
+    // The columns that fit, leaving at least 170 px for the module.
+    let mut columns: Vec<Column> = Column::ALL.to_vec();
+    let needs = |columns: &[Column]| {
+        columns
+            .iter()
+            .map(|column| column.width() + 12.0)
+            .sum::<f32>()
+    };
+    for give_way in [
+        Column::Commits,
+        Column::UsedBy,
+        Column::Uses,
+        Column::Lines,
+        Column::Tests,
+    ] {
+        if right - left - needs(&columns[1..]) >= 170.0 {
+            break;
+        }
+        columns.retain(|column| *column != give_way);
+    }
+    // From the right edge: numbers have fixed widths, the module takes the rest.
+    let mut edges: Vec<(Column, f32, f32)> = Vec::new();
     let mut x = right;
-    for (i, column) in Column::ALL.iter().enumerate().rev() {
+    for column in columns.iter().rev() {
         if *column == Column::Module {
-            edges[i] = (left, x);
+            edges.push((*column, left, x));
         } else {
-            edges[i] = (x - column.width(), x);
+            edges.push((*column, x - column.width(), x));
             x -= column.width() + 12.0;
         }
     }
+    edges.reverse();
+    let name_right = edges[0].2;
 
     // Header: 26 px, 11.5 px weight 600 in ink-2, line-2 underneath. A cell is a button.
     let head_bottom = rect.top() + size::TABLE_HEAD_H;
@@ -791,12 +814,12 @@ fn by_module(
         head_bottom - 1.0,
         pal.line_2,
     );
-    for (i, column) in Column::ALL.iter().enumerate() {
-        let (from, to) = edges[i];
-        let cell = Rect::from_min_max(pos2(from, rect.top()), pos2(to, head_bottom - 1.0));
+    for (column, from, to) in &edges {
+        let at_left = matches!(column, Column::Module | Column::Findings);
+        let cell = Rect::from_min_max(pos2(*from, rect.top()), pos2(*to, head_bottom - 1.0));
         let response = ui.interact(
             cell,
-            ui.scope_id().with(("by-module-head", i)),
+            ui.scope_id().with(("by-module-head", column.label())),
             Sense::click(),
         );
         response.widget_info(|| WidgetInfo::labeled(Role::ColumnHeader, true, column.label()));
@@ -810,10 +833,10 @@ fn by_module(
             pal.ink_2
         };
         let mid = cell.center().y;
-        let text = if matches!(column, Column::Module | Column::Findings) {
+        let text = if at_left {
             draw::paint_text(
                 ui,
-                pos2(from, mid),
+                pos2(*from, mid),
                 Align2::LEFT_CENTER,
                 column.label(),
                 ty::LABEL,
@@ -822,7 +845,7 @@ fn by_module(
         } else {
             draw::paint_text(
                 ui,
-                pos2(to, mid),
+                pos2(*to, mid),
                 Align2::RIGHT_CENTER,
                 column.label(),
                 ty::LABEL,
@@ -831,7 +854,7 @@ fn by_module(
         };
         if sorted {
             // A chevron: down for A to Z and low to high, up for the reverse.
-            let tip = if matches!(column, Column::Module | Column::Findings) {
+            let tip = if at_left {
                 text.right() + 9.0
             } else {
                 text.left() - 9.0
@@ -894,13 +917,13 @@ fn by_module(
                 off,
             },
         );
-        let name_type = ty::BODY.with_face(Face::Sans600);
-        let name_w = (edges[0].1 - stamp.right() - 8.0 - 12.0).max(0.0);
+        let name_w = (name_right - stamp.right() - 8.0 - 12.0).max(0.0);
+        let name_color = if off { pal.ink_2 } else { pal.ink };
         let name = draw::galley_elided(
             ui,
             &module.name,
-            name_type,
-            if off { pal.ink_2 } else { pal.ink },
+            ty::BODY.with_face(Face::Sans600),
+            name_color,
             name_w,
         );
         draw::paint_galley(
@@ -911,73 +934,76 @@ fn by_module(
         );
 
         let unknown = (strings::UNKNOWN.to_owned(), pal.ink_3);
-        let cells = [
-            (strings::count(module.files), pal.ink),
-            (strings::count(module.lines), pal.ink),
-            (strings::count(u64::from(module.tests)), pal.ink),
-            percent(module).map_or(unknown.clone(), |percent| {
-                (strings::percent(percent), pal.ink)
-            }),
-            (app.uses(&module.name).count().to_string(), pal.ink),
-            (app.used_by(&module.name).count().to_string(), pal.ink),
-            match (&app.git, commits(module)) {
-                (Git::Repository { .. }, Some(commits)) => {
-                    (strings::count(u64::from(commits)), pal.ink)
+        for (column, from, to) in &edges[1..] {
+            let (text, color) = match column {
+                Column::Module => continue,
+                Column::Files => (strings::count(module.files), pal.ink),
+                Column::Lines => (strings::count(module.lines), pal.ink),
+                Column::Tests => (strings::count(u64::from(module.tests)), pal.ink),
+                Column::Coverage => percent(module).map_or(unknown.clone(), |percent| {
+                    (strings::percent(percent), pal.ink)
+                }),
+                Column::Uses => (app.uses(&module.name).count().to_string(), pal.ink),
+                Column::UsedBy => (app.used_by(&module.name).count().to_string(), pal.ink),
+                Column::Commits => match (&app.git, commits(module)) {
+                    (Git::Repository { .. }, Some(commits)) => {
+                        (strings::count(u64::from(commits)), pal.ink)
+                    }
+                    _ => unknown.clone(),
+                },
+                Column::Findings => {
+                    // The finding state: a mark and a word, at the left of its column.
+                    let (word, color, kind) =
+                        match (module.state, app.findings.state_of(&module.name)) {
+                            (ModuleState::Off, _) => (strings::OFF.to_owned(), pal.off, 3),
+                            (_, FindingState::Problems(n)) => (strings::problems(n), pal.bad, 0),
+                            (_, FindingState::Warning) => {
+                                let low = app
+                                    .findings
+                                    .of(&module.name)
+                                    .all(|finding| finding.check == Check::CoverageLimit);
+                                let word = if low {
+                                    strings::LOW_COVERAGE
+                                } else {
+                                    strings::WARNING
+                                };
+                                (word.to_owned(), pal.warn, 1)
+                            }
+                            (_, FindingState::Good) => (strings::GOOD.to_owned(), pal.good, 2),
+                        };
+                    let mark =
+                        Rect::from_min_size(pos2(*from, mid - 6.0), Vec2::splat(size::STATE_MARK));
+                    let behind = if response.hovered() {
+                        pal.well
+                    } else {
+                        pal.surface
+                    };
+                    match kind {
+                        0 => draw::mark_bad(ui, mark, color, behind),
+                        1 => draw::mark_warn(ui, mark, color),
+                        2 => draw::mark_good(ui, mark, color),
+                        _ => draw::mark_off(ui, mark, color),
+                    }
+                    draw::paint_text(
+                        ui,
+                        pos2(mark.right() + 5.0, mid),
+                        Align2::LEFT_CENTER,
+                        &word,
+                        ty::LABEL,
+                        color,
+                    );
+                    continue;
                 }
-                _ => unknown,
-            },
-        ];
-        for (i, (text, color)) in cells.iter().enumerate() {
-            let (_, to) = edges[i + 1];
+            };
             draw::paint_text(
                 ui,
-                pos2(to, mid),
+                pos2(*to, mid),
                 Align2::RIGHT_CENTER,
-                text,
+                &text,
                 ty::BODY,
-                *color,
+                color,
             );
         }
-
-        // The finding state: a mark and a word, at the left of its column.
-        let (from, _) = edges[8];
-        let (word, color, kind) = match (module.state, app.findings.state_of(&module.name)) {
-            (ModuleState::Off, _) => (strings::OFF.to_owned(), pal.off, 3),
-            (_, FindingState::Problems(n)) => (strings::problems(n), pal.bad, 0),
-            (_, FindingState::Warning) => {
-                let low = app
-                    .findings
-                    .of(&module.name)
-                    .all(|finding| finding.check == Check::CoverageLimit);
-                let word = if low {
-                    strings::LOW_COVERAGE
-                } else {
-                    strings::WARNING
-                };
-                (word.to_owned(), pal.warn, 1)
-            }
-            (_, FindingState::Good) => (strings::GOOD.to_owned(), pal.good, 2),
-        };
-        let mark = Rect::from_min_size(pos2(from, mid - 6.0), Vec2::splat(size::STATE_MARK));
-        let behind = if response.hovered() {
-            pal.well
-        } else {
-            pal.surface
-        };
-        match kind {
-            0 => draw::mark_bad(ui, mark, color, behind),
-            1 => draw::mark_warn(ui, mark, color),
-            2 => draw::mark_good(ui, mark, color),
-            _ => draw::mark_off(ui, mark, color),
-        }
-        draw::paint_text(
-            ui,
-            pos2(mark.right() + 5.0, mid),
-            Align2::LEFT_CENTER,
-            &word,
-            ty::LABEL,
-            color,
-        );
     }
     clicked
 }

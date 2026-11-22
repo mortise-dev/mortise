@@ -8,7 +8,7 @@ use eframe::egui::{self, Event, Key, KeyboardShortcut, Modifiers, Rect, Theme, U
 use mortise_core::{
     AppEntry, AppSnapshot, LiveApp, LiveState, Settings, SettingsError, propose_monogram, read_app,
 };
-use mortise_core::{ReadOptions, Rules};
+use mortise_core::{ReadOptions, Rules, ThemeChoice};
 
 use crate::add::{self, AddAction, AddPanel, Checked};
 use crate::boundary::{BoundaryAction, BoundaryState};
@@ -18,6 +18,7 @@ use crate::draw::{Button, ButtonKind};
 use crate::index::{self, IndexState};
 use crate::palette::{self, Command, PaletteAction, PaletteState};
 use crate::rail::{self, RailAction, Tile};
+use crate::settings_view::{self, Section, SettingsAction, SettingsState};
 use crate::strings;
 use crate::summary::{Sort, SummaryState};
 use crate::theme::{self, radius, size};
@@ -81,8 +82,15 @@ pub struct MortiseApp {
     keyboard: bool,
     /// The selection moved by key in this frame, so its row must be scrolled into view.
     reveal: bool,
-    /// The index is collapsed to its strip of stamps.
-    index_collapsed: bool,
+    /// What Ctrl B chose for the index: its strip, or its full width. `None` lets
+    /// the width of the window decide, which it does again after a resize.
+    index_choice: Option<bool>,
+    /// The width of the window in the last frame, to notice a resize.
+    window_w: f32,
+    /// Settings, while they are open.
+    settings_open: Option<SettingsState>,
+    /// The window has the platform's decorations at this moment.
+    decorated: bool,
     /// The filter field takes focus in this frame.
     focus_filter: bool,
     /// The filter field had focus at the end of the last frame.
@@ -91,7 +99,7 @@ pub struct MortiseApp {
     palette: Option<PaletteState>,
     palette_scope: usize,
     /// A dialog that asks before the rules file is created, with the rules to write.
-    dialog: Option<(Dialog, Rules)>,
+    dialog: Option<(Dialog, Pending)>,
     /// The dialog opened in this frame: focus goes to its button.
     dialog_opened: bool,
 }
@@ -136,7 +144,10 @@ impl MortiseApp {
             // At start, focus is on the selected row of the index.
             keyboard: true,
             reveal: false,
-            index_collapsed: false,
+            index_choice: None,
+            window_w: 0.0,
+            settings_open: None,
+            decorated: config.chrome == Chrome::System,
             focus_filter: false,
             filter_was_focused: false,
             palette: None,
@@ -343,6 +354,82 @@ impl MortiseApp {
         }
     }
 
+    // --- Settings ---
+
+    fn open_settings(&mut self, section: Section) {
+        self.adding = None;
+        self.palette = None;
+        self.settings_open = Some(SettingsState::open(section, self.current.unwrap_or(0)));
+    }
+
+    /// Applies what Settings chose for the whole of Mortise, and gives the frame
+    /// of the window that follows from it.
+    fn apply_general(&mut self, ctx: &egui::Context) -> Chrome {
+        let general = &self.settings.general;
+        let theme = match general.theme {
+            ThemeChoice::System => egui::ThemePreference::System,
+            ThemeChoice::Light => egui::ThemePreference::Light,
+            ThemeChoice::Dark => egui::ThemePreference::Dark,
+        };
+        if ctx.options(|options| options.theme_preference) != theme {
+            ctx.set_theme(theme);
+        }
+        // Text size scales every size in the interface.
+        let zoom = f32::from(general.text_size) / 100.0;
+        if (ctx.zoom_factor() - zoom).abs() > 0.001 {
+            ctx.set_zoom_factor(zoom);
+        }
+
+        // Where Mortise draws the frame, the user can move the controls or take
+        // the platform's own title bar instead.
+        let chrome = match self.chrome {
+            Chrome::Custom { .. } if general.system_title_bar => Chrome::System,
+            Chrome::Custom { .. } => Chrome::Custom {
+                controls_left: general.window_controls_left,
+            },
+            other => other,
+        };
+        let decorated = chrome == Chrome::System;
+        if matches!(self.chrome, Chrome::Custom { .. }) && decorated != self.decorated {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Decorations(decorated));
+            self.decorated = decorated;
+        }
+        chrome
+    }
+
+    /// Forgets an app. Its folder and its files stay as they are.
+    fn remove_app(&mut self, index: usize) {
+        if index >= self.apps.len() {
+            return;
+        }
+        let was_current = self.current == Some(index);
+        self.settings.remove(index);
+        self.apps.remove(index);
+        self.current = match self.current {
+            Some(current) if current > index => Some(current - 1),
+            Some(current) if current == index => None,
+            other => other,
+        };
+        if was_current && !self.apps.is_empty() {
+            self.select_app(0);
+        }
+        self.settings.current = self.current;
+        self.save();
+        if let Some(state) = &mut self.settings_open {
+            state.app = 0;
+        }
+    }
+
+    /// Opens a file or a folder in the editor the user chose.
+    fn open_in_editor(&mut self, path: &Path, line: u32) {
+        let command = self.settings.general.editor_command().to_owned();
+        if let Err(error) = mortise_core::open_in_editor(&command, path, line) {
+            self.toast = Some(Toast::failed(format!(
+                "Could not open the editor: \"{error}\". Choose the editor command in Settings."
+            )));
+        }
+    }
+
     // --- Palette ---
 
     fn open_palette(&mut self) {
@@ -402,7 +489,7 @@ impl MortiseApp {
             }
             Command::App(index) => self.select_app(index),
             Command::AddApp => self.adding = Some(AddPanel::empty()),
-            Command::Settings => {}
+            Command::Settings => self.open_settings(Section::Apps),
             Command::Theme(theme) => {
                 self.settings.general.theme = theme;
                 self.save();
@@ -426,7 +513,7 @@ impl MortiseApp {
                 body: strings::create_rules_body(&app.name),
                 confirm: strings::CREATE_RULES_FILE.to_owned(),
             };
-            self.dialog = Some((dialog, rules));
+            self.dialog = Some((dialog, Pending::CreateRules(rules)));
             self.dialog_opened = true;
         }
     }
@@ -496,10 +583,14 @@ impl MortiseApp {
                     // already taken focus from the field for this Esc: give it back.
                     open.filter.clear();
                     self.focus_filter = self.filter_was_focused;
-                } else if !self.filter_was_focused {
+                } else if !self.filter_was_focused && open.findings_open {
                     // Back from a second view.
                     open.findings_open = false;
+                } else if !self.filter_was_focused {
+                    self.settings_open = None;
                 }
+            } else {
+                self.settings_open = None;
             }
         }
         // A dialog, the palette and the add panel hold the keys until they close.
@@ -507,14 +598,28 @@ impl MortiseApp {
             return;
         }
 
-        // Collapse or open the module index.
+        // Settings, and the shortcuts, which are a section of them.
+        let typing = ui.ctx().text_edit_focused();
+        if chord(Modifiers::COMMAND, Key::Comma) {
+            self.open_settings(Section::Apps);
+        }
+        if !typing && chord(Modifiers::NONE, Key::Questionmark) {
+            self.open_settings(Section::Keyboard);
+        }
+        // Settings take the place of the workbench: its keys rest until Esc.
+        if self.settings_open.is_some() {
+            return;
+        }
+
+        // Collapse or open the module index. Mortise then stops deciding its width
+        // until the window is resized.
         if chord(Modifiers::COMMAND, Key::B) {
-            self.index_collapsed = !self.index_collapsed;
+            let (_, collapsed) = index_width(self.window_w, self.index_choice);
+            self.index_choice = Some(!collapsed);
         }
         // Filter modules: / when not typing, or the chord for keyboards where / needs Shift.
-        let typing = ui.ctx().text_edit_focused();
         if chord(Modifiers::COMMAND, Key::F) || (!typing && chord(Modifiers::NONE, Key::Slash)) {
-            self.index_collapsed = false;
+            self.index_choice = Some(false);
             self.focus_filter = true;
         }
         // Enter in the filter keeps the first match and gives the keys back to the list.
@@ -563,6 +668,16 @@ impl MortiseApp {
             self.toggle_order();
         }
         let problems_first = self.settings.apps[current_app].problems_first;
+        let open = &mut self.apps[current_app];
+        // E: the selected module in the editor.
+        if pressed(Key::E)
+            && let Selection::Module(name) = &open.selection
+            && let Some(module) = app.module(name)
+        {
+            let folder = module.dir.clone();
+            self.open_in_editor(&folder, 1);
+            return;
+        }
         let open = &mut self.apps[current_app];
         // F: the findings list of the app.
         if pressed(Key::F) {
@@ -666,13 +781,19 @@ impl eframe::App for MortiseApp {
 
         let window = ui.max_rect();
         ui.painter().rect_filled(window, 0, pal.frame);
+        // A resize hands the width of the index back to Mortise.
+        if (window.width() - self.window_w).abs() > 0.5 {
+            self.window_w = window.width();
+            self.index_choice = None;
+        }
+        let chrome = self.apply_general(&ctx);
 
         let bar = Rect::from_min_size(window.min, vec2(window.width(), size::TITLEBAR_H));
         let app_name = self
             .current
             .map(|current| self.settings.apps[current].name.clone());
         let shown_name = app_name.as_deref().unwrap_or(strings::NO_APP);
-        if chrome::title_bar(ui, pal, bar, self.chrome, frame, Some(shown_name)) {
+        if chrome::title_bar(ui, pal, bar, chrome, frame, Some(shown_name)) {
             self.open_palette();
         }
 
@@ -693,14 +814,13 @@ impl eframe::App for MortiseApp {
             })
             .collect();
         let adding = self.adding.is_some();
-        let rail_action = rail::rail(ui, pal, rail_rect, &tiles, self.current, adding);
+        let settings_open = self.settings_open.is_some();
+        let on_rail = if settings_open { None } else { self.current };
+        let rail_action = rail::rail(ui, pal, rail_rect, &tiles, on_rail, adding, settings_open);
 
         let rest = Rect::from_min_max(pos2(rail_rect.right(), below.top()), below.max);
-        let index_w = if self.index_collapsed {
-            size::INDEX_STRIP_W
-        } else {
-            size::INDEX_W
-        };
+        let (index_w, index_collapsed) = index_width(window.width(), self.index_choice);
+        let mut settings_action = None;
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |since| since.as_secs() as i64);
@@ -714,6 +834,33 @@ impl eframe::App for MortiseApp {
         let monogram = self.monogram_preview();
         if let Some(panel) = &mut self.adding {
             add_action = add::add_panel(ui, pal, rest, panel, &monogram, self.keyboard, mac);
+        } else if let Some(state) = &mut self.settings_open {
+            // Settings take the place of the index and the workspace.
+            let index_rect = Rect::from_min_size(rest.min, vec2(size::INDEX_W, rest.height()));
+            let work_rect = Rect::from_min_max(pos2(index_rect.right(), rest.top()), rest.max);
+            let versions: Vec<String> = self
+                .apps
+                .iter()
+                .map(|open| match open.live.state() {
+                    LiveState::Ready(app) => strings::versions(app.laravel.as_ref(), &app.package),
+                    _ => String::new(),
+                })
+                .collect();
+            let custom_frame = matches!(self.chrome, Chrome::Custom { .. });
+            let in_section = settings_view::section(
+                ui,
+                pal,
+                work_rect,
+                state,
+                &mut self.settings,
+                &versions,
+                custom_frame,
+                self.keyboard,
+                mac,
+            );
+            let in_list =
+                settings_view::sections(ui, pal, index_rect, state, shown_name, self.keyboard);
+            settings_action = in_section.or(in_list);
         } else if let Some(current) = self.current {
             let open = &mut self.apps[current];
             match open.live.state() {
@@ -771,8 +918,9 @@ impl eframe::App for MortiseApp {
                         focus_filter: self.focus_filter,
                         keyboard: self.keyboard,
                         reveal: self.reveal,
-                        collapsed: self.index_collapsed,
+                        collapsed: index_collapsed,
                         problems_first,
+                        rows: self.settings.general.index_rows,
                         mac,
                     };
                     toggle_order = index::index(ui, pal, index_rect, &app, state);
@@ -884,17 +1032,18 @@ impl eframe::App for MortiseApp {
         }
 
         // A dialog, over everything else.
-        if let Some((dialog, rules)) = &self.dialog {
-            match dialog.show(ui, pal, self.dialog_opened, self.keyboard) {
-                Some(Answer::Confirm) => {
-                    let rules = rules.clone();
-                    self.dialog = None;
-                    self.save_rules(&rules);
-                }
-                Some(Answer::Cancel) => self.dialog = None,
-                None => {}
-            }
+        if let Some((dialog, _)) = &self.dialog {
+            let answer = dialog.show(ui, pal, self.dialog_opened, self.keyboard);
             self.dialog_opened = false;
+            match (answer, self.dialog.take_if(|_| answer.is_some())) {
+                (Some(Answer::Confirm), Some((_, Pending::CreateRules(rules)))) => {
+                    self.save_rules(&rules)
+                }
+                (Some(Answer::Confirm), Some((_, Pending::RemoveApp(index)))) => {
+                    self.remove_app(index)
+                }
+                _ => {}
+            }
         }
         if toggle_order {
             self.toggle_order();
@@ -905,18 +1054,49 @@ impl eframe::App for MortiseApp {
                 ctx.copy_text(path);
                 self.toast = Some(Toast::done(strings::COPIED_PATH));
             }
+            Some(BoundaryAction::OpenInEditor { path, line }) => self.open_in_editor(&path, line),
             _ => {}
         }
 
-        chrome::resize_edges(ui, self.chrome);
+        chrome::resize_edges(ui, chrome);
         self.focus_filter = false;
         let filter_id = index::filter_id(ui);
         self.filter_was_focused = ui.memory(|memory| memory.has_focus(filter_id));
 
         // What the pointer asked for, after everything is painted.
         match rail_action {
-            Some(RailAction::Select(index)) => self.select_app(index),
+            Some(RailAction::Select(index)) => {
+                self.settings_open = None;
+                self.select_app(index);
+            }
             Some(RailAction::Add) => self.adding = Some(AddPanel::empty()),
+            Some(RailAction::Settings) if self.settings_open.is_some() => self.settings_open = None,
+            Some(RailAction::Settings) => self.open_settings(Section::Apps),
+            None => {}
+        }
+        match settings_action {
+            Some(SettingsAction::Close) => self.settings_open = None,
+            Some(SettingsAction::Changed { reread }) => {
+                self.save();
+                if let Some(index) = reread {
+                    self.apps[index]
+                        .live
+                        .set_options(read_options(&self.settings.apps[index]));
+                }
+            }
+            Some(SettingsAction::RemoveApp(index)) => {
+                let name = self.settings.apps[index].name.clone();
+                let dialog = Dialog {
+                    title: format!("Remove {name} from Mortise?"),
+                    body:
+                        "The folder and its files stay as they are. Mortise forgets the app, its \
+                           environments and its saved credentials."
+                            .to_owned(),
+                    confirm: "Remove app".to_owned(),
+                };
+                self.dialog = Some((dialog, Pending::RemoveApp(index)));
+                self.dialog_opened = true;
+            }
             None => {}
         }
         if first_run_add {
@@ -959,6 +1139,30 @@ fn open_app(ctx: &egui::Context, entry: &AppEntry) -> OpenApp {
         findings_open: false,
         finding_row: 0,
         seen: None,
+    }
+}
+
+/// What a dialog waits to do.
+enum Pending {
+    /// Write the rules to a `mortise.json` that does not exist yet.
+    CreateRules(Rules),
+    /// Forget the app at this place on the rail.
+    RemoveApp(usize),
+}
+
+/// How wide the module index is for a window of this width (section 5.14), and
+/// whether it is its strip. The workspace is what the user came for, so the index
+/// gives up width before the workspace does.
+fn index_width(window_w: f32, choice: Option<bool>) -> (f32, bool) {
+    let narrow = window_w < 1032.0;
+    match choice.unwrap_or(narrow) {
+        true => (size::INDEX_STRIP_W, true),
+        // Opened by hand in a narrow window: the workspace gives way.
+        false if narrow => (size::INDEX_W_MIN, false),
+        false => {
+            let left = window_w - size::RAIL_W - 760.0;
+            (left.clamp(size::INDEX_W_MIN, size::INDEX_W), false)
+        }
     }
 }
 
