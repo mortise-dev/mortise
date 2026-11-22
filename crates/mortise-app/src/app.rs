@@ -137,8 +137,7 @@ pub struct MortiseApp {
     window_w: f32,
     /// Settings, while they are open.
     settings_open: Option<SettingsState>,
-    /// Esc closes Settings once they are drawn: a field that loses focus to that
-    /// Esc keeps its edit first.
+    /// Esc closes Settings once they are drawn.
     close_settings: bool,
     /// The window has the platform's decorations at this moment.
     decorated: bool,
@@ -146,6 +145,8 @@ pub struct MortiseApp {
     focus_filter: bool,
     /// The filter field had focus at the end of the last frame.
     filter_was_focused: bool,
+    /// A text field of Settings had focus at the end of the last frame.
+    settings_field_was_focused: bool,
     /// The command palette, while it is open, and the app it searches.
     palette: Option<PaletteState>,
     palette_scope: usize,
@@ -211,6 +212,7 @@ impl MortiseApp {
             decorated: config.chrome == Chrome::System,
             focus_filter: false,
             filter_was_focused: false,
+            settings_field_was_focused: false,
             palette: None,
             palette_scope: 0,
             dialog: None,
@@ -943,7 +945,11 @@ impl MortiseApp {
                 self.toast = None;
             } else if self.settings_open.is_some() {
                 // Settings take the place of the workbench, so they are above it.
-                self.close_settings = true;
+                // Esc leaves a field first, and egui has already taken its focus.
+                // The next Esc closes Settings.
+                if !self.settings_field_was_focused {
+                    self.close_settings = true;
+                }
             } else if let Some(open) = open {
                 // A scan of the public surface on screen: Esc stops it.
                 let scanning = match &open.selection {
@@ -1611,6 +1617,7 @@ impl eframe::App for MortiseApp {
         self.focus_filter = false;
         let filter_id = index::filter_id(ui);
         self.filter_was_focused = ui.memory(|memory| memory.has_focus(filter_id));
+        self.settings_field_was_focused = self.settings_open.is_some() && ctx.text_edit_focused();
 
         // What the pointer asked for, after everything is painted.
         match rail_action {

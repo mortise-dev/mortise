@@ -155,7 +155,7 @@ fn the_fields_of_an_app_apply_when_they_lose_focus() {
         Some("SH")
     );
 
-    // Esc in a field keeps what was typed, then closes Settings.
+    // Esc in a field keeps what was typed and leaves the field. The next Esc closes Settings.
     harness
         .get_by_role_and_label(Role::TextInput, "Coverage limit")
         .focus();
@@ -168,6 +168,9 @@ fn the_fields_of_an_app_apply_when_they_lose_focus() {
     harness.key_press(Key::Escape);
     harness.run();
     assert_eq!(desk.saved().apps[0].coverage_limit, 25);
+    harness.get_by_role_and_label(Role::Heading, "Settings");
+    harness.key_press(Key::Escape);
+    harness.run();
     assert!(
         harness
             .query_by_role_and_label(Role::Heading, "Settings")
