@@ -1,6 +1,8 @@
 # Mortise phase 1: build plan
 
-Status: proposed on 22 November 2026, waiting for the owner's approval. Nothing is built yet.
+Status: approved by the owner on 22 November 2026, with these decisions: MIT licence; the `git`
+program for git data; on Windows the custom title bar by default with a setting for the platform's
+bar; a flat module list without user-made groups in phase 1. Milestone 1 is built.
 
 Phase 1 is read only. It needs no PHP on the machine and no change to `nwidart/laravel-modules`.
 The design is in `docs/spec/` (version 3, no open questions). Screen ids such as S4.2 refer to it.
@@ -191,4 +193,4 @@ Proposed: MIT, the same as `nwidart/laravel-modules`. One `LICENSE` file, and it
 - The other common choice for Rust is "MIT OR Apache-2.0", which adds a patent grant. It is equally possible.
 - MIT lets anyone run the core as a service. If the later cloud plan should be protected from that, the licence is the place to do it, and it is easier to choose now than to change later.
 
-The owner confirms the licence before the first source file is committed.
+The owner confirmed MIT on 22 November 2026.
