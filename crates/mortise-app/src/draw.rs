@@ -427,6 +427,25 @@ pub fn mark_bad(ui: &Ui, rect: Rect, color: Color32, behind: Color32) {
         .line_segment([at(8.25, 3.75), at(3.75, 8.25)], cut);
 }
 
+/// The mark of a warning: a wedge. 12 px.
+pub fn mark_warn(ui: &Ui, rect: Rect, color: Color32) {
+    let scale = rect.width() / size::STATE_MARK;
+    let at = |x: f32, y: f32| rect.min + vec2(x, y) * scale;
+    let points = vec![at(6.0, 1.0), at(11.4, 10.8), at(0.6, 10.8)];
+    ui.painter()
+        .add(Shape::convex_polygon(points, color, Stroke::NONE));
+}
+
+/// Several runs of text in one wrapped paragraph, each in its own type and colour.
+pub fn rich_galley(ui: &Ui, parts: &[(&str, Type, Color32)], width: f32) -> Arc<Galley> {
+    let mut job = LayoutJob::default();
+    for (text, ty, color) in parts {
+        job.append(text, 0.0, ty.format(*color));
+    }
+    job.wrap.max_width = width;
+    ui.painter().layout_job(job)
+}
+
 // ---------------------------------------------------------------------------
 // Buttons (C1)
 

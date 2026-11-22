@@ -22,6 +22,9 @@ pub struct AppEntry {
     /// The code of each module, by module name. A code is kept once given.
     #[serde(default)]
     pub codes: BTreeMap<String, String>,
+    /// The order of the module index: problems first, or by name.
+    #[serde(default)]
+    pub problems_first: bool,
 }
 
 /// Everything Mortise keeps between runs.
@@ -120,6 +123,7 @@ impl Settings {
             name: app.name.clone(),
             monogram: propose_monogram(&app.name, &taken),
             codes: app.codes(),
+            problems_first: false,
         });
         self.apps.len() - 1
     }
@@ -153,6 +157,7 @@ mod tests {
             name: name.into(),
             monogram: monogram.into(),
             codes: BTreeMap::from([("Checkout".to_owned(), "CHK".to_owned())]),
+            problems_first: false,
         }
     }
 

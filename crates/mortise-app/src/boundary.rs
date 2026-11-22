@@ -44,6 +44,8 @@ pub enum BoundaryAction {
     SetRules(Rules),
     /// Copy the path of a file.
     CopyPath(String),
+    /// Open the Findings list of the app.
+    ShowFindings,
 }
 
 /// Paints the Boundary tab into `body`, which scrolls.

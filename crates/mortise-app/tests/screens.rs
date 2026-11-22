@@ -252,3 +252,42 @@ fn milestone_4() {
     harness.key_press(Key::Num2);
     save("s5.4-table-light", &mut harness);
 }
+
+#[test]
+#[ignore = "writes PNG files for a person to look at"]
+fn milestone_5() {
+    for (theme, suffix) in [(Theme::Light, "light"), (Theme::Dark, "dark")] {
+        let mut desk = Desk::new();
+        desk.theme = theme;
+        let shop = desk.app("shop-api");
+        let crm = desk.app("crm");
+        std::fs::write(
+            crm.join("mortise.json"),
+            r#"{"rules": {"no-circular-use": false, "public-surface-only": {"enabled": false}}}"#,
+        )
+        .unwrap();
+        desk.knows(&[(&shop, "SA"), (&crm, "CR")]);
+        let mut harness = desk.start();
+        // S4.1: the home screen, with the pip on the rail.
+        harness.key_press(Key::S);
+        save(&format!("s4.1-home-{suffix}"), &mut harness);
+        // S6.4: the Findings list.
+        harness.key_press(Key::F);
+        save(&format!("s6.4-findings-{suffix}"), &mut harness);
+        // S4.3: Checkout, with its alert.
+        harness.key_press(Key::Escape);
+        harness.key_press(Key::J);
+        save(&format!("s4.3-alert-{suffix}"), &mut harness);
+        harness.key_press(Key::J);
+        save(&format!("s4.3-warning-{suffix}"), &mut harness);
+    }
+
+    // S3.1: many modules, problems first, with the group that needs attention.
+    let mut desk = Desk::new();
+    desk.size = egui::vec2(1100.0, 700.0);
+    let root = common::app_with_modules(&desk, "platform", 30);
+    desk.knows(&[(&root, "PL")]);
+    let mut harness = desk.start();
+    harness.key_press(Key::S);
+    save("s3.1-needs-attention-light", &mut harness);
+}

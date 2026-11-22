@@ -3,9 +3,10 @@
 use eframe::egui::{
     Align2, Color32, Rect, Role, ScrollArea, Sense, Ui, UiBuilder, Vec2, WidgetInfo, pos2, vec2,
 };
-use mortise_core::{AppSnapshot, Git, Module, ModuleState};
+use mortise_core::{AppSnapshot, Check, FindingState, Git, Module, ModuleState, Severity};
 
-use crate::draw::{self, StampState};
+use crate::boundary::BoundaryAction;
+use crate::draw::{self, Button, StampState};
 use crate::strings;
 use crate::theme::{Face, Palette, Type, radius, size, ty};
 
@@ -20,10 +21,11 @@ pub enum Column {
     Uses,
     UsedBy,
     Commits,
+    Findings,
 }
 
 impl Column {
-    const ALL: [Column; 8] = [
+    const ALL: [Column; 9] = [
         Column::Module,
         Column::Files,
         Column::Lines,
@@ -32,6 +34,7 @@ impl Column {
         Column::Uses,
         Column::UsedBy,
         Column::Commits,
+        Column::Findings,
     ];
 
     fn label(self) -> &'static str {
@@ -44,6 +47,7 @@ impl Column {
             Column::Uses => strings::COL_USES,
             Column::UsedBy => strings::COL_USED_BY,
             Column::Commits => strings::COL_COMMITS,
+            Column::Findings => strings::COL_FINDINGS,
         }
     }
 
@@ -57,6 +61,7 @@ impl Column {
             Column::Uses => 44.0,
             Column::UsedBy => 58.0,
             Column::Commits => 116.0,
+            Column::Findings => 112.0,
         }
     }
 }
@@ -106,6 +111,11 @@ impl Sort {
                     .count()
                     .cmp(&app.used_by(&b.name).count()),
                 Column::Commits => commits(a).cmp(&commits(b)),
+                // Good is the lowest, so that "highest first" starts with the problems.
+                Column::Findings => app
+                    .findings
+                    .state_of(&b.name)
+                    .cmp(&app.findings.state_of(&a.name)),
             };
             if self.ascending {
                 order
@@ -140,8 +150,9 @@ pub fn summary(
     app: &AppSnapshot,
     module: Option<&Module>,
     state: SummaryState<'_>,
-) -> Option<String> {
+) -> Option<BoundaryAction> {
     let mut clicked = None;
+    let mut show_findings = false;
     let salt = module.map_or("all", |module| module.name.as_str());
     ui.scope_builder(UiBuilder::new().max_rect(body), |ui| {
         ScrollArea::vertical()
@@ -161,6 +172,7 @@ pub fn summary(
                             app,
                             &mut state.sort.clone(),
                             state.now,
+                            &mut false,
                             false,
                         )
                         .0
@@ -179,9 +191,10 @@ pub fn summary(
                 let (rect, _) = ui.allocate_exact_size(vec2(width, height), Sense::hover());
                 match module {
                     None => {
+                        let findings = &mut show_findings;
+                        let (now, sort) = (state.now, state.sort);
                         clicked =
-                            all_modules(ui, pal, rect.min, width, app, state.sort, state.now, true)
-                                .1
+                            all_modules(ui, pal, rect.min, width, app, sort, now, findings, true).1
                     }
                     Some(module) => {
                         one_module(ui, pal, rect.min, width, app, module, state.now, true);
@@ -189,7 +202,10 @@ pub fn summary(
                 }
             });
     });
-    clicked
+    if show_findings {
+        return Some(BoundaryAction::ShowFindings);
+    }
+    clicked.map(BoundaryAction::Select)
 }
 
 /// The Summary of "All modules". Returns its height and a module that was clicked.
@@ -203,6 +219,7 @@ fn all_modules(
     app: &AppSnapshot,
     sort: &mut Sort,
     now: i64,
+    show_findings: &mut bool,
     paint: bool,
 ) -> (f32, Option<String>) {
     let left = origin.x + 16.0;
@@ -228,12 +245,14 @@ fn all_modules(
             value: on,
             known: true,
             tooltip: None,
+            findings: None,
         },
         Stat {
             key: strings::LINES_OF_PHP,
             value: strings::count(app.lines()),
             known: true,
             tooltip: None,
+            findings: None,
         },
         Stat {
             key: strings::TEST_COVERAGE,
@@ -242,9 +261,46 @@ fn all_modules(
             tooltip: app.coverage_report.as_ref().map(|report| {
                 strings::coverage_from(&app.path_shown(&report.path), report.written, now)
             }),
+            findings: None,
+        },
+        Stat {
+            key: strings::FINDINGS,
+            value: String::new(),
+            known: true,
+            tooltip: None,
+            findings: Some((app.findings.problems(), app.findings.warnings())),
         },
     ];
     y = stats(ui, pal, pos2(left, y), inner, &cells, paint) + 12.0;
+
+    // The module that needs attention most, and the way to every finding.
+    let all = app.findings.list.len();
+    let show = strings::show_all_findings(all);
+    let alert = match strings::app_alert(app) {
+        Some((module, rest)) => Some((Severity::Problem, module, rest)),
+        None => app.findings.list.first().map(|first| {
+            (
+                Severity::Warning,
+                String::new(),
+                strings::finding(first, app),
+            )
+        }),
+    };
+    if let Some((severity, bold, rest)) = alert {
+        let (bottom, clicked) = alert_box(
+            ui,
+            pal,
+            pos2(left, y),
+            inner,
+            severity,
+            &bold,
+            &rest,
+            Some((&show, "F")),
+            paint,
+        );
+        *show_findings |= clicked;
+        y = bottom + 12.0;
+    }
 
     // What cannot be read from files, in a sentence.
     let sentence = if !app.layout.uses_file_activator() {
@@ -280,12 +336,18 @@ fn all_modules(
             .filter_map(|module| Some((module.name.as_str(), percent(module)?)))
             .collect();
         covered.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(b.0)));
+        let low = |name: &str| {
+            app.findings
+                .of(name)
+                .any(|finding| finding.check == Check::CoverageLimit)
+        };
         let bars: Vec<Bar> = covered
             .iter()
             .map(|(name, percent)| Bar {
                 label: name,
                 share: f32::from(*percent) / 100.0,
                 value: strings::percent(*percent),
+                low: low(name),
             })
             .collect();
         let note = strings::tests(app.tests());
@@ -336,7 +398,12 @@ fn one_module(
 ) -> f32 {
     let left = origin.x + 16.0;
     let inner = width - 32.0;
-    let top = origin.y + 14.0;
+    let mut top = origin.y + 14.0;
+    // What is wrong with the module, at the top of the view it concerns.
+    if let Some((severity, bold, rest)) = strings::module_alert(app, &module.name) {
+        let at = pos2(left, top);
+        top = alert_box(ui, pal, at, inner, severity, &bold, &rest, None, paint).0 + 12.0;
+    }
     let two = inner >= 720.0;
     let column_w = if two {
         ((inner - 14.0) / 2.0).floor()
@@ -353,6 +420,7 @@ fn one_module(
             label: &kind.kind,
             share: kind.files as f32 / most,
             value: strings::count(u64::from(kind.files)),
+            low: false,
         })
         .collect();
     let note = strings::files_and_lines(module.files, module.lines);
@@ -500,6 +568,8 @@ struct Stat {
     /// False for a value that is a word such as "unknown", not a figure.
     known: bool,
     tooltip: Option<String>,
+    /// For the Findings cell: how many problems and how many warnings.
+    findings: Option<(usize, usize)>,
 }
 
 /// The stats strip: one box, a cell per figure, hairlines between. Each cell keeps
@@ -534,6 +604,42 @@ fn stats(
             ty::SECONDARY,
             pal.ink_2,
         );
+        if let Some((problems, warnings)) = cell.findings {
+            // Each state has a mark and a word; colour is only state.
+            let mid = strip.top() + 9.0 + 16.0 + 13.0;
+            let mut at = x + 12.0;
+            let state_type = Type {
+                size: 12.0,
+                ..ty::LABEL
+            };
+            let mut state = |ui: &Ui, text: String, color: Color32, kind: u8| {
+                let mark = Rect::from_min_size(pos2(at, mid - 6.0), Vec2::splat(size::STATE_MARK));
+                match kind {
+                    0 => draw::mark_bad(ui, mark, color, pal.surface),
+                    1 => draw::mark_warn(ui, mark, color),
+                    _ => draw::mark_good(ui, mark, color),
+                }
+                let word = draw::label(
+                    ui,
+                    pos2(mark.right() + 5.0, mid),
+                    Align2::LEFT_CENTER,
+                    &text,
+                    state_type,
+                    color,
+                );
+                at = word.right() + 8.0;
+            };
+            if problems > 0 {
+                state(ui, strings::problems(problems), pal.bad, 0);
+            }
+            if warnings > 0 {
+                state(ui, strings::warnings(warnings), pal.warn, 1);
+            }
+            if problems + warnings == 0 {
+                state(ui, strings::GOOD.to_owned(), pal.good, 2);
+            }
+            continue;
+        }
         let (value_type, color) = if cell.known {
             (ty::FIGURE, pal.ink)
         } else {
@@ -564,6 +670,8 @@ struct Bar<'a> {
     /// How much of the track is filled, 0 to 1.
     share: f32,
     value: String,
+    /// Under the limit: the fill and the value take the warning colour.
+    low: bool,
 }
 
 /// A box of bars: a name, a 6 px track with an ink fill, a value. Returns its bottom edge.
@@ -617,8 +725,12 @@ fn bar_box(
             pos2(rect.right() - 13.0, mid),
             Align2::RIGHT_CENTER,
             &bar.value,
-            value_type,
-            pal.ink,
+            if bar.low {
+                value_type.with_face(Face::Mono600)
+            } else {
+                value_type
+            },
+            if bar.low { pal.warn } else { pal.ink },
         );
 
         let track = Rect::from_min_max(
@@ -639,7 +751,8 @@ fn bar_box(
                 size::BAR_H,
             ),
         );
-        ui.painter().rect_filled(fill, 0, pal.ink);
+        ui.painter()
+            .rect_filled(fill, 0, if bar.low { pal.warn } else { pal.ink });
         y += ROW;
     }
     rect.bottom()
@@ -659,7 +772,7 @@ fn by_module(
     let right = rect.right() - 10.0;
 
     // Columns from the right edge: numbers have fixed widths, the module takes the rest.
-    let mut edges = [(0.0, 0.0); 8];
+    let mut edges = [(0.0, 0.0); 9];
     let mut x = right;
     for (i, column) in Column::ALL.iter().enumerate().rev() {
         if *column == Column::Module {
@@ -697,7 +810,7 @@ fn by_module(
             pal.ink_2
         };
         let mid = cell.center().y;
-        let text = if *column == Column::Module {
+        let text = if matches!(column, Column::Module | Column::Findings) {
             draw::paint_text(
                 ui,
                 pos2(from, mid),
@@ -718,7 +831,7 @@ fn by_module(
         };
         if sorted {
             // A chevron: down for A to Z and low to high, up for the reverse.
-            let tip = if *column == Column::Module {
+            let tip = if matches!(column, Column::Module | Column::Findings) {
                 text.right() + 9.0
             } else {
                 text.left() - 9.0
@@ -825,6 +938,46 @@ fn by_module(
                 *color,
             );
         }
+
+        // The finding state: a mark and a word, at the left of its column.
+        let (from, _) = edges[8];
+        let (word, color, kind) = match (module.state, app.findings.state_of(&module.name)) {
+            (ModuleState::Off, _) => (strings::OFF.to_owned(), pal.off, 3),
+            (_, FindingState::Problems(n)) => (strings::problems(n), pal.bad, 0),
+            (_, FindingState::Warning) => {
+                let low = app
+                    .findings
+                    .of(&module.name)
+                    .all(|finding| finding.check == Check::CoverageLimit);
+                let word = if low {
+                    strings::LOW_COVERAGE
+                } else {
+                    strings::WARNING
+                };
+                (word.to_owned(), pal.warn, 1)
+            }
+            (_, FindingState::Good) => (strings::GOOD.to_owned(), pal.good, 2),
+        };
+        let mark = Rect::from_min_size(pos2(from, mid - 6.0), Vec2::splat(size::STATE_MARK));
+        let behind = if response.hovered() {
+            pal.well
+        } else {
+            pal.surface
+        };
+        match kind {
+            0 => draw::mark_bad(ui, mark, color, behind),
+            1 => draw::mark_warn(ui, mark, color),
+            2 => draw::mark_good(ui, mark, color),
+            _ => draw::mark_off(ui, mark, color),
+        }
+        draw::paint_text(
+            ui,
+            pos2(mark.right() + 5.0, mid),
+            Align2::LEFT_CENTER,
+            &word,
+            ty::LABEL,
+            color,
+        );
     }
     clicked
 }
@@ -974,4 +1127,64 @@ fn dependencies(
         );
     }
     Some(rect.bottom())
+}
+
+/// An alert (C19) at the top of the view it concerns. A problem has the bad-soft
+/// fill, the bad outline and the problem mark; a warning has the surface fill, the
+/// warn outline and the wedge. It may carry one small button on the right.
+/// Returns its bottom edge and whether the button was pressed.
+#[expect(clippy::too_many_arguments)]
+fn alert_box(
+    ui: &Ui,
+    pal: &Palette,
+    min: eframe::egui::Pos2,
+    width: f32,
+    severity: Severity,
+    bold: &str,
+    rest: &str,
+    button: Option<(&str, &str)>,
+    paint: bool,
+) -> (f32, bool) {
+    let button = button.map(|(label, keys)| Button {
+        label,
+        small: true,
+        keys: Some(keys),
+        ..Default::default()
+    });
+    let button_w = button
+        .as_ref()
+        .map_or(0.0, |button| button.width(ui) + 12.0);
+    let text_x = min.x + 13.0 + size::STATE_MARK + 9.0;
+    let text_w = min.x + width - 13.0 - button_w - text_x;
+    let parts = [
+        (bold, ty::BODY.with_face(Face::Sans700), pal.ink),
+        (rest, ty::BODY, pal.ink),
+    ];
+    let galley = draw::rich_galley(ui, &parts, text_w);
+    let rect = Rect::from_min_size(min, vec2(width, (galley.size().y + 20.0).max(40.0)));
+    if !paint {
+        return (rect.bottom(), false);
+    }
+    let (fill, outline) = match severity {
+        Severity::Problem => (pal.bad_soft, pal.bad),
+        Severity::Warning => (pal.surface, pal.warn),
+    };
+    draw::outlined(ui, rect, radius::CONTROL, fill, outline);
+    let mark = Rect::from_min_size(rect.min + vec2(13.0, 13.0), Vec2::splat(size::STATE_MARK));
+    match severity {
+        Severity::Problem => draw::mark_bad(ui, mark, pal.bad, fill),
+        Severity::Warning => draw::mark_warn(ui, mark, pal.warn),
+    }
+    let text = draw::paint_galley(
+        ui,
+        pos2(text_x, rect.top() + 10.0),
+        Align2::LEFT_TOP,
+        galley,
+    );
+    draw::announce(ui, text, Role::Label, &format!("{bold}{rest}"));
+    let clicked = button.is_some_and(|button| {
+        let at = pos2(rect.right() - 13.0 - button.width(ui), rect.top() + 9.0);
+        button.show(ui, pal, at, false).clicked()
+    });
+    (rect.bottom(), clicked)
 }

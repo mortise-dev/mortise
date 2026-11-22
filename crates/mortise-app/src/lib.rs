@@ -8,6 +8,7 @@ pub mod boundary;
 pub mod chrome;
 pub mod dialog;
 pub mod draw;
+pub mod findings_view;
 pub mod fonts;
 pub mod index;
 pub mod rail;

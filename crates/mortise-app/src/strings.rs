@@ -632,6 +632,341 @@ pub fn rules_invalid(message: &str) -> String {
     format!("mortise.json is not valid: {message}. The default rules apply until it is corrected.")
 }
 
+pub const FINDINGS: &str = "Findings";
+pub const SORTED_PROBLEMS_FIRST: &str = "Sorted: problems first";
+pub const CHANGE_THE_ORDER: &str = "Change the order";
+pub const NEEDS_ATTENTION: &str = "Needs attention";
+pub const BACK_TO_SUMMARY: &str = "Back to Summary";
+pub const COL_FINDING: &str = "Finding";
+pub const COL_CHECK: &str = "Check";
+pub const COL_ENTER_OPENS: &str = "Enter opens";
+pub const COL_FINDINGS: &str = "Findings";
+pub const PROBLEMS: &str = "Problems";
+pub const WARNINGS: &str = "Warnings";
+pub const CHECKS_WITHOUT_A_FINDING: &str = "Checks without a finding";
+pub const LOW_COVERAGE: &str = "Low coverage";
+pub const WARNING: &str = "Warning";
+pub const SUMMARY: &str = "Summary";
+pub const BOUNDARY: &str = "Boundary";
+
+/// `1 warning`
+pub fn warnings(n: usize) -> String {
+    if n == 1 {
+        "1 warning".to_owned()
+    } else {
+        format!("{n} warnings")
+    }
+}
+
+/// `Findings in shop-api`
+pub fn findings_in(app: &str) -> String {
+    format!("Findings in {app}")
+}
+
+/// `Show all 3 findings`
+pub fn show_all_findings(n: usize) -> String {
+    if n == 1 {
+        "Show the finding".to_owned()
+    } else {
+        format!("Show all {n} findings")
+    }
+}
+
+/// `shop-api, 2 problems`
+pub fn app_with_problems(app: &str, problem_count: usize) -> String {
+    if problem_count == 0 {
+        app.to_owned()
+    } else {
+        format!("{app}, {}", problems(problem_count))
+    }
+}
+
+/// `4 of 7 checks`
+pub fn of_checks(quiet: usize, total: usize) -> String {
+    format!("{quiet} of {total} checks")
+}
+
+/// `No findings. 7 modules checked against 2 rules and 4 checks.`
+pub fn no_findings(modules_count: usize, rules: usize, checks: usize) -> String {
+    let rules = if rules == 1 {
+        "1 rule".to_owned()
+    } else {
+        format!("{rules} rules")
+    };
+    let checks = if checks == 1 {
+        "1 check".to_owned()
+    } else {
+        format!("{checks} checks")
+    };
+    format!(
+        "No findings. {} checked against {rules} and {checks}.",
+        modules(modules_count)
+    )
+}
+
+fn list_of(names: &[String]) -> String {
+    match names {
+        [] => String::new(),
+        [one] => one.clone(),
+        [rest @ .., last] => format!("{} and {last}", rest.join(", ")),
+    }
+}
+
+/// The sentence of a finding, as in section 10 of the specification.
+pub fn finding(finding: &mortise_core::Finding, app: &AppSnapshot) -> String {
+    use mortise_core::Detail;
+    let module = finding.module.as_deref().unwrap_or_default();
+    match &finding.detail {
+        // `Checkout and Shipping use each other. 2 files in Checkout, 4 files in Shipping.`
+        Detail::CircularUse { files: in_each } => {
+            let names: Vec<String> = in_each.iter().map(|(name, _)| name.clone()).collect();
+            let counts: Vec<String> = in_each
+                .iter()
+                .map(|(name, n)| format!("{} in {name}", files(*n as u64)))
+                .collect();
+            let head = match names.as_slice() {
+                [a, b] => use_each_other(a, b),
+                names => use_each_other_in_a_circle(names),
+            };
+            format!("{head}. {}.", counts.join(", "))
+        }
+        // `3 files in Checkout read Modules\Billing\Models\Invoice directly. Billing offers
+        // Contracts and Events.`
+        Detail::ReadsInternals {
+            of,
+            files: n,
+            classes,
+        } => {
+            let what = match classes.as_slice() {
+                [class] => class.clone(),
+                // Not in the spec: more than one class.
+                classes => format!("{} classes of {of}", classes.len()),
+            };
+            let verb = if *n == 1 { "reads" } else { "read" };
+            format!(
+                "{} in {module} {verb} {what} directly. {of} offers {}.",
+                files(*n as u64),
+                list_of(&app.rules.public_folders)
+            )
+        }
+        // `Modules/Loyalty/module.json is not valid JSON: unexpected end of file at line 14.`
+        // The parser's own words are quoted as they are.
+        Detail::InvalidManifest {
+            file,
+            message,
+            line,
+        } => {
+            format!("{file} is not valid JSON: {message} at line {line}.")
+        }
+        // Not in the spec.
+        Detail::NoManifestName { file } => format!("{file} has no name. The package needs one."),
+        // `Blog declares the namespace Modules\Blogs. Its folder is Modules/Blog.`
+        Detail::NamespaceMismatch { namespace, folder } => {
+            format!("{module} declares the namespace {namespace}. Its folder is {folder}.")
+        }
+        // `modules_statuses.json lists Legacy, which has no folder.`
+        Detail::StaleStatus { entry, file } => {
+            format!("{file} lists {entry}, which has no folder.")
+        }
+        // `Notifications is 39% covered. The limit for shop-api is 50%.`
+        Detail::LowCoverage { percent, limit } => {
+            format!(
+                "{module} is {percent}% covered. The limit for {} is {limit}%.",
+                app.name
+            )
+        }
+    }
+}
+
+/// The name of a check in the Findings list: `Rule: no circular use`.
+pub fn check_name(check: mortise_core::Check, app: &AppSnapshot) -> String {
+    use mortise_core::Check;
+    match check {
+        Check::NoCircularUse => "Rule: no circular use".to_owned(),
+        Check::PublicSurfaceOnly => format!("Rule: {} only", list_of(&app.rules.public_folders)),
+        Check::CoverageLimit => "Coverage limit".to_owned(),
+        // Not in the spec: the drawing has no finding of these three.
+        Check::ValidManifest => "Valid module.json".to_owned(),
+        Check::NamespaceMatchesFolder => "Namespace".to_owned(),
+        Check::NoStaleStatus => "Statuses file".to_owned(),
+    }
+}
+
+/// A check that found nothing, as a sentence: `Every module.json is valid JSON`.
+pub fn check_passed(check: mortise_core::Check, app: &AppSnapshot) -> String {
+    use mortise_core::Check;
+    match check {
+        // Not in the spec: the drawing has findings for both rules.
+        Check::NoCircularUse => RULE_NO_CIRCULAR.to_owned(),
+        Check::PublicSurfaceOnly => RULE_PUBLIC_SURFACE.to_owned(),
+        Check::ValidManifest => "Every module.json is valid JSON".to_owned(),
+        Check::NamespaceMatchesFolder => "Declared namespace matches the folder".to_owned(),
+        Check::NoStaleStatus => {
+            format!(
+                "No entry in {} without a module",
+                app.path_shown(&app.layout.statuses_file)
+            )
+        }
+        // Not in the spec.
+        Check::CoverageLimit => format!("Every module is covered {}% or more", app.coverage_limit),
+    }
+}
+
+/// What a check looked at: `7 modules`, `7 entries`.
+pub fn checked(result: &mortise_core::CheckResult) -> String {
+    match result.check {
+        mortise_core::Check::NoStaleStatus if result.checked == 1 => "1 entry".to_owned(),
+        mortise_core::Check::NoStaleStatus => format!("{} entries", result.checked),
+        _ => modules(result.checked),
+    }
+}
+
+/// The class without the namespace all modules share: `Billing\Models\Invoice`.
+fn short_class<'a>(class: &'a str, app: &AppSnapshot) -> &'a str {
+    class
+        .strip_prefix(app.layout.namespace.as_str())
+        .and_then(|rest| rest.strip_prefix('\\'))
+        .unwrap_or(class)
+}
+
+/// The findings of one module as clauses of one sentence. `own` is true on the
+/// module's own Summary: `2 files here, 4 files there` and the full class name.
+fn clauses(module: &str, app: &AppSnapshot, own: bool) -> Vec<String> {
+    use mortise_core::Detail;
+    app.findings
+        .of(module)
+        .map(|found| match &found.detail {
+            Detail::CircularUse { files: in_each } => {
+                let total: usize = in_each.iter().map(|(_, n)| n).sum();
+                let others: Vec<String> = in_each
+                    .iter()
+                    .filter(|(name, _)| name != module)
+                    .map(|(name, _)| name.clone())
+                    .collect();
+                let here = in_each
+                    .iter()
+                    .find(|(name, _)| name == module)
+                    .map_or(0, |(_, n)| *n);
+                match (own, others.as_slice()) {
+                    (true, [other]) => format!(
+                        "{module} and {other} use each other ({} here, {} there)",
+                        files(here as u64),
+                        files((total - here) as u64)
+                    ),
+                    (false, [other]) => {
+                        format!("it and {other} use each other ({})", files(total as u64))
+                    }
+                    (_, others) => format!(
+                        "it is in a circle with {} ({})",
+                        list_of(others),
+                        files(total as u64)
+                    ),
+                }
+            }
+            Detail::ReadsInternals {
+                of,
+                files: n,
+                classes,
+            } => {
+                let what = match classes.as_slice() {
+                    [class] if own => class.clone(),
+                    [class] => short_class(class, app).to_owned(),
+                    classes => format!("{} classes of {of}", classes.len()),
+                };
+                let verb = if *n == 1 { "reads" } else { "read" };
+                if own {
+                    format!("{} {verb} {what} directly", files(*n as u64))
+                } else {
+                    format!("{n} of its files {verb} {what} directly")
+                }
+            }
+            _ => {
+                let sentence = finding(found, app);
+                let mut letters = sentence.trim_end_matches('.').chars();
+                // A clause in the middle of a sentence starts small, unless it starts with a path.
+                match letters.next() {
+                    Some(first) if !sentence.starts_with(module) && !sentence.contains('/') => {
+                        first.to_lowercase().chain(letters).collect()
+                    }
+                    _ => sentence.trim_end_matches('.').to_owned(),
+                }
+            }
+        })
+        .collect()
+}
+
+fn sentence_of(clauses: &[String]) -> String {
+    let joined = match clauses {
+        [] => return String::new(),
+        [one] => one.clone(),
+        [rest @ .., last] => format!("{}, and {last}", rest.join(", ")),
+    };
+    let mut letters = joined.chars();
+    let first: String = letters
+        .next()
+        .map(|first| first.to_uppercase().collect())
+        .unwrap_or_default();
+    format!("{first}{}.", letters.as_str())
+}
+
+/// The alert at the top of the Summary of "All modules": the module with the most
+/// problems, in bold, and what is wrong with it.
+/// `Checkout` and ` has 2 problems. It and Shipping use each other (6 files), and 3 of its
+/// files read Billing\Models\Invoice directly.`
+pub fn app_alert(app: &AppSnapshot) -> Option<(String, String)> {
+    use mortise_core::FindingState;
+    let worst = app
+        .modules
+        .iter()
+        .filter_map(|module| match app.findings.state_of(&module.name) {
+            FindingState::Problems(n) => Some((n, &module.name)),
+            _ => None,
+        })
+        .max_by(|a, b| a.0.cmp(&b.0).then_with(|| b.1.cmp(a.1)))?;
+    let (count, module) = worst;
+    let rest = format!(
+        " has {}. {}",
+        problems(count),
+        sentence_of(&clauses(module, app, false))
+    );
+    Some((module.clone(), rest))
+}
+
+/// The alert at the top of the Summary of one module, with its severity.
+/// `2 problems.` and ` Checkout and Shipping use each other (2 files here, 4 files there), and
+/// 3 files read Modules\Billing\Models\Invoice directly.`
+pub fn module_alert(
+    app: &AppSnapshot,
+    module: &str,
+) -> Option<(mortise_core::Severity, String, String)> {
+    use mortise_core::{FindingState, Severity};
+    match app.findings.state_of(module) {
+        FindingState::Problems(n) => {
+            let head = format!("{}.", problems(n));
+            let rest = format!(" {}", sentence_of(&clauses(module, app, true)));
+            Some((Severity::Problem, capitalised(&head), rest))
+        }
+        FindingState::Warning => {
+            let sentences: Vec<String> = app
+                .findings
+                .of(module)
+                .map(|found| finding(found, app))
+                .collect();
+            Some((Severity::Warning, String::new(), sentences.join(" ")))
+        }
+        FindingState::Good => None,
+    }
+}
+
+fn capitalised(text: &str) -> String {
+    let mut letters = text.chars();
+    let first: String = letters
+        .next()
+        .map(|first| first.to_uppercase().collect())
+        .unwrap_or_default();
+    format!("{first}{}", letters.as_str())
+}
+
 /// The modifier of app shortcuts as a word: `Cmd` on macOS, `Ctrl` elsewhere.
 pub fn command_key(mac: bool) -> &'static str {
     if mac { "Cmd" } else { "Ctrl" }
@@ -651,6 +986,22 @@ mod tests {
         assert_eq!(files(1), "1 file");
         assert_eq!(files(4912), "4,912 files");
         assert_eq!(files_turned_off(38), "38 files, turned off");
+    }
+
+    #[test]
+    fn clauses_make_one_sentence() {
+        assert_eq!(sentence_of(&[]), "");
+        assert_eq!(
+            sentence_of(&["it and Shipping use each other (6 files)".into()]),
+            "It and Shipping use each other (6 files)."
+        );
+        assert_eq!(
+            sentence_of(&[
+                "it and Shipping use each other (6 files)".into(),
+                "3 of its files read X directly".into()
+            ]),
+            "It and Shipping use each other (6 files), and 3 of its files read X directly."
+        );
     }
 
     #[test]

@@ -4,7 +4,7 @@ use eframe::egui::{
     self, Align2, FontId, Rect, RichText, Role, ScrollArea, Sense, Stroke, StrokeKind, Ui,
     UiBuilder, Vec2, WidgetInfo, pos2, vec2,
 };
-use mortise_core::{ALL_CODE, AppSnapshot, Module, ModuleState};
+use mortise_core::{ALL_CODE, AppSnapshot, FindingState, Module, ModuleState};
 
 use crate::app::Selection;
 use crate::draw::{self, Icon, StampState};
@@ -27,20 +27,56 @@ pub struct IndexState<'a> {
     pub reveal: bool,
     /// True when the index is collapsed to its strip of stamps.
     pub collapsed: bool,
+    /// The order: problems, then warnings, then the rest by name. False is by name.
+    pub problems_first: bool,
     pub mac: bool,
 }
 
-/// The modules a filter leaves: its letters are in the name or in the code, in any case.
-pub fn filtered<'a>(app: &'a AppSnapshot, filter: &str) -> Vec<&'a Module> {
+/// What a row says at its right end.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RowState {
+    /// A module that is turned off: no finding state.
+    Off,
+    /// The state of a module cannot be read, and it has no findings to show instead.
+    None,
+    Finding(FindingState),
+}
+
+/// The finding state of a module, for its row and for the order of the index.
+fn row_state(app: &AppSnapshot, module: &Module) -> RowState {
+    match module.state {
+        ModuleState::Off => RowState::Off,
+        _ => RowState::Finding(app.findings.state_of(&module.name)),
+    }
+}
+
+/// The modules the index shows, in its order: those a filter leaves (its letters
+/// are in the name or in the code, in any case), by name or with problems first.
+pub fn ordered<'a>(app: &'a AppSnapshot, filter: &str, problems_first: bool) -> Vec<&'a Module> {
     let wanted = filter.trim().to_lowercase();
-    app.modules
+    let mut modules: Vec<&Module> = app
+        .modules
         .iter()
         .filter(|module| {
             wanted.is_empty()
                 || module.name.to_lowercase().contains(&wanted)
                 || module.code.to_lowercase().contains(&wanted)
         })
-        .collect()
+        .collect();
+    if problems_first {
+        // The sort is stable, so the order by name is kept within each group.
+        modules.sort_by_key(|module| attention(app, module));
+    }
+    modules
+}
+
+/// 0 for a module with a problem, 1 for one with a warning, 2 for the rest.
+fn attention(app: &AppSnapshot, module: &Module) -> u8 {
+    match row_state(app, module) {
+        RowState::Finding(FindingState::Problems(_)) => 0,
+        RowState::Finding(FindingState::Warning) => 1,
+        _ => 2,
+    }
 }
 
 /// The id of the filter field, to give it focus from a key.
@@ -53,11 +89,18 @@ struct Row<'a> {
     code: &'a str,
     name: &'a str,
     meta: String,
-    off: bool,
+    state: RowState,
 }
 
 /// Paints the index into `rect`. The rect includes the 1 px joint at its right edge.
-pub fn index(ui: &mut Ui, pal: &Palette, rect: Rect, app: &AppSnapshot, state: IndexState<'_>) {
+/// Returns true when the order of the list was asked to change.
+pub fn index(
+    ui: &mut Ui,
+    pal: &Palette,
+    rect: Rect,
+    app: &AppSnapshot,
+    state: IndexState<'_>,
+) -> bool {
     ui.painter().rect_filled(rect, 0, pal.panel);
     // The joint between index and workspace. The selected row is painted over it.
     draw::vline(
@@ -74,12 +117,19 @@ pub fn index(ui: &mut Ui, pal: &Palette, rect: Rect, app: &AppSnapshot, state: I
         keyboard,
         reveal,
         collapsed,
+        problems_first,
         mac,
     } = state;
+    let mut toggle_order = false;
 
-    let modules = filtered(app, filter);
-    let coverage = |module: &Module| module.coverage.and_then(|coverage| coverage.percent());
-    let rows = std::iter::once(Row {
+    let modules = ordered(app, filter, problems_first);
+    // "All modules" carries the problems of the whole app.
+    let all_state = match (app.findings.problems(), app.findings.warnings()) {
+        (0, 0) => FindingState::Good,
+        (0, _) => FindingState::Warning,
+        (problems, _) => FindingState::Problems(problems),
+    };
+    let all = Row {
         selection: Selection::All,
         code: ALL_CODE,
         name: strings::ALL_MODULES,
@@ -87,23 +137,8 @@ pub fn index(ui: &mut Ui, pal: &Palette, rect: Rect, app: &AppSnapshot, state: I
             app.files(),
             app.coverage().and_then(|coverage| coverage.percent()),
         ),
-        off: false,
-    })
-    .chain(modules.iter().map(|module| {
-        let off = module.state == ModuleState::Off;
-        Row {
-            selection: Selection::Module(module.name.clone()),
-            code: &module.code,
-            name: &module.name,
-            meta: if off {
-                strings::files_turned_off(module.files)
-            } else {
-                strings::files_covered(module.files, coverage(module))
-            },
-            off,
-        }
-    }));
-
+        state: RowState::Finding(all_state),
+    };
     let (head_bottom, foot_top) = if collapsed {
         // The strip: stamps and marks only, and the key that opens the index again.
         let foot_top = rect.bottom() - 32.0;
@@ -118,19 +153,33 @@ pub fn index(ui: &mut Ui, pal: &Palette, rect: Rect, app: &AppSnapshot, state: I
         // Foot: how many modules the filter leaves, or the order of the list.
         let foot_top = rect.bottom() - (8.0 + 15.0 + 8.0 + 1.0);
         draw::hline(ui, inner.clone(), foot_top, pal.line);
-        let foot = if filter.trim().is_empty() {
-            strings::SORTED_BY_NAME.to_owned()
+        let at = pos2(inner.start + 12.0, foot_top + 1.0 + 8.0);
+        if filter.trim().is_empty() {
+            let order = if problems_first {
+                strings::SORTED_PROBLEMS_FIRST
+            } else {
+                strings::SORTED_BY_NAME
+            };
+            let text = draw::paint_text(ui, at, Align2::LEFT_TOP, order, ty::SECONDARY, pal.ink_2);
+            // The order is a control: S, or a click on it, changes it.
+            let response = ui.interact(
+                text.expand(5.0),
+                ui.scope_id().with("index-order"),
+                Sense::click(),
+            );
+            response.widget_info(|| WidgetInfo::labeled(Role::Button, true, order));
+            if response.hovered() {
+                draw::paint_text(ui, at, Align2::LEFT_TOP, order, ty::SECONDARY, pal.ink);
+            }
+            if keyboard && response.has_focus() {
+                draw::focus_ring(ui, pal, text.expand(3.0), radius::STAMP);
+            }
+            toggle_order = response.clicked();
+            draw::tooltip(response, pal, strings::CHANGE_THE_ORDER);
         } else {
-            strings::of_modules(modules.len(), app.modules.len())
-        };
-        draw::label(
-            ui,
-            pos2(inner.start + 12.0, foot_top + 1.0 + 8.0),
-            Align2::LEFT_TOP,
-            &foot,
-            ty::SECONDARY,
-            pal.ink_2,
-        );
+            let shown = strings::of_modules(modules.len(), app.modules.len());
+            draw::label(ui, at, Align2::LEFT_TOP, &shown, ty::SECONDARY, pal.ink_2);
+        }
         (head_bottom, foot_top)
     };
 
@@ -144,6 +193,13 @@ pub fn index(ui: &mut Ui, pal: &Palette, rect: Rect, app: &AppSnapshot, state: I
     };
     let no_match = (!filter.trim().is_empty() && modules.is_empty())
         .then(|| strings::no_module_matches(filter.trim()));
+    // With many modules and problems first, those that need attention get a heading.
+    let needing = modules
+        .iter()
+        .filter(|module| attention(app, module) < 2)
+        .count();
+    let pinned = compact && problems_first && !collapsed && needing > 0;
+
     ui.scope_builder(UiBuilder::new().max_rect(list), |ui| {
         ScrollArea::vertical()
             .id_salt("index")
@@ -151,7 +207,7 @@ pub fn index(ui: &mut Ui, pal: &Palette, rect: Rect, app: &AppSnapshot, state: I
             .show(ui, |ui| {
                 ui.spacing_mut().item_spacing = Vec2::ZERO;
                 ui.add_space(8.0);
-                for row in rows {
+                let mut show = |ui: &mut Ui, row: Row<'_>| {
                     let (slot, _) =
                         ui.allocate_exact_size(vec2(ui.available_width(), row_h), Sense::hover());
                     // Rows start 8 px in from the left edge of the index.
@@ -170,6 +226,16 @@ pub fn index(ui: &mut Ui, pal: &Palette, rect: Rect, app: &AppSnapshot, state: I
                     if selected && reveal {
                         ui.scroll_to_rect(row_rect.expand2(vec2(0.0, 8.0)), None);
                     }
+                };
+                show(ui, all);
+                if pinned {
+                    group_heading(ui, pal, strings::NEEDS_ATTENTION, needing);
+                }
+                for (i, module) in modules.iter().enumerate() {
+                    if pinned && i == needing {
+                        ui.add_space(8.0);
+                    }
+                    show(ui, module_row(app, module));
                 }
                 if let Some(text) = &no_match {
                     let width = ui.available_width() - 14.0 - 13.0;
@@ -189,6 +255,53 @@ pub fn index(ui: &mut Ui, pal: &Palette, rect: Rect, app: &AppSnapshot, state: I
                 ui.add_space(8.0);
             });
     });
+    toggle_order
+}
+
+/// The row of one module: its code, its name, its files and coverage, its state.
+fn module_row<'a>(app: &AppSnapshot, module: &'a Module) -> Row<'a> {
+    let state = row_state(app, module);
+    let coverage = module.coverage.and_then(|coverage| coverage.percent());
+    Row {
+        selection: Selection::Module(module.name.clone()),
+        code: &module.code,
+        name: &module.name,
+        meta: if state == RowState::Off {
+            strings::files_turned_off(module.files)
+        } else {
+            strings::files_covered(module.files, coverage)
+        },
+        // Without a state that can be read there is no check mark to give.
+        state: if module.state == ModuleState::Unknown
+            && state == RowState::Finding(FindingState::Good)
+        {
+            RowState::None
+        } else {
+            state
+        },
+    }
+}
+
+/// The heading of a group of rows: its name and how many modules it holds.
+fn group_heading(ui: &mut Ui, pal: &Palette, name: &str, count: usize) {
+    let (slot, _) = ui.allocate_exact_size(vec2(ui.available_width(), 27.0), Sense::hover());
+    let mid = slot.top() + 9.0 + 7.5;
+    draw::label(
+        ui,
+        pos2(slot.left() + 8.0 + 14.0, mid),
+        Align2::LEFT_CENTER,
+        name,
+        ty::LABEL,
+        pal.ink_2,
+    );
+    draw::label(
+        ui,
+        pos2(slot.right() - 1.0 - 12.0, mid),
+        Align2::RIGHT_CENTER,
+        &count.to_string(),
+        ty::SECONDARY,
+        pal.ink_2,
+    );
 }
 
 /// The head of the index: the app, how many modules are on, the versions, the filter.
@@ -300,7 +413,7 @@ struct RowLook {
     focused: bool,
     /// One line: 26 px, no second line.
     compact: bool,
-    /// The index is a strip: the stamp only.
+    /// The index is a strip: the stamp and the mark only.
     collapsed: bool,
 }
 
@@ -315,7 +428,7 @@ fn index_row(ui: &Ui, pal: &Palette, rect: Rect, row: &Row<'_>, look: RowLook) -
     response
         .widget_info(|| WidgetInfo::selected(Role::ListBoxOption, true, look.selected, row.name));
 
-    if look.selected {
+    let behind = if look.selected {
         // Surface fill, a line on three sides, and 1 px over the joint into the workspace.
         ui.painter().rect_filled(rect, 0, pal.surface);
         draw::hline(ui, rect.left()..rect.right(), rect.top(), pal.line_2);
@@ -327,51 +440,73 @@ fn index_row(ui: &Ui, pal: &Palette, rect: Rect, row: &Row<'_>, look: RowLook) -
         );
         draw::vline(ui, rect.left(), rect.top()..rect.bottom(), pal.line_2);
         draw::peg(ui, pal, rect);
+        pal.surface
     } else if response.hovered() {
         let fill = Rect::from_min_max(rect.min, pos2(rect.right() - 1.0, rect.bottom()));
         ui.painter().rect_filled(fill, 0, pal.well);
-    }
+        pal.well
+    } else {
+        pal.panel
+    };
 
     let mid = rect.center().y;
+    let off = row.state == RowState::Off;
     let stamp_state = StampState {
         selected: look.selected,
-        off: row.off,
+        off,
     };
     let stamp_min = pos2(rect.left() + 15.0, (mid - size::STAMP_H / 2.0).round());
-    draw::stamp(ui, pal, stamp_min, row.code, stamp_state);
+    let stamp = draw::stamp(ui, pal, stamp_min, row.code, stamp_state);
+
+    // The state at the right end: a mark, and a word or a number where there is room.
+    let marks_right = if look.collapsed {
+        stamp.right() + 5.0 + size::STATE_MARK
+    } else {
+        rect.right() - 1.0 - 12.0
+    };
+    let (word, color) = match row.state {
+        RowState::Off => (strings::OFF.to_owned(), pal.off),
+        RowState::Finding(FindingState::Problems(n)) => (n.to_string(), pal.bad),
+        RowState::Finding(FindingState::Warning) => (String::new(), pal.warn),
+        RowState::Finding(FindingState::Good) => (String::new(), pal.good),
+        RowState::None => (String::new(), pal.off),
+    };
+    let mut mark_right = marks_right;
+    if !word.is_empty() && !look.collapsed {
+        let text = draw::paint_text(
+            ui,
+            pos2(marks_right, mid),
+            Align2::RIGHT_CENTER,
+            &word,
+            ty::LABEL,
+            color,
+        );
+        mark_right = text.left() - 5.0;
+    }
+    let mark = Rect::from_min_size(
+        pos2(
+            mark_right - size::STATE_MARK,
+            (mid - size::STATE_MARK / 2.0).round(),
+        ),
+        Vec2::splat(size::STATE_MARK),
+    );
+    match row.state {
+        RowState::Off => draw::mark_off(ui, mark, color),
+        RowState::Finding(FindingState::Problems(_)) => draw::mark_bad(ui, mark, color, behind),
+        RowState::Finding(FindingState::Warning) => draw::mark_warn(ui, mark, color),
+        RowState::Finding(FindingState::Good) => draw::mark_good(ui, mark, color),
+        RowState::None => {}
+    }
 
     if !look.collapsed {
-        // The marks at the right end. A module that is off has the empty frame and the word.
-        let marks_right = rect.right() - 1.0 - 12.0;
-        let mut text_right = marks_right;
-        if row.off {
-            let word = draw::paint_text(
-                ui,
-                pos2(marks_right, mid),
-                Align2::RIGHT_CENTER,
-                strings::OFF,
-                ty::LABEL,
-                pal.off,
-            );
-            let mark = Rect::from_min_size(
-                pos2(
-                    word.left() - 5.0 - size::STATE_MARK,
-                    (mid - size::STATE_MARK / 2.0).round(),
-                ),
-                Vec2::splat(size::STATE_MARK),
-            );
-            draw::mark_off(ui, mark, pal.off);
-            text_right = mark.left() - 9.0;
-        }
-
         let text_left = rect.left() + 15.0 + 36.0 + 9.0;
-        let text_w = (text_right - text_left).max(0.0);
-        let name_type = if row.off {
+        let text_w = (mark.left() - 9.0 - text_left).max(0.0);
+        let name_type = if off {
             ty::ROW_NAME.with_face(Face::Sans500)
         } else {
             ty::ROW_NAME
         };
-        let name_color = if row.off { pal.ink_2 } else { pal.ink };
+        let name_color = if off { pal.ink_2 } else { pal.ink };
         let name = draw::galley_elided(ui, row.name, name_type, name_color, text_w);
         if look.compact {
             draw::paint_galley(ui, pos2(text_left, mid), Align2::LEFT_CENTER, name);

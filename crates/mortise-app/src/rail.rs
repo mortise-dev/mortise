@@ -13,6 +13,8 @@ use crate::theme::{Face, Palette, Type, radius, size, stroke, ty};
 pub struct Tile<'a> {
     pub name: &'a str,
     pub monogram: &'a str,
+    /// How many findings of the kind problem the app has. Any raises the pip.
+    pub problems: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -137,8 +139,25 @@ fn app_tile(ui: &Ui, pal: &Palette, rect: Rect, tile: &Tile<'_>, selected: bool)
         text,
     );
 
+    // The pip: the app has at least one problem. Warnings and a runtime that is
+    // down do not raise it.
+    if tile.problems > 0 {
+        let center = pos2(rect.right() - 0.5, rect.top() + 0.5);
+        ui.painter().circle_filled(center, 6.0, pal.frame);
+        draw::mark_bad(
+            ui,
+            Rect::from_center_size(center, Vec2::splat(9.0)),
+            pal.bad,
+            pal.frame,
+        );
+    }
+
     let clicked = response.clicked();
-    draw::tooltip(response, pal, tile.name);
+    draw::tooltip(
+        response,
+        pal,
+        &strings::app_with_problems(tile.name, tile.problems),
+    );
     clicked
 }
 

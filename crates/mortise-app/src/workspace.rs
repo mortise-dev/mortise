@@ -5,7 +5,8 @@ use mortise_core::AppSnapshot;
 
 use crate::app::Selection;
 use crate::boundary::{self, BoundaryAction, BoundaryState};
-use crate::draw::{self, Icon, StampState};
+use crate::draw::{self, Button, ButtonKind, Icon, StampState};
+use crate::findings_view;
 use crate::strings;
 use crate::summary::{self, SummaryState};
 use crate::theme::{Face, Palette, size, ty};
@@ -88,6 +89,10 @@ impl Tab {
 pub struct WorkState<'a> {
     pub summary: SummaryState<'a>,
     pub boundary: &'a mut BoundaryState,
+    /// The Findings list is open: a second view of the Summary of "All modules".
+    pub findings_open: &'a mut bool,
+    /// The row of the Findings list that is selected.
+    pub finding_row: &'a mut usize,
     /// True while the keyboard is in use: focus rings are drawn.
     pub keyboard: bool,
 }
@@ -118,10 +123,41 @@ pub fn workspace(
         pal.line_2,
     );
 
-    let title = module.map_or(strings::ALL_MODULES, |module| module.name.as_str());
+    // The Findings list takes the place of the Summary of "All modules" until Esc.
+    let findings = *state.findings_open && module.is_none() && *tab == Tab::Summary;
+    let findings_title = strings::findings_in(&app.name);
+    let mut title_x = head.left() + 16.0;
+    let title = if findings {
+        // Where the list belongs, then its own name.
+        let crumb = format!("{} /", strings::ALL_MODULES);
+        let at = pos2(title_x, head.top() + 12.0 + ty::TITLE.line - 3.0);
+        let crumb_rect = draw::label(
+            ui,
+            at,
+            Align2::LEFT_BOTTOM,
+            &crumb,
+            ty::SECONDARY,
+            pal.ink_2,
+        );
+        title_x = crumb_rect.right() + 10.0;
+        let back = Button {
+            label: strings::BACK_TO_SUMMARY,
+            kind: ButtonKind::Ghost,
+            small: true,
+            keys: Some("Esc"),
+            ..Default::default()
+        };
+        let at = pos2(head.right() - 16.0 - back.width(ui), head.top() + 12.0);
+        if back.show(ui, pal, at, state.keyboard).clicked() {
+            *state.findings_open = false;
+        }
+        findings_title.as_str()
+    } else {
+        module.map_or(strings::ALL_MODULES, |module| module.name.as_str())
+    };
     let title_rect = draw::paint_text(
         ui,
-        pos2(head.left() + 16.0, head.top() + 12.0),
+        pos2(title_x, head.top() + 12.0),
         Align2::LEFT_TOP,
         title,
         ty::TITLE,
@@ -234,6 +270,9 @@ pub fn workspace(
     }
 
     let body = Rect::from_min_max(pos2(rect.left(), head.bottom()), rect.max);
+    if findings {
+        return findings_view::findings(ui, pal, body, app, state.finding_row);
+    }
     match (*tab, tab.explanation()) {
         (_, Some((icon, title, text))) => {
             empty_state(ui, pal, body, EmptyMark::Icon(icon), title, &[text], 0.0);
@@ -242,9 +281,7 @@ pub fn workspace(
         (Tab::Boundary, None) => {
             boundary::boundary(ui, pal, body, app, module, state.boundary, state.keyboard)
         }
-        (_, None) => {
-            summary::summary(ui, pal, body, app, module, state.summary).map(BoundaryAction::Select)
-        }
+        (_, None) => summary::summary(ui, pal, body, app, module, state.summary),
     }
 }
 

@@ -54,6 +54,10 @@ struct OpenApp {
     sort: Sort,
     /// What the Boundary tab keeps.
     boundary: BoundaryState,
+    /// The Findings list is open.
+    findings_open: bool,
+    /// The row of the Findings list that is selected.
+    finding_row: usize,
     /// The snapshot that was looked at last, to notice a newer one.
     seen: Option<Arc<AppSnapshot>>,
 }
@@ -199,6 +203,12 @@ impl MortiseApp {
         self.adding.is_some()
     }
 
+    /// True while the Findings list is on screen.
+    pub fn findings_open(&self) -> bool {
+        self.current
+            .is_some_and(|current| self.apps[current].findings_open)
+    }
+
     // --- Apps ---
 
     fn save(&mut self) {
@@ -316,6 +326,15 @@ impl MortiseApp {
         }
     }
 
+    /// Switches the index of the current app between by name and problems first.
+    fn toggle_order(&mut self) {
+        if let Some(current) = self.current {
+            let entry = &mut self.settings.apps[current];
+            entry.problems_first = !entry.problems_first;
+            self.save();
+        }
+    }
+
     // --- Rules ---
 
     /// Changes the rules of the current app. The first change asks before
@@ -386,11 +405,16 @@ impl MortiseApp {
                 self.adding = None;
             } else if self.toast.is_some() {
                 self.toast = None;
-            } else if let Some(open) = open.filter(|open| !open.filter.is_empty()) {
-                // Esc clears the text first and leaves the field second. egui has
-                // already taken focus from the field for this Esc: give it back.
-                open.filter.clear();
-                self.focus_filter = self.filter_was_focused;
+            } else if let Some(open) = open {
+                if !open.filter.is_empty() {
+                    // Esc clears the text first and leaves the field second. egui has
+                    // already taken focus from the field for this Esc: give it back.
+                    open.filter.clear();
+                    self.focus_filter = self.filter_was_focused;
+                } else if !self.filter_was_focused {
+                    // Back from a second view.
+                    open.findings_open = false;
+                }
             }
         }
         // A dialog and the add panel hold the keys until they close.
@@ -444,14 +468,28 @@ impl MortiseApp {
         let Some(app) = self.app() else {
             return;
         };
-        let Some(open) = self.current.map(|current| &mut self.apps[current]) else {
+        let Some(current_app) = self.current else {
             return;
         };
         let pressed = |key: Key| ui.input_mut(|input| input.consume_key(Modifiers::NONE, key));
 
+        // S: change the order of the index. The choice is kept per app.
+        if pressed(Key::S) {
+            self.toggle_order();
+        }
+        let problems_first = self.settings.apps[current_app].problems_first;
+        let open = &mut self.apps[current_app];
+        // F: the findings list of the app.
+        if pressed(Key::F) {
+            open.selection = Selection::All;
+            open.tab = Tab::Summary;
+            open.findings_open = true;
+            open.finding_row = 0;
+        }
+
         // J and K, or Down and Up: the next or previous row. Home and End: the first or last.
         // Only the rows the filter leaves.
-        let modules = index::filtered(&app, &open.filter);
+        let modules = index::ordered(&app, &open.filter, problems_first);
         let rows = modules.len() + 1;
         let current = match &open.selection {
             Selection::All => 0,
@@ -557,9 +595,14 @@ impl eframe::App for MortiseApp {
             .settings
             .apps
             .iter()
-            .map(|app| Tile {
+            .zip(&self.apps)
+            .map(|(app, open)| Tile {
                 name: &app.name,
                 monogram: &app.monogram,
+                problems: match open.live.state() {
+                    LiveState::Ready(app) => app.findings.problems(),
+                    _ => 0,
+                },
             })
             .collect();
         let adding = self.adding.is_some();
@@ -576,6 +619,10 @@ impl eframe::App for MortiseApp {
             .map_or(0, |since| since.as_secs() as i64);
         let mut add_action = None;
         let mut work_action = None;
+        let mut toggle_order = false;
+        let problems_first = self
+            .current
+            .is_some_and(|current| self.settings.apps[current].problems_first);
         let mut first_run_add = false;
         let monogram = self.monogram_preview();
         if let Some(panel) = &mut self.adding {
@@ -588,12 +635,18 @@ impl eframe::App for MortiseApp {
                     let work_rect =
                         Rect::from_min_max(pos2(index_rect.right(), rest.top()), rest.max);
                     // The workspace first: the selected row of the index is painted over its edge.
+                    // The Findings list belongs to the Summary of "All modules" only.
+                    if open.selection != Selection::All || open.tab != Tab::Summary {
+                        open.findings_open = false;
+                    }
                     let state = WorkState {
                         summary: SummaryState {
                             sort: &mut open.sort,
                             now,
                         },
                         boundary: &mut open.boundary,
+                        findings_open: &mut open.findings_open,
+                        finding_row: &mut open.finding_row,
                         keyboard: self.keyboard,
                     };
                     work_action = workspace::workspace(
@@ -612,6 +665,10 @@ impl eframe::App for MortiseApp {
                             open.selection = Selection::Module(module.clone());
                             self.reveal = true;
                         }
+                        Some(BoundaryAction::ShowFindings) => {
+                            open.findings_open = true;
+                            open.finding_row = 0;
+                        }
                         Some(BoundaryAction::ShowLink { module, other }) => {
                             open.selection = Selection::Module(module.clone());
                             open.tab = Tab::Boundary;
@@ -628,14 +685,15 @@ impl eframe::App for MortiseApp {
                         keyboard: self.keyboard,
                         reveal: self.reveal,
                         collapsed: self.index_collapsed,
+                        problems_first,
                         mac,
                     };
-                    index::index(ui, pal, index_rect, &app, state);
+                    toggle_order = index::index(ui, pal, index_rect, &app, state);
                     // A change of the filter selects its first match, so Enter opens it.
                     if open.filter != open.filter_seen {
                         open.filter_seen = open.filter.clone();
                         if !open.filter.trim().is_empty() {
-                            let first = index::filtered(&app, &open.filter)
+                            let first = index::ordered(&app, &open.filter, problems_first)
                                 .first()
                                 .map(|m| m.name.clone());
                             open.selection = first.map_or(Selection::All, Selection::Module);
@@ -692,6 +750,9 @@ impl eframe::App for MortiseApp {
             }
             self.dialog_opened = false;
         }
+        if toggle_order {
+            self.toggle_order();
+        }
         match work_action {
             Some(BoundaryAction::SetRules(rules)) => self.set_rules(rules),
             Some(BoundaryAction::CopyPath(path)) => {
@@ -743,6 +804,8 @@ fn open_app(ctx: &egui::Context, entry: &AppEntry) -> OpenApp {
         filter_seen: String::new(),
         sort: Sort::default(),
         boundary: BoundaryState::default(),
+        findings_open: false,
+        finding_row: 0,
         seen: None,
     }
 }

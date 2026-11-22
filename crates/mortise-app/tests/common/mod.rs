@@ -84,6 +84,7 @@ impl Desk {
                     name: root.file_name().unwrap().to_string_lossy().into_owned(),
                     monogram: (*monogram).to_owned(),
                     codes: BTreeMap::new(),
+                    problems_first: false,
                 })
                 .collect(),
             current: Some(0),
