@@ -104,6 +104,9 @@ fn a_token_is_kept_in_the_store_and_never_shown_or_written() {
     wait_until(&mut harness, "Up with the token", |app| {
         matches!(app.runtime().answer.as_deref(), Some(Answer::Answered(_)))
     });
+    // Esc leaves the Name field, the next Esc closes Settings.
+    harness.key_press(Key::Escape);
+    harness.run_steps(3);
     harness.key_press(Key::Escape);
     harness.run_steps(3);
     assert_eq!(harness.get_all_by_label("Up on local").count(), 2);
