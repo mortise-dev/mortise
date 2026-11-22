@@ -14,9 +14,9 @@ use mago_span::HasSpan;
 use mago_syntax::cst::{
     Argument, ArrayElement, Attribute, AttributeList, Binary, BinaryOperator, Call, Class,
     ClassConstantAccess, Enum, Expression, Extends, FunctionCall, Hint, Identifier, Implements,
-    Instantiation, Interface, Literal, LocalIdentifier, Method, Modifier, Sequence, Statement,
-    StaticMethodCall, StaticMethodPartialApplication, StaticPropertyAccess, TokenSeparatedSequence,
-    Trait, TraitUse, TriviaKind, Use, UseItems,
+    Instantiation, Interface, Literal, LocalIdentifier, Method, Modifier, PartialArgument,
+    PropertyConcreteItem, Sequence, Statement, StaticMethodCall, StaticMethodPartialApplication,
+    StaticPropertyAccess, TokenSeparatedSequence, Trait, TraitUse, TriviaKind, Use, UseItems,
 };
 use mago_syntax::parser::{parse_file_content, parse_file_with_settings};
 use mago_syntax::settings::ParserSettings;
@@ -231,6 +231,11 @@ pub(crate) struct Declared {
     pub(crate) kind: DeclaredKind,
     /// The full names of the attributes on it, such as `Illuminate\Console\Attributes\Signature`.
     pub(crate) attributes: Vec<String>,
+    /// For a console command: its name, from its signature. `billing:send-invoices`
+    pub(crate) command: Option<String>,
+    /// The text of a `$name` property. An older command has its name there, but so
+    /// can any other class: it counts only for a class in the commands folder.
+    pub(crate) name_property: Option<String>,
 }
 
 /// What a PHP file declares and what it names, with names resolved the way PHP
@@ -334,17 +339,51 @@ impl<'arena> ClassReader<'_, 'arena> {
         name: &LocalIdentifier<'arena>,
         attributes: &Sequence<'arena, AttributeList<'arena>>,
     ) {
-        let attributes = attributes
-            .iter()
-            .flat_map(|list| list.attributes.iter())
-            .map(|attribute| self.full_name(&attribute.name, attribute.name.value()))
-            .collect();
+        // A console command can carry its name in an attribute: Laravel's
+        // `#[Signature('name {argument}')]` or Symfony's `#[AsCommand(name: 'name')]`.
+        let mut command = None;
+        let mut names = Vec::new();
+        for attribute in attributes.iter().flat_map(|list| list.attributes.iter()) {
+            let full = self.full_name(&attribute.name, attribute.name.value());
+            let last = full.rsplit('\\').next().unwrap_or_default();
+            if matches!(last, "Signature" | "AsCommand")
+                && let Some(arguments) = &attribute.argument_list
+            {
+                let value = arguments
+                    .arguments
+                    .iter()
+                    .find_map(|argument| match argument {
+                        PartialArgument::Positional(argument) => string_of(argument.value),
+                        PartialArgument::Named(argument) if argument.name.value == b"name" => {
+                            string_of(argument.value)
+                        }
+                        _ => None,
+                    });
+                command = command.or(value.as_deref().and_then(command_name));
+            }
+            names.push(full);
+        }
         self.declares.push(Declared {
             class: self.full_name(name, name.value),
             kind,
-            attributes,
+            attributes: names,
+            command,
+            name_property: None,
         });
     }
+}
+
+/// The text of a string literal.
+fn string_of(expression: &Expression<'_>) -> Option<String> {
+    match expression {
+        Expression::Literal(Literal::String(string)) => string.value.map(lossy),
+        _ => None,
+    }
+}
+
+/// The name of a command in its signature: the first word of `name {argument} {--option}`.
+fn command_name(signature: &str) -> Option<String> {
+    signature.split_whitespace().next().map(str::to_owned)
 }
 
 impl<'ast, 'arena> MutWalker<'ast, 'arena, ()> for ClassReader<'_, 'arena> {
@@ -381,6 +420,23 @@ impl<'ast, 'arena> MutWalker<'ast, 'arena, ()> for ClassReader<'_, 'arena> {
 
     fn walk_in_enum(&mut self, r#enum: &'ast Enum<'arena>, _: &mut ()) {
         self.declare(DeclaredKind::Enum, &r#enum.name, &r#enum.attribute_lists);
+    }
+
+    // `protected $signature = 'billing:send-invoices {--force}';` in a command class.
+    fn walk_in_property_concrete_item(
+        &mut self,
+        item: &'ast PropertyConcreteItem<'arena>,
+        _: &mut (),
+    ) {
+        let Some(declared) = self.declares.last_mut() else {
+            return;
+        };
+        let value = string_of(item.value).as_deref().and_then(command_name);
+        if item.variable.name == b"$signature" && declared.command.is_none() {
+            declared.command = value;
+        } else if item.variable.name == b"$name" {
+            declared.name_property = value;
+        }
     }
 
     fn walk_in_extends(&mut self, extends: &'ast Extends<'arena>, _: &mut ()) {
@@ -453,6 +509,39 @@ impl<'ast, 'arena> MutWalker<'ast, 'arena, ()> for ClassReader<'_, 'arena> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reads_the_name_of_a_console_command() {
+        let command = |source: &str| analyze(source.as_bytes()).declares[0].command.clone();
+        assert_eq!(
+            command(
+                "<?php class A extends Command { protected $signature = 'billing:send {--force}'; }"
+            ),
+            Some("billing:send".to_owned())
+        );
+        assert_eq!(
+            command(
+                "<?php use Illuminate\\Console\\Attributes\\Signature;\n#[Signature('billing:retry {id}')] class A {}"
+            ),
+            Some("billing:retry".to_owned())
+        );
+        assert_eq!(
+            command("<?php #[AsCommand(name: 'billing:prune', description: 'x')] class A {}"),
+            Some("billing:prune".to_owned())
+        );
+        // A signature that is not a literal cannot be read without PHP.
+        assert_eq!(
+            command("<?php class A { protected $signature = self::NAME; }"),
+            None
+        );
+        assert_eq!(command("<?php class A { public $other = 'x'; }"), None);
+        let old = analyze(b"<?php class A extends Command { protected $name = 'billing:old'; }");
+        assert_eq!(old.declares[0].command, None);
+        assert_eq!(
+            old.declares[0].name_property.as_deref(),
+            Some("billing:old")
+        );
+    }
 
     fn read(source: &str) -> ConfigValue {
         read_config(source.as_bytes()).expect("a return statement")
@@ -632,6 +721,8 @@ final class InvoiceSync extends BaseSync implements Shipping\RateCalculator
                 class: "Modules\\Checkout\\Services\\InvoiceSync".into(),
                 kind: DeclaredKind::Class,
                 attributes: vec!["Modules\\Users\\Attributes\\Audited".into()],
+                command: None,
+                name_property: None,
             }]
         );
         assert_eq!(

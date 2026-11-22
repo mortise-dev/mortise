@@ -27,6 +27,7 @@ mod rules;
 mod runtime;
 mod secrets;
 mod settings;
+mod surface;
 #[cfg(feature = "testing")]
 pub mod testing;
 
@@ -60,3 +61,4 @@ pub use runtime::{
 };
 pub use secrets::{Kept, Secrets};
 pub use settings::{AppEntry, General, IndexRows, Motion, Settings, SettingsError, ThemeChoice};
+pub use surface::{Proposal, ScanCounts, SurfaceEntry, SurfaceKind, SurfaceScan, Typed};

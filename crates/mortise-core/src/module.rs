@@ -265,13 +265,9 @@ struct Entry {
     modified: Option<SystemTime>,
 }
 
-/// Walks a module's folder: counts its files by kind, the lines of its PHP files
-/// and the tests in its test files, and reads which classes each PHP file names.
-fn scan(dir: &Path, kinds: &Kinds, cache: &mut ReadCache) -> Scan {
-    let mut scan = Scan::default();
-    let mut by_kind: BTreeMap<String, u32> = BTreeMap::new();
-    let mut php: Vec<Entry> = Vec::new();
-
+/// The files of a module, each with its path inside the module, `/` between the
+/// parts. Hidden files, ignored files and installed packages are left out.
+pub(crate) fn files_of(dir: &Path) -> Vec<(PathBuf, String)> {
     let walk = WalkBuilder::new(dir)
         // Apply .gitignore files also when the app is not a git repository.
         .require_git(false)
@@ -280,26 +276,43 @@ fn scan(dir: &Path, kinds: &Kinds, cache: &mut ReadCache) -> Scan {
             !(is_dir && matches!(entry.file_name().to_str(), Some("vendor" | "node_modules")))
         })
         .build();
-    for entry in walk.filter_map(Result::ok) {
-        if !entry.file_type().is_some_and(|kind| kind.is_file()) {
-            continue;
-        }
-        let path = entry.path();
-        let relative = path
-            .strip_prefix(dir)
-            .unwrap_or(path)
-            .components()
-            .map(|part| part.as_os_str().to_string_lossy())
-            .collect::<Vec<_>>()
-            .join("/");
+    walk.filter_map(Result::ok)
+        .filter(|entry| entry.file_type().is_some_and(|kind| kind.is_file()))
+        .map(|entry| {
+            let path = entry.path();
+            let relative = path
+                .strip_prefix(dir)
+                .unwrap_or(path)
+                .components()
+                .map(|part| part.as_os_str().to_string_lossy())
+                .collect::<Vec<_>>()
+                .join("/");
+            (path.to_owned(), relative)
+        })
+        .collect()
+}
+
+/// True for a PHP file that is not a Blade view: those end in `.php` but are templates.
+pub(crate) fn is_php(relative: &str) -> bool {
+    relative.ends_with(".php") && !relative.ends_with(".blade.php")
+}
+
+/// Walks a module's folder: counts its files by kind, the lines of its PHP files
+/// and the tests in its test files, and reads which classes each PHP file names.
+fn scan(dir: &Path, kinds: &Kinds, cache: &mut ReadCache) -> Scan {
+    let mut scan = Scan::default();
+    let mut by_kind: BTreeMap<String, u32> = BTreeMap::new();
+    let mut php: Vec<Entry> = Vec::new();
+
+    for (path, relative) in files_of(dir) {
+        let path = path.as_path();
         let kind = kinds.of(&relative);
         let is_test = kind == TESTS;
         scan.files += 1;
         *by_kind.entry(kind).or_default() += 1;
 
-        // Blade views end in .php but are templates, not PHP files.
-        if relative.ends_with(".php") && !relative.ends_with(".blade.php") {
-            let metadata = entry.metadata().ok();
+        if is_php(&relative) {
+            let metadata = std::fs::metadata(path).ok();
             php.push(Entry {
                 path: path.to_owned(),
                 relative,
