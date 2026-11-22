@@ -288,17 +288,7 @@ fn all_modules(
     // The module that needs attention most, and the way to every finding.
     let all = app.findings.list.len();
     let show = strings::show_all_findings(all);
-    let alert = match strings::app_alert(app) {
-        Some((module, rest)) => Some((Severity::Problem, module, rest)),
-        None => app.findings.list.first().map(|first| {
-            (
-                Severity::Warning,
-                String::new(),
-                strings::finding(first, app),
-            )
-        }),
-    };
-    if let Some((severity, bold, rest)) = alert {
+    if let Some((severity, bold, rest)) = strings::app_alert(app) {
         let (bottom, clicked) = alert_box(
             ui,
             pal,
