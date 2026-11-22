@@ -113,6 +113,9 @@ pub struct MortiseApp {
     quick_read: std::time::Duration,
     /// What the operating system said about motion, and when it was asked.
     system_motion: Option<(bool, std::time::Instant)>,
+    /// The menu bar of macOS, in the real window.
+    #[cfg(target_os = "macos")]
+    menu: Option<crate::menu::MenuBar>,
     toast: Option<Toast>,
     pick_folder: Box<dyn FnMut() -> Option<PathBuf>>,
     /// True while the keyboard is in use, false once the pointer is. The focus ring
@@ -188,6 +191,8 @@ impl MortiseApp {
             reading: None,
             quick_read: config.quick_read,
             system_motion: None,
+            #[cfg(target_os = "macos")]
+            menu: None,
             toast,
             pick_folder: config.pick_folder,
             // At start, focus is on the selected row of the index.
@@ -572,6 +577,49 @@ impl MortiseApp {
             let entry = &mut self.settings.apps[current];
             entry.problems_first = !entry.problems_first;
             self.save();
+        }
+    }
+
+    /// Gives the app the menu bar of macOS. Only the real window has one.
+    #[cfg(target_os = "macos")]
+    pub fn with_menu_bar(mut self, ctx: &egui::Context) -> Self {
+        self.menu = crate::menu::MenuBar::install(ctx);
+        self
+    }
+
+    /// Does what was chosen in the menu bar: the same commands as the palette.
+    #[cfg(target_os = "macos")]
+    fn menu_actions(&mut self, ctx: &egui::Context) {
+        use crate::menu::MenuAction;
+        let chosen = self
+            .menu
+            .as_ref()
+            .map(|menu| menu.chosen())
+            .unwrap_or_default();
+        for action in chosen {
+            self.palette_scope = self.current.unwrap_or(0);
+            match action {
+                MenuAction::Settings => self.open_settings(Section::Apps),
+                MenuAction::Shortcuts => self.open_settings(Section::Keyboard),
+                MenuAction::AddApp => self.pick(ctx),
+                MenuAction::Palette => self.open_palette(),
+                MenuAction::AllModules => self.run(Command::AllModules),
+                MenuAction::Findings => self.run(Command::Findings),
+                MenuAction::Theme(theme) => self.run(Command::Theme(theme)),
+                MenuAction::ToggleIndex => {
+                    let set = f32::from(self.settings.general.index_width);
+                    let (_, collapsed) = index_width(self.window_w, self.index_choice, set);
+                    self.index_choice = Some(!collapsed);
+                }
+                MenuAction::ReadAgain => {
+                    if let Some(current) = self.current {
+                        self.apps[current].live.refresh();
+                        if let Some(connected) = &self.apps[current].runtime {
+                            connected.live.refresh();
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -1146,6 +1194,8 @@ impl eframe::App for MortiseApp {
         let mac = ctx.os() == egui::os::OperatingSystem::Mac;
         self.reveal = std::mem::take(&mut self.reveal_next);
         draw::focus_what_was_asked(&ctx);
+        #[cfg(target_os = "macos")]
+        self.menu_actions(&ctx);
         self.keys(ui);
         self.take_in();
         self.sync_runtime(&ctx);
@@ -1860,7 +1910,11 @@ pub fn run(chrome: Chrome, folder: Option<PathBuf>) -> eframe::Result {
                 },
                 quick_read: std::time::Duration::from_millis(60),
             };
-            Ok(Box::new(MortiseApp::new(cc, config)))
+            let app = MortiseApp::new(cc, config);
+            // The system menu bar: Mortise, File, View, Window and Help.
+            #[cfg(target_os = "macos")]
+            let app = app.with_menu_bar(&cc.egui_ctx);
+            Ok(Box::new(app))
         }),
     )
 }

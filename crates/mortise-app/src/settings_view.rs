@@ -129,6 +129,11 @@ const SHORTCUTS: &[(&str, &str, &str)] = &[
     ),
     ("Close the topmost thing", "Esc", "Anywhere"),
     (
+        "Move focus to the next or previous region",
+        "F6  Shift F6",
+        "Anywhere",
+    ),
+    (
         "Next or previous module",
         "J  K  or Down  Up",
         "Main window",
@@ -144,6 +149,23 @@ const SHORTCUTS: &[(&str, &str, &str)] = &[
     ("Findings list of the app", "F", "Main window"),
     ("Open the selected module in the editor", "E", "Main window"),
     ("Show the shortcuts", "?", "Main window"),
+    (
+        "Move focus into the workspace",
+        "Enter  or Right",
+        "Module index",
+    ),
+    (
+        "Set the width of the index",
+        "Left  Right",
+        "Edge of the module index",
+    ),
+    ("Move an app on the rail", "Alt Up  Alt Down", "Rail"),
+    ("Move in a table or list", "J  K  or Down  Up", "Workspace"),
+    (
+        "Change a segmented control or the tab",
+        "Left  Right",
+        "Workspace",
+    ),
     (
         "Switch between Links and Public surface",
         "P",

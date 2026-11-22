@@ -31,3 +31,4 @@ workspace = true
 # The setting of macOS that asks for less motion. Both calls are safe Rust.
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "NSWorkspace", "NSAccessibility"] }
+muda = { version = "0.21", default-features = false }

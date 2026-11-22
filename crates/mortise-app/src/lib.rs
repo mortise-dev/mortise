@@ -12,6 +12,8 @@ pub mod environment_form;
 pub mod findings_view;
 pub mod fonts;
 pub mod index;
+#[cfg(target_os = "macos")]
+pub mod menu;
 pub mod palette;
 pub mod rail;
 pub mod runtime_view;
