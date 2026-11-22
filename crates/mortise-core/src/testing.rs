@@ -12,6 +12,8 @@ use std::sync::{Arc, Mutex};
 pub struct Reply {
     pub status: u16,
     pub body: String,
+    /// The `Location` header, for a redirect.
+    pub location: Option<String>,
 }
 
 impl Reply {
@@ -19,6 +21,7 @@ impl Reply {
         Self {
             status: 200,
             body: body.to_owned(),
+            location: None,
         }
     }
 
@@ -26,6 +29,16 @@ impl Reply {
         Self {
             status,
             body: body.to_owned(),
+            location: None,
+        }
+    }
+
+    /// A 302 that sends the client to another address.
+    pub fn redirect(location: &str) -> Self {
+        Self {
+            status: 302,
+            body: String::new(),
+            location: Some(location.to_owned()),
         }
     }
 }
@@ -207,8 +220,12 @@ fn serve(mut stream: TcpStream, routes: &Mutex<Routes>) {
             })
         }
     };
+    let location = reply
+        .location
+        .map(|location| format!("Location: {location}\r\n"))
+        .unwrap_or_default();
     let response = format!(
-        "HTTP/1.1 {} X\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        "HTTP/1.1 {} X\r\n{location}Content-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
         reply.status,
         reply.body.len(),
         reply.body

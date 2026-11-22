@@ -156,6 +156,10 @@ impl<'a> Client<'a> {
             .timeout_global(Some(TIMEOUT))
             // A 503 from health is an answer, not a failed request.
             .http_status_as_error(false)
+            // A redirect is not followed. It could take a custom header with the secret to
+            // another host, or ask for a path Mortise does not read. It comes back as an
+            // unexpected answer.
+            .max_redirects(0)
             // The certificates this computer trusts, so that a local site with its own
             // certificate authority works as it does in the browser.
             .tls_config(
