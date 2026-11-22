@@ -263,6 +263,148 @@ pub fn no_modules(app: &AppSnapshot) -> String {
     )
 }
 
+pub const FILTER_MODULES: &str = "Filter modules";
+pub const LINES_OF_PHP: &str = "Lines of PHP";
+pub const TEST_COVERAGE: &str = "Test coverage";
+/// The word for a coverage that cannot be worked out: there is no report.
+pub const UNKNOWN: &str = "unknown";
+pub const COVERAGE_BY_MODULE: &str = "Coverage by module";
+pub const BY_MODULE: &str = "By module";
+pub const FILES_BY_KIND: &str = "Files by kind";
+pub const GIT_CHURN: &str = "Git churn";
+pub const MIGRATIONS: &str = "Migrations";
+pub const COVERAGE_REPORT: &str = "Coverage report";
+pub const GIT: &str = "Git";
+pub const NO_REPORT_FOUND: &str = "none found, coverage shows as unknown";
+/// Not in the spec: the Git line of "Found in this folder" outside a repository.
+pub const NOT_A_REPOSITORY: &str = "not a repository";
+/// Not in the spec: the Git line when the git program cannot be started.
+pub const GIT_NOT_FOUND: &str = "git was not found";
+
+/// The headers of the "By module" table.
+pub const COL_MODULE: &str = "Module";
+pub const COL_FILES: &str = "Files";
+pub const COL_LINES: &str = "Lines";
+pub const COL_TESTS: &str = "Tests";
+pub const COL_COVERAGE: &str = "Coverage";
+pub const COL_COMMITS: &str = "Commits, 30 days";
+
+/// `84 files, 54% covered`
+pub fn files_covered(n: u64, percent: Option<u8>) -> String {
+    match percent {
+        Some(percent) => format!("{}, {percent}% covered", files(n)),
+        None => files(n),
+    }
+}
+
+/// `54%`
+pub fn percent(percent: u8) -> String {
+    format!("{percent}%")
+}
+
+/// `307 tests`
+pub fn tests(n: u32) -> String {
+    if n == 1 {
+        "1 test".to_owned()
+    } else {
+        format!("{} tests", count(u64::from(n)))
+    }
+}
+
+/// `84 files, 6,412 lines`
+pub fn files_and_lines(files_count: u64, lines: u64) -> String {
+    let lines = if lines == 1 {
+        "1 line".to_owned()
+    } else {
+        format!("{} lines", count(lines))
+    };
+    format!("{}, {lines}", files(files_count))
+}
+
+/// `1 of 7 modules`
+pub fn of_modules(shown: usize, total: usize) -> String {
+    format!("{shown} of {total} modules")
+}
+
+/// `No module matches "paym". Press Esc to clear the filter.`
+pub fn no_module_matches(filter: &str) -> String {
+    format!("No module matches \"{filter}\". Press Esc to clear the filter.")
+}
+
+/// `sorted by name`
+pub fn sorted_by(column: &str, ascending: bool) -> String {
+    let by = if column == COL_MODULE {
+        "name".to_owned()
+    } else {
+        column.to_lowercase()
+    };
+    if ascending {
+        format!("sorted by {by}")
+    } else {
+        format!("sorted by {by}, highest first")
+    }
+}
+
+/// How long ago, in whole units: `8 s ago`, `2 minutes ago`, `2 days ago`.
+pub fn ago(now: i64, then: i64) -> String {
+    let seconds = (now - then).max(0);
+    let unit = |n: i64, one: &str, many: &str| {
+        if n == 1 {
+            format!("1 {one} ago")
+        } else {
+            format!("{n} {many} ago")
+        }
+    };
+    match seconds {
+        0..60 => format!("{seconds} s ago"),
+        60..3_600 => unit(seconds / 60, "minute", "minutes"),
+        3_600..172_800 => unit(seconds / 3_600, "hour", "hours"),
+        172_800..5_184_000 => unit(seconds / 86_400, "day", "days"),
+        5_184_000..63_072_000 => unit(seconds / 2_592_000, "month", "months"),
+        _ => unit(seconds / 31_536_000, "year", "years"),
+    }
+}
+
+/// `14 commits in 30 days, last 2 days ago`
+pub fn churn(commits: u32, last: Option<i64>, now: i64) -> String {
+    let count = match commits {
+        0 => "no commits in 30 days".to_owned(),
+        1 => "1 commit in 30 days".to_owned(),
+        n => format!("{n} commits in 30 days"),
+    };
+    match last {
+        Some(last) => format!("{count}, last {}", ago(now, last)),
+        // Not in the spec: a module that no commit ever touched.
+        None => "never committed".to_owned(),
+    }
+}
+
+/// `From build/coverage/clover.xml, written 2 days ago`
+pub fn coverage_from(path: &str, written: Option<i64>, now: i64) -> String {
+    match written {
+        Some(written) => format!("From {path}, written {}", ago(now, written)),
+        None => format!("From {path}"),
+    }
+}
+
+/// `branch main`
+pub fn git_found(git: &mortise_core::Git) -> (String, String) {
+    match git {
+        mortise_core::Git::Repository {
+            branch: Some(branch),
+            ..
+        } => ("branch ".to_owned(), branch.clone()),
+        // Not in the spec: a commit that is checked out without a branch.
+        mortise_core::Git::Repository {
+            branch: None,
+            commit: Some(commit),
+        } => ("at ".to_owned(), commit.clone()),
+        mortise_core::Git::Repository { .. } => ("no commit yet".to_owned(), String::new()),
+        mortise_core::Git::NotARepository => (NOT_A_REPOSITORY.to_owned(), String::new()),
+        mortise_core::Git::NoGit => (GIT_NOT_FOUND.to_owned(), String::new()),
+    }
+}
+
 /// The modifier of app shortcuts as a word: `Cmd` on macOS, `Ctrl` elsewhere.
 pub fn command_key(mac: bool) -> &'static str {
     if mac { "Cmd" } else { "Ctrl" }
@@ -282,6 +424,39 @@ mod tests {
         assert_eq!(files(1), "1 file");
         assert_eq!(files(4912), "4,912 files");
         assert_eq!(files_turned_off(38), "38 files, turned off");
+    }
+
+    #[test]
+    fn time_ago_is_in_whole_units() {
+        assert_eq!(ago(100, 92), "8 s ago");
+        assert_eq!(ago(100, 100), "0 s ago");
+        assert_eq!(ago(100, 200), "0 s ago");
+        assert_eq!(ago(1_000, 1_000 - 60), "1 minute ago");
+        assert_eq!(ago(10_000, 10_000 - 150), "2 minutes ago");
+        assert_eq!(ago(100_000, 100_000 - 3_600), "1 hour ago");
+        assert_eq!(ago(1_000_000, 1_000_000 - 47 * 3_600), "47 hours ago");
+        assert_eq!(ago(1_000_000, 1_000_000 - 48 * 3_600), "2 days ago");
+        assert_eq!(ago(100_000_000, 100_000_000 - 59 * 86_400), "59 days ago");
+        assert_eq!(ago(100_000_000, 100_000_000 - 90 * 86_400), "3 months ago");
+        assert_eq!(ago(200_000_000, 200_000_000 - 800 * 86_400), "2 years ago");
+    }
+
+    #[test]
+    fn churn_says_how_many_and_when() {
+        let day = 86_400;
+        assert_eq!(
+            churn(14, Some(100 * day - 2 * day), 100 * day),
+            "14 commits in 30 days, last 2 days ago"
+        );
+        assert_eq!(
+            churn(1, Some(100 * day - 3_600), 100 * day),
+            "1 commit in 30 days, last 1 hour ago"
+        );
+        assert_eq!(
+            churn(0, Some(10 * day), 100 * day),
+            "no commits in 30 days, last 3 months ago"
+        );
+        assert_eq!(churn(0, None, 100 * day), "never committed");
     }
 
     #[test]

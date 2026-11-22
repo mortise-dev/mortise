@@ -15,6 +15,7 @@ use crate::draw::{Button, ButtonKind};
 use crate::index::{self, IndexState};
 use crate::rail::{self, RailAction, Tile};
 use crate::strings;
+use crate::summary::{Sort, SummaryState};
 use crate::theme::{self, radius, size};
 use crate::toast::Toast;
 use crate::workspace::{self, EmptyMark, Tab};
@@ -42,6 +43,12 @@ struct OpenApp {
     live: LiveApp,
     selection: Selection,
     tab: Tab,
+    /// The text of the index's filter field.
+    filter: String,
+    /// The filter the selection was last matched to.
+    filter_seen: String,
+    /// The order of the "By module" table.
+    sort: Sort,
     /// The snapshot that was looked at last, to notice a newer one.
     seen: Option<Arc<AppSnapshot>>,
 }
@@ -62,6 +69,12 @@ pub struct MortiseApp {
     keyboard: bool,
     /// The selection moved by key in this frame, so its row must be scrolled into view.
     reveal: bool,
+    /// The index is collapsed to its strip of stamps.
+    index_collapsed: bool,
+    /// The filter field takes focus in this frame.
+    focus_filter: bool,
+    /// The filter field had focus at the end of the last frame.
+    filter_was_focused: bool,
 }
 
 impl MortiseApp {
@@ -104,6 +117,9 @@ impl MortiseApp {
             // At start, focus is on the selected row of the index.
             keyboard: true,
             reveal: false,
+            index_collapsed: false,
+            focus_filter: false,
+            filter_was_focused: false,
         };
         let first = if app.apps.is_empty() { None } else { Some(0) };
         if let Some(index) = app.settings.current.or(first) {
@@ -309,16 +325,40 @@ impl MortiseApp {
         if chord(Modifiers::COMMAND, Key::O) {
             self.pick(ui.ctx());
         }
-        // Esc closes the topmost thing: the add panel, then the toast.
+        // Esc closes the topmost thing: the add panel, then the toast, then the text
+        // of the filter, then the filter field itself.
+        let filter_id = index::filter_id(ui);
+        let filter_focused = ui.memory(|memory| memory.has_focus(filter_id));
         if chord(Modifiers::NONE, Key::Escape) {
+            let open = self.current.map(|current| &mut self.apps[current]);
             if self.adding.is_some() {
                 self.adding = None;
-            } else {
+            } else if self.toast.is_some() {
                 self.toast = None;
+            } else if let Some(open) = open.filter(|open| !open.filter.is_empty()) {
+                // Esc clears the text first and leaves the field second. egui has
+                // already taken focus from the field for this Esc: give it back.
+                open.filter.clear();
+                self.focus_filter = self.filter_was_focused;
             }
         }
         if self.adding.is_some() {
             return;
+        }
+
+        // Collapse or open the module index.
+        if chord(Modifiers::COMMAND, Key::B) {
+            self.index_collapsed = !self.index_collapsed;
+        }
+        // Filter modules: / when not typing, or the chord for keyboards where / needs Shift.
+        let typing = ui.ctx().text_edit_focused();
+        if chord(Modifiers::COMMAND, Key::F) || (!typing && chord(Modifiers::NONE, Key::Slash)) {
+            self.index_collapsed = false;
+            self.focus_filter = true;
+        }
+        // Enter in the filter keeps the first match and gives the keys back to the list.
+        if filter_focused && chord(Modifiers::NONE, Key::Enter) {
+            ui.memory_mut(|memory| memory.surrender_focus(filter_id));
         }
 
         // Read the app again.
@@ -358,11 +398,12 @@ impl MortiseApp {
         let pressed = |key: Key| ui.input_mut(|input| input.consume_key(Modifiers::NONE, key));
 
         // J and K, or Down and Up: the next or previous row. Home and End: the first or last.
-        let rows = app.modules.len() + 1;
+        // Only the rows the filter leaves.
+        let modules = index::filtered(&app, &open.filter);
+        let rows = modules.len() + 1;
         let current = match &open.selection {
             Selection::All => 0,
-            Selection::Module(name) => app
-                .modules
+            Selection::Module(name) => modules
                 .iter()
                 .position(|module| &module.name == name)
                 .map_or(0, |i| i + 1),
@@ -383,7 +424,7 @@ impl MortiseApp {
         if target != current {
             open.selection = match target {
                 0 => Selection::All,
-                row => Selection::Module(app.modules[row - 1].name.clone()),
+                row => Selection::Module(modules[row - 1].name.clone()),
             };
             self.reveal = true;
         }
@@ -473,6 +514,14 @@ impl eframe::App for MortiseApp {
         let rail_action = rail::rail(ui, pal, rail_rect, &tiles, self.current, adding);
 
         let rest = Rect::from_min_max(pos2(rail_rect.right(), below.top()), below.max);
+        let index_w = if self.index_collapsed {
+            size::INDEX_STRIP_W
+        } else {
+            size::INDEX_W
+        };
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |since| since.as_secs() as i64);
         let mut add_action = None;
         let mut first_run_add = false;
         let monogram = self.monogram_preview();
@@ -482,18 +531,47 @@ impl eframe::App for MortiseApp {
             let open = &mut self.apps[current];
             match open.live.state() {
                 LiveState::Ready(app) => {
-                    let index_rect =
-                        Rect::from_min_size(rest.min, vec2(size::INDEX_W, rest.height()));
+                    let index_rect = Rect::from_min_size(rest.min, vec2(index_w, rest.height()));
                     let work_rect =
                         Rect::from_min_max(pos2(index_rect.right(), rest.top()), rest.max);
                     // The workspace first: the selected row of the index is painted over its edge.
-                    workspace::workspace(ui, pal, work_rect, &app, &open.selection, &mut open.tab);
+                    let summary = SummaryState {
+                        sort: &mut open.sort,
+                        now,
+                    };
+                    let chosen = workspace::workspace(
+                        ui,
+                        pal,
+                        work_rect,
+                        &app,
+                        &open.selection,
+                        &mut open.tab,
+                        summary,
+                    );
+                    if let Some(module) = chosen {
+                        open.selection = Selection::Module(module);
+                        self.reveal = true;
+                    }
                     let state = IndexState {
                         selection: &mut open.selection,
+                        filter: &mut open.filter,
+                        focus_filter: self.focus_filter,
                         keyboard: self.keyboard,
                         reveal: self.reveal,
+                        collapsed: self.index_collapsed,
+                        mac,
                     };
                     index::index(ui, pal, index_rect, &app, state);
+                    // A change of the filter selects its first match, so Enter opens it.
+                    if open.filter != open.filter_seen {
+                        open.filter_seen = open.filter.clone();
+                        if !open.filter.trim().is_empty() {
+                            let first = index::filtered(&app, &open.filter)
+                                .first()
+                                .map(|m| m.name.clone());
+                            open.selection = first.map_or(Selection::All, Selection::Module);
+                        }
+                    }
                 }
                 LiveState::Reading => {
                     ui.painter().rect_filled(rest, 0, pal.surface);
@@ -533,6 +611,9 @@ impl eframe::App for MortiseApp {
             self.toast = None;
         }
         chrome::resize_edges(ui, self.chrome);
+        self.focus_filter = false;
+        let filter_id = index::filter_id(ui);
+        self.filter_was_focused = ui.memory(|memory| memory.has_focus(filter_id));
 
         // What the pointer asked for, after everything is painted.
         match rail_action {
@@ -567,6 +648,9 @@ fn open_app(ctx: &egui::Context, entry: &AppEntry) -> OpenApp {
         }),
         selection: Selection::All,
         tab: Tab::Summary,
+        filter: String::new(),
+        filter_seen: String::new(),
+        sort: Sort::default(),
         seen: None,
     }
 }
@@ -604,6 +688,25 @@ fn style(ctx: &egui::Context) {
             style.visuals.text_cursor.stroke = egui::Stroke::new(1.5, pal.ink);
             style.visuals.selection.bg_fill = pal.line;
             style.visuals.selection.stroke = egui::Stroke::new(1.0, pal.ink);
+            // A scrollbar (C16): a 6 px thumb that floats over the content and is
+            // always there while the content is longer than its area.
+            let scroll = &mut style.spacing.scroll;
+            *scroll = egui::style::ScrollStyle::floating();
+            scroll.bar_width = size::SCROLLBAR_THUMB_W;
+            scroll.floating_width = size::SCROLLBAR_THUMB_W;
+            scroll.floating_allocated_width = 0.0;
+            scroll.handle_min_length = size::SCROLLBAR_THUMB_MIN;
+            scroll.bar_outer_margin = 2.0;
+            scroll.foreground_color = true;
+            scroll.dormant_background_opacity = 0.0;
+            scroll.active_background_opacity = 0.0;
+            scroll.interact_background_opacity = 0.0;
+            scroll.dormant_handle_opacity = 1.0;
+            scroll.active_handle_opacity = 1.0;
+            scroll.interact_handle_opacity = 1.0;
+            style.visuals.widgets.inactive.fg_stroke.color = pal.line_2;
+            style.visuals.widgets.hovered.fg_stroke.color = pal.ink_2;
+            style.visuals.widgets.active.fg_stroke.color = pal.ink;
         });
     }
 }

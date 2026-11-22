@@ -1,12 +1,13 @@
 //! The workspace: a header with the title and the five tabs, and the body of the open tab.
 
 use eframe::egui::{Align2, Color32, Pos2, Rect, Role, Sense, Ui, Vec2, WidgetInfo, pos2, vec2};
-use mortise_core::{AppSnapshot, Module, ModuleState};
+use mortise_core::AppSnapshot;
 
 use crate::app::Selection;
 use crate::draw::{self, Icon, StampState};
 use crate::strings;
-use crate::theme::{Face, Palette, radius, size, ty};
+use crate::summary::{self, SummaryState};
+use crate::theme::{Face, Palette, size, ty};
 
 /// The five tabs. They are in every build, in this order, with the keys 1 to 5.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -88,14 +89,16 @@ impl Tab {
 }
 
 /// Paints the workspace into `rect`.
+/// Returns the name of a module that was chosen in the workspace, to select it in the index.
 pub fn workspace(
-    ui: &Ui,
+    ui: &mut Ui,
     pal: &Palette,
     rect: Rect,
     app: &AppSnapshot,
     selection: &Selection,
     tab: &mut Tab,
-) {
+    summary: SummaryState<'_>,
+) -> Option<String> {
     ui.painter().rect_filled(rect, 0, pal.surface);
     let module = match selection {
         Selection::All => None,
@@ -231,8 +234,9 @@ pub fn workspace(
     match tab.explanation() {
         Some((icon, title, text)) => {
             empty_state(ui, pal, body, EmptyMark::Icon(icon), title, &[text], 0.0);
+            None
         }
-        None => summary(ui, pal, body, app, module),
+        None => summary::summary(ui, pal, body, app, module, summary),
     }
 }
 
@@ -312,112 +316,4 @@ pub fn empty_state(
         y = rect.bottom();
     }
     pos2(left, y + 12.0)
-}
-
-/// The Summary tab, as far as this milestone reads: the on or off state.
-fn summary(ui: &Ui, pal: &Palette, body: Rect, app: &AppSnapshot, module: Option<&Module>) {
-    let left = body.left() + 16.0;
-    let width = body.width() - 32.0;
-    let mut y = body.top() + 14.0;
-
-    // A note when part of config/modules.php could not be read without PHP.
-    if module.is_none()
-        && let Some(note) = strings::assumed(app)
-    {
-        y = note_alert(ui, pal, pos2(left, y), width, &note) + 12.0;
-    }
-
-    // One cell of the stats strip. It keeps the width it has when all five are there.
-    let cell = Rect::from_min_size(pos2(left, y), vec2((width / 5.0).floor().max(150.0), 60.0));
-    draw::outlined(ui, cell, radius::CONTROL, Color32::TRANSPARENT, pal.line_2);
-    let (key, value, color, off_mark) = match module {
-        None if app.layout.uses_file_activator() => (
-            strings::MODULES_ON,
-            strings::of(app.modules_on(), app.modules.len()),
-            pal.ink,
-            false,
-        ),
-        None => (
-            strings::MODULES_ON,
-            strings::STATE_UNKNOWN.to_owned(),
-            pal.ink,
-            false,
-        ),
-        Some(module) => match module.state {
-            ModuleState::On => (
-                strings::MODULE_STATE,
-                strings::ON.to_owned(),
-                pal.ink,
-                false,
-            ),
-            ModuleState::Off => (
-                strings::MODULE_STATE,
-                strings::OFF.to_owned(),
-                pal.off,
-                true,
-            ),
-            ModuleState::Unknown => (
-                strings::MODULE_STATE,
-                strings::STATE_UNKNOWN.to_owned(),
-                pal.ink,
-                false,
-            ),
-        },
-    };
-    draw::label(
-        ui,
-        pos2(cell.left() + 12.0, cell.top() + 9.0),
-        Align2::LEFT_TOP,
-        key,
-        ty::SECONDARY,
-        pal.ink_2,
-    );
-    let mut value_x = cell.left() + 12.0;
-    let value_mid = cell.top() + 9.0 + 16.0 + 13.0;
-    if off_mark {
-        let mark = Rect::from_min_size(
-            pos2(value_x, value_mid - 6.0),
-            Vec2::splat(size::STATE_MARK),
-        );
-        draw::mark_off(ui, mark, color);
-        value_x = mark.right() + 8.0;
-    }
-    draw::label(
-        ui,
-        pos2(value_x, value_mid),
-        Align2::LEFT_CENTER,
-        &value,
-        ty::FIGURE,
-        color,
-    );
-    y = cell.bottom() + 12.0;
-
-    // What cannot be read from files, in a sentence.
-    let sentence = if !app.layout.uses_file_activator() {
-        Some(strings::state_not_in_a_file(app))
-    } else if module.is_none() && app.modules.is_empty() {
-        Some(strings::no_modules(app))
-    } else {
-        None
-    };
-    if let Some(sentence) = sentence {
-        draw::paragraph(
-            ui,
-            pos2(left, y),
-            &sentence,
-            ty::BODY,
-            pal.ink_2,
-            width.min(560.0),
-        );
-    }
-}
-
-/// A note (C19): panel fill, line-2 outline, no mark. Returns its bottom edge.
-fn note_alert(ui: &Ui, pal: &Palette, min: Pos2, width: f32, text: &str) -> f32 {
-    let galley = draw::galley_wrapped(ui, text, ty::BODY, pal.ink, width - 24.0);
-    let rect = Rect::from_min_size(min, vec2(width, galley.size().y + 18.0));
-    draw::outlined(ui, rect, radius::CONTROL, pal.panel, pal.line_2);
-    let text_rect = draw::paint_galley(ui, rect.min + vec2(12.0, 9.0), Align2::LEFT_TOP, galley);
-    draw::announce(ui, text_rect, Role::Label, text);
-    rect.bottom()
 }

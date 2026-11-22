@@ -158,3 +158,118 @@ pub fn turn_off(root: &Path, module: &str) {
     );
     std::fs::write(statuses, json).unwrap();
 }
+
+/// Makes the app a git repository with a few commits in the last 30 days.
+pub fn with_git_history(root: &Path) {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64;
+    let git = |days_ago: i64, args: &[&str]| {
+        let date = format!("{} +0000", now - days_ago * 86_400);
+        let output = std::process::Command::new("git")
+            .arg("-C")
+            .arg(root)
+            .args([
+                "-c",
+                "user.name=Mortise Test",
+                "-c",
+                "user.email=test@mortise.invalid",
+            ])
+            .args(["-c", "commit.gpgsign=false"])
+            .args(args)
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_CONFIG_SYSTEM", "/dev/null")
+            .env("GIT_AUTHOR_DATE", &date)
+            .env("GIT_COMMITTER_DATE", &date)
+            .output()
+            .expect("git is installed");
+        assert!(
+            output.status.success(),
+            "git {args:?}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    };
+    git(70, &["init", "-q", "-b", "main"]);
+    git(70, &["add", "-A"]);
+    git(70, &["commit", "-q", "-m", "first"]);
+    for (days_ago, files) in [
+        (
+            21,
+            vec![
+                "Modules/Checkout/routes/web.php",
+                "Modules/Shipping/routes/web.php",
+            ],
+        ),
+        (9, vec!["Modules/Checkout/routes/api.php"]),
+        (
+            2,
+            vec![
+                "Modules/Checkout/config/config.php",
+                "Modules/Billing/routes/web.php",
+            ],
+        ),
+    ] {
+        for file in files {
+            let path = root.join(file);
+            let mut content = std::fs::read_to_string(&path).unwrap();
+            content.push_str("\n// changed\n");
+            std::fs::write(path, content).unwrap();
+        }
+        git(days_ago, &["add", "-A"]);
+        git(days_ago, &["commit", "-q", "-m", "change"]);
+    }
+}
+
+/// Copies the shop-api fixture and gives it `count` modules, by copying Catalog
+/// under other names.
+pub fn app_with_modules(desk: &Desk, folder: &str, count: usize) -> PathBuf {
+    let root = desk.app(folder);
+    let names = [
+        "Accounts",
+        "Addresses",
+        "Audit",
+        "Carts",
+        "Coupons",
+        "Currencies",
+        "Customers",
+        "Discounts",
+        "Exports",
+        "Fulfilment",
+        "GiftCards",
+        "Imports",
+        "Invoices",
+        "Labels",
+        "Loyalty",
+        "Orders",
+        "Payments",
+        "Pricing",
+        "Products",
+        "Promotions",
+        "Refunds",
+        "Reports",
+        "Returns",
+        "Reviews",
+        "Search",
+        "Subscriptions",
+        "Taxes",
+        "Vouchers",
+        "Warehouses",
+        "Wishlists",
+    ];
+    let mut statuses: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(root.join("modules_statuses.json")).unwrap())
+            .unwrap();
+    for i in 7..count {
+        let name = match names.get(i - 7) {
+            Some(name) => (*name).to_owned(),
+            None => format!("Extra{i}"),
+        };
+        let dir = root.join("Modules").join(&name);
+        copy_dir(&root.join("Modules/Catalog"), &dir);
+        std::fs::write(dir.join("module.json"), format!("{{\"name\": \"{name}\"}}")).unwrap();
+        statuses[&name] = serde_json::Value::Bool(i % 9 != 0);
+    }
+    std::fs::write(root.join("modules_statuses.json"), statuses.to_string()).unwrap();
+    root
+}

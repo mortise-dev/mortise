@@ -186,3 +186,184 @@ fn an_app_whose_folder_is_gone_says_why() {
     harness.get_by_role_and_label(Role::Heading, "shop-api cannot be read");
     harness.get_by_label_contains("The folder has no artisan file");
 }
+
+#[test]
+fn the_index_says_how_much_of_each_module_is_covered() {
+    let (_desk, harness) = shop_api();
+    // The second line of a row is part of the row, so it is read from the summary instead.
+    harness.get_by_label("Lines of PHP");
+    harness.get_by_label("860");
+    harness.get_by_label("Test coverage");
+    harness.get_by_label("68%");
+    harness.get_by_role_and_label(Role::Heading, "Coverage by module");
+    harness.get_by_label("18 tests");
+    harness.get_by_label("88%");
+    harness.get_by_label("39%");
+}
+
+#[test]
+fn the_table_of_modules_sorts_and_a_row_selects_its_module() {
+    let (_desk, mut harness) = shop_api();
+    let order =
+        |harness: &egui_kittest::Harness<'static, mortise_app::app::MortiseApp>| -> Vec<String> {
+            harness
+                .get_all_by_role(Role::Row)
+                .filter_map(|row| row.accesskit_node().label())
+                .collect()
+        };
+    harness.get_by_label("sorted by name");
+    assert_eq!(order(&harness)[0], "Billing");
+
+    // A number column starts with the highest.
+    harness
+        .get_by_role_and_label(Role::ColumnHeader, "Coverage")
+        .click();
+    harness.run();
+    harness.get_by_label("sorted by coverage, highest first");
+    assert_eq!(
+        order(&harness),
+        [
+            "Users",
+            "Billing",
+            "Catalog",
+            "Inventory",
+            "Shipping",
+            "Checkout",
+            "Notifications"
+        ]
+    );
+    // Again reverses.
+    harness
+        .get_by_role_and_label(Role::ColumnHeader, "Coverage")
+        .click();
+    harness.run();
+    assert_eq!(order(&harness)[0], "Notifications");
+
+    harness
+        .get_by_role_and_label(Role::ColumnHeader, "Lines")
+        .click();
+    harness.run();
+    assert_eq!(order(&harness)[0], "Checkout");
+
+    harness.get_by_role_and_label(Role::Row, "Checkout").click();
+    harness.run();
+    assert_eq!(
+        harness.state().selection(),
+        Selection::Module("Checkout".into())
+    );
+    harness.get_by_role_and_label(Role::Heading, "Files by kind");
+    harness.get_by_label("20 files, 212 lines");
+    harness.get_by_label("Listeners");
+    harness.get_by_label("Git churn");
+    harness.get_by_label("not a repository");
+    harness.get_by_label("54%");
+}
+
+#[test]
+fn the_filter_narrows_the_index_and_esc_clears_it_then_leaves() {
+    let (_desk, mut harness) = shop_api();
+    let rows =
+        |harness: &egui_kittest::Harness<'static, mortise_app::app::MortiseApp>| -> Vec<String> {
+            harness
+                .get_all_by_role(Role::ListBoxOption)
+                .filter_map(|row| row.accesskit_node().label())
+                .skip(1) // the tile on the rail
+                .collect()
+        };
+
+    // The slash moves focus into the filter.
+    harness.key_press(Key::Slash);
+    harness.run();
+    let field = harness.get_by_role_and_label(Role::TextInput, "Filter modules");
+    assert!(field.is_focused());
+
+    // Letters match the name or the code; "All modules" stays; the first match is selected.
+    field.type_text("ch");
+    harness.run();
+    assert_eq!(rows(&harness), ["All modules", "Checkout"]);
+    harness.get_by_label("1 of 7 modules");
+    assert_eq!(
+        harness.state().selection(),
+        Selection::Module("Checkout".into())
+    );
+
+    // While typing, single keys are letters, not commands.
+    assert_eq!(harness.state().tab(), Tab::Summary);
+    harness
+        .get_by_role_and_label(Role::TextInput, "Filter modules")
+        .type_text("1");
+    harness.run();
+    assert_eq!(harness.state().tab(), Tab::Summary);
+    harness.get_by_label("No module matches \"ch1\". Press Esc to clear the filter.");
+    harness.get_by_label("0 of 7 modules");
+
+    // Esc clears the text first and leaves the field second.
+    harness.key_press(Key::Escape);
+    harness.run();
+    assert_eq!(rows(&harness).len(), 8);
+    assert!(
+        harness
+            .get_by_role_and_label(Role::TextInput, "Filter modules")
+            .is_focused()
+    );
+    harness.key_press(Key::Escape);
+    harness.run();
+    assert!(
+        !harness
+            .get_by_role_and_label(Role::TextInput, "Filter modules")
+            .is_focused()
+    );
+
+    // The code matches too, and J and K move through what the filter leaves.
+    harness.key_press_modifiers(eframe::egui::Modifiers::COMMAND, Key::F);
+    harness.run();
+    harness
+        .get_by_role_and_label(Role::TextInput, "Filter modules")
+        .type_text("in");
+    harness.run();
+    assert_eq!(
+        rows(&harness),
+        ["All modules", "Billing", "Inventory", "Shipping"]
+    );
+    harness.key_press(Key::Enter);
+    harness.run();
+    assert_eq!(
+        harness.state().selection(),
+        Selection::Module("Billing".into())
+    );
+    harness.key_press(Key::J);
+    harness.key_press(Key::J);
+    harness.key_press(Key::J);
+    harness.run();
+    assert_eq!(
+        harness.state().selection(),
+        Selection::Module("Shipping".into())
+    );
+}
+
+#[test]
+fn ctrl_b_collapses_the_index_to_its_strip_and_opens_it_again() {
+    let (_desk, mut harness) = shop_api();
+    harness.get_by_label("Sorted: by name");
+
+    harness.key_press_modifiers(eframe::egui::Modifiers::COMMAND, Key::B);
+    harness.run();
+    assert!(harness.query_by_label("Sorted: by name").is_none());
+    assert!(
+        harness
+            .query_by_role_and_label(Role::TextInput, "Filter modules")
+            .is_none()
+    );
+    // The rows are still there, and J and K still work.
+    harness.key_press(Key::J);
+    harness.run();
+    assert_eq!(
+        harness.state().selection(),
+        Selection::Module("Billing".into())
+    );
+    harness.get_by_role_and_label(Role::ListBoxOption, "Checkout");
+
+    harness.key_press_modifiers(eframe::egui::Modifiers::COMMAND, Key::B);
+    harness.run();
+    harness.get_by_label("Sorted: by name");
+}

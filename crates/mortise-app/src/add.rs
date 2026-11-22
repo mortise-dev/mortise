@@ -415,7 +415,7 @@ fn found(ui: &Ui, pal: &Palette, column: Rect, app: &AppSnapshot, monogram: &str
 
     let found = Rect::from_min_size(
         column.min,
-        vec2(column.width(), 41.0 + 4.0 * size::LIST_LINE_H + 8.0),
+        vec2(column.width(), 41.0 + 6.0 * size::LIST_LINE_H + 8.0),
     );
     let mut y = draw::box_head(ui, pal, found, strings::FOUND_TITLE, strings::FOUND_NOTE);
 
@@ -469,15 +469,47 @@ fn found(ui: &Ui, pal: &Palette, column: Rect, app: &AppSnapshot, monogram: &str
         Some(version) => [(version.full(), body.0, body.1)],
         None => [(strings::NOT_INSTALLED, ty::BODY, dim)],
     };
-    draw::box_line(
+    y = draw::box_line(
         ui,
         pal,
         found,
         y,
         ("nwidart/laravel-actuator", package),
         &actuator,
-        true,
+        false,
     );
+    let report = app
+        .coverage_report
+        .as_ref()
+        .map(|report| app.path_shown(&report.path));
+    let report = match &report {
+        Some(path) => [(path.as_str(), package, body.1)],
+        None => [(strings::NO_REPORT_FOUND, ty::BODY, dim)],
+    };
+    y = draw::box_line(
+        ui,
+        pal,
+        found,
+        y,
+        (strings::COVERAGE_REPORT, ty::BODY),
+        &report,
+        false,
+    );
+    let (words, branch) = strings::git_found(&app.git);
+    let in_repository = matches!(app.git, mortise_core::Git::Repository { .. });
+    let git = [
+        (
+            words.as_str(),
+            ty::BODY,
+            if in_repository { body.1 } else { dim },
+        ),
+        (branch.as_str(), package, body.1),
+    ];
+    let git: Vec<_> = git
+        .into_iter()
+        .filter(|(text, ..)| !text.is_empty())
+        .collect();
+    draw::box_line(ui, pal, found, y, (strings::GIT, ty::BODY), &git, true);
 
     let shown = Rect::from_min_size(
         pos2(column.left(), found.bottom() + 12.0),

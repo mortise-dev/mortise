@@ -10,6 +10,7 @@ pub mod fonts;
 pub mod index;
 pub mod rail;
 pub mod strings;
+pub mod summary;
 pub mod theme;
 pub mod toast;
 pub mod workspace;

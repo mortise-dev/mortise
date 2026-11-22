@@ -149,3 +149,57 @@ fn milestone_2() {
         save(&format!("s2.1-{count}-apps-light"), &mut harness);
     }
 }
+
+#[test]
+#[ignore = "writes PNG files for a person to look at"]
+fn milestone_3() {
+    for (theme, suffix) in [(Theme::Light, "light"), (Theme::Dark, "dark")] {
+        let mut desk = Desk::new();
+        desk.theme = theme;
+        let root = desk.app("shop-api");
+        common::turn_off(&root, "Notifications");
+        common::with_git_history(&root);
+        desk.knows(&[(&root, "SA")]);
+        let mut harness = desk.start();
+        // S4.2: the Summary of "All modules".
+        save(&format!("s4.2-all-{suffix}"), &mut harness);
+        // S4.3: the Summary of Checkout.
+        harness
+            .get_by_role_and_label(Role::ListBoxOption, "Checkout")
+            .click();
+        save(&format!("s4.3-checkout-{suffix}"), &mut harness);
+    }
+
+    let desk = Desk::new();
+    let root = desk.app("shop-api");
+    desk.knows(&[(&root, "SA")]);
+    let mut harness = desk.start();
+    // S3.1: filtered, and a filter with no match.
+    harness.key_press(Key::Slash);
+    harness.run_steps(2);
+    harness
+        .get_by_role_and_label(Role::TextInput, "Filter modules")
+        .type_text("ch");
+    save("s3.1-filtered-light", &mut harness);
+    harness
+        .get_by_role_and_label(Role::TextInput, "Filter modules")
+        .type_text("x");
+    save("s3.1-no-match-light", &mut harness);
+    harness.key_press(Key::Escape);
+    harness.key_press(Key::Escape);
+    // S13.1 a: the index as a strip.
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::B);
+    harness.key_press(Key::J);
+    harness.key_press(Key::J);
+    harness.key_press(Key::J);
+    save("s13.1-strip-light", &mut harness);
+
+    // S3.1: 30 modules, one line a row, and the table scrolls.
+    let mut desk = Desk::new();
+    desk.size = egui::vec2(1100.0, 700.0);
+    let root = common::app_with_modules(&desk, "platform", 30);
+    desk.knows(&[(&root, "PL")]);
+    let mut harness = desk.start();
+    harness.key_press(Key::J);
+    save("s3.1-30-modules-light", &mut harness);
+}

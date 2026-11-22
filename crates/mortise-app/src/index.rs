@@ -1,22 +1,51 @@
-//! The module index (S3.1): the app, then "All modules" and one row per module.
+//! The module index (S3.1): the app, a filter, then "All modules" and one row per module.
 
 use eframe::egui::{
-    Align2, Rect, Role, ScrollArea, Sense, Ui, UiBuilder, Vec2, WidgetInfo, pos2, vec2,
+    self, Align2, FontId, Rect, RichText, Role, ScrollArea, Sense, Stroke, StrokeKind, Ui,
+    UiBuilder, Vec2, WidgetInfo, pos2, vec2,
 };
-use mortise_core::{ALL_CODE, AppSnapshot, ModuleState};
+use mortise_core::{ALL_CODE, AppSnapshot, Module, ModuleState};
 
 use crate::app::Selection;
-use crate::draw::{self, StampState};
+use crate::draw::{self, Icon, StampState};
 use crate::strings;
-use crate::theme::{Palette, size, ty};
+use crate::theme::{Face, Palette, radius, size, stroke, ty};
 
-/// What the index needs to know from the app besides the snapshot.
+/// Above this many modules a row has one line.
+const TWO_LINE_LIMIT: usize = 20;
+
+/// What the index needs from the app besides the snapshot.
 pub struct IndexState<'a> {
     pub selection: &'a mut Selection,
+    /// The text of the filter field.
+    pub filter: &'a mut String,
+    /// True in the frame the filter field should take focus.
+    pub focus_filter: bool,
     /// True while the keyboard is in use: the focus ring is drawn.
     pub keyboard: bool,
     /// True in the frame after the selection moved by key: the row is scrolled into view.
     pub reveal: bool,
+    /// True when the index is collapsed to its strip of stamps.
+    pub collapsed: bool,
+    pub mac: bool,
+}
+
+/// The modules a filter leaves: its letters are in the name or in the code, in any case.
+pub fn filtered<'a>(app: &'a AppSnapshot, filter: &str) -> Vec<&'a Module> {
+    let wanted = filter.trim().to_lowercase();
+    app.modules
+        .iter()
+        .filter(|module| {
+            wanted.is_empty()
+                || module.name.to_lowercase().contains(&wanted)
+                || module.code.to_lowercase().contains(&wanted)
+        })
+        .collect()
+}
+
+/// The id of the filter field, to give it focus from a key.
+pub fn filter_id(ui: &Ui) -> egui::Id {
+    ui.scope_id().with("index-filter")
 }
 
 struct Row<'a> {
@@ -37,64 +66,30 @@ pub fn index(ui: &mut Ui, pal: &Palette, rect: Rect, app: &AppSnapshot, state: I
         rect.top()..rect.bottom(),
         pal.line_2,
     );
-
     let inner = rect.left()..rect.right() - 1.0;
+    let IndexState {
+        selection,
+        filter,
+        focus_filter,
+        keyboard,
+        reveal,
+        collapsed,
+        mac,
+    } = state;
 
-    // Head: the app, how many modules are on, the versions.
-    let head_bottom = rect.top() + 12.0 + 20.0 + 1.0 + 16.0 + 10.0;
-    let on_text = if app.layout.uses_file_activator() {
-        strings::of_on(app.modules_on(), app.modules.len())
-    } else {
-        strings::modules(app.modules.len())
-    };
-    let on = draw::label(
-        ui,
-        pos2(inner.end - 12.0, rect.top() + 12.0 + 18.0),
-        Align2::RIGHT_BOTTOM,
-        &on_text,
-        ty::SECONDARY,
-        pal.ink_2,
-    );
-    let name_w = on.left() - 8.0 - (inner.start + 12.0);
-    let name = draw::galley_elided(ui, &app.name, ty::APP_NAME, pal.ink, name_w);
-    let name = draw::paint_galley(
-        ui,
-        pos2(inner.start + 12.0, rect.top() + 12.0),
-        Align2::LEFT_TOP,
-        name,
-    );
-    draw::announce(ui, name, Role::Heading, &app.name);
-    draw::label(
-        ui,
-        pos2(inner.start + 12.0, rect.top() + 12.0 + 20.0 + 1.0),
-        Align2::LEFT_TOP,
-        &strings::versions(app.laravel.as_ref(), &app.package),
-        ty::SECONDARY,
-        pal.ink_2,
-    );
-    draw::hline(ui, inner.clone(), head_bottom - 1.0, pal.line);
-
-    // Foot: the order of the list.
-    let foot_top = rect.bottom() - (8.0 + 15.0 + 8.0 + 1.0);
-    draw::hline(ui, inner.clone(), foot_top, pal.line);
-    draw::label(
-        ui,
-        pos2(inner.start + 12.0, foot_top + 1.0 + 8.0),
-        Align2::LEFT_TOP,
-        strings::SORTED_BY_NAME,
-        ty::SECONDARY,
-        pal.ink_2,
-    );
-
-    // The rows. "All modules" is always first.
+    let modules = filtered(app, filter);
+    let coverage = |module: &Module| module.coverage.and_then(|coverage| coverage.percent());
     let rows = std::iter::once(Row {
         selection: Selection::All,
         code: ALL_CODE,
         name: strings::ALL_MODULES,
-        meta: strings::files(app.files()),
+        meta: strings::files_covered(
+            app.files(),
+            app.coverage().and_then(|coverage| coverage.percent()),
+        ),
         off: false,
     })
-    .chain(app.modules.iter().map(|module| {
+    .chain(modules.iter().map(|module| {
         let off = module.state == ModuleState::Off;
         Row {
             selection: Selection::Module(module.name.clone()),
@@ -103,19 +98,52 @@ pub fn index(ui: &mut Ui, pal: &Palette, rect: Rect, app: &AppSnapshot, state: I
             meta: if off {
                 strings::files_turned_off(module.files)
             } else {
-                strings::files(module.files)
+                strings::files_covered(module.files, coverage(module))
             },
             off,
         }
     }));
 
+    let (head_bottom, foot_top) = if collapsed {
+        // The strip: stamps and marks only, and the key that opens the index again.
+        let foot_top = rect.bottom() - 32.0;
+        draw::hline(ui, inner.clone(), foot_top, pal.line);
+        let keys = format!("{} B", strings::command_key(mac));
+        let cap_w = draw::keycap_width(ui, &keys);
+        let cap_right = ((inner.start + inner.end) / 2.0 + cap_w / 2.0).round();
+        draw::keycap(ui, pal, pos2(cap_right, foot_top + 16.0), &keys);
+        (rect.top(), foot_top)
+    } else {
+        let head_bottom = head(ui, pal, rect, app, filter, focus_filter, keyboard);
+        // Foot: how many modules the filter leaves, or the order of the list.
+        let foot_top = rect.bottom() - (8.0 + 15.0 + 8.0 + 1.0);
+        draw::hline(ui, inner.clone(), foot_top, pal.line);
+        let foot = if filter.trim().is_empty() {
+            strings::SORTED_BY_NAME.to_owned()
+        } else {
+            strings::of_modules(modules.len(), app.modules.len())
+        };
+        draw::label(
+            ui,
+            pos2(inner.start + 12.0, foot_top + 1.0 + 8.0),
+            Align2::LEFT_TOP,
+            &foot,
+            ty::SECONDARY,
+            pal.ink_2,
+        );
+        (head_bottom, foot_top)
+    };
+
     // The list reaches the right edge of the index, so that the selected row can cover the joint.
     let list = Rect::from_min_max(pos2(rect.left(), head_bottom), pos2(rect.right(), foot_top));
-    let IndexState {
-        selection,
-        keyboard,
-        reveal,
-    } = state;
+    let compact = app.modules.len() > TWO_LINE_LIMIT;
+    let row_h = if compact {
+        size::INDEX_ROW_COMPACT_H
+    } else {
+        size::INDEX_ROW_H
+    };
+    let no_match = (!filter.trim().is_empty() && modules.is_empty())
+        .then(|| strings::no_module_matches(filter.trim()));
     ui.scope_builder(UiBuilder::new().max_rect(list), |ui| {
         ScrollArea::vertical()
             .id_salt("index")
@@ -124,19 +152,38 @@ pub fn index(ui: &mut Ui, pal: &Palette, rect: Rect, app: &AppSnapshot, state: I
                 ui.spacing_mut().item_spacing = Vec2::ZERO;
                 ui.add_space(8.0);
                 for row in rows {
-                    let (slot, _) = ui.allocate_exact_size(
-                        vec2(ui.available_width(), size::INDEX_ROW_H),
-                        Sense::hover(),
-                    );
+                    let (slot, _) =
+                        ui.allocate_exact_size(vec2(ui.available_width(), row_h), Sense::hover());
                     // Rows start 8 px in from the left edge of the index.
                     let row_rect =
                         Rect::from_min_max(pos2(slot.left() + 8.0, slot.top()), slot.max);
                     let selected = *selection == row.selection;
-                    if index_row(ui, pal, row_rect, &row, selected, selected && keyboard) {
+                    let look = RowLook {
+                        selected,
+                        focused: selected && keyboard,
+                        compact,
+                        collapsed,
+                    };
+                    if index_row(ui, pal, row_rect, &row, look) {
                         *selection = row.selection;
                     }
                     if selected && reveal {
                         ui.scroll_to_rect(row_rect.expand2(vec2(0.0, 8.0)), None);
+                    }
+                }
+                if let Some(text) = &no_match {
+                    let width = ui.available_width() - 14.0 - 13.0;
+                    let (slot, _) =
+                        ui.allocate_exact_size(vec2(ui.available_width(), 60.0), Sense::hover());
+                    if !collapsed {
+                        draw::paragraph(
+                            ui,
+                            pos2(slot.left() + 14.0, slot.top() + 8.0),
+                            text,
+                            ty::SECONDARY,
+                            pal.ink_2,
+                            width,
+                        );
                     }
                 }
                 ui.add_space(8.0);
@@ -144,24 +191,131 @@ pub fn index(ui: &mut Ui, pal: &Palette, rect: Rect, app: &AppSnapshot, state: I
     });
 }
 
-/// Paints one row (C7). Returns true when it was clicked.
-fn index_row(
-    ui: &Ui,
+/// The head of the index: the app, how many modules are on, the versions, the filter.
+/// Returns its bottom edge.
+fn head(
+    ui: &mut Ui,
     pal: &Palette,
     rect: Rect,
-    row: &Row<'_>,
+    app: &AppSnapshot,
+    filter: &mut String,
+    focus_filter: bool,
+    keyboard: bool,
+) -> f32 {
+    let left = rect.left() + 12.0;
+    let right = rect.right() - 1.0 - 12.0;
+    let on_text = if app.layout.uses_file_activator() {
+        strings::of_on(app.modules_on(), app.modules.len())
+    } else {
+        strings::modules(app.modules.len())
+    };
+    let on = draw::label(
+        ui,
+        pos2(right, rect.top() + 12.0 + 18.0),
+        Align2::RIGHT_BOTTOM,
+        &on_text,
+        ty::SECONDARY,
+        pal.ink_2,
+    );
+    let name = draw::galley_elided(ui, &app.name, ty::APP_NAME, pal.ink, on.left() - 8.0 - left);
+    let name = draw::paint_galley(ui, pos2(left, rect.top() + 12.0), Align2::LEFT_TOP, name);
+    draw::announce(ui, name, Role::Heading, &app.name);
+    draw::label(
+        ui,
+        pos2(left, rect.top() + 12.0 + 20.0 + 1.0),
+        Align2::LEFT_TOP,
+        &strings::versions(app.laravel.as_ref(), &app.package),
+        ty::SECONDARY,
+        pal.ink_2,
+    );
+
+    // The filter field (C3): 26 px high, a search icon, a key hint that says how to
+    // get in and, once inside, how to get out.
+    let field = Rect::from_min_max(
+        pos2(left, rect.top() + 12.0 + 20.0 + 1.0 + 16.0 + 9.0),
+        pos2(right, rect.top() + 84.0),
+    );
+    let id = filter_id(ui);
+    let focused = ui.memory(|memory| memory.has_focus(id));
+    let outline = if focused {
+        pal.ink
+    } else if ui.rect_contains_pointer(field) {
+        pal.ink_2
+    } else {
+        pal.line_2
+    };
+    draw::outlined(ui, field, radius::CONTROL, pal.surface, outline);
+    let glass = Rect::from_min_size(
+        pos2(field.left() + 8.0, field.center().y - 6.5),
+        Vec2::splat(13.0),
+    );
+    let has_text = !filter.is_empty();
+    draw::icon(
+        ui,
+        glass,
+        Icon::Search,
+        if focused || has_text {
+            pal.ink
+        } else {
+            pal.ink_3
+        },
+    );
+    let keys = if focused || has_text { "Esc" } else { "/" };
+    let cap = draw::keycap(ui, pal, pos2(field.right() - 8.0, field.center().y), keys);
+
+    let text_rect = Rect::from_min_max(
+        pos2(glass.right() + 7.0, field.top() + 1.0),
+        pos2(cap.left() - 6.0, field.bottom() - 1.0),
+    );
+    let hint = RichText::new(strings::FILTER_MODULES)
+        .color(pal.ink_3)
+        .font(FontId::new(12.0, Face::Sans400.family()));
+    let edit = egui::TextEdit::singleline(filter)
+        .id(id)
+        .frame(egui::Frame::NONE)
+        .margin(egui::Margin::ZERO)
+        .font(FontId::new(12.0, Face::Sans400.family()))
+        .text_color(pal.ink)
+        .desired_width(text_rect.width())
+        .align(Align2::LEFT_CENTER)
+        .hint_text(hint);
+    let response = ui.put(text_rect, edit);
+    response.widget_info(|| WidgetInfo::labeled(Role::TextInput, true, strings::FILTER_MODULES));
+    if focus_filter {
+        response.request_focus();
+    }
+    if keyboard && focused {
+        draw::focus_ring(ui, pal, field, radius::CONTROL);
+    }
+
+    let bottom = field.bottom() + 10.0;
+    draw::hline(ui, rect.left()..rect.right() - 1.0, bottom - 1.0, pal.line);
+    bottom
+}
+
+#[derive(Debug, Clone, Copy)]
+struct RowLook {
     selected: bool,
+    /// The focus ring is drawn around the row.
     focused: bool,
-) -> bool {
+    /// One line: 26 px, no second line.
+    compact: bool,
+    /// The index is a strip: the stamp only.
+    collapsed: bool,
+}
+
+/// Paints one row (C7). Returns true when it was clicked.
+fn index_row(ui: &Ui, pal: &Palette, rect: Rect, row: &Row<'_>, look: RowLook) -> bool {
     // The interaction comes first so that hover is known before painting.
     let response = ui.interact(
         rect,
         ui.scope_id().with(("index-row", row.code)),
         Sense::click(),
     );
-    response.widget_info(|| WidgetInfo::selected(Role::ListBoxOption, true, selected, row.name));
+    response
+        .widget_info(|| WidgetInfo::selected(Role::ListBoxOption, true, look.selected, row.name));
 
-    if selected {
+    if look.selected {
         // Surface fill, a line on three sides, and 1 px over the joint into the workspace.
         ui.painter().rect_filled(rect, 0, pal.surface);
         draw::hline(ui, rect.left()..rect.right(), rect.top(), pal.line_2);
@@ -180,60 +334,70 @@ fn index_row(
 
     let mid = rect.center().y;
     let stamp_state = StampState {
-        selected,
+        selected: look.selected,
         off: row.off,
     };
     let stamp_min = pos2(rect.left() + 15.0, (mid - size::STAMP_H / 2.0).round());
     draw::stamp(ui, pal, stamp_min, row.code, stamp_state);
 
-    // The marks at the right end. A module that is off has the empty frame and the word.
-    let marks_right = rect.right() - 1.0 - 12.0;
-    let mut text_right = marks_right;
-    if row.off {
-        let word = draw::paint_text(
-            ui,
-            pos2(marks_right, mid),
-            Align2::RIGHT_CENTER,
-            strings::OFF,
-            ty::LABEL,
-            pal.off,
-        );
-        let mark = Rect::from_min_size(
-            pos2(
-                word.left() - 5.0 - size::STATE_MARK,
-                (mid - size::STATE_MARK / 2.0).round(),
-            ),
-            Vec2::splat(size::STATE_MARK),
-        );
-        draw::mark_off(ui, mark, pal.off);
-        text_right = mark.left() - 9.0;
+    if !look.collapsed {
+        // The marks at the right end. A module that is off has the empty frame and the word.
+        let marks_right = rect.right() - 1.0 - 12.0;
+        let mut text_right = marks_right;
+        if row.off {
+            let word = draw::paint_text(
+                ui,
+                pos2(marks_right, mid),
+                Align2::RIGHT_CENTER,
+                strings::OFF,
+                ty::LABEL,
+                pal.off,
+            );
+            let mark = Rect::from_min_size(
+                pos2(
+                    word.left() - 5.0 - size::STATE_MARK,
+                    (mid - size::STATE_MARK / 2.0).round(),
+                ),
+                Vec2::splat(size::STATE_MARK),
+            );
+            draw::mark_off(ui, mark, pal.off);
+            text_right = mark.left() - 9.0;
+        }
+
+        let text_left = rect.left() + 15.0 + 36.0 + 9.0;
+        let text_w = (text_right - text_left).max(0.0);
+        let name_type = if row.off {
+            ty::ROW_NAME.with_face(Face::Sans500)
+        } else {
+            ty::ROW_NAME
+        };
+        let name_color = if row.off { pal.ink_2 } else { pal.ink };
+        let name = draw::galley_elided(ui, row.name, name_type, name_color, text_w);
+        if look.compact {
+            draw::paint_galley(ui, pos2(text_left, mid), Align2::LEFT_CENTER, name);
+        } else {
+            // Name over the second line: 17 and 15 px, centred in the row together.
+            let top = (mid - 16.0).round();
+            draw::paint_galley(ui, pos2(text_left, top), Align2::LEFT_TOP, name);
+            let meta = draw::galley_elided(ui, &row.meta, ty::SECONDARY, pal.ink_2, text_w);
+            draw::paint_galley(ui, pos2(text_left, top + 17.0), Align2::LEFT_TOP, meta);
+        }
     }
 
-    // Name over the second line: 17 and 15 px, centred in the row together.
-    let text_left = rect.left() + 15.0 + 36.0 + 9.0;
-    let text_w = (text_right - text_left).max(0.0);
-    let top = (mid - 16.0).round();
-    let name_type = if row.off {
-        ty::ROW_NAME.with_face(crate::theme::Face::Sans500)
-    } else {
-        ty::ROW_NAME
-    };
-    let name_color = if row.off { pal.ink_2 } else { pal.ink };
-    let name = draw::galley_elided(ui, row.name, name_type, name_color, text_w);
-    draw::paint_galley(ui, pos2(text_left, top), Align2::LEFT_TOP, name);
-    let meta = draw::galley_elided(ui, &row.meta, ty::SECONDARY, pal.ink_2, text_w);
-    draw::paint_galley(ui, pos2(text_left, top + 17.0), Align2::LEFT_TOP, meta);
-
-    if focused {
+    if look.focused {
         // The ring is 1 px outside the row, so it needs more room than the list's clip gives.
         let clip = ui.clip_rect().expand2(vec2(4.0, 0.0));
         ui.painter().with_clip_rect(clip).rect_stroke(
             rect.expand(1.0),
             1,
-            eframe::egui::Stroke::new(crate::theme::stroke::FOCUS_RING, pal.ink),
-            eframe::egui::StrokeKind::Outside,
+            Stroke::new(stroke::FOCUS_RING, pal.ink),
+            StrokeKind::Outside,
         );
     }
 
-    response.clicked()
+    let clicked = response.clicked();
+    if look.collapsed {
+        draw::tooltip(response, pal, row.name);
+    }
+    clicked
 }
