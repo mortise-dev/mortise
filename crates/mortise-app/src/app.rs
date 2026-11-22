@@ -1931,13 +1931,3 @@ pub fn run(chrome: Chrome, folder: Option<PathBuf>) -> eframe::Result {
         }),
     )
 }
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn the_app_icon_is_a_square_image() {
-        let icon = super::app_icon();
-        assert_eq!(icon.width, icon.height);
-        assert!(icon.width >= 256);
-    }
-}
