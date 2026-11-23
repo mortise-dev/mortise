@@ -463,6 +463,20 @@ accessible name and a 24 px target (`tests/accessibility.rs`).
 - The Factory box shows "exists" when the dry run keeps the factory; its flag stays on.
 - An app that replaces a package generator with its own code under the same Artisan name gets that
   code run by "List files" and Replace, as every command runs the app's code (deviation S55).
+- `replace_words` takes the runner's own option words (before a `--` in its line) apart from the run's.
+  From 13.4 on, a runner word that sets any option of `module:make-model` but `--json` (`--policy`,
+  or a short group with a shortcut) gives the model's own file no Replace: a replacement cannot take
+  it out, and the model would pass `--force` to that call.
+- A dry run whose runner or working folder changed meanwhile is dropped before it edits the form. A list
+  dropped for such a change gives the form back the flags S9.3 took out for it.
+- A Replace of a left row (`GenerateRun::row`) updates that row of the result; the other rows stay,
+  with their Replace. A Replace that read no file leaves the result as it was.
+- Only the first file of the dry run, the generator's own, stops Create when it is kept. A later kept
+  file, of a called generator (the view of `module:make-component`), is left. `module:make` has no own
+  file. The button counts the files the run writes.
+- `app_relative(root, modules, names, folders, printed)` places a path of a container by the modules
+  that `module:make` asks for first, then by the app's modules, then by the last `/<modules>/`.
+- A row of a result keeps room for its state and its button before its path wraps.
 
 ## Risks / Trade-offs
 
