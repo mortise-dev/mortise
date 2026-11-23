@@ -179,6 +179,27 @@ fn a_run_streams_its_lines_and_stops() {
         "{end:?}"
     );
     run.stop();
+
+    // The program ended and left a child that writes and ignores SIGTERM: a stop
+    // while its lines are read ends the run as stopped, on Unix with the child.
+    let run = start("", &["orphan-ticks"], TEST_LIMIT);
+    let child = loop {
+        let line = first_line(&run);
+        if line.parse::<u32>().is_ok() {
+            break line;
+        }
+    };
+    std::thread::sleep(Duration::from_millis(500));
+    run.stop();
+    let end = stopped_within_the_wait(&run);
+    assert!(
+        matches!(end, RunEnd::Stopped { limit: None, .. }),
+        "{end:?}"
+    );
+    #[cfg(unix)]
+    gone(&child);
+    #[cfg(not(unix))]
+    let _ = child;
 }
 
 /// The end of `run`, which a wait of [`STOP_WAIT`] after its stop must give.

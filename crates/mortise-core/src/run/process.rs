@@ -69,12 +69,13 @@ const STOP_GRACE: Duration = Duration::from_secs(3);
 
 /// The longest a stop takes to end a run, from [`Run::stop`] to [`RunEvent::Ended`]:
 /// [`STOP_GRACE`] to the kill, [`GRACE`] and [`DETACH`] for the readers, and a margin
-/// for the last look at the program.
+/// for a few [`TICK`]s and, on Windows, `taskkill`. A stop that comes while a
+/// child that outlived the program still writes takes [`STOP_GRACE`] and [`DETACH`].
 #[cfg(feature = "run")]
 pub const STOP_WAIT: Duration = STOP_GRACE
     .saturating_add(GRACE)
     .saturating_add(DETACH)
-    .saturating_add(Duration::from_millis(250));
+    .saturating_add(Duration::from_millis(500));
 
 /// The most text kept of one line in bytes, and, by [`capture`], of one stream.
 /// A newline counts as one byte, so a flood of empty lines is bounded too.
@@ -377,9 +378,16 @@ impl Owner {
             process.read(TICK, &mut forward);
         };
         let elapsed = started.elapsed();
-        let status = process.finish(&mut forward);
+        if stopped.is_some() {
+            stop.store(true, Ordering::Relaxed);
+        }
+        let (status, late) = process.finish(&stop, &mut forward);
         let end = match stopped {
             Some(limit) => RunEnd::Stopped { elapsed, limit },
+            None if late => RunEnd::Stopped {
+                elapsed: started.elapsed(),
+                limit: None,
+            },
             None => RunEnd::Exited {
                 code: status.and_then(|status| status.code()),
                 elapsed,
@@ -525,51 +533,81 @@ impl Process {
         let _ = self.child.kill();
     }
 
-    /// The end, once the program has exited or was stopped. The readers get
-    /// [`GRACE`] to finish. Then, on Unix, what is left in the group is killed, even
-    /// a child that closed its pipes, and the program is reaped. The readers are
-    /// joined and `forward` gets their last lines. It returns how the program ended.
+    /// The end, once the program has exited or was stopped. `stop` is set when the
+    /// tree is being stopped. The readers get [`GRACE`] to finish. Then, on Unix,
+    /// what is left in the group is killed, even a child that closed its pipes, and
+    /// the program is reaped. The readers are joined and `forward` gets their last
+    /// lines. It returns how the program ended, and whether a stop ended what was
+    /// left of the tree.
+    ///
+    /// A stop that comes while a child that outlived the program still writes ends
+    /// what is left as [`Process::stop`] does: SIGTERM to the group, and SIGKILL
+    /// after [`STOP_GRACE`]. After a stop, the readers are not waited for past
+    /// [`GRACE`] and [`DETACH`], so the run ends within [`STOP_WAIT`].
     ///
     /// Known limit: a process that left the group (`setsid`), or on Windows a child
     /// of a program that ended by itself or that `taskkill` missed, can keep a pipe
     /// open. Windows cannot name the children of an ended program without a job
     /// object. A reader that still reads [`DETACH`] later is left behind; it ends
     /// when the pipe closes or the queue is gone.
-    fn finish(&mut self, forward: &mut impl FnMut(Stream, String)) -> Option<ExitStatus> {
-        let done = self.wait_for_readers(GRACE, forward);
+    fn finish(
+        &mut self,
+        stop: &AtomicBool,
+        forward: &mut impl FnMut(Stream, String),
+    ) -> (Option<ExitStatus>, bool) {
+        let stopping = || stop.load(Ordering::Relaxed);
+        let asked = stopping();
+        let mut done = self.wait_for_readers(GRACE, (!asked).then_some(stop), forward);
+        let mut late = !done && !asked && stopping();
+        if late {
+            self.terminate();
+            done = self.wait_for_readers(STOP_GRACE, None, forward);
+        }
         // The program is not reaped yet, so the group id cannot belong to another group.
         #[cfg(unix)]
         self.kill();
         let status = self.child.wait().ok();
         if !done {
-            self.wait_for_readers(DETACH, forward);
+            let watch = !asked && !late;
+            done = self.wait_for_readers(DETACH, watch.then_some(stop), forward);
+            late |= watch && !done && stopping();
         }
         for reader in std::mem::take(&mut self.readers) {
             if reader.is_finished() {
                 let _ = reader.join();
             }
         }
-        for (stream, text) in self.lines.try_iter() {
+        // A reader left behind may still send; the queue bounds what is taken.
+        for (stream, text) in self.lines.try_iter().take(QUEUE) {
             forward(stream, text);
         }
-        status
+        (status, late)
     }
 
     /// Reads until both readers finished, for at most `wait`. True when they did.
-    /// A reader that waits for room in the queue is not stuck, so `wait` starts
-    /// again while lines come, up to [`DRAIN`] in all.
-    fn wait_for_readers(&self, wait: Duration, forward: &mut impl FnMut(Stream, String)) -> bool {
+    /// With `stop`, a reader that waits for room in the queue is not stuck, so
+    /// `wait` starts again while lines come, up to [`DRAIN`] in all, and the wait
+    /// ends early once `stop` is set.
+    fn wait_for_readers(
+        &self,
+        wait: Duration,
+        stop: Option<&AtomicBool>,
+        forward: &mut impl FnMut(Stream, String),
+    ) -> bool {
         let last = Instant::now() + DRAIN;
         let mut until = Instant::now() + wait;
         loop {
             if self.readers.iter().all(JoinHandle::is_finished) {
                 return true;
             }
+            if stop.is_some_and(|stop| stop.load(Ordering::Relaxed)) {
+                return false;
+            }
             let left = until.saturating_duration_since(Instant::now());
             if left.is_zero() {
                 return false;
             }
-            if self.read(left.min(TICK), forward) {
+            if self.read(left.min(TICK), forward) && stop.is_some() {
                 until = (Instant::now() + wait).min(last);
             }
         }
@@ -624,7 +662,7 @@ pub(crate) fn capture(
         }
         process.read(TICK, &mut keep);
     }
-    let status = process.finish(&mut keep);
+    let (status, _) = process.finish(&AtomicBool::new(timed_out), &mut keep);
     Ok(Captured {
         code: status
             .and_then(|status| status.code())

@@ -38,7 +38,8 @@ Status: phase 1 (read only) and phase 2 (running the package's commands) are bui
     among them. It shows the command, and after the run the files the command wrote. Replace
     runs a generator again over a file or a module that exists, after a question.
   - The palette lists actions and generators, and your recent runs.
-- Closing Mortise stops every run and waits for each to end.
+- Closing Mortise stops every run and waits up to 5 seconds for each to end. On Windows, the
+  PHP child of a launcher such as `herd.bat` that already exited goes on (`docs/deviations.md`, S53).
 
 Not yet: the file lists before a run, the migration state (counts, tables) and Run tests wait
 for data from the package. Until then the Actions and Generate tabs say so where they leave
