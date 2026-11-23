@@ -325,6 +325,42 @@ fn the_folders_of_the_second_rule_can_be_changed() {
 }
 
 #[test]
+fn the_graph_of_12_modules_gives_each_node_its_full_name() {
+    let desk = Desk::new();
+    let root = common::app_with_modules(&desk, "platform", 12);
+    desk.knows(&[(&root, "PL")]);
+    let mut harness = desk.start();
+    harness.key_press(Key::Num2);
+    harness.run();
+    harness.get_by_label_contains("between 12 modules");
+
+    // A node may draw only its stamp, so its name is in full for a screen reader.
+    let names: Vec<String> = harness
+        .state()
+        .app()
+        .unwrap()
+        .modules
+        .iter()
+        .map(|module| module.name.clone())
+        .collect();
+    assert_eq!(names.len(), 12);
+    for name in &names {
+        harness.get_by_role_and_label(Role::Button, name);
+    }
+
+    // And in full in the tooltip.
+    let before = harness.get_all_by_label("Notifications").count();
+    harness
+        .get_by_role_and_label(Role::Button, "Notifications")
+        .hover();
+    harness.run_steps(12);
+    assert_eq!(
+        harness.get_all_by_label("Notifications").count(),
+        before + 1
+    );
+}
+
+#[test]
 fn above_12_modules_the_app_graph_gives_way_to_a_table_of_links() {
     let desk = Desk::new();
     let root = common::app_with_modules(&desk, "platform", 14);

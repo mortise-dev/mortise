@@ -154,6 +154,13 @@ struct View<'a> {
     width: f32,
 }
 
+/// The name of a module in a graph node.
+const NODE_NAME: Type = Type {
+    size: 12.0,
+    line: 16.0,
+    ..ty::BODY.with_face(Face::Sans600)
+};
+
 /// A node of a graph: where it is and which module it stands for.
 struct Node<'a> {
     rect: Rect,
@@ -474,23 +481,8 @@ impl View<'_> {
     ) {
         let pal = self.pal;
         let mid = rect.center().y;
-        let off = module.state == ModuleState::Off;
-        let x = rect.left() + if selected { 14.0 } else { 8.0 };
-        let stamp = draw::stamp(
-            ui,
-            pal,
-            pos2(x, (mid - size::STAMP_H / 2.0).round()),
-            &module.code,
-            StampState { selected, off },
-        );
-        let text_x = stamp.right() + 8.0;
-        let text_w = (rect.right() - 8.0 - text_x).max(0.0);
-        let name_type = Type {
-            size: 12.0,
-            line: 16.0,
-            ..ty::BODY.with_face(Face::Sans600)
-        };
-        let name = draw::galley_elided(ui, &module.name, name_type, pal.ink, text_w);
+        let (text_x, text_w) = self.node_stamp(ui, rect, module, selected);
+        let name = draw::galley_elided(ui, &module.name, NODE_NAME, pal.ink, text_w);
         if second.is_empty() {
             draw::paint_galley(ui, pos2(text_x, mid), Align2::LEFT_CENTER, name);
         } else {
@@ -503,6 +495,22 @@ impl View<'_> {
             let second = draw::galley_elided(ui, second, second_type, color, text_w);
             draw::paint_galley(ui, pos2(text_x, mid + 1.0), Align2::LEFT_TOP, second);
         }
+    }
+
+    /// The stamp of a node. Returns where the text right of it starts, and its width.
+    fn node_stamp(&self, ui: &Ui, rect: Rect, module: &Module, selected: bool) -> (f32, f32) {
+        let mid = rect.center().y;
+        let off = module.state == ModuleState::Off;
+        let x = rect.left() + if selected { 14.0 } else { 8.0 };
+        let stamp = draw::stamp(
+            ui,
+            self.pal,
+            pos2(x, (mid - size::STAMP_H / 2.0).round()),
+            &module.code,
+            StampState { selected, off },
+        );
+        let text_x = stamp.right() + 8.0;
+        (text_x, (rect.right() - 8.0 - text_x).max(0.0))
     }
 
     /// The files of a link, or of both directions when two modules use each other.
@@ -1013,10 +1021,18 @@ impl View<'_> {
                 pal.surface
             };
             draw::outlined(ui, node.rect, 0, fill, pal.line_2);
-            self.node_text(ui, node.rect, node.module, "", pal.ink_2, false);
+            // The stamp always, the name only when all of it fits: a cut name reads as
+            // another module (docs/deviations.md, S31). The tooltip gives the full name.
+            let (text_x, text_w) = self.node_stamp(ui, node.rect, node.module, false);
+            let name = draw::galley_elided(ui, &node.module.name, NODE_NAME, pal.ink, text_w);
+            if !name.elided {
+                let pos = pos2(text_x, node.rect.center().y);
+                draw::paint_galley(ui, pos, Align2::LEFT_CENTER, name);
+            }
             if response.clicked() {
                 *action = Some(BoundaryAction::Select(node.module.name.clone()));
             }
+            draw::tooltip(response, pal, &node.module.name);
         }
 
         let caption_type = Type {
