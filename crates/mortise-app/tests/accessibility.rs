@@ -62,12 +62,19 @@ fn audit(harness: &Harness<'static, MortiseApp>, screen: &str) {
             buttons.push(label);
         }
     }
-    buttons.sort();
     // A dialog is modal: the page behind it is under a scrim, and its buttons may share a
-    // name with the dialog's own (Roll back, Dry run).
-    let dialog_open = buttons.iter().any(|name| name == "Cancel");
+    // name with the dialog's own (Roll back, Dry run). With a dialog open, names are
+    // unique within the dialog; otherwise within the page.
+    if let Some(dialog) = harness.query_all_by_role(Role::Dialog).last() {
+        buttons = dialog
+            .children_recursive()
+            .filter(|node| node.accesskit_node().role() == Role::Button)
+            .map(|node| node.accesskit_node().label().unwrap_or_default())
+            .collect();
+    }
+    buttons.sort();
     for pair in buttons.windows(2) {
-        if !dialog_open && pair[0] == pair[1] {
+        if pair[0] == pair[1] {
             problems.push(format!("two buttons are named \"{}\"", pair[0]));
         }
     }
