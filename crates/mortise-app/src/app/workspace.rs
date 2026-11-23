@@ -168,7 +168,7 @@ pub fn workspace(
     let findings_title = crate::strings::findings_in(state.name);
     let mut title_x = head.left() + 16.0;
     // The new module form names the app it creates a module in (S9.4).
-    let generate_title = (*tab == Tab::Generate && !findings)
+    let generate_title = (*tab == Tab::Generate)
         .then(|| generate_view::title(state.generate, module, state.name))
         .flatten();
     let title = if let Some(generate_title) = &generate_title {
@@ -210,6 +210,9 @@ pub fn workspace(
         pal.ink,
     );
     draw::announce(ui, title_rect, Role::Heading, title);
+    // The folder of the module after its code, drawn once the right of the header
+    // is known.
+    let mut folder_at = None;
     if let Some(module) = module {
         let stamp_min = pos2(
             title_rect.right() + 10.0,
@@ -222,15 +225,10 @@ pub fn workspace(
             pal,
             &strings::code_is_for(&module.code, &module.name),
         );
-        draw::label(
-            ui,
-            pos2(stamp.right() + 10.0, title_rect.bottom() - 2.0),
-            Align2::LEFT_BOTTOM,
-            &app.path_shown(&module.dir),
-            ty::PATH,
-            pal.ink_2,
-        );
+        folder_at = Some(pos2(stamp.right() + 10.0, title_rect.bottom() - 2.0));
     }
+    // The left edge of the controls at the right of the header.
+    let mut controls_left = head.right() - 16.0;
 
     // The actions of the header come before the tabs in the Tab order, so that the
     // first control after the tab row is the first control of the tab. The Actions
@@ -246,7 +244,7 @@ pub fn workspace(
         let keys = actions_view::run_keys(state.mac);
         let mid = head.top() + 12.0 + ty::TITLE.line / 2.0;
         let cap = draw::keycap(ui, pal, pos2(head.right() - 16.0, mid), &keys);
-        draw::label(
+        let label = draw::label(
             ui,
             pos2(cap.left() - 6.0, mid),
             Align2::RIGHT_CENTER,
@@ -254,6 +252,7 @@ pub fn workspace(
             ty::SECONDARY,
             pal.ink_2,
         );
+        controls_left = label.left();
     } else if let Some(module) = module.filter(|_| *tab != Tab::Generate) {
         let said = strings::open_module_in_editor(&module.name);
         let open = Button {
@@ -288,6 +287,7 @@ pub fn workspace(
         let open_x = head.right() - 16.0 - open.width(ui);
         let migrate_x = open_x - 8.0 - migrate.width(ui);
         let tests_x = migrate_x - 8.0 - tests.width(ui);
+        controls_left = tests_x;
         let buttons = [
             (tests, tests_x, Some(Action::RunTests)),
             (migrate, migrate_x, Some(Action::Migrate)),
@@ -304,6 +304,15 @@ pub fn workspace(
                 });
             }
         }
+    }
+
+    if let (Some(at), Some(module)) = (folder_at, module) {
+        // A long folder ends with an ellipsis short of the controls; its name stays whole.
+        let folder = app.path_shown(&module.dir);
+        let room = (controls_left - 16.0 - at.x).max(24.0);
+        let galley = draw::galley_elided(ui, &folder, ty::PATH, pal.ink_2, room);
+        let rect = draw::paint_galley(ui, at, Align2::LEFT_BOTTOM, galley);
+        draw::announce(ui, rect, Role::Label, &folder);
     }
 
     let mut moved_to = None;

@@ -74,9 +74,14 @@ pub fn plain(line: &str) -> String {
     spans(line).into_iter().map(|span| span.text).collect()
 }
 
+/// The deepest JSON that [`json_lines`] indents. Each level adds two spaces to every
+/// line inside it, so the depth bounds the indented form at a few times the line.
+const JSON_DEPTH: usize = 32;
+
 /// The lines of a line that holds one JSON object or array, indented by two spaces
 /// per level, with the keys in the order the command wrote them. `None` when the
-/// line holds something else, or an empty object or array.
+/// line holds something else, an empty object or array, or JSON nested deeper than
+/// [`JSON_DEPTH`] levels.
 pub fn json_lines(line: &str) -> Option<Vec<String>> {
     let text = line.trim();
     if !(text.starts_with('{') || text.starts_with('['))
@@ -118,6 +123,10 @@ pub fn json_lines(line: &str) -> Option<Vec<String>> {
                     current.push(if c == '{' { '}' } else { ']' });
                 } else {
                     depth += 1;
+                    // Deep nesting would grow the indentation past any use.
+                    if depth > JSON_DEPTH {
+                        return None;
+                    }
                     break_line(&mut lines, &mut current, depth);
                 }
             }
@@ -242,6 +251,7 @@ mod tests {
             "[]",
             "\"text\"",
             "{\"a\":1} tail",
+            &format!("{}1{}", "[".repeat(33), "]".repeat(33)),
         ] {
             assert_eq!(json_lines(other), None, "{other:?}");
         }

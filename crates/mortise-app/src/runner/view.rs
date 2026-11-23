@@ -11,8 +11,9 @@ use std::time::{Duration, Instant};
 
 use eframe::egui::text::LayoutJob;
 use eframe::egui::{
-    self, Align2, Color32, CornerRadius, CursorIcon, Galley, Id, Key, Modifiers, Rect, Response,
-    Role, ScrollArea, Sense, Stroke, StrokeKind, Ui, UiBuilder, Vec2, WidgetInfo, pos2, vec2,
+    self, Align2, Color32, CornerRadius, CursorIcon, Galley, Id, Key, Margin, Modifiers, Rect,
+    Response, Role, ScrollArea, Sense, Stroke, StrokeKind, Ui, UiBuilder, Vec2, WidgetInfo, pos2,
+    vec2,
 };
 use mortise_core::ansi::{self, Span, Style};
 use mortise_core::history::{Ended, Entry, History};
@@ -1271,8 +1272,7 @@ fn current_body(
     });
     let first = current.line.as_ref().map(|line| format!("$ {line}"));
     let rows = usize::from(first.is_some()) + current.output.rows.len() + notes.len();
-    // Room under the rows for the horizontal scroll bar, so it covers no line.
-    let rows_h = rows as f32 * ty::RUNNER.line + ui.spacing().scroll.allocated_width();
+    let rows_h = rows as f32 * ty::RUNNER.line + scroll_bar_room(ui);
     let room = (body.height() - block_h).max(ty::RUNNER.line);
     let output_rect = Rect::from_min_size(body.min, vec2(body.width(), rows_h.min(room)));
     output_rows(
@@ -1427,6 +1427,13 @@ fn line_galley(ui: &Ui, spans: &[Span], pal: &Palette) -> Arc<Galley> {
     ui.painter().layout_job(job)
 }
 
+/// The room under the last line of output for the horizontal scroll bar, which
+/// floats over the content and takes no room of its own.
+fn scroll_bar_room(ui: &Ui) -> f32 {
+    let scroll = &ui.spacing().scroll;
+    scroll.bar_width + 2.0 * scroll.bar_outer_margin
+}
+
 /// Lines of output in `rect`, as rows of the runner line height: only the rows in
 /// view are laid out, so a long output stays quick. `first` is a line before the
 /// output, `notes` lines after it, both dim.
@@ -1449,10 +1456,15 @@ fn output_rows(
             text: text.to_owned(),
         }]
     };
+    let room = scroll_bar_room(ui);
     ui.scope_builder(UiBuilder::new().max_rect(rect), |ui| {
         ui.spacing_mut().item_spacing = Vec2::ZERO;
         ScrollArea::both()
             .id_salt(salt)
+            .content_margin(Margin {
+                bottom: room.ceil() as i8,
+                ..Margin::ZERO
+            })
             .auto_shrink(false)
             .stick_to_bottom(stick)
             .show_rows(ui, ty::RUNNER.line, rows, |ui, range| {
