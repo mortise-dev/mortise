@@ -1,0 +1,11 @@
+{
+  "command": "php artisan module:enable Checkout --no-interaction --ansi",
+  "args": [
+    "module:enable",
+    "Checkout"
+  ],
+  "made_with": "nwidart/laravel-modules 13.3.0, laravel/framework 13.43.0, PHP 8.4.27, macOS",
+  "exit": 0,
+  "stdout": "\n  \u001b[37;44m INFO \u001b[39;49m Enabling module ...  \n\n  Enabling \u001b[36;1mCheckout\u001b[39;22m Module, old status: \u001b[31;1mDisabled\u001b[39;22m \u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m 0.21ms\u001b[39m \u001b[32;1mDONE\u001b[39;22m\n",
+  "stderr": ""
+}
