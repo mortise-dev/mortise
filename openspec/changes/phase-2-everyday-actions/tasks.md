@@ -6,9 +6,9 @@
 
 ## 2. Core (12.1, opus)
 
-- [ ] 2.1 Record real output of `nwidart/laravel-modules` 13.3.0 into `fixtures/output/` in the form of milestone 11 (D9): `module:disable Checkout`, `module:enable Checkout`, `module:migrate Checkout` with one migration done, `module:migrate Shipping` failing at a migration, `module:migrate-rollback Checkout`, `module:lang Checkout`. Use a scratch app outside the repository and no agent variables in the environment. Verify each file parses as JSON, its `args` are unique across the folder, and the fake artisan prints it
-- [ ] 2.2 Add `catalog/mod.rs` and `catalog/actions.rs` with `Action`, `Target`, `Options`, `OptionSet`, `Context`, `Ask`, `Plan` and `plan` (D1, D2); export them from `lib.rs`. Verify with one table test of D2, one test of the `--force` invariant over every action, `production` and `pretend`, and one test of the word order with trimmed and empty text options
-- [ ] 2.3 Add `output.rs` with `FailedMigration`, `failed_migration`, `migrations_done` and `migration_file` (D3). Verify with tests on the recordings of 2.1: the failing migrate names its migration and module, the successful migrate counts one, a plain failure gives `None`, a missing file gives `None`
+- [x] 2.1 Record real output of `nwidart/laravel-modules` 13.3.0 into `fixtures/output/` in the form of milestone 11 (D9): `module:disable Checkout`, `module:enable Checkout`, `module:migrate Checkout` with one migration done, `module:migrate Shipping` failing at a migration, `module:migrate-rollback Checkout`, `module:lang Checkout`. Use a scratch app outside the repository and no agent variables in the environment. Verify each file parses as JSON, its `args` are unique across the folder, and the fake artisan prints it
+- [x] 2.2 Add `catalog/mod.rs` and `catalog/actions.rs` with `Action`, `Target`, `Options`, `OptionSet`, `Context`, `Ask`, `Plan` and `plan` (D1, D2); export them from `lib.rs`. Verify with one table test of D2, one test of the `--force` invariant over every action, `production` and `pretend`, and one test of the word order with trimmed and empty text options
+- [x] 2.3 Add `output.rs` with `FailedMigration`, `failed_migration`, `migrations_done` and `migration_file` (D3). Verify with tests on the recordings of 2.1: the failing migrate names its migration and module, the successful migrate counts one, a plain failure gives `None`, a missing file gives `None`
 
 ## 3. Interface (parallel after 2)
 

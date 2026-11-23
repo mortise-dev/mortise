@@ -23,6 +23,8 @@ mod links;
 mod live;
 mod matcher;
 mod module;
+#[cfg(feature = "run")]
+mod output;
 mod php;
 mod rules;
 mod run;
@@ -58,6 +60,8 @@ pub use links::{Cycle, Link, Reference, columns};
 pub use live::{LiveApp, LiveState};
 pub use matcher::fuzzy;
 pub use module::{KindCount, Manifest, Module, ModuleState, Progress, ReadCache};
+#[cfg(feature = "run")]
+pub use output::{FailedMigration, failed_migration, migration_file, migrations_done};
 pub use rules::{RULES_FILE, Rules, RulesError, RulesSource};
 #[cfg(feature = "run")]
 pub use run::ansi;
