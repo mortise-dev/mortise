@@ -274,6 +274,24 @@ the result and toast; the existing policy gives the left row, Replace opens its 
 runs `--force`; Ctrl N opens the new module form on "All modules"; Replace module asks. The palette row
 once in `tests/palette.rs`. Images S9.1, S9.2, S9.4, S9.5, S9.6, light and dark.
 
+### Changed while building 14.4
+
+- D5: the picker's filter shows G as its key hint, not "/": "/" stays the filter of the index. The
+  filter matches a part of the label or of the artisan name, not letters in order, so that "polic" lists
+  Policy only. The new module form also needs its scope: selecting a module goes back to the picker, as a
+  file generator's form does under "All modules". A click on a row of the picker opens its form. The
+  title of the picker under "All modules" is "Generate in shop-api" (deviation S45).
+- D6: a run that left files, out of view, gets a failed toast with the sentence of the alert, not
+  "stopped with exit code": the model exits 0. A run that wrote files again reads "Replaced in Billing"
+  and the toast "Replaced 1 file in Billing." (deviation S47). Any change of the form drops the result
+  and brings the line back. Run again from the drawer runs the words, with its own question for
+  `--force`, and does not change the result on the tab. Mortise reads the app again after `module:make`.
+- D7: `menu.rs` lists no shortcut, so no menu item was added. In the palette, a word of the query that
+  matches a module names the module; the other words match the generators. A query that only names a
+  module lists no generator, so "check" keeps the rows of S12.1 it had.
+- D8: one more image, the Replace dialog of S9.6. The image of S7.4 shows Metrics now, as Generate is
+  built; every image with the index changes for "New module" in its footer.
+
 ## Risks / Trade-offs
 
 - [The package changes the words of its task lines] → `output.rs` reads them without P5; the real-PHP job

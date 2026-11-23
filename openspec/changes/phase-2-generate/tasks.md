@@ -13,12 +13,12 @@
 
 ## 3. Interface (14.4 opus, after 2)
 
-- [ ] 3.1 Add `generate_view.rs` with the picker, the forms and the result (D5, D6), and replace the placeholder of the Generate tab. Text in `strings.rs`, each string not in the spec marked so
-- [ ] 3.2 Add the runs, the result, Replace and its dialogs, the selection after `module:make`, and the toasts in `app.rs` (D6)
-- [ ] 3.3 Add "New module" to the index footer, Ctrl N (Cmd N), the keys 3 and G, and the palette group (D7)
-- [ ] 3.4 Add `tests/generate.rs` and the palette case (D8) against the fake artisan
-- [ ] 3.5 Add or extend deviations in `docs/deviations.md`, each with how it was checked
-- [ ] 3.6 Add images for S9.1, S9.2, S9.4, S9.5 and S9.6, light and dark, with `UPDATE_SNAPSHOTS=1 cargo test -p mortise-app --test images`, and look at each new or changed image
+- [x] 3.1 Add `generate_view.rs` with the picker, the forms and the result (D5, D6), and replace the placeholder of the Generate tab. Text in `strings.rs`, each string not in the spec marked so
+- [x] 3.2 Add the runs, the result, Replace and its dialogs, the selection after `module:make`, and the toasts in `app.rs` (D6)
+- [x] 3.3 Add "New module" to the index footer, Ctrl N (Cmd N), the keys 3 and G, and the palette group (D7)
+- [x] 3.4 Add `tests/generate.rs` and the palette case (D8) against the fake artisan
+- [x] 3.5 Add or extend deviations in `docs/deviations.md`, each with how it was checked
+- [x] 3.6 Add images for S9.1, S9.2, S9.4, S9.5 and S9.6, light and dark, with `UPDATE_SNAPSHOTS=1 cargo test -p mortise-app --test images`, and look at each new or changed image
 
 ## 4. Integration
 
