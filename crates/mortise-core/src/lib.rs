@@ -11,9 +11,9 @@ mod boundary;
 mod editor;
 mod findings;
 mod generate;
-mod matcher;
 mod modules;
 mod package;
+mod palette;
 mod php;
 mod program;
 mod run;
@@ -54,7 +54,6 @@ pub use generate::catalog::{
 pub use generate::output::{
     FileOutcome, GeneratedFile, app_relative, autoload_failed, generated_files, reported_files,
 };
-pub use matcher::fuzzy;
 pub use modules::clover::Coverage;
 pub use modules::code::{ALL_CODE, propose_codes, propose_monogram};
 pub use modules::composer::Version;
@@ -69,6 +68,9 @@ pub use package::{
     RanMigration, ReportedFile, TestReport, document, gives_data, has_option, migrate_status_args,
     migration_file, migrations_changed_by, whole_document, with_dry_run, with_json,
 };
+pub use palette::matcher::fuzzy;
+#[cfg(feature = "run")]
+pub use palette::recent::{Ran, RecentRun, recent_runs};
 #[cfg(feature = "run")]
 pub use run::ansi;
 #[cfg(feature = "run")]
@@ -77,9 +79,9 @@ pub use run::history;
 pub use run::history::OUTPUT_LIMIT;
 #[cfg(feature = "run")]
 pub use run::{
-    CommandLine, Detected, Failure, Ran, Read, ReadEnd, RecentRun, Run, RunEnd, RunEvent, Runs,
-    STOP_WAIT, StartError, Stream, TEST_LIMIT, TestOutcome, detect, herd_config_dir, recent_runs,
-    stop_asks_first, test_php,
+    CommandLine, Detected, Failure, Read, ReadEnd, Run, RunEnd, RunEvent, Runs, STOP_WAIT,
+    StartError, Stream, TEST_LIMIT, TestOutcome, detect, herd_config_dir, stop_asks_first,
+    test_php,
 };
 pub use run::{PhpSettings, RunnerKind};
 #[cfg(feature = "actuator")]

@@ -1,8 +1,11 @@
 //! The actions and generators that ran last in an app, read from its history (S12.2 a).
 
+use crate::actions::plan::Action;
+use crate::app::AppSnapshot;
+use crate::generate::catalog::Catalog;
+use crate::modules::module::ModuleState;
 use crate::modules::target::Target;
 use crate::run::history::Entry;
-use crate::{Action, AppSnapshot, Catalog, ModuleState};
 
 /// What a run of the history was.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -58,8 +61,8 @@ pub fn recent_runs(
 }
 
 /// What the words of a run were. The words that are not options are the arguments:
-/// the words after `--` when there is one, as [`crate::plan`] and
-/// [`crate::Generator::words`] write a name that starts with `-`.
+/// the words after `--` when there is one, as [`crate::actions::plan::plan`] and
+/// [`crate::generate::catalog::Generator::words`] write a name that starts with `-`.
 fn ran(args: &[String], catalog: &Catalog, app: &AppSnapshot) -> Option<Ran> {
     let (first, rest) = args.split_first()?;
     let options: Vec<&str> = rest

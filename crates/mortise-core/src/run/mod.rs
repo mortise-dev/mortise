@@ -15,13 +15,9 @@ pub(crate) mod process;
 #[cfg(feature = "run")]
 mod read;
 #[cfg(feature = "run")]
-mod recent;
-#[cfg(feature = "run")]
 pub use process::{Run, RunEnd, RunEvent, Runs, STOP_WAIT, StartError, Stream, stop_asks_first};
 #[cfg(feature = "run")]
 pub use read::{Read, ReadEnd};
-#[cfg(feature = "run")]
-pub use recent::{Ran, RecentRun, recent_runs};
 
 use std::path::{Path, PathBuf};
 use std::time::Duration;
