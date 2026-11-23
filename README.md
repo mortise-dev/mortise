@@ -4,7 +4,9 @@ A desktop companion for developers who build Laravel apps with
 [`nwidart/laravel-modules`](https://github.com/nWidart/laravel-modules).
 
 Mortise opens the folder of an app, lists its modules, and shows what is in each one.
-It reads files only: it needs no PHP and changes nothing in the app.
+To read an app, Mortise uses no PHP and changes nothing in it. It runs a command in the app
+only when you start it, with the exact command on screen first, through the PHP you chose for
+the app: Herd, Sail, Docker or a command of your own.
 
 When the app also has [`nwidart/laravel-actuator`](https://github.com/nWidart/laravel-actuator)
 and is running, Mortise can ask it for its runtime status, its routes and its scheduled tasks.
