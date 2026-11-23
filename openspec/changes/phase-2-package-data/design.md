@@ -589,6 +589,9 @@ accessible name and a 24 px target (`tests/accessibility.rs`).
   "Not read for every module yet." until a read covers it.
 - "Translations are complete" counts as a check only when the report checked a module of the app. A
   report whose modules all have one locale (`checked: false`) adds no passing check with 0 modules.
+- On a 13.4 app the row detail of Run tests under "All modules" counts the tests of every module, on
+  or off, as its panel and `module:test --all` do (`tests_counted`). Before 13.4 both count the modules
+  that are on.
 
 ## Risks / Trade-offs
 

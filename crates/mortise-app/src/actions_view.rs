@@ -387,7 +387,11 @@ fn detail(action: Action, app: &AppSnapshot, module: Option<&Module>, connection
             _ => Detail::None,
         },
         (Action::Seed, _) => Detail::Text(strings::seeders(total(&kind("Seeders")))),
-        (Action::RunTests, _) => Detail::Text(strings::tests(total(&|module| module.tests))),
+        (Action::RunTests, _) => Detail::Text(strings::tests(tests_counted(
+            app,
+            module,
+            mortise_core::gives_data(&app.package),
+        ))),
         // Without the migration state reset and refresh have none (deviation S42).
         (Action::ResetMigrations | Action::RefreshMigrations, _) => {
             ran().map_or(Detail::None, |ran| Detail::Text(strings::ran(ran)))
@@ -1356,6 +1360,21 @@ fn lost_box(ui: &Ui, pal: &Palette, min: Pos2, width: f32, rows: &[Lost]) -> f32
     rect.bottom()
 }
 
+/// The tests Run tests runs: the module's, or under "All modules" those of the
+/// modules that are on. On a 13.4 app `module:test --all` runs every module, on or
+/// off, so it counts them all (design D8). The row and the panel give the same count.
+fn tests_counted(app: &AppSnapshot, module: Option<&Module>, package_data: bool) -> u32 {
+    match module {
+        Some(module) => module.tests,
+        None => app
+            .modules
+            .iter()
+            .filter(|module| package_data || module.state == ModuleState::On)
+            .map(|module| module.tests)
+            .sum(),
+    }
+}
+
 /// The sentence of Run tests: the count, the folder in mono, then the rest (S10.2 e).
 /// On a 13.4 app (`package_data`) the sentence about the placeholder is left out,
 /// and "All modules" counts every module, as `module:test --all` takes them all.
@@ -1368,22 +1387,8 @@ fn tests_text(
     module: Option<&Module>,
     package_data: bool,
 ) -> f32 {
-    let (count, folder) = match module {
-        Some(module) => (
-            strings::tests(module.tests),
-            Some(app.path_shown(&module.dir.join("tests"))),
-        ),
-        None => {
-            let counted = app
-                .modules
-                .iter()
-                .filter(|module| package_data || module.state == ModuleState::On);
-            (
-                strings::tests(counted.map(|module| module.tests).sum()),
-                None,
-            )
-        }
-    };
+    let count = strings::tests(tests_counted(app, module, package_data));
+    let folder = module.map(|module| app.path_shown(&module.dir.join("tests")));
     let mono = Type {
         size: 11.5,
         ..ty::CODE
