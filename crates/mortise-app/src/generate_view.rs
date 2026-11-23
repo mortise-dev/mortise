@@ -2464,11 +2464,55 @@ fn result_view(
     } else {
         strings::failed_count(total - written)
     };
-    let path_w = width - 14.0 - size::STATE_MARK - 8.0 - 10.0 - 70.0;
-    let rows: Vec<(String, std::sync::Arc<egui::Galley>)> = result
+    // A file the run left has its own Replace, not only the first (S9.6).
+    let replaces: Vec<Option<Vec<String>>> = result
         .files
         .iter()
         .map(|file| {
+            (file.outcome == FileOutcome::Left)
+                .then(|| left_replace(&result, inputs, app, &file.path))
+                .flatten()
+        })
+        .collect();
+    let open = Button {
+        label: strings::OPEN,
+        small: true,
+        ..Default::default()
+    };
+    let replace = Button {
+        label: strings::REPLACE,
+        small: true,
+        ..Default::default()
+    };
+    // The path wraps before the state and the button at the right of its row.
+    let right_w = |file: &GeneratedFile, replaceable: bool| {
+        let word = state_word(file.outcome);
+        let word_w = if word.is_empty() {
+            0.0
+        } else {
+            draw::galley(ui, word, ty::SECONDARY, pal.ink_2).size().x
+        };
+        let ok = matches!(file.outcome, FileOutcome::Created | FileOutcome::Replaced);
+        let button = if ok && openable(app, &file.path) {
+            Some(open.width(ui))
+        } else if replaceable {
+            Some(replace.width(ui))
+        } else {
+            None
+        };
+        match button {
+            Some(button) if word_w > 0.0 => button + 8.0 + word_w,
+            Some(button) => button,
+            None => word_w,
+        }
+    };
+    let rows: Vec<(String, std::sync::Arc<egui::Galley>)> = result
+        .files
+        .iter()
+        .zip(&replaces)
+        .map(|(file, words)| {
+            let right = (right_w(file, words.is_some()) + 12.0).max(70.0);
+            let path_w = width - 14.0 - size::STATE_MARK - 8.0 - 10.0 - right;
             let shown = path_in_module(app, module, &file.path);
             let galley = draw::galley_wrapped(ui, &shown, PATH, pal.ink, path_w);
             (shown, galley)
@@ -2524,8 +2568,13 @@ fn result_view(
             .request_repaint_after(std::time::Duration::from_millis(30));
     }
     let mut asked = None;
-    for (index, ((file, (shown, galley)), row_h)) in
-        result.files.iter().zip(rows).zip(&heights).enumerate()
+    for (index, (((file, (shown, galley)), row_h), words)) in result
+        .files
+        .iter()
+        .zip(rows)
+        .zip(&heights)
+        .zip(replaces)
+        .enumerate()
     {
         let row = Rect::from_min_size(pos2(rect.left() + 1.0, y), vec2(rect.width() - 2.0, *row_h));
         let ok = matches!(file.outcome, FileOutcome::Created | FileOutcome::Replaced);
@@ -2550,12 +2599,7 @@ fn result_view(
             galley,
         );
         let right = row.right() - 9.0;
-        let state_word = match file.outcome {
-            FileOutcome::Created => "",
-            FileOutcome::Replaced => strings::REPLACED,
-            FileOutcome::Left => strings::EXISTS_LEFT,
-            FileOutcome::Failed => strings::NOT_WRITTEN,
-        };
+        let state_word = state_word(file.outcome);
         let said = if state_word.is_empty() {
             shown.clone()
         } else {
@@ -2594,10 +2638,6 @@ fn result_view(
                 pal.ink_2,
             );
         } else {
-            // A file the run left has its own Replace, not only the first (S9.6).
-            let words = (file.outcome == FileOutcome::Left)
-                .then(|| left_replace(&result, inputs, app, &file.path))
-                .flatten();
             let mut word_right = right;
             if let Some(words) = words {
                 let replace_said = strings::replace_file(&shown);
@@ -2718,6 +2758,16 @@ fn result_view(
         asked = Some(open_file_asked(app, &first_left.path));
     }
     (response.rect.bottom(), asked)
+}
+
+/// The word at the right of a row of a result.
+fn state_word(outcome: FileOutcome) -> &'static str {
+    match outcome {
+        FileOutcome::Created => "",
+        FileOutcome::Replaced => strings::REPLACED,
+        FileOutcome::Left => strings::EXISTS_LEFT,
+        FileOutcome::Failed => strings::NOT_WRITTEN,
+    }
 }
 
 /// The words that write a file the run left again. A file S9.3 took out has the
