@@ -34,6 +34,6 @@
 
 ## 6. Integration
 
-- [ ] 6.1 Run `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings` and `cargo test --workspace` on macOS; all pass
-- [ ] 6.2 Run `openspec validate phase-2-package-data --strict`
-- [ ] 6.3 Two pull requests to `main`: generate data (1 to 4.2 and their images and deviations), then action data (4.3 to 5). A Sol review on each. Archive after the second
+- [x] 6.1 Run `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings` and `cargo test --workspace` on macOS; all pass
+- [x] 6.2 Run `openspec validate phase-2-package-data --strict`
+- [x] 6.3 Two pull requests to `main`: generate data (1 to 4.2 and their images and deviations), then action data (4.3 to 5). A Sol review on each. Archive after the second
