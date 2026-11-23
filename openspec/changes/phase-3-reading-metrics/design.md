@@ -115,7 +115,8 @@ The store keeps, per subject, the counters of the last read that held it (the ba
 `MetricsStore::push(at, reading)` applies these rules, in this order:
 
 1. A reading whose `bounds` differ from the kept ones empties the store first. A reading with no
-   request histogram has no `bounds`; it keeps the kept ones and empties nothing.
+   request histogram has no `bounds`; it keeps the kept ones and empties nothing. When the store
+   holds no bounds yet, it takes those of the reading and gives every kept row a zero per bucket.
 2. `at` not later than the newest kept read: the reading is dropped.
 3. **First read of a run.** A run starts with the first read, and with a read more than 3 paces (45 s)
    after the one before it. Every base is set. Nothing is added. `covered` does not grow.
@@ -444,7 +445,6 @@ pub(crate) struct MetricsStore { /* … */ }
 pub(crate) struct Change<'a> {
     /// The time between reads that the span covers. Never zero.
     pub covered: Duration,
-    pub bounds: &'a [f64],
     /// Every kept subject with what it grew by. Zero is included.
     pub cells: Vec<(&'a Subject, Cell)>,
 }
