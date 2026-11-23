@@ -94,6 +94,7 @@ impl Desk {
                     coverage_report: None,
                     environments: Vec::new(),
                     environment: None,
+                    php: mortise_core::PhpSettings::default(),
                 })
                 .collect(),
             current: Some(0),

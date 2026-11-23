@@ -13,7 +13,7 @@
 
 ## 3. Settings
 
-- [ ] 3.1 Add `PhpSettings` and `AppEntry::php` with `#[serde(default)]` (D8). Verify an old `settings.json` without `php` loads with no runner, the app folder and 10 minutes, and that a Docker runner is saved and loaded again, in the existing settings tests
+- [x] 3.1 Add `PhpSettings` and `AppEntry::php` with `#[serde(default)]` (D8). Verify an old `settings.json` without `php` loads with no runner, the app folder and 10 minutes, and that a Docker runner is saved and loaded again, in the existing settings tests
 
 ## 4. Test
 

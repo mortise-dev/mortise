@@ -12,6 +12,7 @@ use crate::code::propose_monogram;
 use crate::editor::Editor;
 use crate::environment::Environment;
 use crate::findings::DEFAULT_COVERAGE_LIMIT;
+use crate::run::PhpSettings;
 
 /// An app Mortise knows.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -41,6 +42,9 @@ pub struct AppEntry {
     /// The name of the environment the runtime box shows.
     #[serde(default)]
     pub environment: Option<String>,
+    /// How PHP runs for the app.
+    #[serde(default)]
+    pub php: PhpSettings,
 }
 
 impl AppEntry {
@@ -249,6 +253,7 @@ impl Settings {
             coverage_report: None,
             environments: Vec::new(),
             environment: None,
+            php: PhpSettings::default(),
         });
         self.apps.len() - 1
     }
@@ -287,6 +292,7 @@ mod tests {
             coverage_report: None,
             environments: Vec::new(),
             environment: None,
+            php: PhpSettings::default(),
         }
     }
 
@@ -314,7 +320,19 @@ mod tests {
         // The folder does not exist yet.
         let path = dir.path().join("mortise").join("settings.json");
         let settings = Settings {
-            apps: vec![entry("shop-api", "SA"), entry("crm", "CR")],
+            apps: vec![
+                entry("shop-api", "SA"),
+                AppEntry {
+                    php: PhpSettings {
+                        runner: Some(crate::RunnerKind::Docker {
+                            service: "app".into(),
+                        }),
+                        working_folder: Some("api".into()),
+                        time_limit_minutes: 25,
+                    },
+                    ..entry("crm", "CR")
+                },
+            ],
             current: Some(1),
             general: General {
                 text_size: 125,
@@ -380,8 +398,15 @@ mod tests {
     fn a_current_app_that_is_gone_is_dropped() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("settings.json");
-        std::fs::write(&path, r#"{"apps": [], "current": 3}"#).unwrap();
-        assert_eq!(Settings::load(&path).unwrap().current, None);
+        std::fs::write(
+            &path,
+            r#"{"apps": [{"root": "/code/a", "name": "a", "monogram": "AA"}], "current": 3}"#,
+        )
+        .unwrap();
+        let settings = Settings::load(&path).unwrap();
+        assert_eq!(settings.current, None);
+        // A file from before the PHP settings loads with their defaults.
+        assert_eq!(settings.apps[0].php, PhpSettings::default());
     }
 
     #[test]

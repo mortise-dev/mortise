@@ -8,6 +8,9 @@ mod detect;
 pub use detect::{Detected, detect, herd_config_dir};
 pub(crate) mod process;
 
+use std::path::{Path, PathBuf};
+use std::time::Duration;
+
 use serde::{Deserialize, Serialize};
 
 use crate::editor::split_words;
@@ -79,6 +82,43 @@ impl RunnerKind {
                 line: line.to_string(),
             },
         }
+    }
+}
+
+/// How PHP runs for one app.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct PhpSettings {
+    /// `None`: not chosen yet. Detection proposes one; nothing runs.
+    pub runner: Option<RunnerKind>,
+    /// `None`: the app folder. A relative path starts at the app folder.
+    pub working_folder: Option<PathBuf>,
+    /// Minutes before a command is stopped. 10 by default (S8.2).
+    pub time_limit_minutes: u16,
+}
+
+impl Default for PhpSettings {
+    fn default() -> Self {
+        Self {
+            runner: None,
+            working_folder: None,
+            time_limit_minutes: 10,
+        }
+    }
+}
+
+impl PhpSettings {
+    /// The folder a command runs in, for the app in `root`.
+    pub fn folder(&self, root: &Path) -> PathBuf {
+        match &self.working_folder {
+            Some(folder) => root.join(folder),
+            None => root.to_owned(),
+        }
+    }
+
+    /// How long a command may run. 0 minutes reads as 1 minute.
+    pub fn time_limit(&self) -> Duration {
+        Duration::from_secs(u64::from(self.time_limit_minutes.max(1)) * 60)
     }
 }
 
@@ -218,6 +258,19 @@ mod tests {
         ] {
             assert_eq!(RunnerKind::from_line(line), custom(line), "{line}");
         }
+    }
+
+    #[test]
+    fn php_settings_give_the_folder_and_the_time_limit() {
+        let root = Path::new("/code/shop-api");
+        let mut php = PhpSettings {
+            time_limit_minutes: 0,
+            ..PhpSettings::default()
+        };
+        assert_eq!(php.folder(root), root);
+        assert_eq!(php.time_limit(), Duration::from_secs(60));
+        php.working_folder = Some("api".into());
+        assert_eq!(php.folder(root), root.join("api"));
     }
 
     #[test]
