@@ -213,6 +213,10 @@ fn component_items(
         let error = component.details.iter().find(|(key, _)| key == "error");
         match (error, component.status) {
             // The detail is the app's own text, quoted.
+            // An indicator of a module keeps every detail it gives beside its error.
+            (Some(_), _) if of == Of::Module && component.details.len() > 1 => {
+                items.push(Item::Code(detail(component, of)));
+            }
             (Some((_, error)), _) => items.push(Item::Code(error.clone())),
             // The sentence about maintenance mode is for the app's own components.
             (None, Status::OutOfService) if of == Of::App => {

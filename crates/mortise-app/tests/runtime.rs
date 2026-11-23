@@ -404,7 +404,7 @@ fn an_app_that_is_down_quotes_the_failing_component() {
             r#"{"status":"DOWN","components":{"ping":{"status":"UP"},"readinessState":{"status":"UP"},
             "db":{"status":"DOWN","details":{"error":"Illuminate\\Database\\QueryException: SQLSTATE[HY000] [2002] Connection refused."}},
             "cache":{"status":"UP","details":{"store":"redis"}},
-            "module:billing:gateway":{"status":"DOWN"},
+            "module:billing:gateway":{"status":"DOWN","details":{"error":"Timed out","latencyMs":900}},
             "module:billing:db":{"status":"UP","details":{"replicaLag":12}},
             "module:billing:queue":{"status":"OUT_OF_SERVICE","details":{"reason":"Queue paused"}},
             "modules":{"status":"DOWN","details":{"modules":{"Billing":{"enabled":true},
@@ -453,6 +453,8 @@ fn an_app_that_is_down_quotes_the_failing_component() {
     harness.get_by_label("replicaLag 12");
     // Out of service, it gives its own reason, not the app's sentence.
     harness.get_by_label("reason Queue paused");
+    // Down, it keeps its other details beside its error.
+    harness.get_by_label("error Timed out, latencyMs 900");
 }
 
 #[test]

@@ -524,6 +524,7 @@ fn a_module_takes_its_worst_indicator_and_the_error_of_the_modules_component() {
         "module:blog:storage":{"status":"UP"},
         "module:blog:search":{"status":"OUT_OF_SERVICE"},
         "module:legacy:x":{"status":"UP"},
+        "module:legacy:":{"status":"UP"},
         "module:ghost:x":{"status":"DOWN"},
         "modules":{"status":"DOWN","details":{"modules":{
             "Billing":{"enabled":true},
@@ -539,6 +540,8 @@ fn a_module_takes_its_worst_indicator_and_the_error_of_the_modules_component() {
     // indicators say, with the app's sentence.
     let legacy = split.of("Legacy").unwrap();
     assert_eq!(legacy.status, Status::Down);
+    // The package does not refuse an empty key: `module:legacy:` is Legacy's too.
+    assert_eq!(legacy.indicators.len(), 2);
     assert_eq!(
         legacy.error.as_deref(),
         Some("Enabled in the status store, not found on disk.")

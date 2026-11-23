@@ -60,7 +60,8 @@ fn rank(status: Status) -> u8 {
 /// `module:blog:storage`.
 fn indicator_name(name: &str) -> Option<(&str, &str)> {
     let (module, key) = name.strip_prefix("module:")?.split_once(':')?;
-    (!module.is_empty() && !key.is_empty()).then_some((module, key))
+    // The package does not refuse an empty key: `module:billing:` is Billing's.
+    (!module.is_empty()).then_some((module, key))
 }
 
 /// The errors of the `modules` component: the name of each module it reports, in its
