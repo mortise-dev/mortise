@@ -515,7 +515,8 @@ pub(crate) fn samples(text: &str) -> impl Iterator<Item = Sample<'_>>;
 Rules: a `# TYPE name kind` line sets the current family. A sample belongs to it when its name is the
 family name (counter, gauge) or the family name with `_bucket`, `_sum` or `_count` (histogram). Any
 other sample is skipped, as is a family of another kind. `# HELP` and other comments are skipped. A
-timestamp after the value is ignored. Label escapes are `\\`, `\"` and `\n`; any other backslash stays
+timestamp after the value must be a whole number (`i64`) and is not used. A line with any other word
+after the value, or a word after the timestamp, is skipped. Label escapes are `\\`, `\"` and `\n`; any other backslash stays
 as written. A value is what `f64::from_str` reads (`+Inf`, `NaN`); else the line is skipped.
 Lines end with `\n` or `\r\n`.
 

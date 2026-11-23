@@ -14,7 +14,7 @@
 - **THEN** its lines are skipped and both histograms are read
 
 #### Scenario: A bad line
-- **WHEN** one line of an answer has no value, a label value with no closing quote, or two labels with no comma between them
+- **WHEN** one line of an answer has no value, a label value with no closing quote, two labels with no comma between them, a timestamp that is not a whole number, or a word after the timestamp
 - **THEN** that line is skipped and every other line is read
 
 ### Requirement: Metrics are kept in memory only

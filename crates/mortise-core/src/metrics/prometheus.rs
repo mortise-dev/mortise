@@ -106,8 +106,16 @@ fn sample<'a>(line: &'a str, family: &'a str, kind: Kind) -> Option<Sample<'a>> 
         Some(inside) => read_labels(inside, &mut labels, &mut le)?,
         None => rest,
     };
-    // A timestamp may follow the value. It is not read.
-    let value = rest.split_ascii_whitespace().next()?.parse().ok()?;
+    // A timestamp, a whole number of milliseconds, may follow the value. It is not used. Anything
+    // else after the value makes the line one that cannot be read.
+    let mut fields = rest.split_ascii_whitespace();
+    let value = fields.next()?.parse().ok()?;
+    if let Some(timestamp) = fields.next() {
+        timestamp.parse::<i64>().ok()?;
+        if fields.next().is_some() {
+            return None;
+        }
+    }
     let part = match part {
         Part::Bucket(_) => Part::Bucket(le?.parse().ok()?),
         part => part,
@@ -298,6 +306,8 @@ b_sum{x="open} 5
 b_sum{x="a" y="b"} 5
 b_sum{,x="a"} 5
 b_count{x="last" , } 6
+b_count{x="bad time"} 8 soon
+b_count{x="extra"} 8 1700000000000 more
 # TYPE c counter
 c 7
 "#;
