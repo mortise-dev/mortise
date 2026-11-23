@@ -4,6 +4,8 @@
 //! With the `run` feature, [`test_php`] runs `artisan --version` through a runner.
 
 #[cfg(feature = "run")]
+pub mod ansi;
+#[cfg(feature = "run")]
 mod detect;
 #[cfg(feature = "run")]
 pub use detect::{Detected, detect, herd_config_dir};
@@ -243,7 +245,7 @@ pub fn test_php(runner: &RunnerKind, folder: &Path, limit: Duration) -> TestOutc
     let first = |lines: &[String]| {
         lines
             .iter()
-            .map(|text| plain(text))
+            .map(|text| ansi::plain(text))
             .find(|text| !text.trim().is_empty())
     };
     if captured.timed_out {
@@ -261,27 +263,6 @@ pub fn test_php(runner: &RunnerKind, folder: &Path, limit: Duration) -> TestOutc
             line,
         })
     }
-}
-
-/// `text` without its escape sequences `ESC [ ... final byte` (colours, mostly).
-#[cfg(feature = "run")]
-fn plain(text: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    let mut letters = text.chars().peekable();
-    while let Some(letter) = letters.next() {
-        if letter == '\u{1b}' && letters.peek() == Some(&'[') {
-            letters.next();
-            // Parameter and intermediate bytes run up to a final byte in `@` to `~`.
-            for letter in letters.by_ref() {
-                if ('@'..='~').contains(&letter) {
-                    break;
-                }
-            }
-        } else {
-            out.push(letter);
-        }
-    }
-    out
 }
 
 /// Whether a word can stand without quotes: not empty, and only ASCII letters,

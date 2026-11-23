@@ -1,0 +1,155 @@
+//! Command output with its escape sequences read into four styles.
+//!
+//! Colour codes map to [`Style`]. Every other escape sequence is removed.
+
+/// How a piece of an output line is drawn.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Style {
+    Text,
+    Dim,
+    Success,
+    Error,
+}
+
+/// A run of text in one style.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Span {
+    pub style: Style,
+    pub text: String,
+}
+
+/// The spans of one line. The line starts in `Text`. Neighbouring spans of one
+/// style are merged and empty spans are dropped.
+pub fn spans(line: &str) -> Vec<Span> {
+    let mut out: Vec<Span> = Vec::new();
+    let mut style = Style::Text;
+    let mut chars = line.chars();
+    while let Some(c) = chars.next() {
+        match c {
+            // Keep only the text after the last carriage return.
+            '\r' => out.clear(),
+            '\u{1b}' => match chars.next() {
+                Some('[') => {
+                    let mut params = String::new();
+                    // Parameter and intermediate bytes run up to a final byte in `@` to `~`.
+                    for c in chars.by_ref() {
+                        if ('@'..='~').contains(&c) {
+                            if c == 'm' {
+                                style = sgr(&params, style);
+                            }
+                            break;
+                        }
+                        params.push(c);
+                    }
+                }
+                Some(']') => {
+                    // An OSC string ends at BEL or at `ESC \`.
+                    while let Some(c) = chars.next() {
+                        if c == '\u{7}' {
+                            break;
+                        }
+                        if c == '\u{1b}' {
+                            chars.next();
+                            break;
+                        }
+                    }
+                }
+                // A lone ESC and the next character.
+                _ => {}
+            },
+            c => match out.last_mut() {
+                Some(last) if last.style == style => last.text.push(c),
+                _ => out.push(Span {
+                    style,
+                    text: c.to_string(),
+                }),
+            },
+        }
+    }
+    out
+}
+
+/// The line without any escape sequence.
+pub fn plain(line: &str) -> String {
+    spans(line).into_iter().map(|span| span.text).collect()
+}
+
+/// The style after the codes of one SGR sequence, read left to right.
+fn sgr(params: &str, mut style: Style) -> Style {
+    let mut codes = params.split(';');
+    while let Some(code) = codes.next() {
+        match code {
+            "" | "0" | "22" | "39" | "49" => style = Style::Text,
+            "31" | "91" | "41" | "101" => style = Style::Error,
+            "32" | "92" | "42" | "102" => style = Style::Success,
+            "2" | "33" | "93" | "43" | "103" | "90" => style = Style::Dim,
+            // Extended colours keep the style. Their arguments are not codes.
+            "38" | "48" => {
+                let skip = match codes.next() {
+                    Some("5") => 1,
+                    Some("2") => 3,
+                    _ => 0,
+                };
+                codes.by_ref().take(skip).for_each(drop);
+            }
+            _ => {}
+        }
+    }
+    style
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn spans_follow_the_table() {
+        use Style::*;
+        // A line, its spans and its plain text.
+        type Row<'a> = (&'a str, &'a [(Style, &'a str)], &'a str);
+        let table: &[Row] = &[
+            ("plain", &[(Text, "plain")], "plain"),
+            (
+                "\x1b[31mbad\x1b[0m ok",
+                &[(Error, "bad"), (Text, " ok")],
+                "bad ok",
+            ),
+            (
+                "\x1b[102mdone\x1b[39m!",
+                &[(Success, "done"), (Text, "!")],
+                "done!",
+            ),
+            ("\x1b[33mRUNNING\x1b[m", &[(Dim, "RUNNING")], "RUNNING"),
+            ("\x1b[90ma\x1b[22mb", &[(Dim, "a"), (Text, "b")], "ab"),
+            // The last code that sets a style wins, and an unknown code changes nothing.
+            ("\x1b[31;1;32mx", &[(Success, "x")], "x"),
+            // Extended colour arguments are not read as codes.
+            ("\x1b[31m\x1b[38;5;31ma", &[(Error, "a")], "a"),
+            ("\x1b[2m\x1b[48;2;32;31;2mb", &[(Dim, "b")], "b"),
+            // Neighbouring spans of one style merge and empty spans go.
+            ("\x1b[31ma\x1b[41mb\x1b[0m\x1b[0m", &[(Error, "ab")], "ab"),
+            // Other escape sequences are removed.
+            ("a\x1b[2Kb\x1b[1;5Hc", &[(Text, "abc")], "abc"),
+            (
+                "\x1b]8;;http://x\x07link\x1b]8;;\x1b\\ end",
+                &[(Text, "link end")],
+                "link end",
+            ),
+            ("a\x1bMb", &[(Text, "ab")], "ab"),
+            // Only the text after the last carriage return stays.
+            ("10%\r50%\r\x1b[32m100%", &[(Success, "100%")], "100%"),
+            ("", &[], ""),
+        ];
+        for (line, want, text) in table {
+            let want: Vec<Span> = want
+                .iter()
+                .map(|(style, text)| Span {
+                    style: *style,
+                    text: text.to_string(),
+                })
+                .collect();
+            assert_eq!(spans(line), want, "{line:?}");
+            assert_eq!(plain(line), *text, "{line:?}");
+        }
+    }
+}
