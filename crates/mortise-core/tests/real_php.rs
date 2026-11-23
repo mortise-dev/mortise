@@ -4,7 +4,8 @@
 //! `nwidart/laravel-modules` and SQLite. `MORTISE_REAL_APP` names the folder of
 //! that app. The job "Real PHP" in `.github/workflows/ci.yml` makes one. Run it with
 //! `cargo test -p mortise-core --test real_php -- --ignored --test-threads=1`.
-//! It writes into that app and leaves it as it found it.
+//! It writes into that app and leaves it as it found it. It refuses to run when the
+//! app already has its module, and removes the module it made also when it fails.
 #![cfg(feature = "run")]
 
 use std::collections::BTreeMap;
@@ -13,8 +14,8 @@ use std::time::{Duration, Instant};
 
 use mortise_core::{
     Action, Catalog, Context, FileOutcome, Filled, GeneratedFile, MODULE_MAKE, MigrationCount,
-    Options, PhpSettings, Plan, RunEnd, RunEvent, RunnerKind, Runs, Target, autoload_failed,
-    failed_migration, generated_files, migration_count, read_app,
+    Options, PhpSettings, Plan, RunEnd, RunEvent, RunnerKind, Runs, STOP_WAIT, Target,
+    autoload_failed, failed_migration, generated_files, migration_count, read_app,
 };
 
 /// The module the test makes and deletes. A name no real app is likely to hold.
@@ -45,17 +46,57 @@ fn php() -> PhpSettings {
 /// Runs `args` to its end and gives the lines of both streams, as the app keeps
 /// them. Fails unless the command exits with 0.
 fn run(runs: &Runs, app: &Path, args: &[String]) -> Vec<String> {
-    let started = runs.start(app, &php(), args, LIMIT).unwrap();
+    try_run(runs, app, args).unwrap_or_else(|error| panic!("{error}"))
+}
+
+/// [`run`] without a panic, for the clean up. The run is over when it returns.
+fn try_run(runs: &Runs, app: &Path, args: &[String]) -> Result<Vec<String>, String> {
+    let started = runs
+        .start(app, &php(), args, LIMIT)
+        .map_err(|error| format!("{args:?} did not start: {error:?}"))?;
     let mut lines = Vec::new();
     for event in started.wait(Instant::now() + LIMIT + Duration::from_secs(10)) {
         match event {
             RunEvent::Line { text, .. } => lines.push(text),
-            RunEvent::Cut => panic!("{args:?}: the output passed the limit"),
-            RunEvent::Ended(RunEnd::Exited { code: Some(0), .. }) => return lines,
-            RunEvent::Ended(end) => panic!("{args:?} ended with {end:?}:\n{}", lines.join("\n")),
+            RunEvent::Cut => return Err(format!("{args:?}: the output passed the limit")),
+            RunEvent::Ended(RunEnd::Exited { code: Some(0), .. }) => return Ok(lines),
+            RunEvent::Ended(end) => {
+                return Err(format!(
+                    "{args:?} ended with {end:?}:\n{}",
+                    lines.join("\n")
+                ));
+            }
         }
     }
-    panic!("{args:?} did not end:\n{}", lines.join("\n"));
+    started.stop();
+    started.wait(Instant::now() + STOP_WAIT);
+    Err(format!("{args:?} did not end:\n{}", lines.join("\n")))
+}
+
+/// Rolls back and deletes [`MODULE`] when it drops, also after a failed assertion.
+/// The test makes it only after it saw that the app did not have the module.
+struct Made<'a> {
+    runs: &'a Runs,
+    app: &'a Path,
+    /// True once the test removed the module itself.
+    removed: bool,
+}
+
+impl Drop for Made<'_> {
+    fn drop(&mut self) {
+        if self.removed || !module_dir(self.app).exists() {
+            return;
+        }
+        for args in [action(Action::RollBack), action(Action::DeleteModule)] {
+            if let Err(error) = try_run(self.runs, self.app, &args) {
+                eprintln!("The clean up failed: {error}");
+            }
+        }
+    }
+}
+
+fn module_dir(app: &Path) -> PathBuf {
+    app.join("Modules").join(MODULE)
 }
 
 /// The words of an action on [`MODULE`], outside production, as the app plans them.
@@ -113,11 +154,16 @@ fn make_generate_migrate_and_delete_a_module() {
     let app = app();
     let runs = Runs::new();
 
-    // A run that failed half way leaves the module: take it away first.
-    if has_module(&app) {
-        run(&runs, &app, &action(Action::RollBack));
-        run(&runs, &app, &action(Action::DeleteModule));
-    }
+    assert!(
+        !has_module(&app) && !module_dir(&app).exists(),
+        "The app already has a module {MODULE}. The test does not change a module it did \
+         not make: delete it, or use another app."
+    );
+    let mut made = Made {
+        runs: &runs,
+        app: &app,
+        removed: false,
+    };
 
     let lines = run(
         &runs,
@@ -187,6 +233,7 @@ fn make_generate_migrate_and_delete_a_module() {
     let delete = action(Action::DeleteModule);
     assert!(delete.contains(&"--force".to_string()), "{delete:?}");
     run(&runs, &app, &delete);
+    made.removed = true;
     assert!(!has_module(&app));
-    assert!(!app.join("Modules").join(MODULE).exists());
+    assert!(!module_dir(&app).exists());
 }
