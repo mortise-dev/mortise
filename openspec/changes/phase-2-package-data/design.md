@@ -587,6 +587,8 @@ accessible name and a 24 px target (`tests/accessibility.rs`).
 - `PackageData::migrations_of_all` holds the modules that were on at the read of every module, not a
   flag. A module turned on after that read is covered only by its own entry, so "All modules" reads
   "Not read for every module yet." until a read covers it.
+- "Translations are complete" counts as a check only when the report checked a module of the app. A
+  report whose modules all have one locale (`checked: false`) adds no passing check with 0 modules.
 
 ## Risks / Trade-offs
 

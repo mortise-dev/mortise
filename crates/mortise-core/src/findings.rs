@@ -373,7 +373,10 @@ pub(crate) fn find(subject: &Subject<'_>) -> Findings {
                 })
             })
             .collect();
-        ran(Check::TranslationsComplete, checked, found);
+        // A report with no module of two locales checked nothing: no result.
+        if checked > 0 {
+            ran(Check::TranslationsComplete, checked, found);
+        }
     }
 
     // The to do list is of the default connection, the one the app migrates.

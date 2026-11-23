@@ -74,8 +74,8 @@ whatever connection the state was read for. Mortise MUST NOT start a read of the
 - **THEN** after the run every state box reads "Not read yet."
 
 ### Requirement: Translations in Findings
-After Check translations ran with its JSON answer, Findings SHALL list the check "Translations are
-complete" and a warning for each language of a module that lacks keys or files, such as "Checkout: 4 keys
+After Check translations ran with its JSON answer and checked a module of the app, Findings SHALL list
+the check "Translations are complete" and a warning for each language of a module that lacks keys or files, such as "Checkout: 4 keys
 in en are missing in fr.". A check of one module MUST keep the report of the others.
 
 #### Scenario: A missing key

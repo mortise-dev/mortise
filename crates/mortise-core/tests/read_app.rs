@@ -657,13 +657,13 @@ fn finds_what_breaks_a_rule_or_a_check() {
     let state = document(&recorded("module-migrate-status-all")).unwrap();
     package.merge_migrations(state, &Target::All, "", &[], 0);
     package.merge_translations(document(&recorded("module-lang-json")).unwrap());
-    let options = ReadOptions {
+    let mut options = ReadOptions {
         package,
         ..ReadOptions::default()
     };
     let root = fixture("shop-api");
-    let app =
-        read_app_cached(&root, &BTreeMap::new(), &options, &mut ReadCache::default()).unwrap();
+    let mut cache = ReadCache::default();
+    let app = read_app_cached(&root, &BTreeMap::new(), &options, &mut cache).unwrap();
     let findings = &app.findings;
     assert_eq!((findings.problems(), findings.warnings()), (2, 2));
 
@@ -774,6 +774,13 @@ fn finds_what_breaks_a_rule_or_a_check() {
             (Check::NoStaleStatus, 7)
         ]
     );
+
+    // A report that checked no module, each with one locale, gives no result.
+    for module in &mut options.package.translations.as_mut().unwrap().modules {
+        (module.checked, module.locales) = (false, BTreeMap::new());
+    }
+    let app = read_app_cached(&root, &BTreeMap::new(), &options, &mut cache).unwrap();
+    assert_eq!(app.findings.rules_and_checks(), (2, 4));
 }
 
 #[test]
