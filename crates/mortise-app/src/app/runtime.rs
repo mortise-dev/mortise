@@ -1,7 +1,9 @@
 //! Runtime: the chosen environment of the app on screen, and what its box asks for.
 
 use eframe::egui;
-use mortise_core::{LiveRuntime, LiveState};
+use std::sync::Arc;
+
+use mortise_core::{LiveMetrics, LiveRuntime, LiveState};
 
 use super::{Connected, MortiseApp};
 use crate::runtime::view::{Brief, RuntimeAction};
@@ -32,13 +34,23 @@ impl MortiseApp {
             });
             if !same {
                 let ctx = ctx.clone();
-                let live = LiveRuntime::open(environment.clone(), secret.clone(), move || {
-                    ctx.request_repaint();
-                });
+                let metrics = match &self.metrics_clock {
+                    Some(clock) => LiveMetrics::with_clock(Arc::clone(clock)),
+                    None => LiveMetrics::new(),
+                };
+                let live = LiveRuntime::open_with_metrics(
+                    environment.clone(),
+                    secret.clone(),
+                    self.pace,
+                    move || ctx.request_repaint(),
+                    metrics.sink(),
+                );
                 open.runtime = Some(Connected {
                     environment: environment.clone(),
                     secret,
                     live,
+                    metrics,
+                    figures: None,
                 });
             }
             if let Some(connected) = &open.runtime {

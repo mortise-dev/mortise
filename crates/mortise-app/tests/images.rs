@@ -269,11 +269,7 @@ fn summary_and_findings() {
             .get_by_role_and_label(Role::ListBoxOption, "Checkout")
             .click();
         shots.take(&mut harness, "s4.3-summary-module");
-        // S7.4: a tab of a later phase.
-        press(&mut harness, Key::Num5);
-        shots.take(&mut harness, "s7.4-metrics");
         // S13.1: the index as a strip.
-        press(&mut harness, Key::Num1);
         chord(&mut harness, Key::B);
         shots.take(&mut harness, "s13.1-index-strip");
     }

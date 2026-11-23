@@ -110,7 +110,7 @@ fn the_workbench_and_its_tabs() {
     for (digit, screen) in [
         (Key::Num3, "Generate of all modules"),
         (Key::Num4, "Actions of all modules"),
-        (Key::Num5, "a tab of a later phase"),
+        (Key::Num5, "Metrics, not exposed"),
     ] {
         press(&mut harness, digit);
         audit(&harness, screen);

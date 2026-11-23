@@ -10,8 +10,9 @@ use crate::boundary::view::{self as boundary, BoundaryState};
 use crate::findings::view as findings_view;
 use crate::generate::view::{self as generate_view, GenerateInputs, GenerateState};
 use crate::index::view::Selection;
+use crate::metrics::view::{self as metrics_view, MetricsView};
 use crate::summary::view::{self as summary, SummaryState};
-use crate::ui::draw::{self, Button, ButtonKind, EmptyMark, Icon, StampState, empty_state};
+use crate::ui::draw::{self, Button, ButtonKind, Icon, StampState};
 use crate::ui::theme::{Face, Palette, size, ty};
 
 /// What a tab asks the app to do. Every tab returns it, not only Boundary.
@@ -91,23 +92,6 @@ impl Tab {
             Tab::Metrics => "5",
         }
     }
-
-    /// A tab that cannot do its work yet explains itself (S7.4): icon, title, paragraph.
-    fn explanation(self) -> Option<(Icon, &'static str, &'static str)> {
-        match self {
-            Tab::Summary => None,
-            Tab::Boundary => None,
-            Tab::Generate => None,
-            Tab::Actions => None,
-            // The spec gives the text of Generate and says Metrics uses the same block.
-            // This one is written to match it.
-            Tab::Metrics => Some((
-                Icon::Metrics,
-                strings::METRICS_UNAVAILABLE_TITLE,
-                strings::METRICS_UNAVAILABLE,
-            )),
-        }
-    }
 }
 
 /// Paints the workspace into `rect`.
@@ -132,6 +116,8 @@ pub struct WorkState<'a> {
     /// What the Generate tab keeps, and what it needs.
     pub generate: &'a mut GenerateState,
     pub generate_inputs: GenerateInputs<'a>,
+    /// What the Metrics tab shows. `None` unless the Metrics tab was open when the frame began.
+    pub metrics: Option<MetricsView<'a>>,
 }
 
 /// Returns what was asked for in the workspace, such as a module to select in the index.
@@ -425,12 +411,16 @@ pub fn workspace(
     if findings {
         return findings_view::findings(ui, pal, body, app, state.name, state.finding_row);
     }
-    let in_body = match (*tab, tab.explanation()) {
-        (_, Some((icon, title, text))) => {
-            empty_state(ui, pal, body, EmptyMark::Icon(icon), title, &[text], 0.0);
-            None
-        }
-        (Tab::Generate, None) => {
+    let in_body = match *tab {
+        Tab::Metrics => match &state.metrics {
+            Some(view) => metrics_view::metrics(ui, pal, body, app, view, state.keyboard),
+            // The tab was chosen in this frame: it draws in the next one.
+            None => {
+                ui.ctx().request_repaint();
+                None
+            }
+        },
+        Tab::Generate => {
             let WorkState {
                 generate,
                 generate_inputs,
@@ -438,7 +428,7 @@ pub fn workspace(
             } = state;
             generate_view::generate(ui, pal, body, app, module, generate, &generate_inputs)
         }
-        (Tab::Actions, None) => {
+        Tab::Actions => {
             let WorkState {
                 actions,
                 actions_inputs,
@@ -446,7 +436,7 @@ pub fn workspace(
             } = state;
             actions_view::actions(ui, pal, body, app, module, actions, &actions_inputs)
         }
-        (Tab::Boundary, None) => {
+        Tab::Boundary => {
             let WorkState {
                 name,
                 boundary,
@@ -459,7 +449,7 @@ pub fn workspace(
                 ui, pal, body, app, name, module, boundary, &surface, keyboard, mac,
             )
         }
-        (_, None) => summary::summary(ui, pal, body, app, state.name, module, state.summary),
+        Tab::Summary => summary::summary(ui, pal, body, app, state.name, module, state.summary),
     };
     in_body.or(header_action)
 }
