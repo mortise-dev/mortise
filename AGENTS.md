@@ -58,6 +58,9 @@ cargo test --workspace
 CI runs these on Linux, macOS and Windows (`.github/workflows/ci.yml`). Run all of them before a commit.
 CI also checks the commit subjects, `licenses/THIRD-PARTY.md` (run `python3 tools/third-party-licenses.py`
 after a dependency changed), `cargo audit`, secrets in the history and OpenSpec.
+A job that is not required runs the package's commands in a Laravel app it creates with Composer.
+To run it here, make the app as the job "Real PHP" in `ci.yml` does, then
+`MORTISE_REAL_APP=/path/to/app cargo test -p mortise-core --test real_php -- --ignored --test-threads=1`.
 
 The installers come from cargo-packager, configured in `crates/mortise-app/Cargo.toml`:
 
