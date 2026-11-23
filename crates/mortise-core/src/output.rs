@@ -1,10 +1,15 @@
-//! What the output of a run says about migrations and about a refusal.
+//! What the output of a run says about migrations, a refusal and generated files.
 //!
 //! Laravel prints one task line per migration: the name, dots, a time and `DONE`
 //! or `FAIL`. The package prints `Running Migration <Name> Module` before the
 //! migrations of each module. A roll back prints `Rollback: <name>` as a task
 //! line, and a reset prints it as a line of its own. The reading depends on these
 //! words, which Laravel and the package can change.
+//!
+//! A generator prints `Generating file <path> ... <time> DONE` or `FAIL` for each
+//! file. A `FAIL` is followed by an error line `File : <path> already exists.`
+//! when the file is there. `module:make` prints `composer dump-autoload failed.`
+//! when the autoload step fails.
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -89,6 +94,103 @@ pub fn migration_file(module_dir: &Path, migration: &str) -> Option<PathBuf> {
         .join("migrations")
         .join(format!("{migration}.php"));
     path.is_file().then_some(path)
+}
+
+/// What a generator run did with one file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FileOutcome {
+    /// The file is new.
+    Created,
+    /// The file existed and the run, which carried `--force`, wrote it again.
+    Replaced,
+    /// The file exists and the run did not write it.
+    Left,
+    /// The file was not written for another reason.
+    Failed,
+}
+
+/// One file of a generator run.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GeneratedFile {
+    /// The path as the output prints it.
+    pub path: String,
+    pub outcome: FileOutcome,
+}
+
+/// The files of a generator run, in output order. `force` is true when the run
+/// carried `--force`.
+///
+/// The exit code does not say what happened to each file: `module:make-model`
+/// exits 0 when it leaves its policy.
+pub fn generated_files(lines: &[String], force: bool) -> Vec<GeneratedFile> {
+    let mut files: Vec<GeneratedFile> = Vec::new();
+    for line in lines {
+        let line = plain(line);
+        if let Some((path, done)) = generating_line(&line) {
+            let outcome = match (done, force) {
+                (true, true) => FileOutcome::Replaced,
+                (true, false) => FileOutcome::Created,
+                (false, _) => FileOutcome::Failed,
+            };
+            files.push(GeneratedFile {
+                path: path.to_string(),
+                outcome,
+            });
+        } else if let Some(path) = exists_path(&line) {
+            let failed = files
+                .iter_mut()
+                .rev()
+                .find(|file| file.path == path && file.outcome == FileOutcome::Failed);
+            match failed {
+                Some(file) => file.outcome = FileOutcome::Left,
+                None => files.push(GeneratedFile {
+                    path: path.to_string(),
+                    outcome: FileOutcome::Left,
+                }),
+            }
+        }
+    }
+    files
+}
+
+/// True when the output says that `composer dump-autoload` failed.
+pub fn autoload_failed(lines: &[String]) -> bool {
+    lines.iter().any(|line| {
+        plain(line)
+            .trim()
+            .ends_with("composer dump-autoload failed.")
+    })
+}
+
+/// The path and the result (`true` for `DONE`) of a `Generating file` line. The
+/// path ends before the dots and the time.
+fn generating_line(line: &str) -> Option<(&str, bool)> {
+    let rest = line.trim().strip_prefix("Generating file ")?;
+    let (rest, end) = rest.trim_end().rsplit_once(' ')?;
+    let done = match end {
+        "DONE" => true,
+        "FAIL" => false,
+        _ => return None,
+    };
+    let rest = rest.trim_end();
+    let rest = match rest.rsplit_once(' ') {
+        Some((before, time)) if is_time(time) => before,
+        _ => rest,
+    };
+    let path = rest.trim_end_matches(['.', ' ']);
+    (!path.is_empty()).then_some((path, done))
+}
+
+/// A time such as `0.24ms` or `1s`.
+fn is_time(word: &str) -> bool {
+    word.starts_with(|c: char| c.is_ascii_digit()) && word.ends_with('s')
+}
+
+/// The path of a `File : <path> already exists.` line.
+fn exists_path(line: &str) -> Option<&str> {
+    let (_, rest) = line.split_once("File : ")?;
+    let path = rest.trim_end().strip_suffix(" already exists.")?;
+    (!path.is_empty()).then_some(path)
 }
 
 /// The module of a `Running Migration <Name> Module` line.
@@ -217,5 +319,78 @@ mod tests {
             migration_file(&billing, "2026_01_11_000000_create_refunds_table"),
             None
         );
+    }
+
+    fn files(name: &str, force: bool) -> Vec<(String, FileOutcome)> {
+        generated_files(&recording(name), force)
+            .into_iter()
+            .map(|file| (file.path, file.outcome))
+            .collect()
+    }
+
+    #[test]
+    fn a_generator_run_creates_its_files() {
+        let created = |path: &str| (path.to_string(), FileOutcome::Created);
+        assert_eq!(
+            files("module-make-model-migration-policy", false),
+            vec![
+                created("Modules/Billing/app/Models/PaymentIntent.php"),
+                created(
+                    "Modules/Billing/database/migrations/2026_11_23_071900_create_payment_intents_table.php"
+                ),
+                created("Modules/Billing/app/Policies/PaymentIntentPolicy.php"),
+            ]
+        );
+        let module = files("module-make", false);
+        assert_eq!(module[0], created("Modules/Blog/module.json"));
+        assert!(
+            module
+                .iter()
+                .all(|(_, outcome)| *outcome == FileOutcome::Created)
+        );
+        assert_eq!(files("module-make-api", false).len(), 16);
+    }
+
+    #[test]
+    fn a_file_that_exists_is_left() {
+        // The model run exits 0 and leaves only its policy.
+        let outcomes: Vec<_> = files("module-make-model-policy-exists", false)
+            .into_iter()
+            .map(|(_, outcome)| outcome)
+            .collect();
+        assert_eq!(
+            outcomes,
+            [
+                FileOutcome::Created,
+                FileOutcome::Created,
+                FileOutcome::Left
+            ]
+        );
+        assert_eq!(
+            files("module-make-controller-exists", false),
+            vec![(
+                "Modules/Blog/app/Http/Controllers/PostController.php".to_string(),
+                FileOutcome::Left
+            )]
+        );
+    }
+
+    #[test]
+    fn a_forced_run_replaces_its_file() {
+        assert_eq!(
+            files("module-make-policy-force", true),
+            vec![(
+                "Modules/Billing/app/Policies/InvoicePolicy.php".to_string(),
+                FileOutcome::Replaced
+            )]
+        );
+    }
+
+    #[test]
+    fn a_failed_autoload_is_read_from_its_error_line() {
+        assert!(!autoload_failed(&recording("module-make-api")));
+        assert!(autoload_failed(&[
+            "  \x1b[37;41m ERROR \x1b[39;49m composer dump-autoload failed.  ".to_string()
+        ]));
     }
 }
