@@ -13,7 +13,7 @@ use eframe::egui::{
 };
 use mortise_core::{
     AppSnapshot, Catalog, FileOutcome, Filled, GeneratedFile, Generator, Group, MODULE_MAKE,
-    Module, NameRule, RunnerKind, Severity, replace_words, shipped_for,
+    Module, NameRule, RunnerKind, Severity, replace_words, shipped_mark,
 };
 
 use crate::boundary::BoundaryAction;
@@ -34,6 +34,9 @@ const MODEL_CALLS: [&str; 7] = [
     "policy",
     "seed",
 ];
+/// The options a form does not offer: Replace is the way for `--force` (S9.6), and
+/// Mortise adds `--dry-run` and `--json` itself (design D4).
+const NOT_OFFERED: [&str; 3] = ["force", "dry-run", "json"];
 /// The gap between the columns of the picker and of a form.
 const GAP: f32 = 14.0;
 /// A row of the picker: 26 px and a hairline under it.
@@ -88,6 +91,26 @@ pub enum GenerateAsk {
     Replace { file: String, run: GenerateRun },
     /// Select "All modules" and open the new module form.
     NewModule,
+    /// Read the generators of the app: `module:generators --json` (design D4).
+    ReadCatalog,
+}
+
+/// The artisan words of the read of the app's generators (P3).
+pub fn read_catalog_words() -> Vec<String> {
+    vec!["module:generators".to_owned(), "--json".to_owned()]
+}
+
+/// What the picker of a 13.4 app says about the read of its generators (design D4).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CatalogRead<'a> {
+    /// Not read in this session, and no cache for the app's version.
+    NotRead,
+    /// The read runs.
+    Reading,
+    /// The list is the one read at this time, in ms since 1970.
+    Read(i64),
+    /// The last read gave no list: why.
+    Failed(&'a str),
 }
 
 /// The result of a generator run, read from its output (S9.5, S9.6).
@@ -240,6 +263,10 @@ impl GenerateState {
 pub struct GenerateInputs<'a> {
     /// The display name of the app.
     pub app: &'a str,
+    /// The generators of the app: read from it, or shipped for its version.
+    pub catalog: &'a Catalog,
+    /// The read of the generators, on a 13.4 app only.
+    pub catalog_read: Option<CatalogRead<'a>>,
     /// How PHP runs for the app. Without it nothing can run.
     pub runner: Option<&'a RunnerKind>,
     /// The label of the command that runs in the app, if one does.
@@ -390,7 +417,7 @@ fn picker(
     state: &mut GenerateState,
     inputs: &GenerateInputs<'_>,
 ) -> (f32, Option<BoundaryAction>) {
-    let catalog = Catalog::v13_3();
+    let catalog = inputs.catalog;
     let groups = listed(catalog, module, &state.filter);
     let items: Vec<&Generator> = groups
         .iter()
@@ -495,20 +522,29 @@ fn picker(
         ty::SECONDARY,
         pal.ink_2,
     );
-    if !shipped_for(app.package.full()) {
+    let read = matches!(inputs.catalog_read, Some(CatalogRead::Read(_)));
+    if let Some(version) = shipped_mark(&app.package).filter(|_| !read) {
         draw::label(
             ui,
             pos2(field.right() + 10.0, mid),
             Align2::LEFT_CENTER,
-            strings::FOR_PACKAGE_13_3,
+            &strings::for_package(version),
             ty::SECONDARY,
             pal.warn,
         );
     }
 
+    // On a 13.4 app, the read of its generators under the field.
+    let mut y = field.bottom() + 12.0;
+    let mut read_asked = false;
+    if let Some(read) = inputs.catalog_read {
+        let (bottom, pressed) = catalog_read(ui, pal, pos2(min.x, y), width, read, inputs);
+        read_asked = pressed;
+        y = bottom + 12.0;
+    }
+
     // The groups, in three columns. A heading spans the three.
     let col_w = ((width - 2.0 * GAP) / 3.0).floor();
-    let mut y = field.bottom() + 12.0;
     let salt = ui.scope_id().with("generate-picker");
     let any_focused = (0..items.len()).any(|i| ui.memory(|memory| memory.has_focus(salt.with(i))));
     // The rows are one stop: the arrows move the current row while one has focus.
@@ -572,7 +608,94 @@ fn picker(
         ui.ctx().request_repaint();
         None
     });
+    let asked = asked.or(read_asked.then_some(BoundaryAction::Generate(GenerateAsk::ReadCatalog)));
     (y, asked)
+}
+
+/// The read of the app's generators (design D4): a quiet button with what the last
+/// read gave beside it, the line it runs under it, and why a read gave no list.
+/// Returns its bottom and whether the button was pressed.
+fn catalog_read(
+    ui: &Ui,
+    pal: &Palette,
+    min: Pos2,
+    width: f32,
+    read: CatalogRead<'_>,
+    inputs: &GenerateInputs<'_>,
+) -> (f32, bool) {
+    let label = match read {
+        CatalogRead::Read(_) => strings::READ_AGAIN.to_owned(),
+        _ => strings::read_generators(inputs.app),
+    };
+    let off = if let Some(label) = inputs.busy {
+        Some(strings::is_running(label))
+    } else if line_now(inputs.runner, &[]).is_none() {
+        Some(strings::choose_php(inputs.app))
+    } else {
+        None
+    };
+    let button = Button {
+        label: &label,
+        kind: ButtonKind::Ghost,
+        disabled: off.is_some(),
+        ..Default::default()
+    };
+    let response = button.show(ui, pal, min, inputs.keyboard);
+    let mid = response.rect.center().y;
+    let right = response.rect.right();
+    let pressed = response.clicked() && off.is_none();
+    if let Some(tip) = &off {
+        draw::tooltip(response, pal, tip);
+    }
+    let status = match read {
+        CatalogRead::Reading => strings::READING.to_owned(),
+        CatalogRead::Read(ms) => strings::read_from(inputs.app, &clock(ms)),
+        CatalogRead::NotRead | CatalogRead::Failed(_) => String::new(),
+    };
+    if !status.is_empty() {
+        draw::label(
+            ui,
+            pos2(right + 10.0, mid),
+            Align2::LEFT_CENTER,
+            &status,
+            ty::SECONDARY,
+            pal.ink_2,
+        );
+    }
+
+    let words = read_catalog_words();
+    let line = line_now(inputs.runner, &words)
+        .unwrap_or_else(|| format!("php artisan {}", words.join(" ")));
+    let code = draw::code_block(
+        ui,
+        pal,
+        pos2(min.x, min.y + button.height() + 6.0),
+        width,
+        &line,
+    );
+    let CatalogRead::Failed(reason) = read else {
+        return (code.bottom(), pressed);
+    };
+    let text = strings::generators_not_read(inputs.app, reason);
+    let bottom = draw::paragraph(
+        ui,
+        pos2(min.x, code.bottom() + 6.0),
+        &text,
+        HINT,
+        pal.bad,
+        width,
+    )
+    .bottom();
+    (bottom, pressed)
+}
+
+/// A time in ms since 1970 as the local clock shows it: `14:05`.
+fn clock(ms: i64) -> String {
+    jiff::Timestamp::from_millisecond(ms)
+        .unwrap_or(jiff::Timestamp::UNIX_EPOCH)
+        .to_zoned(jiff::tz::TimeZone::system())
+        .strftime("%H:%M")
+        .to_string()
 }
 
 /// The filter field of the picker (C3): a search icon, the text, and the key that
@@ -735,7 +858,7 @@ fn form(
     run_key: bool,
     copy_key: bool,
 ) -> (f32, Option<BoundaryAction>) {
-    let catalog = Catalog::v13_3();
+    let catalog = inputs.catalog;
     let Some(generator) = catalog.get(&state.generator) else {
         state.view = View::Picker;
         return (min.y, None);
@@ -1007,7 +1130,7 @@ fn described(text: &str) -> &str {
 
 /// The fields of a generator the spec does not draw: its name, its options with a
 /// value, then its flags under "Options", labelled from the package's descriptions
-/// (deviation S46). `--force` is not offered: Replace is the way (S9.6).
+/// (deviation S46). `--force`, `--dry-run` and `--json` are not offered ([`NOT_OFFERED`]).
 #[expect(clippy::too_many_arguments)]
 fn generator_fields(
     ui: &mut Ui,
@@ -1038,7 +1161,7 @@ fn generator_fields(
     for option in generator
         .options
         .iter()
-        .filter(|option| option.accepts_value && option.name != "force")
+        .filter(|option| option.accepts_value && !NOT_OFFERED.contains(&option.name.as_str()))
     {
         let flag = format!("--{}", option.name);
         let text = state.filled.values.entry(option.name.clone()).or_default();
@@ -1056,7 +1179,7 @@ fn generator_fields(
     let flags: Vec<_> = generator
         .options
         .iter()
-        .filter(|option| !option.accepts_value && option.name != "force")
+        .filter(|option| !option.accepts_value && !NOT_OFFERED.contains(&option.name.as_str()))
         .collect();
     if !flags.is_empty() {
         let top = field_label(ui, pal, pos2(min.x, y), strings::OPTIONS, "");
@@ -1695,7 +1818,7 @@ fn result_view(
     let Some(first_left) = left.first() else {
         return (y - 12.0, asked);
     };
-    let words = replace_words(Catalog::v13_3(), &result.args, &first_left.path);
+    let words = replace_words(inputs.catalog, &result.args, &first_left.path);
     let name = file_name(&first_left.path);
     if let Some(words) = words {
         let label = strings::replace_file(name);

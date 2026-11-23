@@ -2591,8 +2591,54 @@ pub const FIND_A_GENERATOR: &str = "Find a generator";
 /// Not in the spec: the line of the picker under "All modules", which lists New module only.
 pub const SELECT_A_MODULE_TO_GENERATE: &str =
     "Select a module in the index to generate files in it.";
-/// The mark of the picker when the app has another version than the shipped catalog.
-pub const FOR_PACKAGE_13_3: &str = "for nwidart/laravel-modules 13.3";
+/// The mark of the picker when the app has another version than the shipped
+/// catalog: `for nwidart/laravel-modules 13.3`.
+pub fn for_package(version: &str) -> String {
+    format!("for nwidart/laravel-modules {version}")
+}
+
+/// Not in the spec: the button of the picker that reads the generators of a 13.4
+/// app (design D4): `Read the generators of shop-api`.
+pub fn read_generators(app: &str) -> String {
+    format!("Read the generators of {app}")
+}
+
+/// Not in the spec: the button that reads the generators again after a read.
+pub const READ_AGAIN: &str = "Read again";
+
+/// Not in the spec: the place of the data while a read of it runs (design D3).
+pub const READING: &str = "Reading";
+
+/// Not in the spec: the picker after a read of the generators, `Read from shop-api at 14:05.`
+pub fn read_from(app: &str, clock: &str) -> String {
+    format!("Read from {app} at {clock}.")
+}
+
+/// Not in the spec: the picker after a read of the generators that gave none (design D2).
+pub fn generators_not_read(app: &str, reason: &str) -> String {
+    format!(
+        "Mortise could not read the generators of {app}: \"{reason}\". The list is the one \
+         shipped for 13.4."
+    )
+}
+
+/// Not in the spec: the reason in quotes of a read that gave no document (design D2):
+/// serde's message for a malformed one, else the last line of standard error, else
+/// how the read ended.
+pub fn no_document(end: &mortise_core::ReadEnd, error: &mortise_core::DataError) -> String {
+    use mortise_core::{DataError, RunEnd};
+    if let DataError::Malformed(message) = error {
+        return message.clone();
+    }
+    end.error_line().unwrap_or_else(|| match end.end {
+        RunEnd::Exited {
+            code: Some(code), ..
+        } => format!("exit code {code}"),
+        RunEnd::Exited { code: None, .. } => "ended by a signal".to_owned(),
+        RunEnd::Stopped { limit: Some(_), .. } => "stopped at the time limit".to_owned(),
+        RunEnd::Stopped { limit: None, .. } => "stopped".to_owned(),
+    })
+}
 
 /// `41 generators for Billing, and New module. Enter opens the form.`
 pub fn generators_for(n: usize, module: &str) -> String {

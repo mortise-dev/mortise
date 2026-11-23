@@ -143,17 +143,42 @@ fn the_picker_counts_the_generators_and_its_filter_opens_a_form() {
     );
 
     // Another version of the package: the picker says which one it describes.
-    let lock = std::fs::read_to_string(root.join("composer.lock")).unwrap();
-    std::fs::write(
-        root.join("composer.lock"),
-        lock.replace("\"version\": \"v13.3.0\"", "\"version\": \"v13.2.0\""),
-    )
-    .unwrap();
+    common::package_version(&root, "v13.2.0");
     harness.key_press_modifiers(Modifiers::COMMAND, Key::R);
     common::wait_until(&mut harness, "the package is 13.2.0", |app| {
         app.app().is_some_and(|app| app.package.full() == "13.2.0")
     });
     harness.get_by_label("for nwidart/laravel-modules 13.3");
+}
+
+#[test]
+fn a_13_4_app_reads_its_generators_with_the_line_on_screen() {
+    let (desk, root) = desk();
+    common::package_version(&root, "v13.4.0");
+    let mut harness = desk.start();
+    generate_in(&mut harness, "Billing");
+    // The list shipped for 13.4, not marked, and the button with the line it runs.
+    harness.get_by_label("42 generators for Billing, and New module. Enter opens the form.");
+    assert!(
+        harness
+            .query_by_label_contains("for nwidart/laravel-modules")
+            .is_none()
+    );
+    harness
+        .query_by_label_contains("module:generators --no-interaction --ansi --json")
+        .unwrap();
+
+    // The read runs the recording; the picker then lists what the app gave.
+    click(
+        &mut harness,
+        Role::Button,
+        "Read the generators of shop-api",
+    );
+    wait_for(&mut harness, "Read from shop-api at ");
+    harness.get_by_role_and_label(Role::Button, "Read again");
+    harness.get_by_label("42 generators for Billing, and New module. Enter opens the form.");
+    // A read stays out of the history.
+    assert!(ran(&mut harness, &desk, &root).is_empty());
 }
 
 #[test]

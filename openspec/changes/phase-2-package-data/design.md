@@ -359,6 +359,22 @@ accessible name and a 24 px target (`tests/accessibility.rs`).
   polled each frame; `start_read` starts one and `read_ended` takes its end (a start error ends it at
   once). `OpenApp::busy()` gives the label of a run or a read; every run button uses it.
 
+### Changed while building 15.3
+
+- `shipped_for` is gone. `shipped_mark(version)` gives the version of the shipped catalog when the
+  picker marks it (`13.4` for 13.5.0, `13.3` for 13.2.0 or a dev version), else `None`.
+- The cache is `mortise_core::catalog_cache` (`catalog/cache.rs`, `load` and `store`), behind the
+  `run` feature: it reuses `history::app_key`, which lives there. `Catalog` and its parts are `Serialize`.
+- The app learns the package version from the snapshot, not when it opens the app. So it looks up the
+  cache once for each package version it reads, for every open app. A read catalog, from the cache or
+  from this session, is used only while `package.raw` is the version it was read with.
+- A failed read drops the read catalog of the session, so the sentence "The list is the one shipped for
+  13.4." holds. The cache file stays.
+- The line of the read is a code block under the button, as wide as the picker. What the last read
+  gave stands beside the button.
+- `Generator::words` leaves out `--dry-run` and `--json` even when a form holds them.
+- The palette's generators and recent runs use the same catalog as the picker.
+
 ## Risks / Trade-offs
 
 - [The user must press "List files" and "Read migration state"] → One more step than the spec draws.
