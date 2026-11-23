@@ -1,7 +1,8 @@
 //! The actions and generators that ran last in an app, read from its history (S12.2 a).
 
+use crate::modules::target::Target;
 use crate::run::history::Entry;
-use crate::{Action, AppSnapshot, Catalog, ModuleState, Target};
+use crate::{Action, AppSnapshot, Catalog, ModuleState};
 
 /// What a run of the history was.
 #[derive(Debug, Clone, PartialEq, Eq)]

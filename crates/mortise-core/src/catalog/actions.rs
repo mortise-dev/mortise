@@ -3,6 +3,8 @@
 //! [`plan`] turns an action, its target and its options into the words of an
 //! artisan command. It also says whether Mortise asks first, as the table of S10.3 says.
 
+use crate::modules::target::Target;
+
 /// An action that Mortise can run for a module or for all modules.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Action {
@@ -19,15 +21,6 @@ pub enum Action {
     RefreshMigrations,
     FreshMigrate,
     DeleteModule,
-}
-
-/// What an action runs on.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Target {
-    /// One module, by its name.
-    Module(String),
-    /// Every module, through `--all`.
-    All,
 }
 
 /// The options the user set for an action.

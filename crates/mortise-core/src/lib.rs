@@ -44,8 +44,8 @@ pub use app::{
 pub use catalog::cache as catalog_cache;
 pub use catalog::{
     Action, Argument, Ask, Catalog, Context, Filled, Generator, GeneratorOption, Group,
-    MODULE_MAKE, NameRule, OptionSet, Options, Plan, Target, asks_again, class_name_ok,
-    model_flag_of, module_name_ok, plan, refuses, replace_words, shipped_mark, typed_name_matches,
+    MODULE_MAKE, NameRule, OptionSet, Options, Plan, asks_again, class_name_ok, model_flag_of,
+    module_name_ok, plan, refuses, replace_words, shipped_mark, typed_name_matches,
 };
 pub use editor::{Editor, EditorError, editor_arguments, open_in_editor};
 pub use environment::{Credentials, Environment};
@@ -64,6 +64,7 @@ pub use modules::git::{CHURN_DAYS, Churn, Git};
 pub use modules::kind::{OTHER, TESTS};
 pub use modules::layout::{Layout, LayoutKey, read_layout};
 pub use modules::module::{KindCount, Manifest, Module, ModuleState, Progress, ReadCache};
+pub use modules::target::Target;
 #[cfg(feature = "run")]
 pub use output::{
     FailedMigration, FileOutcome, GeneratedFile, MigrationCount, app_relative, autoload_failed,

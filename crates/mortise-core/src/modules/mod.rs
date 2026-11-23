@@ -8,3 +8,4 @@ pub(crate) mod git;
 pub(crate) mod kind;
 pub(crate) mod layout;
 pub(crate) mod module;
+pub(crate) mod target;

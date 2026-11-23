@@ -10,8 +10,7 @@ pub mod cache;
 mod generators;
 
 pub use actions::{
-    Action, Ask, Context, OptionSet, Options, Plan, Target, asks_again, plan, refuses,
-    typed_name_matches,
+    Action, Ask, Context, OptionSet, Options, Plan, asks_again, plan, refuses, typed_name_matches,
 };
 pub use generators::{
     Argument, Catalog, Filled, Generator, GeneratorOption, Group, MODULE_MAKE, NameRule,

@@ -10,9 +10,10 @@ use std::path::{Path, PathBuf};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
-use crate::catalog::{Catalog, Target};
+use crate::catalog::Catalog;
 use crate::modules::composer::Version;
 use crate::modules::module::Module;
+use crate::modules::target::Target;
 use crate::php;
 
 /// True when the app's package gives P2 to P8: a released 13.4.0 or later.
