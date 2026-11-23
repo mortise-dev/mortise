@@ -22,7 +22,7 @@ use crate::chrome::{self, Chrome};
 use crate::dialog::{Answer, Dialog, Typed};
 use crate::draw::{self, Button, ButtonKind};
 use crate::generate_view::{
-    CatalogRead, GenerateAsk, GenerateInputs, GenerateResult, GenerateRun, GenerateState,
+    CatalogRead, GenerateAsk, GenerateInputs, GenerateResult, GenerateRun, GenerateState, TakenOut,
 };
 use crate::index::{self, IndexRuntime, IndexState};
 use crate::palette::{self, Command, PaletteAction, PaletteState};
@@ -1817,6 +1817,15 @@ impl MortiseApp {
                 return;
             }
             GenerateAsk::ListFiles { words } => {
+                // Only a generator the package ships honours `--dry-run`: an app's
+                // own may declare it and write anyway.
+                let generator = words.first().map_or("", String::as_str);
+                let ships = self
+                    .snapshot(index)
+                    .is_some_and(|app| mortise_core::generator_gives_data(&app.package, generator));
+                if !ships {
+                    return;
+                }
                 let args = mortise_core::with_dry_run(words.clone());
                 let words = words.clone();
                 self.start_read(index, args, ReadFor::DryRun { words });
@@ -1931,9 +1940,14 @@ impl MortiseApp {
         let answer = json.then(|| {
             mortise_core::whole_document::<mortise_core::GeneratorReport>(stdout, stdout_cut)
         });
-        let (files, autoload_failed, fallback) = match answer {
+        // The modules folder of the app's layout places a path of a container (Sail).
+        let modules = self.snapshot(index).map_or_else(
+            || "Modules".to_owned(),
+            |app| app.path_shown(&app.layout.modules_dir),
+        );
+        let (mut files, autoload_failed, fallback) = match answer {
             Some(Ok(report)) => (
-                mortise_core::reported_files(&report, &root),
+                mortise_core::reported_files(&report, &root, &modules),
                 report.autoload_failed(),
                 None,
             ),
@@ -1943,6 +1957,23 @@ impl MortiseApp {
                 answer.and_then(|answer| answer.err().map(|e| strings::no_run_document(&e, end))),
             ),
         };
+        // The files S9.3 took out of the command: the run left them, so its result
+        // lists them as left, each with its own Replace (design D5).
+        let taken_out: Vec<TakenOut> = run
+            .taken_out
+            .iter()
+            .map(|file| TakenOut {
+                path: mortise_core::app_relative(&root, &modules, &file.path)
+                    .unwrap_or_else(|| file.path.clone()),
+                replace: file.replace.clone(),
+            })
+            .collect();
+        if !files.is_empty() {
+            files.extend(taken_out.iter().map(|file| mortise_core::GeneratedFile {
+                path: file.path.clone(),
+                outcome: FileOutcome::Left,
+            }));
+        }
         let label = run.args.join(" ");
         let in_view = self.runner.shown == Shown::Open
             && self.current == Some(index)
@@ -1975,8 +2006,9 @@ impl MortiseApp {
             open.live.refresh();
             if autoload_failed {
                 if attached {
-                    open.generate
-                        .show_result(GenerateResult::new(None, run.args, files, true));
+                    // Read from the lines when the answer was missing or cut: why.
+                    let result = GenerateResult::new(None, run.args, files, true);
+                    open.generate.show_result(result.read_from_output(fallback));
                 }
             } else if wrote {
                 open.select_new = Some(SelectNew {
@@ -2049,7 +2081,8 @@ impl MortiseApp {
         }
         if attached {
             let result = GenerateResult::new(run.module, run.args, files, false);
-            open.generate.show_result(result.read_from_output(fallback));
+            open.generate
+                .show_result(result.read_from_output(fallback).with_taken_out(taken_out));
         }
     }
 

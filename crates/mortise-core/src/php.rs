@@ -301,14 +301,15 @@ impl TableReader<'_, '_> {
     }
 
     /// Whether an expression is the `Schema` facade: its full name once resolved
-    /// through the file's `use`, or the plain `Schema` of Laravel's alias.
+    /// through the file's `use`, or the global `Schema` of Laravel's alias. A class the
+    /// file imports as `Schema` resolves to its own name, so it is not the facade.
     fn is_schema(&self, class: &Expression<'_>) -> bool {
         let Expression::Identifier(name) = class else {
             return false;
         };
         let resolved = self.names.resolve(&name.span()).unwrap_or(name.value());
         let resolved = resolved.strip_prefix(b"\\").unwrap_or(resolved);
-        resolved.eq_ignore_ascii_case(SCHEMA) || name.value().eq_ignore_ascii_case(b"Schema")
+        resolved.eq_ignore_ascii_case(SCHEMA) || resolved.eq_ignore_ascii_case(b"Schema")
     }
 }
 
@@ -682,6 +683,19 @@ return new class extends Migration
             created_tables(source),
             ["orders", "order_totals", "refunds", "payments", "invoices"]
         );
+        // Another class imported as `Schema` is not the facade.
+        let other = r#"<?php
+use App\Support\TestSchema as Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('orders', fn ($table) => null);
+    }
+};
+"#;
+        assert!(created_tables(other).is_empty());
     }
 
     #[test]

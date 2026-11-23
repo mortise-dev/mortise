@@ -3125,12 +3125,26 @@ pub fn taken_out(path: &str, kind: &str) -> String {
     )
 }
 
-/// Not in the spec: the generator's own file exists (design D5).
-pub fn own_file_exists(path: &str) -> String {
+/// Not in the spec: the factory of a model exists. Its flag stays, as the model's
+/// stub reads it (S9.3).
+pub fn factory_kept(path: &str) -> String {
     format!(
-        "{path} exists. The generator does not write over a file. Choose another name, or \
-         replace the file."
+        "{path} exists. The model uses its factory, so the factory stays in the command. The \
+         run leaves the file as it is."
     )
+}
+
+/// Not in the spec: the generator's own file exists (design D5). `replaceable`: the
+/// form offers Replace for it.
+pub fn own_file_exists(path: &str, replaceable: bool) -> String {
+    if replaceable {
+        format!(
+            "{path} exists. The generator does not write over a file. Choose another name, \
+             or replace the file."
+        )
+    } else {
+        format!("{path} exists. The generator does not write over a file. Choose another name.")
+    }
 }
 
 /// Not in the spec: an error of the dry run, in quotes, under the list (design D5).

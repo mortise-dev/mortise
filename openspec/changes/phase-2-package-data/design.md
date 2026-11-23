@@ -449,8 +449,10 @@ accessible name and a 24 px target (`tests/accessibility.rs`).
 ### Changed after review
 
 - `replace_words` takes the package version. From 13.4 on `module:make-model` passes `--force` to the
-  generators it calls (package PR #2302), so Replace of the model's own file drops `--factory` too and
-  writes only the model. Before 13.4 `--factory` stays, as in milestone 14.
+  generators it calls (package PR #2302). Replace of the model's own file then writes only the model
+  when the run had no `--factory`. A run with `--factory` or `--all` gets no Replace: `--factory` would
+  write over the factory, and without it the model's stub loses `HasFactory`. Before 13.4 `--factory`
+  stays, as in milestone 14.
 - "List files" and the read of the generators start only from a line that was whole on screen in the
   last frame, as the run buttons do (S37). Otherwise they are off with "Scroll up to see the whole
   command first.".
@@ -468,6 +470,27 @@ accessible name and a 24 px target (`tests/accessibility.rs`).
   answer was "<reason>"." under it; the drawer shows the failure.
 - `created_tables` resolves the class through the file's `use`: `Schema` under another name and its
   full name count, and the table may be the named argument `table`.
+- `package::generator_gives_data(version, generator)` gates "List files" and `--json`: the package
+  gives data and ships the generator (a name of `Catalog::v13_4`, `module:make` among them). The
+  package honours `--dry-run` only when it adds the option itself, so an app's own generator runs as
+  before 13.4: no dry run, no `--json`, its result read from the output.
+- `replace_words` gives `None` for a generator the package does not ship: it may call another
+  generator and pass `--force` on. The form and the result then offer "Open the existing file" only.
+- S9.3 never takes `--factory` out: the model's stub renders `HasFactory` from it. A factory that
+  exists keeps its flag and reads "exists"; the run leaves it, as the model's calls go on after one
+  fails (`ModelMakeCommand` at 13.4.0). The button counts only the files the run writes.
+- `app_relative(root, modules, printed)` also places a path of a container (Sail, Docker): outside the
+  app folder, the path is read from its first `/<modules>/<Module>/` on, with `modules` the modules
+  folder of the layout. A result offers no Open for a path it still cannot place and that does not
+  exist on this computer.
+- A run carries the files S9.3 took out (`GenerateRun::taken_out`, with the words that replace each,
+  from the words before the flag went). Its result lists them as left, so "Replace <file>" stays.
+- `created_tables` matches the resolved name only: the facade's full name, or the global `Schema` of
+  Laravel's alias. Another class imported as `Schema` does not count.
+- `Generator::refused_name(argument, text)` checks each white-space separated name of an array
+  argument, as `words` splits it, and the whole text of another argument. A form uses it for its errors.
+- A `module:make` run whose composer dump-autoload failed and whose files came from the lines keeps
+  the reason: the form shows "Read from the output: ..." under its line, beside the alert.
 
 ## Risks / Trade-offs
 

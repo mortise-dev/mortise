@@ -379,6 +379,40 @@ fn a_dry_run_that_finds_the_policy_takes_it_out_of_the_command() {
     assert!(harness.query_by_label_contains("--policy").is_none());
     assert!(!disabled(&harness, "Create the other 2 files"));
 
+    // The result lists the policy as left, and Replace writes it with the words of
+    // the form before the flag went.
+    run(&mut harness);
+    wait_for(&mut harness, "Created 2 of 3 files in Billing.");
+    harness.get_by_label("app/Policies/InvoicePolicy.php, exists, left as it is");
+    click(&mut harness, Role::Button, "Replace InvoicePolicy.php");
+    harness
+        .query_by_label_contains(
+            "module:make-policy --no-interaction --ansi InvoicePolicy Billing --force --json",
+        )
+        .unwrap();
+}
+
+#[test]
+fn a_dry_run_that_finds_the_factory_keeps_it_in_the_command() {
+    let (_desk, _root, mut harness) = model_form_13_4("Invoice");
+    click(&mut harness, Role::CheckBox, "Factory");
+    click(&mut harness, Role::Button, "List files");
+    wait_for(&mut harness, "4 files, 2 exist already");
+    // The button takes the line once a frame drew it whole.
+    harness.run_steps(2);
+    // The model's stub uses the factory: its flag stays, the policy's goes, and the
+    // button counts the files the run writes.
+    let factory = harness.get_by_role_and_label(Role::CheckBox, "Factory");
+    assert_eq!(factory.accesskit_node().toggled(), Some(Toggled::True));
+    harness.get_by_label(
+        "database/factories/InvoiceFactory.php exists. The model uses its factory, so the \
+         factory stays in the command. The run leaves the file as it is.",
+    );
+    harness
+        .query_by_label_contains("Invoice Billing --factory --migration --json")
+        .unwrap();
+    assert!(!disabled(&harness, "Create the other 2 files"));
+
     // A run that fails before it answers, with no file read: the form says why.
     run(&mut harness);
     wait_for(

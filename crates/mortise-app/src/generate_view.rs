@@ -16,7 +16,8 @@ use eframe::egui::{
 use mortise_core::{
     AppSnapshot, Catalog, FileAction, FileOutcome, Filled, GeneratedFile, Generator,
     GeneratorReport, Group, MODULE_MAKE, Module, NameRule, ReportedFile, RunnerKind, Severity,
-    app_relative, gives_data, model_flag_of, replace_words, shipped_mark, with_dry_run, with_json,
+    app_relative, generator_gives_data, model_flag_of, replace_words, shipped_mark, with_dry_run,
+    with_json,
 };
 
 use crate::boundary::BoundaryAction;
@@ -27,6 +28,8 @@ use crate::summary::alert_box;
 use crate::theme::{Face, Palette, Type, radius, size, ty};
 
 const MAKE_MODEL: &str = "module:make-model";
+/// The flag of `module:make-model` that S9.3 never takes out: the model's stub reads it.
+const FACTORY: &str = "factory";
 /// The files of `module:make-model` under "Also create", in the order of S9.2.
 const MODEL_CALLS: [&str; 7] = [
     "controller",
@@ -83,6 +86,19 @@ pub struct GenerateRun {
     pub module: Option<String>,
     /// The artisan words, exactly as the line on screen shows them.
     pub args: Vec<String>,
+    /// The files whose flags S9.3 took out of the command: the run leaves them.
+    pub taken_out: Vec<TakenOut>,
+}
+
+/// A file that S9.3 took out of the command because it exists (design D5). The run
+/// leaves it as it is, and its result lists it with its own Replace.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TakenOut {
+    /// The path as the dry run printed it, or relative to the app once in a result.
+    pub path: String,
+    /// The words that write it with `--force`: `replace_words` on the words of the
+    /// form before its flag was taken out.
+    pub replace: Option<Vec<String>>,
 }
 
 /// What the tab asks the app for.
@@ -129,6 +145,8 @@ pub struct GenerateResult {
     pub autoload_failed: bool,
     /// Why the run gave no answer, when the files were read from its output (design D6).
     fallback: Option<String>,
+    /// The files S9.3 took out of the command, listed in `files` as left.
+    taken_out: Vec<TakenOut>,
     /// When it was first painted, in seconds of egui's clock.
     shown: Option<f64>,
 }
@@ -146,8 +164,16 @@ impl GenerateResult {
             files,
             autoload_failed,
             fallback: None,
+            taken_out: Vec::new(),
             shown: None,
         }
+    }
+
+    /// The files S9.3 took out of the run's command, which `files` lists as left. Each
+    /// Replace of them runs its own words.
+    pub fn with_taken_out(mut self, taken_out: Vec<TakenOut>) -> Self {
+        self.taken_out = taken_out;
+        self
     }
 
     /// The result read from the output lines, because the run gave no answer: why.
@@ -169,6 +195,8 @@ impl GenerateResult {
 struct FileList {
     /// The words of the form, without `--dry-run --json`.
     words: Vec<String>,
+    /// The words the dry run ran with, before S9.3 took flags out.
+    before: Vec<String>,
     listed: Result<GeneratorReport, String>,
     /// The flags of the model form taken out because their file exists (S9.3).
     taken_out: Vec<&'static str>,
@@ -250,7 +278,8 @@ impl GenerateState {
     /// Takes the end of the dry run of `words`, the words of the form of `generator`
     /// (design D5). On the model form a file that exists and that a flag writes takes
     /// that flag out of the form, and `--all` becomes the other six (S9.3); the list
-    /// then belongs to the words without it. A form that changed meanwhile drops it.
+    /// then belongs to the words without it. The factory is the exception: its flag
+    /// stays, and the run leaves the file. A form that changed meanwhile drops it.
     pub fn take_files(
         &mut self,
         generator: &Generator,
@@ -275,7 +304,13 @@ impl GenerateState {
                 .unwrap_or_default();
             let flags = &mut self.filled.flags;
             for file in report.files.iter().filter(|f| f.action == FileAction::Keep) {
-                let Some(flag) = model_flag_of(model.trim(), &file.path) else {
+                // The model's stub renders `HasFactory` from `--factory`, so that flag
+                // stays. The factory call then fails on its file, and the model goes on
+                // with its other calls and exits 1 after them (`ModelMakeCommand::handle`
+                // and `callGenerator` at 13.4.0).
+                let Some(flag) =
+                    model_flag_of(model.trim(), &file.path).filter(|flag| *flag != FACTORY)
+                else {
                     continue;
                 };
                 if flags.remove("all") || MODEL_CALLS.iter().all(|call| flags.contains(*call)) {
@@ -288,9 +323,43 @@ impl GenerateState {
         }
         self.files = Some(FileList {
             words: generator.words(&self.filled, module.as_deref()),
+            before: words,
             listed,
             taken_out,
         });
+    }
+
+    /// The files of the list for `words` whose flags S9.3 took out, with the words
+    /// that replace each (design D5).
+    fn taken_out_files(
+        &self,
+        words: &[String],
+        catalog: &Catalog,
+        package: &mortise_core::Version,
+    ) -> Vec<TakenOut> {
+        let Some(list) = self.files_for(words) else {
+            return Vec::new();
+        };
+        let Ok(report) = &list.listed else {
+            return Vec::new();
+        };
+        let model = self
+            .filled
+            .arguments
+            .get("model")
+            .map_or("", |model| model.trim());
+        report
+            .files
+            .iter()
+            .filter(|file| file.action == FileAction::Keep)
+            .filter(|file| {
+                model_flag_of(model, &file.path).is_some_and(|flag| list.taken_out.contains(&flag))
+            })
+            .map(|file| TakenOut {
+                path: file.path.clone(),
+                replace: replace_words(catalog, &list.before, &file.path, package),
+            })
+            .collect()
     }
 
     /// Drops the file list: a run starts that writes files.
@@ -922,20 +991,11 @@ fn picker_row(
 /// Why a name typed in a form cannot run, as the sentence under its field, or
 /// `None` when it can or is empty.
 fn name_error(generator: &Generator, argument: &str, text: &str) -> Option<String> {
-    let rule = generator.name_rule(argument);
-    if generator.name == MODULE_MAKE {
-        return text
-            .split_whitespace()
-            .find(|name| !rule.accepts(name))
-            .map(strings::module_name_error);
-    }
-    let text = text.trim();
-    if text.is_empty() || rule.accepts(text) {
-        return None;
-    }
-    Some(match rule {
+    let refused = generator.refused_name(argument, text)?;
+    Some(match generator.name_rule(argument) {
+        _ if generator.name == MODULE_MAKE => strings::module_name_error(refused),
         NameRule::Free => strings::free_name_error(&generator.name),
-        _ => strings::class_name_error(&generator.name, text),
+        _ => strings::class_name_error(&generator.name, refused),
     })
 }
 
@@ -1585,9 +1645,11 @@ fn run_keys(mac: bool) -> String {
 }
 
 /// The words a run carries: on a 13.4 app with `--json`, once, so that its result
-/// is read from its answer (design D6).
+/// is read from its answer (design D6). An app's own generator runs without it: it
+/// may give `--json` a meaning of its own.
 fn run_words(app: &AppSnapshot, words: Vec<String>) -> Vec<String> {
-    if gives_data(&app.package) {
+    let generator = words.first().map_or("", String::as_str);
+    if generator_gives_data(&app.package, generator) {
         with_json(words)
     } else {
         words
@@ -1635,7 +1697,9 @@ fn command(
     let ready = names_ok(generator, &state.filled);
     let mut y = code.bottom() + 8.0;
     let mut files = None;
-    if gives_data(&app.package) {
+    // A generator the package ships lists its files by a dry run (design D5). An
+    // app's own may declare `--dry-run` and write anyway: its files come after the run.
+    if generator_gives_data(&app.package, &generator.name) {
         let at = pos2(min.x, y + 4.0);
         let shown = files_this_creates(
             ui, pal, at, width, app, module, generator, &words, state, inputs, ready,
@@ -1643,7 +1707,7 @@ fn command(
         y = shown.bottom;
         files = Some(shown);
     } else {
-        // Without the dry run (P2) the files are listed after the run (deviation S44).
+        // Without the dry run (P2) the files are listed after the run (deviations S44, S55).
         y = draw::paragraph(
             ui,
             pos2(min.x, y),
@@ -1687,11 +1751,12 @@ fn command(
 
     // The dry run's line, when it is whole on screen in this frame.
     state.read_shown = files.as_mut().and_then(|files| files.read_shown.take());
-    // A run that read no file and gave no answer: why, under the line (design D2).
+    // A run that gave no answer and shows no result, as one that read no file or whose
+    // composer dump-autoload failed: why, under the line (design D2).
     if let Some(reason) = state
         .result
         .as_ref()
-        .filter(|result| result.files.is_empty())
+        .filter(|result| result.files.is_empty() || result.autoload_failed)
         .and_then(|result| result.fallback.as_deref())
     {
         let text = strings::read_from_output(reason);
@@ -1744,6 +1809,7 @@ fn command(
             generator: generator.name.clone(),
             module: name.clone(),
             args: run_args.clone(),
+            taken_out: state.taken_out_files(&words, inputs.catalog, &app.package),
         })));
     }
     // A line cut off by the scroll area is not on screen, so Ctrl Enter does not
@@ -1798,6 +1864,7 @@ fn command(
                     generator: replace_args.first().cloned().unwrap_or_default(),
                     module: name,
                     args: run_words(app, replace_args),
+                    taken_out: Vec::new(),
                 },
             }));
         }
@@ -1829,7 +1896,8 @@ struct FilesShown {
 /// under no folder.
 fn placed(app: &AppSnapshot, module: Option<&Module>, printed: &str) -> (String, String) {
     let outside = (String::new(), printed.to_owned());
-    let Some(relative) = app_relative(&app.root, printed) else {
+    let modules_dir = app.path_shown(&app.layout.modules_dir);
+    let Some(relative) = app_relative(&app.root, &modules_dir, printed) else {
         return outside;
     };
     if let Some(module) = module {
@@ -1894,17 +1962,24 @@ fn files_this_creates(
         .arguments
         .get("model")
         .map_or("", |model| model.trim());
-    let taken = |file: &ReportedFile| {
-        generator.name == MAKE_MODEL
-            && file.action == FileAction::Keep
-            && model_flag_of(model, &file.path).is_some_and(|flag| taken_out.contains(&flag))
+    let flag_of = |file: &ReportedFile| {
+        (generator.name == MAKE_MODEL && file.action == FileAction::Keep)
+            .then(|| model_flag_of(model, &file.path))
+            .flatten()
     };
+    let taken = |file: &ReportedFile| flag_of(file).is_some_and(|flag| taken_out.contains(&flag));
+    // The factory keeps its flag: the run leaves its file as it is (S9.3).
+    let factory_kept = |file: &ReportedFile| flag_of(file) == Some(FACTORY);
     let own: Vec<&ReportedFile> = files
         .iter()
         .copied()
-        .filter(|file| file.action == FileAction::Keep && !taken(file))
+        .filter(|file| file.action == FileAction::Keep && !taken(file) && !factory_kept(file))
         .collect();
-    let taken_count = files.iter().filter(|file| taken(file)).count();
+    // The files the run does not write: taken out of the command, or the factory kept.
+    let not_written = files
+        .iter()
+        .filter(|file| taken(file) || factory_kept(file))
+        .count();
 
     // The rows by root folder, in the order the roots come; in a root, the files at
     // its top first, then by folder.
@@ -1953,12 +2028,17 @@ fn files_this_creates(
     };
     let shown = |file: &ReportedFile| placed(app, module, &file.path).1;
     for file in files.iter().filter(|file| taken(file)) {
-        let flag = model_flag_of(model, &file.path).unwrap_or_default();
+        let flag = flag_of(file).unwrap_or_default();
         let text = strings::taken_out(&shown(file), strings::model_call_kind(flag));
         y = sentence(y, &text, pal.ink_2);
     }
+    for file in files.iter().filter(|file| factory_kept(file)) {
+        y = sentence(y, &strings::factory_kept(&shown(file)), pal.ink_2);
+    }
     for file in &own {
-        y = sentence(y, &strings::own_file_exists(&shown(file)), pal.bad);
+        let replaceable = replace_words(inputs.catalog, words, &file.path, &app.package).is_some();
+        let text = strings::own_file_exists(&shown(file), replaceable);
+        y = sentence(y, &text, pal.bad);
     }
     for error in &report.errors {
         let error = error.trim();
@@ -1969,8 +2049,8 @@ fn files_this_creates(
 
     let create = if !own.is_empty() || files.is_empty() {
         None
-    } else if taken_count > 0 {
-        Some(strings::create_other_files(files.len() - taken_count))
+    } else if not_written > 0 {
+        Some(strings::create_other_files(files.len() - not_written))
     } else {
         Some(strings::create_n_files(files.len()))
     };
@@ -2295,7 +2375,7 @@ fn result_view(
             format!("{shown}, {state_word}")
         };
         draw::announce(ui, text, Role::Label, &said);
-        if ok {
+        if ok && openable(app, &file.path) {
             let open_said = strings::open_path(&shown);
             let open = Button {
                 label: strings::OPEN,
@@ -2317,6 +2397,15 @@ fn result_view(
                     pal.ink_2,
                 );
             }
+        } else if ok {
+            draw::paint_text(
+                ui,
+                pos2(right, mid),
+                Align2::RIGHT_CENTER,
+                state_word,
+                ty::SECONDARY,
+                pal.ink_2,
+            );
         } else {
             draw::paint_text(
                 ui,
@@ -2352,7 +2441,11 @@ fn result_view(
     let y = y + 12.0;
     let mut x = min.x;
     if all_done {
-        if let Some(first) = result.written().next() {
+        if let Some(first) = result
+            .written()
+            .next()
+            .filter(|first| openable(app, &first.path))
+        {
             let name = file_name(&first.path);
             let label = strings::open_file(name);
             let open = Button {
@@ -2390,8 +2483,17 @@ fn result_view(
     let Some(first_left) = left.first() else {
         return (y - 12.0, asked);
     };
-    let words = replace_words(inputs.catalog, &result.args, &first_left.path, &app.package);
+    // A file S9.3 took out has the words of the form before its flag went.
+    let words = match result
+        .taken_out
+        .iter()
+        .find(|file| file.path == first_left.path)
+    {
+        Some(file) => file.replace.clone(),
+        None => replace_words(inputs.catalog, &result.args, &first_left.path, &app.package),
+    };
     let name = file_name(&first_left.path);
+    let mut bottom = y - 12.0;
     if let Some(words) = words {
         let label = strings::replace_file(name);
         let replace = Button {
@@ -2401,6 +2503,7 @@ fn result_view(
         };
         let response = replace.show(ui, pal, pos2(x, y), inputs.keyboard);
         x = response.rect.right() + 8.0;
+        bottom = response.rect.bottom();
         if response.clicked() {
             asked = Some(BoundaryAction::Generate(GenerateAsk::Replace {
                 file: name.to_owned(),
@@ -2408,9 +2511,13 @@ fn result_view(
                     generator: words.first().cloned().unwrap_or_default(),
                     module: result.module.clone(),
                     args: run_words(app, words),
+                    taken_out: Vec::new(),
                 },
             }));
         }
+    }
+    if !openable(app, &first_left.path) {
+        return (bottom, asked);
     }
     let existing = Button {
         label: strings::OPEN_THE_EXISTING_FILE,
@@ -2421,6 +2528,14 @@ fn result_view(
         asked = Some(open_file_asked(app, &first_left.path));
     }
     (response.rect.bottom(), asked)
+}
+
+/// True when a file of a result opens on this computer: a path under the app folder,
+/// or another path that exists. PHP in a container prints its own folders, and a path
+/// that `app_relative` could not place may not exist here.
+fn openable(app: &AppSnapshot, printed: &str) -> bool {
+    let placed = Path::new(printed).is_relative() && !printed.starts_with(['/', '\\']);
+    placed || file_path(&app.root, printed).exists()
 }
 
 /// Opens a file of a result in the editor, through the code that opens a module.
