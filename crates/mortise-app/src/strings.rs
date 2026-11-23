@@ -1502,6 +1502,122 @@ pub fn exposed(endpoints: &[String]) -> String {
     format!("Exposed: {}.", endpoints.join(", "))
 }
 
+// --- How PHP runs (S1.3, S8.2) ---
+
+/// Not in the spec: the row of the palette that opens Settings on PHP.
+pub const SETTINGS_PHP: &str = "Settings: PHP";
+pub const RUN_PHP_WITH: &str = "Run PHP with";
+/// The choices of "Run PHP with", in the order of [`runner_place`].
+pub const RUNNERS: [&str; 4] = ["Herd", "Sail", "Docker", "Custom"];
+/// Not in the spec: the name a screen reader says for the Test of PHP. The label is
+/// "Test", as for an environment, and the add panel shows both.
+pub const TEST_PHP: &str = "Test how PHP runs";
+/// Not in the spec: the tooltip of Sail on Windows (design D6).
+pub const SAIL_NOT_ON_WINDOWS: &str = "Sail runs in WSL, not on Windows itself";
+pub const ANSWERED: &str = "Answered";
+/// Not in the spec: the line under the field while the test runs.
+pub const TESTING_PHP: &str = "Running artisan --version";
+pub const FOUND_HERD: &str = "Found: this folder is a Herd site.";
+/// Not in the spec, written like the Herd hint.
+pub const FOUND_SAIL: &str = "Found: vendor/bin/sail and a compose file.";
+/// Not in the spec, written like the Herd hint.
+pub const FOUND_COMPOSE: &str = "Found: a compose file.";
+pub const FOUND_NO_RUNNER: &str = "Not found: Herd, Sail, a compose file.";
+pub const COL_APP: &str = "App";
+pub const COL_RUNS_WITH: &str = "Runs with";
+pub const COL_COMMAND: &str = "Command";
+pub const COL_LAST_TEST: &str = "Last test";
+/// Not in the spec: an app whose runner is not chosen yet.
+pub const NOT_CHOSEN: &str = "Not chosen";
+/// Not in the spec: an app that was not tested since Mortise started (design D8).
+pub const NOT_TESTED: &str = "Not tested";
+pub const WORKING_FOLDER: &str = "Working folder";
+pub const WORKING_FOLDER_HINT: &str = "where the command starts";
+/// Not in the spec: the empty working folder. The spec draws the folder itself.
+pub const THE_APP_FOLDER: &str = "The app folder";
+pub const STOP_AFTER: &str = "Stop a command after";
+pub const STOP_AFTER_HINT: &str = "so a command that waits for input cannot hang";
+pub const WHAT_EACH_RUNS: &str = "What each choice runs";
+pub const WHAT_EACH_RUNS_NOTE: &str = "the part before the command name";
+pub const CUSTOM_RUNS: &str = "what you type, for example /usr/bin/php artisan";
+
+/// The place of a runner in [`RUNNERS`].
+pub fn runner_place(runner: &mortise_core::RunnerKind) -> usize {
+    use mortise_core::RunnerKind;
+    match runner {
+        RunnerKind::Herd => 0,
+        RunnerKind::Sail => 1,
+        RunnerKind::Docker { .. } => 2,
+        RunnerKind::Custom { .. } => 3,
+    }
+}
+
+/// The hint of "Run PHP with" after detection: what the folder points to.
+pub fn php_found(found: Option<mortise_core::Detected>) -> &'static str {
+    use mortise_core::Detected;
+    match found {
+        Some(Detected::Herd) => FOUND_HERD,
+        Some(Detected::Sail) => FOUND_SAIL,
+        Some(Detected::Docker) => FOUND_COMPOSE,
+        None => FOUND_NO_RUNNER,
+    }
+}
+
+/// `10 minutes`
+pub fn minutes(n: u16) -> String {
+    match n {
+        1 => "1 minute".to_owned(),
+        n => format!("{n} minutes"),
+    }
+}
+
+/// Who did not answer, for `x.nophp`: Herd, Sail or Docker, and for Custom the
+/// program of the line. Not in the spec: "The command" for a Custom line without one.
+pub fn runner_name(runner: &mortise_core::RunnerKind) -> String {
+    use mortise_core::RunnerKind;
+    match runner {
+        RunnerKind::Custom { .. } => runner
+            .prefix()
+            .into_iter()
+            .next()
+            .unwrap_or_else(|| "The command".to_owned()),
+        other => RUNNERS[runner_place(other)].to_owned(),
+    }
+}
+
+/// The reason in quotes of `x.nophp`, as design D12 gives it. `herd: command not found`
+/// is the spec's. The others are not in the spec.
+pub fn php_reason(failure: &mortise_core::Failure) -> String {
+    use mortise_core::Failure;
+    match failure {
+        Failure::NotFound { program } => format!("{program}: command not found"),
+        Failure::NotStarted { program, message } => format!("{program}: {message}"),
+        Failure::Exited { line, .. } if !line.is_empty() => line.clone(),
+        Failure::Exited {
+            code: Some(code), ..
+        } => format!("exit code {code}"),
+        Failure::Exited { code: None, .. } => "stopped by a signal".to_owned(),
+        Failure::TimedOut { seconds } => format!("no answer in {seconds} seconds"),
+        Failure::NoCommand => "no command entered".to_owned(),
+        Failure::NoFolder { .. } => "the working folder does not exist".to_owned(),
+    }
+}
+
+/// `x.nophp`, under the field of the add panel and of Settings.
+pub fn php_failed(runner: &mortise_core::RunnerKind, failure: &mortise_core::Failure) -> String {
+    format!(
+        "{} did not answer: \"{}\". You can add the app now and read it. Generating and \
+         running need PHP: choose another way, or enter the command.",
+        runner_name(runner),
+        php_reason(failure)
+    )
+}
+
+/// `No answer: service "app" is not running`, in the "Last test" column of S8.2.
+pub fn no_answer(failure: &mortise_core::Failure) -> String {
+    format!("No answer: {}", php_reason(failure))
+}
+
 #[cfg(test)]
 mod runtime_tests {
     use super::*;

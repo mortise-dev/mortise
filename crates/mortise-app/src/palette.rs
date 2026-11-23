@@ -46,6 +46,8 @@ pub enum Command {
     App(usize),
     AddApp,
     Settings,
+    /// Settings, on the PHP section.
+    PhpSettings,
     Theme(ThemeChoice),
 }
 
@@ -241,6 +243,7 @@ pub fn entries(query: &str, source: &Source<'_>) -> Vec<Entry> {
         // Mortise's own commands. The theme has no shortcut, so it is found here.
         let commands = [
             ("Settings", format!("{command} ,"), Command::Settings),
+            (strings::SETTINGS_PHP, String::new(), Command::PhpSettings),
             (strings::ADD_APP, format!("{command} O"), Command::AddApp),
             (
                 "Theme: follow the system",
@@ -530,7 +533,10 @@ mod tests {
             mac: false,
         };
         assert_eq!(labels(&entries("", &source)), [("Apps", "Add app")]);
-        assert_eq!(labels(&entries("set", &source)), [("Mortise", "Settings")]);
+        assert_eq!(
+            labels(&entries("set", &source)),
+            [("Mortise", "Settings"), ("Mortise", "Settings: PHP")]
+        );
         assert!(entries("zzq", &source).is_empty());
     }
 

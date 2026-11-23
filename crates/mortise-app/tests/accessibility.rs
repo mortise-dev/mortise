@@ -148,6 +148,11 @@ fn the_palette_settings_and_the_add_panel() {
         audit(&harness, kind);
     }
     harness
+        .get_by_role_and_label(Role::ListBoxOption, "PHP")
+        .click();
+    harness.run_steps(3);
+    audit(&harness, "Settings, PHP");
+    harness
         .get_by_role_and_label(Role::ListBoxOption, "General")
         .click();
     harness.run_steps(3);

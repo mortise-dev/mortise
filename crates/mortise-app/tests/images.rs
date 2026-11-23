@@ -183,6 +183,35 @@ fn palette_and_settings() {
             .get_by_role_and_label(Role::ListBoxOption, "Keyboard")
             .click();
         shots.take(&mut harness, "s8.4-settings-keyboard");
+        // S8.2: PHP, after a test of a program that is not there. The working folder
+        // is empty, so no temporary folder shows.
+        harness
+            .get_by_role_and_label(Role::ListBoxOption, "PHP")
+            .click();
+        harness.run_steps(2);
+        harness
+            .get_by_role_and_label(Role::RadioButton, "Custom")
+            .click();
+        harness.run_steps(2);
+        harness
+            .get_by_role_and_label(Role::TextInput, "Run PHP with")
+            .focus();
+        harness.run();
+        harness.key_press_modifiers(Modifiers::COMMAND, Key::A);
+        harness
+            .get_by_role_and_label(Role::TextInput, "Run PHP with")
+            .type_text("php-none artisan");
+        harness.run();
+        harness
+            .get_by_role_and_label(Role::Button, "Test how PHP runs")
+            .click();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while harness.query_by_label_contains("did not answer").is_none() {
+            assert!(std::time::Instant::now() < deadline, "the test did not end");
+            std::thread::sleep(std::time::Duration::from_millis(20));
+            harness.run_steps(2);
+        }
+        shots.take(&mut harness, "s8.2-settings-php");
     }
 }
 

@@ -85,6 +85,8 @@ struct OpenApp {
     runtime: Option<Connected>,
     /// The last answer of each environment in this run, by its name.
     last_answers: BTreeMap<String, Brief>,
+    /// The last test of how PHP runs for the app, in this run (design D8).
+    php_test: Option<crate::php_settings::Tested>,
     /// When the app was opened, to show how far its first read is only when it takes long.
     since: std::time::Instant,
 }
@@ -783,7 +785,10 @@ impl MortiseApp {
     fn run(&mut self, command: Command) {
         self.palette = None;
         // A command that goes somewhere leaves Settings.
-        if !matches!(command, Command::Settings | Command::Theme(_)) {
+        if !matches!(
+            command,
+            Command::Settings | Command::PhpSettings | Command::Theme(_)
+        ) {
             self.settings_open = None;
         }
         let scope = self.palette_scope;
@@ -849,6 +854,7 @@ impl MortiseApp {
             Command::App(index) => self.select_app(index),
             Command::AddApp => self.adding = Some(AddPanel::empty()),
             Command::Settings => self.open_settings(Section::Apps),
+            Command::PhpSettings => self.open_settings(Section::Php),
             Command::Theme(theme) => {
                 self.settings.general.theme = theme;
                 self.save();
@@ -1356,6 +1362,7 @@ impl eframe::App for MortiseApp {
                         actuator: app.as_ref().is_some_and(|app| app.actuator.is_some()),
                         app_url: app.as_ref().and_then(|app| app.app_url.clone()),
                         last: &mut open.last_answers,
+                        php_test: &mut open.php_test,
                     }
                 })
                 .collect();
@@ -1738,6 +1745,7 @@ fn open_app(ctx: &egui::Context, entry: &AppEntry) -> OpenApp {
         seen: None,
         runtime: None,
         last_answers: BTreeMap::new(),
+        php_test: None,
         since: std::time::Instant::now(),
     }
 }

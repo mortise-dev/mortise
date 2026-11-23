@@ -7,7 +7,7 @@ use eframe::egui::{self, Key, Modifiers, Role, Theme};
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT as _, Queryable as _};
 use mortise_app::app::{MortiseApp, Selection};
-use mortise_core::{Editor, IndexRows, ThemeChoice};
+use mortise_core::{Editor, IndexRows, RunnerKind, ThemeChoice};
 
 fn open_settings(harness: &mut Harness<'static, MortiseApp>) {
     harness.key_press_modifiers(Modifiers::COMMAND, Key::Comma);
@@ -198,6 +198,82 @@ fn the_fields_of_an_app_apply_when_they_lose_focus() {
             .query_by_role_and_label(Role::Heading, "Settings")
             .is_none()
     );
+}
+
+fn open_php(harness: &mut Harness<'static, MortiseApp>) {
+    open_settings(harness);
+    harness
+        .get_by_role_and_label(Role::ListBoxOption, "PHP")
+        .click();
+    harness.run();
+}
+
+/// Replaces the text of the command field of "Run PHP with".
+fn type_command(harness: &mut Harness<'static, MortiseApp>, line: &str) {
+    harness
+        .get_by_role_and_label(Role::TextInput, "Run PHP with")
+        .focus();
+    harness.run();
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::A);
+    harness
+        .get_by_role_and_label(Role::TextInput, "Run PHP with")
+        .type_text(line);
+    harness.run();
+}
+
+#[test]
+fn the_kind_of_runner_follows_the_command_and_is_kept() {
+    let (desk, mut harness) = shop_api();
+    open_php(&mut harness);
+    harness.get_by_role_and_label(Role::Heading, "PHP");
+    // Nothing is chosen yet: the field shows the proposal and nothing is saved.
+    harness.get_by_label("Not found: Herd, Sail, a compose file.");
+    assert_eq!(desk.saved().apps[0].php.runner, None);
+
+    harness
+        .get_by_role_and_label(Role::RadioButton, "Docker")
+        .click();
+    harness.run();
+    let docker = |service: &str| {
+        Some(RunnerKind::Docker {
+            service: service.to_owned(),
+        })
+    };
+    assert_eq!(desk.saved().apps[0].php.runner, docker("app"));
+
+    // The service is edited in the command.
+    type_command(&mut harness, "docker compose exec -T web php artisan");
+    harness
+        .get_by_role_and_label(Role::TextInput, "Working folder")
+        .focus();
+    harness.run();
+    assert_eq!(desk.saved().apps[0].php.runner, docker("web"));
+    harness.get_by_label("docker compose exec -T web php artisan");
+}
+
+#[test]
+fn test_says_why_php_did_not_answer() {
+    let (_desk, mut harness) = shop_api();
+    open_php(&mut harness);
+    harness
+        .get_by_role_and_label(Role::RadioButton, "Custom")
+        .click();
+    harness.run();
+    type_command(&mut harness, "mortise-no-such-php artisan");
+    harness
+        .get_by_role_and_label(Role::Button, "Test how PHP runs")
+        .click();
+    let failed = "mortise-no-such-php did not answer: \"mortise-no-such-php: command not found\".";
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while harness.query_by_label_contains(failed).is_none() {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "waited 10 s for: {failed}"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        harness.run_steps(2);
+    }
+    harness.get_by_label("No answer: mortise-no-such-php: command not found");
 }
 
 #[test]
