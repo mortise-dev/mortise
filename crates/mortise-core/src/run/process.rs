@@ -112,7 +112,7 @@ fn start(
     line: &CommandLine,
     folder: &Path,
 ) -> std::io::Result<(Child, Receiver<(Stream, String)>)> {
-    let mut child = prepare(line, folder).spawn()?;
+    let mut child = prepare(line, folder)?.spawn()?;
     let (sender, lines) = mpsc::channel();
     read_lines(child.stdout.take(), Stream::Out, sender.clone());
     read_lines(child.stderr.take(), Stream::Err, sender);
@@ -120,9 +120,14 @@ fn start(
 }
 
 /// The command for `line` in `folder`, with both pipes and the `PATH` of [`child_path`].
+/// An error means the program must not start.
 #[cfg(feature = "run")]
-fn prepare(line: &CommandLine, folder: &Path) -> Command {
-    let mut command = command(program_path(&line.program, folder));
+fn prepare(line: &CommandLine, folder: &Path) -> std::io::Result<Command> {
+    let program = program_path(&line.program, folder);
+    if cfg!(windows) {
+        refuse_batch_with_percent(&program)?;
+    }
+    let mut command = command(program);
     command
         .args(&line.args)
         .current_dir(folder)
@@ -132,7 +137,24 @@ fn prepare(line: &CommandLine, folder: &Path) -> Command {
     if let Some(path) = child_path(std::env::var_os("PATH"), home.as_deref()) {
         command.env("PATH", path);
     }
-    command
+    Ok(command)
+}
+
+/// Refuses a `.bat` or `.cmd` whose path holds `%`. On Windows std starts a batch
+/// file through `cmd.exe`, which would expand the `%` in its path. Windows ignores
+/// dots and spaces at the end of a name, so they do not hide the extension. The
+/// folder that a lookup in `PATH` finds is not checked.
+#[cfg(feature = "run")]
+fn refuse_batch_with_percent(program: &Path) -> std::io::Result<()> {
+    let name = program.to_string_lossy();
+    let name = name.trim_end_matches(['.', ' ']).to_ascii_lowercase();
+    if (name.ends_with(".bat") || name.ends_with(".cmd")) && name.contains('%') {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "the path of the batch file holds %, which cmd.exe would expand",
+        ));
+    }
+    Ok(())
 }
 
 /// The program to start for the word `program`. A relative path with a separator
@@ -235,6 +257,24 @@ mod tests {
         let absolute = std::env::temp_dir().join("php");
         let absolute = absolute.to_str().unwrap();
         assert_eq!(program_path(absolute, folder), PathBuf::from(absolute));
+    }
+
+    #[test]
+    fn a_batch_file_with_percent_in_its_path_is_refused() {
+        for program in [
+            r"C:\100%\herd.bat",
+            r"C:\%USERPROFILE%\herd.CMD",
+            "%a%.Bat. ",
+        ] {
+            let error = refuse_batch_with_percent(Path::new(program)).unwrap_err();
+            assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput, "{program}");
+        }
+        for program in [r"C:\100%\php.exe", r"C:\herd\herd.bat", "herd.bat"] {
+            assert!(
+                refuse_batch_with_percent(Path::new(program)).is_ok(),
+                "{program}"
+            );
+        }
     }
 
     #[test]
