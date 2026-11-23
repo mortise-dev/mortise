@@ -63,7 +63,9 @@ pub use live::{LiveApp, LiveState};
 pub use matcher::fuzzy;
 pub use module::{KindCount, Manifest, Module, ModuleState, Progress, ReadCache};
 #[cfg(feature = "run")]
-pub use output::{FailedMigration, failed_migration, migration_file, migrations_done};
+pub use output::{
+    FailedMigration, MigrationCount, failed_migration, migration_count, migration_file, prohibited,
+};
 pub use rules::{RULES_FILE, Rules, RulesError, RulesSource};
 #[cfg(feature = "run")]
 pub use run::ansi;

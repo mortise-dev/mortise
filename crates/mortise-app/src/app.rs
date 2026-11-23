@@ -1112,12 +1112,12 @@ impl MortiseApp {
             if act.args.iter().any(|word| word == "--pretend") {
                 return;
             }
-            let done = mortise_core::migrations_done(lines);
+            let count = mortise_core::migration_count(lines);
             let text = match act.action {
                 Action::TurnOff => strings::turned_off(object),
                 Action::TurnOn => strings::turned_on(object),
-                Action::Migrate => strings::migrated(object, done),
-                Action::RollBack => strings::rolled_back(object, done),
+                Action::Migrate => strings::migrated(object, count.ran),
+                Action::RollBack => strings::rolled_back(object, count.rolled_back),
                 Action::Seed => strings::seeded(object),
                 _ => return,
             };
