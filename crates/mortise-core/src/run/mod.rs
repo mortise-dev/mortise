@@ -138,18 +138,30 @@ pub struct CommandLine {
 impl CommandLine {
     /// The line that runs artisan with `arguments` through `runner`.
     /// `--no-interaction --ansi` come right after the first argument, so a `--`
-    /// later in the list cannot turn them into plain words.
+    /// later in the list cannot turn them into plain words. A flag that the prefix,
+    /// or the arguments before a `--`, already hold is not added again.
     /// `None` when the runner gives no program (an empty Custom line).
     pub fn artisan(runner: &RunnerKind, arguments: &[&str]) -> Option<Self> {
         let mut words = runner.prefix().into_iter();
         let program = words.next()?;
         let mut args: Vec<String> = words.collect();
+        let options = arguments.iter().take_while(|word| **word != "--");
+        let held: Vec<&str> = args
+            .iter()
+            .map(String::as_str)
+            .chain(options.copied())
+            .collect();
+        let flags = ["--no-interaction", "--ansi"]
+            .into_iter()
+            .filter(|flag| !held.contains(flag))
+            .map(String::from)
+            .collect::<Vec<_>>();
         let (first, rest) = match arguments.split_first() {
             Some((first, rest)) => (Some(*first), rest),
             None => (None, arguments),
         };
         args.extend(first.map(String::from));
-        args.extend(["--no-interaction", "--ansi"].map(String::from));
+        args.extend(flags);
         args.extend(rest.iter().map(|word| word.to_string()));
         Some(Self { program, args })
     }
@@ -426,6 +438,16 @@ mod tests {
         assert_eq!(
             version.args.join(" "),
             "compose exec -T app php artisan --version --no-interaction --ansi"
+        );
+        assert_eq!(
+            CommandLine::artisan(&custom("php artisan --ansi"), &["list", "--no-interaction"]),
+            Some(line(&[
+                "php",
+                "artisan",
+                "--ansi",
+                "list",
+                "--no-interaction"
+            ]))
         );
         assert_eq!(CommandLine::artisan(&custom(" "), &["--version"]), None);
     }
