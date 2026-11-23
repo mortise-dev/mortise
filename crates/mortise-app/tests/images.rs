@@ -17,6 +17,7 @@ use egui_kittest::kittest::{NodeT as _, Queryable as _};
 use egui_kittest::{Harness, SnapshotOptions, SnapshotResults};
 use mortise_app::app::MortiseApp;
 use mortise_core::history::{Ended, Entry, History};
+use mortise_core::testing::Reply;
 use mortise_core::{CommandLine, RunnerKind};
 
 const THEMES: [(Theme, &str); 2] = [(Theme::Light, "light"), (Theme::Dark, "dark")];
@@ -458,6 +459,49 @@ fn an_app_without_the_actuator() {
         desk.knows(&[(&root, "SA")]);
         let mut harness = desk.start();
         shots.take(&mut harness, "s6.5a-not-installed");
+    }
+}
+
+#[test]
+fn the_runtime_box_of_a_module() {
+    // Billing enabled and missing on disk, as the modules component of 13.4 says it.
+    let missing = r#"{"status":"DOWN","components":{"ping":{"status":"UP"},
+        "modules":{"status":"DOWN","details":{"modules":{"Billing":{"enabled":true,
+        "error":"Enabled in the status store, not found on disk."}}}}}}"#;
+    // One set of results for the test: both themes are compared when it ends.
+    let mut shots = Shots::new();
+    for (theme, name) in THEMES {
+        shots.theme = name;
+        // S4.3: the runtime box of Billing, up, then down with the app's sentence.
+        for (screen, health) in [
+            ("s4.3-module-runtime", None),
+            ("s4.3-module-runtime-error", Some(missing)),
+        ] {
+            let stub = common::shop_api_actuator();
+            if let Some(health) = health {
+                stub.set("/actuator/health", Reply::status(503, health));
+            }
+            let mut desk = Desk::new();
+            desk.theme = theme;
+            let root = desk.app("shop-api");
+            desk.knows(&[(&root, "SA")]);
+            desk.connect(&[common::environment("local", &stub)]);
+            let mut harness = desk.start();
+            common::wait_for_answer(&mut harness);
+            select(&mut harness, "Billing");
+            // The box, from its heading to the box of routes under it. A heading is
+            // 18 px under the top of its box, and boxes are 12 px apart.
+            let mid = |(min, max): Part| (min.1 + max.1) / 2.0;
+            let heading = bounds(&harness, Role::Heading, "Runtime on local");
+            let routes = bounds(&harness, Role::Heading, "Routes");
+            // The time of the answer is cut out, in the colour outside the box.
+            let checked = label_bounds(&harness, "checked ");
+            let part = (
+                (heading.0.0 - 13.0 - 8.0, mid(heading) - 18.0 - 8.0),
+                (checked.1.0 + 13.0 + 8.0, mid(routes) - 18.0 - 12.0 + 8.0),
+            );
+            shots.take_part_masked(&mut harness, screen, part, &[checked]);
+        }
     }
 }
 
