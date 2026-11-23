@@ -4,7 +4,7 @@
 
 The code of both crates is organised by layer, not by feature. A feature lives in many places, and a change to one feature touches many files.
 
-- `mortise-core` has four module cycles: `catalog` and `package`, `run` and `editor`, `git` and `run`, and `catalog` and `run` through `Target`.
+- `mortise-core` has four module cycles: `catalog` and `package`, `run` and `editor`, `git` and `run`, and `catalog` and `run` (`catalog/cache.rs` uses `run::history`, `run/recent.rs` uses `Action` and `Catalog`).
 - `app.rs` of `mortise-app` wires every feature in one `impl` block of about 3,900 lines.
 - One `strings.rs` of about 3,400 lines holds the text of every feature. 476 of its names have one user, and the file is a conflict point for every feature change.
 - CI builds `mortise-core` with default features only. A gate that breaks `--no-default-features` or one feature goes unseen.
