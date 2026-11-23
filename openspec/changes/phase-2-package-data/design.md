@@ -446,6 +446,29 @@ accessible name and a 24 px target (`tests/accessibility.rs`).
 - Text not in the spec: "No files", "3 files, 2 exist already", "Create the other file", the error
   of the package in quotes, and "Policy exists" as the name a screen reader says for the mark.
 
+### Changed after review
+
+- `replace_words` takes the package version. From 13.4 on `module:make-model` passes `--force` to the
+  generators it calls (package PR #2302), so Replace of the model's own file drops `--factory` too and
+  writes only the model. Before 13.4 `--factory` stays, as in milestone 14.
+- "List files" and the read of the generators start only from a line that was whole on screen in the
+  last frame, as the run buttons do (S37). Otherwise they are off with "Scroll up to see the whole
+  command first.".
+- A read of the generators keeps the package version it started with. When the app's version changed
+  meanwhile, its answer is dropped and the shipped catalog of the new version applies.
+- `Read` keeps a `cut` mark after all: `RunEvent::Line` carries `cut`, true for a line longer than
+  `KEEP`. A cut last line of standard output, or an output that passed `OUTPUT_LIMIT`, gives
+  `DataError::Cut` through `whole_document` (`ReadEnd::document`, and `AppRuns` for a run with
+  `--json`): the start of a line can parse as a whole document. The reason reads "the answer was cut:
+  Mortise keeps 64 KiB of a line and 1 MB of output" (not in the spec).
+- `package::has_option(words, option)` looks only before `--`; `with_json` and `with_dry_run` add a
+  flag only when it is not there already. A module named `--json` after `--` is a name.
+- The drawer's Run again and the history's Enter are off while a read runs, as for a run.
+- A `--json` run that read no file keeps the form's line and shows "Read from the output: the package's
+  answer was "<reason>"." under it; the drawer shows the failure.
+- `created_tables` resolves the class through the file's `use`: `Schema` under another name and its
+  full name count, and the table may be the named argument `table`.
+
 ## Risks / Trade-offs
 
 - [The user must press "List files" and "Read migration state"] → One more step than the spec draws.

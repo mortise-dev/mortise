@@ -442,17 +442,27 @@ const MODEL_CALLS: [(&str, &str, &str, &str); 6] = [
 /// - A generator that writes one file: the run's words and `--force`.
 /// - `module:make-model`: the file name is compared with the names the model
 ///   passes to its calls. A match gives that call with `--force`. The model's own
-///   file gives the run's words without the seven flags and `--all`, with `--force`;
-///   `--factory` stays when the run made the factory, as the model's stub uses it.
+///   file gives the run's words without the seven flags and `--all`, with `--force`.
+///   Before 13.4 `--factory` stays when the run made the factory, as the model's stub
+///   uses it, and the factory call leaves its file. From 13.4 on the model passes
+///   `--force` to its calls (package PR #2302), so `--factory` would write over the
+///   factory too: it goes, and only the model's file is written.
 /// - A migration, `module:make-component` and `module:make`: `None`. A migration
 ///   gets a new date in its file name, so `--force` would not write the same file.
 ///
 /// These are names the package passes, not paths: the generator writes where the
 /// package says.
-pub fn replace_words(catalog: &Catalog, run: &[String], left: &str) -> Option<Vec<String>> {
+///
+/// `package` is the app's package version.
+pub fn replace_words(
+    catalog: &Catalog,
+    run: &[String],
+    left: &str,
+    package: &Version,
+) -> Option<Vec<String>> {
     let generator = catalog.get(run.first()?)?;
     match generator.name.as_str() {
-        MAKE_MODEL => replace_from_model(catalog, generator, run, left),
+        MAKE_MODEL => replace_from_model(catalog, generator, run, left, package),
         MODULE_MAKE | "module:make-component" | "module:make-migration" => None,
         _ => generator.flag("force").then(|| with_force(run)),
     }
@@ -463,6 +473,7 @@ fn replace_from_model(
     model_generator: &Generator,
     run: &[String],
     left: &str,
+    package: &Version,
 ) -> Option<Vec<String>> {
     let stem = file_name(left).strip_suffix(".php")?;
     let (options, arguments) = split_run(run);
@@ -475,8 +486,9 @@ fn replace_from_model(
             return None;
         }
         // The model stub renders its factory from `--factory`, so it stays; `--all`
-        // gives it too. The factory call then leaves its file: it has no `--force`.
-        let factory = all || options.contains(&"--factory");
+        // gives it too. Before 13.4 the factory call then leaves its file: it has no
+        // `--force`. From 13.4 on it gets `--force`, so the flag goes.
+        let factory = released_before_13_4(package) && (all || options.contains(&"--factory"));
         let mut words: Vec<String> = Vec::with_capacity(run.len());
         for word in run {
             let flag = word.strip_prefix("--").unwrap_or_default();
@@ -509,6 +521,24 @@ fn replace_from_model(
         values: BTreeMap::new(),
     };
     Some(call.words(&filled, module))
+}
+
+/// True for a released version older than 13.4.0, whose model does not pass
+/// `--force` to its calls. A dev build or a pre-release may pass it, so it is false.
+fn released_before_13_4(version: &Version) -> bool {
+    let parts: Vec<&str> = version.full().split('.').collect();
+    let [major, minor, patch] = parts.as_slice() else {
+        return false;
+    };
+    let number = |part: &str| {
+        (!part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit()))
+            .then(|| part.parse::<u64>().ok())
+            .flatten()
+    };
+    match (number(major), number(minor), number(patch)) {
+        (Some(major), Some(minor), Some(_)) => (major, minor) < (13, 4),
+        _ => false,
+    }
 }
 
 /// The flag of `module:make-model` whose call writes the file at `path`, for the
@@ -912,7 +942,12 @@ mod tests {
     #[test]
     fn replace_writes_a_left_file_with_force() {
         let catalog = sample();
-        let replace = |run: &[&str], left: &str| replace_words(&catalog, &words(run), left);
+        let version = |raw: &str| Version {
+            raw: raw.to_string(),
+            alias: None,
+        };
+        let v13_3 = version("13.3.0");
+        let replace = |run: &[&str], left: &str| replace_words(&catalog, &words(run), left, &v13_3);
 
         // One generator: its words and `--force`, before a `--`.
         assert_eq!(
@@ -997,6 +1032,29 @@ mod tests {
                 "--force"
             ]))
         );
+        // From 13.4 on (and on a dev build) the model passes `--force` to its calls,
+        // so `--factory` would write over the factory: only the model's file is
+        // written. `--json` stays.
+        let json_run = [&run[..], &["--json"]].concat();
+        for raw in ["13.4.0", "dev-master"] {
+            assert_eq!(
+                replace_words(
+                    &catalog,
+                    &words(&json_run),
+                    "Modules/Billing/app/Models/Invoice.php",
+                    &version(raw)
+                ),
+                Some(words(&[
+                    MAKE_MODEL,
+                    "invoice",
+                    "Billing",
+                    "--fillable=total",
+                    "--json",
+                    "--force"
+                ])),
+                "{raw}"
+            );
+        }
         // A call the run did not make, and a migration, get nothing.
         assert_eq!(replace(&run, "InvoiceController.php"), None);
         assert_eq!(

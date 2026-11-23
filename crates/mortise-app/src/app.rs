@@ -212,8 +212,9 @@ struct PackageRead {
 /// What a read is for.
 #[allow(dead_code)] // Each variant is started by the task of its data (15.3 to 15.5).
 enum ReadFor {
-    /// `module:generators --json` (P3, design D4).
-    Catalog,
+    /// `module:generators --json` (P3, design D4), started while the app had this
+    /// package version.
+    Catalog { package: Version },
     /// A generator with `--dry-run --json` (P2, design D5): the words of the form.
     DryRun { words: Vec<String> },
     /// `module:migrate-status --json` (P4, design D7).
@@ -1106,7 +1107,7 @@ impl MortiseApp {
         end: Result<mortise_core::ReadEnd, mortise_core::StartError>,
     ) {
         match purpose {
-            ReadFor::Catalog => self.catalog_read(index, end),
+            ReadFor::Catalog { package } => self.catalog_read(index, &package, end),
             ReadFor::DryRun { words } => self.dry_run_read(index, words, end),
             ReadFor::Migrations { target } => self.migrations_read(index, target, end),
         }
@@ -1122,13 +1123,9 @@ impl MortiseApp {
         end: Result<mortise_core::ReadEnd, mortise_core::StartError>,
     ) {
         let status = match end {
-            Ok(end) => match mortise_core::document::<mortise_core::MigrationStatus>(&end.stdout) {
-                Ok(status) => Ok(status),
-                Err(mortise_core::DataError::Malformed(reason)) => Err(reason),
-                Err(mortise_core::DataError::Missing) => Err(end
-                    .error_line()
-                    .unwrap_or_else(|| strings::read_end_reason(end.end))),
-            },
+            Ok(end) => end
+                .document::<mortise_core::MigrationStatus>()
+                .map_err(|error| strings::no_document(&end, &error)),
             Err(error) => Err(strings::start_reason(&error)),
         };
         let modules_on: Vec<String> = self.snapshot(index).map_or_else(Vec::new, |app| {
@@ -1169,7 +1166,10 @@ impl MortiseApp {
         let deleted = match (destructive_words(args), open.runs.ended()) {
             (
                 Some((Action::DeleteModule, Target::Module(name))),
-                Some((RunEnd::Exited { code: Some(0), .. }, _, _)),
+                Some(runner_view::RunOver {
+                    end: RunEnd::Exited { code: Some(0), .. },
+                    ..
+                }),
             ) => Some(name),
             _ => None,
         };
@@ -1195,17 +1195,25 @@ impl MortiseApp {
 
     /// The end of `module:generators --json` (design D4): the catalog replaces the
     /// shipped one for the app and goes into the cache, or the picker says why not.
+    /// `package` is the version the app had when the read started. When the app's
+    /// version changed meanwhile, the answer may be of either version: it is dropped,
+    /// and the picker shows the shipped catalog of the new version.
     fn catalog_read(
         &mut self,
         index: usize,
+        package: &Version,
         end: Result<mortise_core::ReadEnd, mortise_core::StartError>,
     ) {
         let Some(app) = self.snapshot(index) else {
             return;
         };
+        if app.package.raw != package.raw {
+            return;
+        }
         let root = self.settings.apps[index].root.clone();
         let read = match &end {
-            Ok(end) => mortise_core::document::<Catalog>(&end.stdout)
+            Ok(end) => end
+                .document::<Catalog>()
                 .map_err(|error| strings::no_document(end, &error)),
             Err(error) => Err(strings::start_reason(error)),
         };
@@ -1215,15 +1223,9 @@ impl MortiseApp {
                 let read_ms = jiff::Timestamp::now().as_millisecond();
                 if let Some(dir) = &self.data_dir {
                     // A cache that cannot be written leaves the read for this session.
-                    let _ = mortise_core::catalog_cache::store(
-                        dir,
-                        &root,
-                        &app.package,
-                        &read,
-                        read_ms,
-                    );
+                    let _ = mortise_core::catalog_cache::store(dir, &root, package, &read, read_ms);
                 }
-                catalog.read = Some((read, read_ms, app.package.raw.clone()));
+                catalog.read = Some((read, read_ms, package.raw.clone()));
                 catalog.error = None;
             }
             Err(reason) => {
@@ -1246,7 +1248,8 @@ impl MortiseApp {
             return;
         };
         let listed = match &end {
-            Ok(end) => mortise_core::document::<mortise_core::GeneratorReport>(&end.stdout)
+            Ok(end) => end
+                .document::<mortise_core::GeneratorReport>()
                 .map_err(|error| strings::no_document(end, &error)),
             Err(error) => Err(strings::start_reason(error)),
         };
@@ -1675,19 +1678,29 @@ impl MortiseApp {
     /// its document, and the report of Check translations goes into the package data,
     /// whatever the exit code (design D8, D9).
     fn action_ended(&mut self, index: usize, act: &Act, modules_on: usize) {
-        let Some((end, lines, stdout)) = self.apps[index].runs.ended() else {
+        let Some(runner_view::RunOver {
+            end,
+            lines,
+            stdout,
+            stdout_cut,
+        }) = self.apps[index].runs.ended()
+        else {
             return;
         };
         let count = mortise_core::migration_count(lines);
-        let json = act.args.iter().any(|word| word == "--json");
+        let json = mortise_core::has_option(&act.args, "--json");
         let tests = match act.action {
-            Action::RunTests if json => mortise_core::document::<TestReport>(stdout)
-                .ok()
-                .and_then(|report| tests_toast(&report, &act.target)),
+            Action::RunTests if json => {
+                mortise_core::whole_document::<TestReport>(stdout, stdout_cut)
+                    .ok()
+                    .and_then(|report| tests_toast(&report, &act.target))
+            }
             _ => None,
         };
         let translations = match act.action {
-            Action::CheckTranslations if json => mortise_core::document::<LangReport>(stdout).ok(),
+            Action::CheckTranslations if json => {
+                mortise_core::whole_document::<LangReport>(stdout, stdout_cut).ok()
+            }
             _ => None,
         };
         if let Some(report) = translations {
@@ -1699,7 +1712,7 @@ impl MortiseApp {
         };
         let label = act.args.join(" ");
         if let RunEnd::Exited { code: Some(0), .. } = end {
-            if act.args.iter().any(|word| word == "--pretend") {
+            if mortise_core::has_option(&act.args, "--pretend") {
                 return;
             }
             let text = match act.action {
@@ -1796,7 +1809,11 @@ impl MortiseApp {
             GenerateAsk::NewModule => return,
             GenerateAsk::ReadCatalog => {
                 let words = crate::generate_view::read_catalog_words();
-                self.start_read(index, words, ReadFor::Catalog);
+                let Some(app) = self.snapshot(index) else {
+                    return;
+                };
+                let package = app.package.clone();
+                self.start_read(index, words, ReadFor::Catalog { package });
                 return;
             }
             GenerateAsk::ListFiles { words } => {
@@ -1898,18 +1915,22 @@ impl MortiseApp {
             form,
         } = generating;
         let root = self.settings.apps[index].root.clone();
-        let Some((end, lines, stdout)) = self.apps[index].runs.ended() else {
+        let Some(runner_view::RunOver {
+            end,
+            lines,
+            stdout,
+            stdout_cut,
+        }) = self.apps[index].runs.ended()
+        else {
             return;
         };
         let done = matches!(end, RunEnd::Exited { code: Some(0), .. });
         // A run with `--json` gives its files in its answer (P5); without one they are
         // read from the lines, and the result says why (design D6).
-        let json = run
-            .args
-            .iter()
-            .take_while(|word| *word != "--")
-            .any(|word| word == "--json");
-        let answer = json.then(|| mortise_core::document::<mortise_core::GeneratorReport>(stdout));
+        let json = mortise_core::has_option(&run.args, "--json");
+        let answer = json.then(|| {
+            mortise_core::whole_document::<mortise_core::GeneratorReport>(stdout, stdout_cut)
+        });
         let (files, autoload_failed, fallback) = match answer {
             Some(Ok(report)) => (
                 mortise_core::reported_files(&report, &root),
@@ -1934,6 +1955,14 @@ impl MortiseApp {
             Toast::failed(text).with_action(strings::SHOW_OUTPUT, ToastAction::ShowOutput(root))
         };
         let open = &mut self.apps[index];
+        // A run with `--json` that read no file, such as one that failed at boot: the
+        // form keeps its line and says why the answer was not read (design D2).
+        if attached && files.is_empty() && fallback.is_some() {
+            let result =
+                GenerateResult::new(run.module.clone(), run.args.clone(), Vec::new(), false);
+            open.generate
+                .show_result(result.read_from_output(fallback.clone()));
+        }
 
         if run.generator == MODULE_MAKE {
             let names = typed_names(&run.args);
@@ -1972,7 +2001,8 @@ impl MortiseApp {
             return;
         }
 
-        // No file read: no result; the drawer says what happened.
+        // No file read: no result; the drawer says what happened, and the form why
+        // the answer was not read.
         if files.is_empty() {
             if !done && !in_view {
                 let text = match end {
@@ -2811,7 +2841,7 @@ impl eframe::App for MortiseApp {
                                 matches!(
                                     open.reading,
                                     Some(PackageRead {
-                                        purpose: ReadFor::Catalog,
+                                        purpose: ReadFor::Catalog { .. },
                                         ..
                                     })
                                 ),
@@ -2865,11 +2895,14 @@ impl eframe::App for MortiseApp {
                     }
                     self.work_rect = work_rect;
 
-                    // The drawer, after the workspace in the Tab order.
+                    // The drawer, after the workspace in the Tab order. A read keeps
+                    // the app busy too (design D3).
+                    let busy = open.busy().map(str::to_owned);
                     let inputs = runner_view::Inputs {
                         app: entry.display_name(),
                         runner: entry.php.runner.as_ref(),
                         snapshot: &app,
+                        busy: busy.as_deref(),
                         keyboard: self.keyboard,
                         mac,
                     };

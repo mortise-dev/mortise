@@ -41,6 +41,9 @@ pub enum DataError {
     Missing,
     /// The last line is not the document: serde's message.
     Malformed(String),
+    /// The last line was longer than a line may be and only its start was kept, or
+    /// the output passed its limit. A cut document is never read in part.
+    Cut,
 }
 
 /// The last non-empty line of standard output, read as `T`.
@@ -56,12 +59,32 @@ pub fn document<T: DeserializeOwned>(stdout: &[String]) -> Result<T, DataError> 
     serde_json::from_str(line).map_err(|error| DataError::Malformed(error.to_string()))
 }
 
-/// The artisan words with `--json`, before a `--` when the words hold one.
+/// [`document`], unless the last non-empty line of `stdout` was cut (`cut`): then
+/// [`DataError::Cut`], since the start of a line may parse as a whole document.
+pub fn whole_document<T: DeserializeOwned>(stdout: &[String], cut: bool) -> Result<T, DataError> {
+    if cut {
+        return Err(DataError::Cut);
+    }
+    document(stdout)
+}
+
+/// True when the artisan words hold `option` before a `--`. A word after `--` is a
+/// name, such as a module named `--json`.
+pub fn has_option(words: &[String], option: &str) -> bool {
+    words
+        .iter()
+        .take_while(|word| *word != "--")
+        .any(|word| word == option)
+}
+
+/// The artisan words with `--json`, before a `--` when the words hold one. Words
+/// that hold it already stay as they are.
 pub fn with_json(words: Vec<String>) -> Vec<String> {
     with_flags(words, &["--json"])
 }
 
 /// The artisan words with `--dry-run --json`, before a `--` when the words hold one.
+/// A flag the words hold already is not added again.
 pub fn with_dry_run(words: Vec<String>) -> Vec<String> {
     with_flags(words, &["--dry-run", "--json"])
 }
@@ -86,7 +109,12 @@ fn with_flags(mut words: Vec<String>, flags: &[&str]) -> Vec<String> {
         .iter()
         .position(|word| word == "--")
         .unwrap_or(words.len());
-    words.splice(at..at, flags.iter().map(|flag| flag.to_string()));
+    let added: Vec<String> = flags
+        .iter()
+        .filter(|flag| !has_option(&words, flag))
+        .map(|flag| flag.to_string())
+        .collect();
+    words.splice(at..at, added);
     words
 }
 
@@ -466,6 +494,15 @@ mod tests {
         assert_eq!(
             migrate_status_args(&Target::Module("-Odd".into())),
             words(&["module:migrate-status", "--json", "--", "-Odd"])
+        );
+        // Once only, and a module named `--json` after `--` is not the option.
+        assert_eq!(
+            with_json(words(&["module:make-model", "Invoice", "--json"])),
+            words(&["module:make-model", "Invoice", "--json"])
+        );
+        assert_eq!(
+            with_json(words(&["module:make-model", "Invoice", "--", "--json"])),
+            words(&["module:make-model", "Invoice", "--json", "--", "--json"])
         );
     }
 

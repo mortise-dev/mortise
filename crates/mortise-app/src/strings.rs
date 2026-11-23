@@ -2570,20 +2570,6 @@ pub fn migration_state_failed(reason: &str) -> String {
     format!("Mortise could not read the migration state: \"{reason}\".")
 }
 
-/// Not in the spec, design D2: the reason of a read that ended without a document
-/// and wrote nothing on standard error.
-pub fn read_end_reason(end: mortise_core::RunEnd) -> String {
-    use mortise_core::RunEnd;
-    match end {
-        RunEnd::Exited {
-            code: Some(code), ..
-        } => format!("exit code {code}"),
-        RunEnd::Exited { code: None, .. } => "stopped by a signal".to_owned(),
-        RunEnd::Stopped { limit: Some(_), .. } => "stopped at the time limit".to_owned(),
-        RunEnd::Stopped { limit: None, .. } => "stopped".to_owned(),
-    }
-}
-
 /// `7 tables` (S10.4).
 pub fn tables(n: usize) -> String {
     match n {
@@ -2881,15 +2867,20 @@ pub fn generators_not_read(app: &str, reason: &str) -> String {
 }
 
 /// Not in the spec: the reason in quotes of a read that gave no document (design D2):
-/// serde's message for a malformed one, else the last line of standard error, else
-/// how the read ended.
+/// serde's message for a malformed one, [`ANSWER_CUT`] for a cut one, else the last
+/// line of standard error, else how the read ended.
 pub fn no_document(end: &mortise_core::ReadEnd, error: &mortise_core::DataError) -> String {
     use mortise_core::DataError;
-    if let DataError::Malformed(message) = error {
-        return message.clone();
+    match error {
+        DataError::Malformed(message) => message.clone(),
+        DataError::Cut => ANSWER_CUT.to_owned(),
+        DataError::Missing => end.error_line().unwrap_or_else(|| ended_as(end.end)),
     }
-    end.error_line().unwrap_or_else(|| ended_as(end.end))
 }
+
+/// Not in the spec: the reason of a document that was too long to keep whole (design D2).
+pub const ANSWER_CUT: &str =
+    "the answer was cut: Mortise keeps 64 KiB of a line and 1 MB of output";
 
 /// `41 generators for Billing, and New module. Enter opens the form.`
 pub fn generators_for(n: usize, module: &str) -> String {
@@ -3164,6 +3155,7 @@ pub fn no_run_document(error: &mortise_core::DataError, end: mortise_core::RunEn
     use mortise_core::{DataError, RunEnd};
     match (error, end) {
         (DataError::Malformed(message), _) => message.clone(),
+        (DataError::Cut, _) => ANSWER_CUT.to_owned(),
         (DataError::Missing, RunEnd::Exited { code: Some(0), .. }) => {
             "nothing on standard output".to_owned()
         }

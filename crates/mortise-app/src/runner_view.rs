@@ -179,6 +179,9 @@ struct Current {
     output: Output,
     /// The lines of standard output alone. They are in `output` too.
     stdout: Vec<String>,
+    /// The last non-empty line of standard output was cut at the line limit.
+    stdout_cut: bool,
+    /// The output passed its limit and the later lines were dropped.
     cut: bool,
     state: State,
     /// Started through Sail or Docker: a stop reaches `docker` only.
@@ -196,6 +199,18 @@ struct Current {
 pub fn line_now(runner: Option<&RunnerKind>, args: &[String]) -> Option<String> {
     let words: Vec<&str> = args.iter().map(String::as_str).collect();
     CommandLine::artisan(runner?, &words).map(|line| line.display())
+}
+
+/// How a run ended, with its output.
+#[derive(Debug, Clone, Copy)]
+pub struct RunOver<'a> {
+    pub end: RunEnd,
+    /// The output, both streams mixed, as the drawer shows it.
+    pub lines: &'a [String],
+    /// The lines of standard output alone.
+    pub stdout: &'a [String],
+    /// The document on standard output was cut, or dropped at the output limit.
+    pub stdout_cut: bool,
 }
 
 /// The runs of one app: the one on screen, and the history kept on disk.
@@ -269,6 +284,7 @@ impl AppRuns {
                 line: Some(run.line.display()),
                 output: Output::default(),
                 stdout: Vec::new(),
+                stdout_cut: false,
                 cut: false,
                 container,
                 started_ms: run
@@ -286,6 +302,7 @@ impl AppRuns {
                 args,
                 output: Output::default(),
                 stdout: Vec::new(),
+                stdout_cut: false,
                 cut: false,
                 container,
                 started_ms: now_ms,
@@ -334,8 +351,10 @@ impl AppRuns {
         let mut ended = None;
         for event in events {
             match event {
-                RunEvent::Line { stream, text } => {
+                RunEvent::Line { stream, text, cut } => {
                     if stream == Stream::Out {
+                        // An empty line after a cut one leaves the mark.
+                        current.stdout_cut = cut || (current.stdout_cut && text.trim().is_empty());
                         current.stdout.push(text.clone());
                     }
                     current.output.push(text);
@@ -406,16 +425,22 @@ impl AppRuns {
         self.read_history();
     }
 
-    /// How the run on screen ended, its output and its lines of standard output
-    /// alone, once it has ended.
-    pub fn ended(&self) -> Option<(RunEnd, &[String], &[String])> {
+    /// How the run on screen ended, with its output, once it has ended.
+    pub fn ended(&self) -> Option<RunOver<'_>> {
         match &self.current {
             Some(Current {
                 state: State::Ended(end),
                 output,
                 stdout,
+                stdout_cut,
+                cut,
                 ..
-            }) => Some((*end, &output.lines, stdout)),
+            }) => Some(RunOver {
+                end: *end,
+                lines: &output.lines,
+                stdout,
+                stdout_cut: *stdout_cut || *cut,
+            }),
             _ => None,
         }
     }
@@ -588,6 +613,9 @@ pub struct Inputs<'a> {
     pub runner: Option<&'a RunnerKind>,
     /// The app as read, to find the file of a migration that failed.
     pub snapshot: &'a AppSnapshot,
+    /// The label of the command or read that runs in the app, if one does. Run
+    /// again is off while it runs.
+    pub busy: Option<&'a str>,
     /// True while the keyboard is in use: focus rings are drawn.
     pub keyboard: bool,
     pub mac: bool,
@@ -1053,7 +1081,7 @@ fn open(
         pos2(right, rect.bottom() - PAD_BOTTOM),
     );
     let roomy = rect.width() >= ROOMY_W;
-    let busy = runs.running().map(strings::is_running);
+    let busy = inputs.busy.map(strings::is_running);
     let hide =
         || BarButton::new(strings::HIDE, DrawerAction::Hide).keys(strings::TOGGLE_RUNNER_KEYS);
     let run_again = |keys: Option<&str>| BarButton {

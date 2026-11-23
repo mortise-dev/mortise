@@ -566,3 +566,47 @@ fn the_generate_tab_its_result_and_replace() {
     chord(&mut harness, Key::Enter);
     audit(&harness, "Generate, Replace module dialog");
 }
+
+#[test]
+fn the_generate_tab_of_a_13_4_app() {
+    let desk = runner_desk(&fake(""), &[]);
+    common::package_version(&desk.path().join("shop-api"), "v13.4.0");
+    let mut harness = desk.start();
+    // S9.1: the button that reads the generators, then its "Read again".
+    select(&mut harness, "Billing");
+    press(&mut harness, Key::Num3);
+    audit(&harness, "Generate, picker before the read");
+    harness
+        .get_by_role_and_label(Role::Button, "Read the generators of shop-api")
+        .click();
+    wait_for(&mut harness, "Read from shop-api at ");
+    harness.get_by_role_and_label(Role::Button, "Read again");
+    audit(&harness, "Generate, picker after the read");
+    // S9.3: the dry run finds the policy of Invoice, so "exists" shows.
+    select(&mut harness, "Model");
+    type_name(&mut harness, "Model name", "Invoice");
+    for flag in ["Migration", "Policy"] {
+        harness.get_by_role_and_label(Role::CheckBox, flag).click();
+        harness.run_steps(3);
+    }
+    harness
+        .get_by_role_and_label(Role::Button, "List files")
+        .click();
+    wait_for(&mut harness, "3 files, 1 exists already");
+    audit(
+        &harness,
+        "Generate, model form with its files and an existing file",
+    );
+    // S9.4: the new module form with its file list.
+    chord(&mut harness, Key::N);
+    type_name(&mut harness, "Module names", "Loyalty");
+    harness
+        .get_by_role_and_label(Role::RadioButton, "API")
+        .click();
+    harness.run_steps(3);
+    harness
+        .get_by_role_and_label(Role::Button, "List files")
+        .click();
+    wait_for(&mut harness, "Modules/Loyalty does not exist yet");
+    audit(&harness, "Generate, new module form with its files");
+}

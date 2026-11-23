@@ -243,25 +243,35 @@ impl<'ast, 'arena> MutWalker<'ast, 'arena, ()> for TestCounter {
     }
 }
 
-/// The tables a migration creates: the first argument of each `Schema::create(...)`
-/// and `Schema::connection(...)->create(...)` in its `up` method, when it is a string
-/// literal. In order, each once.
+/// The class of Laravel's `Schema` facade.
+const SCHEMA: &[u8] = b"Illuminate\\Support\\Facades\\Schema";
+
+/// The tables a migration creates: the table of each `Schema::create(...)` and
+/// `Schema::connection(...)->create(...)` in its `up` method, when it is a string
+/// literal, as the first argument or the named argument `table`. `Schema` is the
+/// facade under any name the file's `use` gives it, its full name, or the plain
+/// `Schema` that Laravel's alias gives. In order, each once.
 pub(crate) fn created_tables(source: &str) -> Vec<String> {
     let arena = LocalArena::new();
     let program = parse_file_content(&arena, FileId::zero(), source.as_bytes());
-    let mut reader = TableReader::default();
+    let names = NameResolver::new(&arena).resolve(program);
+    let mut reader = TableReader {
+        names: &names,
+        methods: Vec::new(),
+        tables: Vec::new(),
+    };
     reader.walk_program(program, &mut ());
     reader.tables
 }
 
-#[derive(Default)]
-struct TableReader {
+struct TableReader<'a, 'arena> {
+    names: &'a ResolvedNames<'arena>,
     /// For each method the walk is in, whether it is `up`.
     methods: Vec<bool>,
     tables: Vec<String>,
 }
 
-impl TableReader {
+impl TableReader<'_, '_> {
     fn in_up(&self) -> bool {
         self.methods.last().copied().unwrap_or(false)
     }
@@ -271,19 +281,34 @@ impl TableReader {
         if !self.in_up() || !is_named(method, b"create") {
             return;
         }
-        let first = arguments
+        let table = arguments
             .arguments
             .iter()
-            .next()
-            .and_then(|argument| match argument {
-                Argument::Positional(argument) => string_of(argument.value),
-                Argument::Named(_) => None,
-            });
-        if let Some(table) = first
+            .enumerate()
+            .find_map(|(at, argument)| match argument {
+                Argument::Positional(argument) if at == 0 => Some(argument.value),
+                Argument::Named(argument) if argument.name.value == b"table" => {
+                    Some(argument.value)
+                }
+                _ => None,
+            })
+            .and_then(string_of);
+        if let Some(table) = table
             && !self.tables.contains(&table)
         {
             self.tables.push(table);
         }
+    }
+
+    /// Whether an expression is the `Schema` facade: its full name once resolved
+    /// through the file's `use`, or the plain `Schema` of Laravel's alias.
+    fn is_schema(&self, class: &Expression<'_>) -> bool {
+        let Expression::Identifier(name) = class else {
+            return false;
+        };
+        let resolved = self.names.resolve(&name.span()).unwrap_or(name.value());
+        let resolved = resolved.strip_prefix(b"\\").unwrap_or(resolved);
+        resolved.eq_ignore_ascii_case(SCHEMA) || name.value().eq_ignore_ascii_case(b"Schema")
     }
 }
 
@@ -292,12 +317,7 @@ fn is_named(method: &ClassLikeMemberSelector<'_>, name: &[u8]) -> bool {
     matches!(method, ClassLikeMemberSelector::Identifier(identifier) if identifier.value.eq_ignore_ascii_case(name))
 }
 
-/// Whether an expression is the class `Schema`, by its last segment.
-fn is_schema(class: &Expression<'_>) -> bool {
-    matches!(class, Expression::Identifier(name) if name.last_segment() == b"Schema")
-}
-
-impl<'ast, 'arena> MutWalker<'ast, 'arena, ()> for TableReader {
+impl<'ast, 'arena> MutWalker<'ast, 'arena, ()> for TableReader<'_, 'arena> {
     fn walk_in_method(&mut self, method: &'ast Method<'arena>, _: &mut ()) {
         self.methods
             .push(method.name.value.eq_ignore_ascii_case(b"up"));
@@ -309,7 +329,7 @@ impl<'ast, 'arena> MutWalker<'ast, 'arena, ()> for TableReader {
 
     // `Schema::create('orders', ...)`.
     fn walk_in_static_method_call(&mut self, call: &'ast StaticMethodCall<'arena>, _: &mut ()) {
-        if is_schema(call.class) {
+        if self.is_schema(call.class) {
             self.create(&call.method, &call.argument_list);
         }
     }
@@ -317,7 +337,7 @@ impl<'ast, 'arena> MutWalker<'ast, 'arena, ()> for TableReader {
     // `Schema::connection('reports')->create('orders', ...)`.
     fn walk_in_method_call(&mut self, call: &'ast MethodCall<'arena>, _: &mut ()) {
         if let Expression::Call(Call::StaticMethod(connection)) = call.object
-            && is_schema(connection.class)
+            && self.is_schema(connection.class)
             && is_named(&connection.method, b"connection")
         {
             self.create(&call.method, &call.argument_list);
@@ -632,6 +652,9 @@ mod tests {
     #[test]
     fn the_tables_of_a_migration_are_the_literals_its_up_method_creates() {
         let source = r#"<?php
+use Illuminate\Support\Facades\Schema as S;
+use App\Support\Other;
+
 return new class extends Migration
 {
     public function up(): void
@@ -641,7 +664,11 @@ return new class extends Migration
         });
         Schema::connection('reports')->create('order_totals', fn ($table) => null);
         Schema::create($this->table, fn ($table) => null);
-        \Illuminate\Support\Facades\Schema::create('orders', fn ($table) => null);
+        \Illuminate\Support\Facades\Schema::create('refunds', fn ($table) => null);
+        S::create('payments', fn ($table) => null);
+        S::connection('reports')->create('orders', fn ($table) => null);
+        Schema::create(callback: fn ($table) => null, table: 'invoices');
+        Other::create('carts', fn ($table) => null);
         Schema::table('carts', fn ($table) => null);
     }
 
@@ -651,7 +678,10 @@ return new class extends Migration
     }
 };
 "#;
-        assert_eq!(created_tables(source), ["orders", "order_totals"]);
+        assert_eq!(
+            created_tables(source),
+            ["orders", "order_totals", "refunds", "payments", "invoices"]
+        );
     }
 
     #[test]

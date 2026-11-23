@@ -7,9 +7,12 @@
 use std::path::Path;
 use std::time::Instant;
 
+use serde::de::DeserializeOwned;
+
 use super::PhpSettings;
 use super::ansi::plain;
 use super::process::{Run, RunEnd, RunEvent, Runs, StartError, Stream};
+use crate::package::{DataError, whole_document};
 
 /// A read that runs.
 #[derive(Debug)]
@@ -17,6 +20,7 @@ pub struct Read {
     run: Run,
     stdout: Vec<String>,
     stderr: Vec<String>,
+    stdout_cut: bool,
 }
 
 /// How a read ended, with its lines.
@@ -25,6 +29,10 @@ pub struct ReadEnd {
     pub end: RunEnd,
     pub stdout: Vec<String>,
     pub stderr: Vec<String>,
+    /// The last non-empty line of standard output was cut, or the output passed
+    /// its limit and its later lines were dropped. [`ReadEnd::document`] then gives
+    /// [`DataError::Cut`].
+    pub stdout_cut: bool,
 }
 
 impl Read {
@@ -40,6 +48,7 @@ impl Read {
             run,
             stdout: Vec::new(),
             stderr: Vec::new(),
+            stdout_cut: false,
         })
     }
 
@@ -67,18 +76,26 @@ impl Read {
                 RunEvent::Line {
                     stream: Stream::Out,
                     text,
-                } => self.stdout.push(text),
+                    cut,
+                } => {
+                    // An empty line after a cut one leaves the mark.
+                    self.stdout_cut = cut || (self.stdout_cut && text.trim().is_empty());
+                    self.stdout.push(text);
+                }
                 RunEvent::Line {
                     stream: Stream::Err,
                     text,
+                    ..
                 } => self.stderr.push(text),
-                // A cut document does not parse, so it is never read in part.
-                RunEvent::Cut => {}
+                // The later lines are dropped, the document with them: a line kept
+                // before is not the document.
+                RunEvent::Cut => self.stdout_cut = true,
                 RunEvent::Ended(end) => {
                     return Some(ReadEnd {
                         end,
                         stdout: std::mem::take(&mut self.stdout),
                         stderr: std::mem::take(&mut self.stderr),
+                        stdout_cut: self.stdout_cut,
                     });
                 }
             }
@@ -88,6 +105,11 @@ impl Read {
 }
 
 impl ReadEnd {
+    /// The document on standard output, read as `T` ([`whole_document`]).
+    pub fn document<T: DeserializeOwned>(&self) -> Result<T, DataError> {
+        whole_document(&self.stdout, self.stdout_cut)
+    }
+
     /// The last non-empty line of standard error, without escape codes. It says
     /// why a read failed that gave no document.
     pub fn error_line(&self) -> Option<String> {

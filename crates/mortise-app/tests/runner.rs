@@ -326,7 +326,8 @@ fn the_end_of_a_run_gives_standard_output_apart() {
     let mut runs = AppRuns::open(None, &root);
     runs.start(&mortise_core::Runs::new(), &root, &php, args);
     runs.wait(Instant::now() + Duration::from_secs(10));
-    let (_, lines, stdout) = runs.ended().expect("the run ended");
+    let ended = runs.ended().expect("the run ended");
+    let (lines, stdout) = (ended.lines, ended.stdout);
     // The drawer shows both streams; standard output holds the document alone.
     assert!(lines.iter().any(|line| line.contains("Checking languages")));
     assert_eq!(stdout.len(), 1);
