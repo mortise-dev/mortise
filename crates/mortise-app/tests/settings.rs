@@ -294,14 +294,20 @@ fn test_says_why_php_did_not_answer() {
         .get_by_role_and_label(Role::Button, "Test how PHP runs")
         .click();
     harness.step();
+    // The test ends on its own thread and repaints then, in any of the frames below.
+    // They step: `Harness::run` fails on a repaint that comes during its steps.
     harness.key_press(Key::Escape);
-    harness.run();
+    harness.run_steps(2);
     assert!(
         harness
             .query_by_role_and_label(Role::Heading, "Settings")
             .is_none()
     );
-    open_php(&mut harness);
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::Comma);
+    harness.run_steps(2);
+    harness
+        .get_by_role_and_label(Role::ListBoxOption, "PHP")
+        .click();
     let failed = "mortise-no-such-php did not answer: \"mortise-no-such-php: command not found\".";
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
     while harness.query_by_label_contains(failed).is_none() {
