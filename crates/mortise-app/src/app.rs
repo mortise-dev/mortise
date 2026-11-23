@@ -2904,6 +2904,9 @@ impl eframe::App for MortiseApp {
                 };
                 self.open_action(module, action);
             }
+            Some(BoundaryAction::OpenModuleAction { module, action }) => {
+                self.open_action(Some(module), action);
+            }
             Some(BoundaryAction::Act(act)) => {
                 if let Some(current) = self.current {
                     self.act(current, act);

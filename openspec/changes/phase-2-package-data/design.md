@@ -393,6 +393,18 @@ accessible name and a 24 px target (`tests/accessibility.rs`).
 - The field "Filter, a test name or pattern" shows `--filter` beside its label in dim mono,
   as a checkbox shows its option.
 
+### Changed while building 15.7
+
+- `findings::Subject` takes `package: &PackageData`. The translation check and the to do list skip
+  modules of the report or the state that are not in the app; the check counts only those that are.
+- A row of Findings opens a module's action through `BoundaryAction::OpenModuleAction { module,
+  action }`: `OpenAction` takes the selected module, and Findings has "All modules" selected.
+- In the palette a translation warning opens Check translations of its module, with "Actions".
+- In the alert of a module's Summary the translation clause drops the module in front:
+  "... , and 2 keys in en are missing in fr." (not in the spec).
+- The quiet row draws `module:lang` dim after "Translations are complete", as S6.4 does.
+- With no finding and some work to do, the To do group shows below "No findings. ...".
+
 ## Risks / Trade-offs
 
 - [The user must press "List files" and "Read migration state"] → One more step than the spec draws.

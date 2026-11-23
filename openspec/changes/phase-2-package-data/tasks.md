@@ -23,7 +23,7 @@
 - [ ] 4.2 (15.4 opus) P2 and P5: "List files", the file list of S9.2 and S9.4, S9.3, the counted buttons, the own-file case (D5); `--json` runs and their result with the fallback (D6). Test against the fake artisan, with the app unchanged after a dry run
 - [x] 4.3 (15.5 opus) P4: the state box and its reads, the read after a migration command, S10.1 to S10.5 with counts, migrations and tables, S4.3 (D7). Test in `tests/actions.rs`
 - [x] 4.4 (15.6 opus) P7: `module:test` in `plan` with `--filter` and `--parallel`, the panel and the toasts (D8). Test the plan once in core, the toast once in `tests/actions.rs`
-- [ ] 4.5 (15.7 opus) P8 and To do: `module:lang --json`, the report into `PackageData`, the check, the warnings and the To do group in Findings and the Summary (D9). Test the findings once in core, the wiring once in `tests/findings.rs`
+- [x] 4.5 (15.7 opus) P8 and To do: `module:lang --json`, the report into `PackageData`, the check, the warnings and the To do group in Findings and the Summary (D9). Test the findings once in core, the wiring once in `tests/findings.rs`
 
 ## 5. Images, accessibility, docs (15.8 sonnet, after 4)
 

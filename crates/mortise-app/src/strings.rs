@@ -711,6 +711,42 @@ pub const LOW_COVERAGE: &str = "Low coverage";
 pub const WARNING: &str = "Warning";
 pub const SUMMARY: &str = "Summary";
 pub const BOUNDARY: &str = "Boundary";
+pub const ACTIONS: &str = "Actions";
+pub const TODO_NOT_COUNTED: &str = "To do, not counted as findings";
+
+/// `Checkout has 1 migration waiting.`: a row of the To do group of Findings.
+pub fn migrations_waiting(module: &str, n: usize) -> String {
+    if n == 1 {
+        format!("{module} has 1 migration waiting.")
+    } else {
+        format!("{module} has {n} migrations waiting.")
+    }
+}
+
+/// What a locale lacks: `4 keys in en are missing in fr`. `from` is the other locale
+/// of a module with two. Not in the spec: more locales, and missing files.
+fn missing_translations(locale: &str, keys: usize, files: usize, from: Option<&str>) -> String {
+    let keys_part = match keys {
+        0 => None,
+        1 => Some("1 key".to_owned()),
+        n => Some(format!("{n} keys")),
+    };
+    let files_part = match files {
+        0 => None,
+        1 => Some("1 file".to_owned()),
+        n => Some(format!("{n} files")),
+    };
+    let what = match (keys_part, files_part) {
+        (Some(keys), Some(files)) => format!("{keys} and {files}"),
+        (Some(one), None) | (None, Some(one)) => one,
+        (None, None) => String::new(),
+    };
+    let verb = if keys + files == 1 { "is" } else { "are" };
+    match from {
+        Some(from) => format!("{what} in {from} {verb} missing in {locale}"),
+        None => format!("{what} {verb} missing in {locale}"),
+    }
+}
 
 /// `1 warning`
 pub fn warnings(n: usize) -> String {
@@ -841,6 +877,16 @@ pub fn finding(finding: &mortise_core::Finding, app: &AppSnapshot, name: &str) -
         Detail::LowCoverage { percent, limit } => {
             format!("{module} is {percent}% covered. The limit for {name} is {limit}%.")
         }
+        // `Checkout: 4 keys in en are missing in fr.`
+        Detail::MissingTranslations {
+            locale,
+            keys,
+            files,
+            from,
+        } => format!(
+            "{module}: {}.",
+            missing_translations(locale, *keys, *files, from.as_deref())
+        ),
     }
 }
 
@@ -851,6 +897,7 @@ pub fn check_name(check: mortise_core::Check, app: &AppSnapshot) -> String {
         Check::NoCircularUse => "Rule: no circular use".to_owned(),
         Check::PublicSurfaceOnly => format!("Rule: {} only", list_of(&app.rules.public_folders)),
         Check::CoverageLimit => "Coverage limit".to_owned(),
+        Check::TranslationsComplete => "Translations".to_owned(),
         // Not in the spec: the drawing has no finding of these three.
         Check::ValidManifest => "Valid module.json".to_owned(),
         Check::NamespaceMatchesFolder => "Namespace".to_owned(),
@@ -875,6 +922,15 @@ pub fn check_passed(check: mortise_core::Check, app: &AppSnapshot) -> String {
         }
         // Not in the spec.
         Check::CoverageLimit => format!("Every module is covered {}% or more", app.coverage_limit),
+        Check::TranslationsComplete => "Translations are complete".to_owned(),
+    }
+}
+
+/// The command a check reads from, after its sentence: `module:lang`.
+pub fn check_source(check: mortise_core::Check) -> Option<&'static str> {
+    match check {
+        mortise_core::Check::TranslationsComplete => Some("module:lang"),
+        _ => None,
     }
 }
 
@@ -883,6 +939,10 @@ pub fn checked(result: &mortise_core::CheckResult) -> String {
     match result.check {
         mortise_core::Check::NoStaleStatus if result.checked == 1 => "1 entry".to_owned(),
         mortise_core::Check::NoStaleStatus => format!("{} entries", result.checked),
+        // `5 modules with lang files`
+        mortise_core::Check::TranslationsComplete => {
+            format!("{} with lang files", modules(result.checked))
+        }
         _ => modules(result.checked),
     }
 }
@@ -946,6 +1006,13 @@ fn clauses(module: &str, app: &AppSnapshot, name: &str, own: bool) -> Vec<String
                     format!("{n} of its files {verb} {what} directly")
                 }
             }
+            // Not in the spec: the sentence without the module in front.
+            Detail::MissingTranslations {
+                locale,
+                keys,
+                files,
+                from,
+            } => missing_translations(locale, *keys, *files, from.as_deref()),
             _ => {
                 let sentence = finding(found, app, name);
                 let mut letters = sentence.trim_end_matches('.').chars();
@@ -1081,6 +1148,22 @@ mod tests {
                 "3 of its files read X directly".into()
             ]),
             "It and Shipping use each other (6 files), and 3 of its files read X directly."
+        );
+    }
+
+    #[test]
+    fn missing_translations_count_keys_and_files() {
+        assert_eq!(
+            missing_translations("fr", 1, 0, Some("en")),
+            "1 key in en is missing in fr"
+        );
+        assert_eq!(
+            missing_translations("de", 4, 1, None),
+            "4 keys and 1 file are missing in de"
+        );
+        assert_eq!(
+            missing_translations("fr", 0, 2, Some("en")),
+            "2 files in en are missing in fr"
         );
     }
 
