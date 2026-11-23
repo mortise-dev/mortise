@@ -64,4 +64,4 @@ Every step: no behaviour change, no new test, no changed assertion. Files move w
 
 ## 16. Archive
 
-- [ ] 16.1 Archive `phase-2-package-by-feature` after the three pull requests merge. Accept when `openspec validate --all --strict --no-interactive` passes
+- [x] 16.1 Archive `phase-2-package-by-feature` after the three pull requests merge. Accept when `openspec validate --all --strict --no-interactive` passes
