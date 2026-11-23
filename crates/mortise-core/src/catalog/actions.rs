@@ -65,6 +65,10 @@ pub struct Context<'a> {
     pub production: bool,
     /// The modules that are on and use the target module.
     pub users_on: &'a [String],
+    /// Mortise could not read where the app keeps its modules and assumes the
+    /// package default. The package may then delete another folder than the one
+    /// on screen.
+    pub modules_folder_assumed: bool,
 }
 
 /// The question Mortise asks before it runs a command.
@@ -327,12 +331,7 @@ pub fn plan(action: Action, target: &Target, options: &Options, context: &Contex
         Action::Migrate | Action::Seed => production.then_some(Ask::Production),
         // A dry run changes nothing, so it asks only where the package asks.
         Action::RollBack => (production || !pretend).then_some(Ask::RollBack),
-        Action::ResetMigrations
-        | Action::RefreshMigrations
-        | Action::FreshMigrate
-        | Action::DeleteModule
-            if production =>
-        {
+        _ if refuses(action, context) => {
             if let Some(name) = last {
                 args.push("--".to_string());
                 args.push(name);
@@ -378,6 +377,39 @@ pub fn asks_again(args: &[String]) -> bool {
     }
 }
 
+/// True when Mortise does not run `action`, and its line can only be copied:
+/// reset, refresh, fresh and delete in production, and delete when the modules
+/// folder is assumed.
+pub fn refuses(action: Action, context: &Context) -> bool {
+    action.is_destructive()
+        && (context.production
+            || (action == Action::DeleteModule && context.modules_folder_assumed))
+}
+
+impl Options {
+    /// The options that artisan words hold: the flags and the text options that
+    /// [`plan`] writes, before a `--`. Run again opens a panel with them.
+    pub fn from_args(args: &[String]) -> Options {
+        let mut options = Options::default();
+        for word in args.iter().take_while(|word| *word != "--") {
+            match word.as_str() {
+                "--pretend" => options.pretend = true,
+                "--seed" => options.seed = true,
+                "--drop-views" => options.drop_views = true,
+                "--drop-types" => options.drop_types = true,
+                word => {
+                    if let Some(value) = word.strip_prefix("--database=") {
+                        options.database = value.to_string();
+                    } else if let Some(value) = word.strip_prefix("--class=") {
+                        options.class = value.to_string();
+                    }
+                }
+            }
+        }
+        options
+    }
+}
+
 /// `--<name>=<value>` with the value trimmed, or nothing when it is empty.
 fn text_option(name: &str, value: &str) -> Option<String> {
     let value = value.trim();
@@ -411,6 +443,7 @@ mod tests {
         let context = Context {
             production,
             users_on: users,
+            modules_folder_assumed: false,
         };
         plan(action, target, &options, &context)
     }
@@ -637,6 +670,23 @@ mod tests {
             assert_eq!(back, action.artisan().map(|_| action), "{action:?}");
         }
         assert_eq!(Action::from_artisan("module:make"), None);
+
+        // Where the modules folder is assumed, delete can only be copied: the
+        // package could delete another folder. Reset is not affected.
+        let assumed = Context {
+            production: false,
+            users_on: none,
+            modules_folder_assumed: true,
+        };
+        let options = Options::default();
+        assert_eq!(
+            plan(DeleteModule, &module, &options, &assumed),
+            refused(&["module:delete", "Checkout"])
+        );
+        assert!(matches!(
+            plan(ResetMigrations, &module, &options, &assumed),
+            Plan::Ask { .. }
+        ));
     }
 
     #[test]
@@ -710,6 +760,7 @@ mod tests {
         let production = Context {
             production: true,
             users_on: &[],
+            modules_folder_assumed: false,
         };
         // Migrate takes no class and no drop.
         assert_eq!(
@@ -764,20 +815,32 @@ mod tests {
         let local = Context {
             production: false,
             users_on: &[],
+            modules_folder_assumed: false,
         };
         // Fresh takes no pretend, so it seeds, and drops views and types.
+        let fresh = words(&[
+            "module:migrate-fresh",
+            "--all",
+            "--seed",
+            "--drop-views",
+            "--drop-types",
+            "--database=testing",
+        ]);
         assert_eq!(
             plan(Action::FreshMigrate, &Target::All, &options, &local),
             Plan::Ask {
                 ask: Ask::TypeAppName,
-                args: words(&[
-                    "module:migrate-fresh",
-                    "--all",
-                    "--seed",
-                    "--drop-views",
-                    "--drop-types",
-                    "--database=testing",
-                ]),
+                args: fresh.clone(),
+            }
+        );
+        // Run again reads the options back from the words.
+        assert_eq!(
+            Options::from_args(&fresh),
+            Options {
+                pretend: false,
+                class: String::new(),
+                database: "testing".to_string(),
+                ..options.clone()
             }
         );
 

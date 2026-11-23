@@ -2437,6 +2437,15 @@ pub fn production_refused(app: &str) -> String {
     )
 }
 
+/// Not in the spec: why Delete module only copies its line when the modules folder
+/// cannot be read from `config/modules.php`.
+pub fn modules_folder_assumed(app: &str) -> String {
+    format!(
+        "Mortise cannot read where {app} keeps its modules, so the package could delete \
+         another folder. Copy the command and run it where you can check the folder."
+    )
+}
+
 /// The title of the dialog of a destructive action (S10.5).
 pub fn destructive_question(action: mortise_core::Action, module: &str, app: &str) -> String {
     use mortise_core::Action;

@@ -417,7 +417,7 @@ fn listed(harness: &Harness<'static, MortiseApp>, row: &str) -> bool {
 fn the_destructive_group_opens_with_its_keys_and_a_reset_dry_run_runs_at_once() {
     let (desk, root) = desk("");
     let mut harness = desk.start();
-    actions_of(&mut harness, "Checkout");
+    actions_of(&mut harness, "Billing");
     // Closed when the tab opens.
     assert!(!listed(&harness, "Reset migrations"));
     let group = harness.get_by_role_and_label(Role::ListBoxOption, "Destructive");
@@ -441,22 +441,20 @@ fn the_destructive_group_opens_with_its_keys_and_a_reset_dry_run_runs_at_once() 
     harness.get_by_label("Dropping all tables is under \"All modules\".");
     harness.key_press(Key::J);
     harness.run_steps(3);
-    harness.get_by_role_and_label(Role::Heading, "Reset the migrations of Checkout");
+    harness.get_by_role_and_label(Role::Heading, "Reset the migrations of Billing");
 
     // Dry run checks the option, and a dry run of reset runs without a question.
     harness
         .get_by_role_and_label(Role::Button, "Dry run")
         .click();
     harness.run_steps(3);
-    // The drawer is collapsed before the output comes: Laravel marks the SQL of a
-    // dry run with "⇂", which the bundled mono font does not have.
+    // Billing has no recording: the dry run of Checkout prints "⇂", which the
+    // bundled mono font does not have.
     harness.key_press_modifiers(Modifiers::COMMAND, Key::Enter);
-    harness.run_steps(1);
-    harness.key_press_modifiers(Modifiers::CTRL, Key::Backtick);
     harness.run_steps(3);
     assert!(
         harness
-            .query_by_role_and_label(Role::Heading, "Reset the migrations of Checkout?")
+            .query_by_role_and_label(Role::Heading, "Reset the migrations of Billing?")
             .is_none()
     );
     let deadline = Instant::now() + Duration::from_secs(20);
@@ -468,13 +466,13 @@ fn the_destructive_group_opens_with_its_keys_and_a_reset_dry_run_runs_at_once() 
     let entries = History::open(&desk.data_dir(), &root).entries();
     assert_eq!(
         entries[0].args,
-        ["module:migrate-reset", "Checkout", "--pretend"]
+        ["module:migrate-reset", "Billing", "--pretend"]
     );
 
     // Another module closes the group, and its own group is closed.
-    select(&mut harness, "Billing");
+    select(&mut harness, "Checkout");
     assert!(!listed(&harness, "Delete module"));
-    harness.get_by_role_and_label(Role::Heading, "Migrate Billing");
+    harness.get_by_role_and_label(Role::Heading, "Migrate Checkout");
 }
 
 #[test]
@@ -520,9 +518,27 @@ fn delete_asks_for_the_name_and_selects_all_modules_when_it_ends() {
     run(&mut harness);
     type_in(&mut harness, field, "Checkout");
     assert!(confirm(&harness));
-    // Enter does not confirm, in the field or anywhere else.
+    // Enter does not confirm, in the field or on the red button, with or without
+    // the modifier that opened the dialog.
     harness.key_press(Key::Enter);
     harness.run_steps(3);
+    harness
+        .get_all_by_role_and_label(Role::Button, "Delete module")
+        .last()
+        .unwrap()
+        .focus();
+    harness.run_steps(2);
+    assert!(
+        harness
+            .get_all_by_role_and_label(Role::Button, "Delete module")
+            .last()
+            .unwrap()
+            .is_focused()
+    );
+    for modifiers in [Modifiers::NONE, Modifiers::SHIFT, Modifiers::COMMAND] {
+        harness.key_press_modifiers(modifiers, Key::Enter);
+        harness.run_steps(2);
+    }
     harness.get_by_role_and_label(Role::Heading, "Delete the module Checkout?");
     assert_eq!(runs(&mut harness, &desk, &root), 0);
 
@@ -544,7 +560,24 @@ fn delete_asks_for_the_name_and_selects_all_modules_when_it_ends() {
     harness.get_by_role_and_label(Role::Heading, "Delete the module Checkout?");
     harness.get_by_role_and_label(Role::TextInput, field);
     assert!(!confirm(&harness));
-    harness.key_press(Key::Escape);
+    type_in(&mut harness, field, "Checkout");
+
+    // The app turns to production while the dialog is open: the confirmation no
+    // longer runs; the panel says why and keeps the line to copy.
+    std::fs::write(root.join(".env"), "APP_ENV=production\n").unwrap();
+    common::wait_until(&mut harness, "the app reports production", |app| {
+        app.app()
+            .is_some_and(|app| app.app_env.as_deref() == Some("production"))
+    });
+    harness
+        .get_all_by_role_and_label(Role::Button, "Delete module")
+        .last()
+        .unwrap()
+        .click();
     harness.run_steps(3);
+    harness.get_by_label(
+        "shop-api reports the environment production. Mortise does not run this command \
+         there. Copy it and run it where you can watch the database.",
+    );
     assert_eq!(runs(&mut harness, &desk, &root), 1);
 }

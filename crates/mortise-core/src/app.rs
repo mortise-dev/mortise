@@ -400,18 +400,19 @@ pub fn read_app_cached(
 
     let git = git::read(&root);
     let (churn, uncommitted) = match git {
-        Git::Repository { .. } => (
-            git::churn(&root, &folders),
-            git::uncommitted(&root, &folders),
-        ),
-        _ => (BTreeMap::new(), None),
+        Git::Repository { .. } => {
+            let dirs: Vec<PathBuf> = found.iter().map(|module| module.dir.clone()).collect();
+            (git::churn(&root, &folders), git::uncommitted(&root, &dirs))
+        }
+        _ => (BTreeMap::new(), vec![None; found.len()]),
     };
 
     let modules: Vec<Module> = found
         .into_iter()
         .zip(codes)
         .zip(&folders)
-        .map(|((module, code), folder)| Module {
+        .zip(uncommitted)
+        .map(|(((module, code), folder), uncommitted)| Module {
             name: module.name,
             code,
             dir: module.dir,
@@ -426,9 +427,7 @@ pub fn read_app_cached(
             tests: module.scan.tests,
             coverage: coverage_of(folder),
             churn: churn.get(folder).copied(),
-            uncommitted: uncommitted
-                .as_ref()
-                .and_then(|counts| counts.get(folder).copied()),
+            uncommitted,
         })
         .collect();
 

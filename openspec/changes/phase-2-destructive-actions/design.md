@@ -40,21 +40,26 @@ prohibits a command (D4). Rollback stays an everyday action with its own dialog 
 ### D1. Files that are not committed (`git.rs`, task 13.1)
 
 ```rust
-/// Files under each folder that git cannot restore: changed, staged, added, deleted
-/// and untracked. Ignored files are not counted. `folders` are relative to `root`, with `/`.
-pub(crate) fn uncommitted(root: &Path, folders: &[String]) -> BTreeMap<String, u32>;
+/// For each folder in `dirs`, the files git cannot restore: changed, staged, added,
+/// deleted and untracked. Ignored files are left out. `None` for a folder git
+/// cannot tell about.
+pub(crate) fn uncommitted(root: &Path, dirs: &[PathBuf]) -> Vec<Option<u32>>;
 ```
 
-One call: `git -C <root> status --porcelain=v1 -z --untracked-files=all --no-renames -- <folders>`,
-through the existing `git()` helper (no lock, no prompt, standard error dropped). Porcelain paths are
-relative to the top of the repository, not to `root`, so the app's prefix (`git rev-parse --show-prefix`,
-empty at the top) is taken off first. Each NUL-separated entry is `XY <path>`; it counts once for the
-folder it is under. `--no-renames` keeps one path per entry. A folder with no entry gets 0.
+The top of the repository comes from `git rev-parse --show-toplevel`. Each module folder is made
+relative to it, after both are resolved (`canonicalize`), so a module outside the app folder is found
+too. One call from the top: `git status --porcelain=v1 -z --untracked-files=all --no-renames -- <folders>`,
+through the existing `git()` helper (no lock, no prompt, no file system monitor, standard error
+dropped). Each NUL-separated entry is `XY <path>` from the top; it counts once for the folder it is
+under. A folder with no entry gets 0.
 
-`Module` gets `pub uncommitted: Option<u32>`: `None` when the app is not in a repository, git is missing,
-or `git status` failed, so the screen says "Mortise cannot tell whether these files are in git.". It is
-read in `app.rs` with the churn, in the background thread that reads the snapshot. The watcher already
-reads the app again when a file changes or a commit lands (`.git/logs/HEAD`), so the count follows.
+`None` when git cannot tell: a folder outside the repository, a folder that git lists as one entry
+(a submodule or a nested repository, whose files the outer status does not list), or when git fails.
+
+`Module` gets `pub uncommitted: Option<u32>`, and the screen says "Mortise cannot tell whether these
+files are in git." for `None`. It is read in `app.rs` with the churn, in the background thread that
+reads the snapshot. The watcher already reads the app again when a file changes or a commit lands
+(`.git/logs/HEAD`), so the count follows.
 
 Alternative: run git when the delete panel opens. Rejected: it would start a process on the interface
 thread every frame or need its own cache; the snapshot already has both.
@@ -86,7 +91,12 @@ thread every frame or need its own cache; the snapshot already has both.
 
   The app name is the display name of Settings (the one in the dialog title). Exact match is the spec
   ("The name must match exactly"). An empty name never matches.
-- `Action::from_artisan(word) -> Option<Action>`, the inverse of `artisan`, for Run again (D7).
+- `Action::from_artisan(word) -> Option<Action>`, the inverse of `artisan`, and
+  `Options::from_args(args) -> Options`, the inverse of the option words, for Run again (D7).
+- `refuses(action, context) -> bool`: the four in production, and delete when `Context::
+  modules_folder_assumed` is true. Mortise then could not read `paths.modules` from
+  `config/modules.php` and shows the package default, while the package may delete another folder
+  of the same name. `plan` gives `Refused` for both.
 
 Tests, once each, in `catalog/actions.rs`: the destructive lists; the four rows of the plan table for
 targets they do not take; the reset dry run row; the word order with both drop flags; `asks_again` of a
@@ -149,8 +159,14 @@ outline), "Dry run" for reset (checks `pretend`, runs nothing: deviation S38), "
 Delete adds under the box: "Stays: the tables of Checkout in the database and the record of its
 migrations." and, when modules that are on use it, "Shipping and Notifications use Checkout and will break."
 
-Production (`Plan::Refused`): the alert box with the production sentence under the panel's sentence, the
-run button off with the same sentence as tooltip, Copy command on.
+Refused (`Plan::Refused`): the alert box with the reason under the panel's sentence, the run button
+off with the same sentence as tooltip, Copy command on. The reason is the production sentence, or for
+delete with the modules folder assumed "Mortise cannot read where shop-api keeps its modules, so the
+package could delete another folder. Copy the command and run it where you can check the folder."
+(not in the spec).
+
+Ctrl Enter takes the line only when the whole line was inside the visible part of the tab in the last
+frame: a line cut off by the scroll area does not count as on screen.
 
 Ctrl Enter on a destructive panel does what the run button does: it opens the dialog. The only line that
 runs at once is a reset dry run, which changes nothing.
@@ -179,9 +195,14 @@ fallbacks: no table list, "Reset migrations" and "Refresh migrations" without a 
 
 - Run again (`App::run_again`): when the first word is one of the four, `Action::from_artisan` and the
   next word (`--all`, or the module, or the word after `--`) give the action and target, and the app
-  opens the strongest dialog of D6 for those exact words. When the app now reports production, it opens
-  the Actions tab on that action (`open_action`) and runs nothing. Other lines keep the plain dialog of
-  milestone 12.
+  opens the strongest dialog of D6 for those exact words. When Mortise now refuses the action (D2), it
+  opens the Actions tab on that action with the options of those words (`Options::from_args`) and runs
+  nothing. Other lines keep the plain dialog of milestone 12.
+- Confirm checks the refusal again: the app can turn to production while a dialog is open. A refused
+  action then opens its panel as above instead of running. "Dry run" of a dialog sets the panel's
+  options from the words the dialog asked about, then checks `pretend`.
+- Enter never presses the red button of a danger dialog, with any modifier: egui presses a focused
+  button on Enter whatever the modifiers are.
 - Toasts in `action_ended`, code 0, not a dry run: "Reset the migrations of Checkout: 9 rolled back.",
   "Refreshed the migrations of Checkout: 9 ran again.", "Dropped all tables of shop-api and migrated 7
   modules.", "Deleted the module Checkout.". With a count of 0: "…: nothing to roll back." and "…:
@@ -227,6 +248,11 @@ S10.4 a to d and S10.5 a to d (c and d before and after typing), light and dark.
 - [Laravel changes the prohibition sentence] → The refusal still shows the package's own message and
   the plain failure sentence; the real-PHP job of milestone 16 catches it.
 - [The refusal shows only after a run] → The run changed nothing: the package refuses before it acts.
+- [A dry run runs migration code] → `--pretend` calls each migration's `down()` with the migration's
+  connection in pretend mode, as Laravel does. Code in a migration that writes through another
+  connection, or does more than SQL, still runs. The spec offers the dry run as "print the SQL, change
+  nothing", and the dry run of roll back has run without a question since milestone 12. Kept: a
+  migration that writes outside its connection in `down()` breaks Laravel's own `--pretend` too.
 
 ## Migration Plan
 

@@ -957,25 +957,16 @@ impl MortiseApp {
         let Some(args) = runs.again(&mut self.runner, runner) else {
             return;
         };
-        // Reset, refresh, fresh and delete do not run in production: the Actions tab
-        // shows the line to copy. Outside it they ask again in their own dialog, for
-        // these exact words; a dry run of reset runs at once (design D7).
+        // Reset, refresh, fresh and delete that Mortise refuses (production, or the
+        // modules folder assumed for delete) open the Actions tab with the line to
+        // copy. Otherwise they ask again in their own dialog, for these exact words; a
+        // dry run of reset runs at once (design D7).
         if let Some((action, target)) = destructive_words(&args) {
             if !Action::destructive(&target).contains(&action) {
                 return;
             }
-            let production = self
-                .snapshot(index)
-                .is_some_and(|app| actions_view::production(&app));
-            if production {
-                if self.current != Some(index) {
-                    self.select_app(index);
-                }
-                let module = match target {
-                    Target::Module(name) => Some(name),
-                    Target::All => None,
-                };
-                self.open_action(module, action);
+            if self.refused(index, action) {
+                self.show_refused(index, action, target, &args);
                 return;
             }
             if mortise_core::asks_again(&args) {
@@ -1200,8 +1191,31 @@ impl MortiseApp {
         })
     }
 
-    /// "Dry run" of a dialog: the panel of the action, with the option checked.
-    /// Nothing runs (deviation S38).
+    /// True when Mortise does not run `action` in the app at `index` now.
+    fn refused(&self, index: usize, action: Action) -> bool {
+        let name = self.settings.apps[index].display_name();
+        self.snapshot(index)
+            .and_then(|app| actions_view::refusal(&app, name, action))
+            .is_some()
+    }
+
+    /// Opens the Actions tab of the app at `index` on `action` with the options of
+    /// `args`, where the refusal is said and the line can be copied. Nothing runs.
+    fn show_refused(&mut self, index: usize, action: Action, target: Target, args: &[String]) {
+        if self.current != Some(index) {
+            self.select_app(index);
+        }
+        let module = match target {
+            Target::Module(name) => Some(name),
+            Target::All => None,
+        };
+        self.open_action(module, action);
+        self.apps[index].actions.options = mortise_core::Options::from_args(args);
+    }
+
+    /// "Dry run" of a dialog: the panel of the action, with the options of the
+    /// words the dialog asked about and the dry run checked. Nothing runs
+    /// (deviation S38).
     fn check_dry_run(&mut self, index: usize, act: &Act) {
         let shown = self.apps.get(index).is_some_and(|open| {
             open.tab == Tab::Actions && open.actions.shows(&act.target, act.action)
@@ -1214,6 +1228,7 @@ impl MortiseApp {
             self.open_action(module, act.action);
         }
         if let Some(open) = self.apps.get_mut(index) {
+            open.actions.options = mortise_core::Options::from_args(&act.args);
             open.actions.options.pretend = true;
         }
     }
@@ -2217,8 +2232,14 @@ impl eframe::App for MortiseApp {
                         self.start_run(index, args);
                     }
                 }
+                // The app may have changed while the dialog was open, such as its
+                // `.env` to production: a refused action shows its line instead.
                 (Some(Answer::Confirm), Some((_, Pending::Action { index, act }))) => {
-                    self.start_action(index, act)
+                    if act.action.is_destructive() && self.refused(index, act.action) {
+                        self.show_refused(index, act.action, act.target.clone(), &act.args);
+                    } else {
+                        self.start_action(index, act)
+                    }
                 }
                 // "Dry run" checks the option on the panel and runs nothing (deviation S38).
                 (Some(Answer::Left), Some((_, Pending::Action { index, act }))) => {

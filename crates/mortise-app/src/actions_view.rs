@@ -10,8 +10,8 @@ use eframe::egui::{
     UiBuilder, Vec2, WidgetInfo, pos2, vec2,
 };
 use mortise_core::{
-    Action, AppSnapshot, Ask, Context, Module, ModuleState, OptionSet, Options, Plan, RunnerKind,
-    Severity, Target, plan,
+    Action, AppSnapshot, Ask, Context, LayoutKey, Module, ModuleState, OptionSet, Options, Plan,
+    RunnerKind, Severity, Target, plan,
 };
 
 use crate::boundary::BoundaryAction;
@@ -140,6 +140,26 @@ pub fn users_on(app: &AppSnapshot, name: &str) -> Vec<String> {
         .collect();
     users.dedup();
     users
+}
+
+/// True when Mortise could not read where the app keeps its modules, and assumes
+/// the package default.
+fn modules_folder_assumed(app: &AppSnapshot) -> bool {
+    app.layout.assumed.contains(&LayoutKey::ModulesFolder)
+}
+
+/// Why Mortise does not run `action` in `app`, whose display name is `name`, or
+/// `None` when it runs it. The line can then only be copied (design D5).
+pub fn refusal(app: &AppSnapshot, name: &str, action: Action) -> Option<String> {
+    let context = Context {
+        production: production(app),
+        users_on: &[],
+        modules_folder_assumed: modules_folder_assumed(app),
+    };
+    mortise_core::refuses(action, &context).then(|| match context.production {
+        true => strings::production_refused(name),
+        false => strings::modules_folder_assumed(name),
+    })
 }
 
 /// True when the app reports the environment production, exactly (design D2).
@@ -522,6 +542,7 @@ fn panel(
     let context = Context {
         production: production(app),
         users_on: &users,
+        modules_folder_assumed: modules_folder_assumed(app),
     };
     // The line the run button starts, as the options stood at the end of the last frame.
     // It is planned again below, after the options have changed in this frame.
@@ -564,7 +585,7 @@ fn panel(
         y = alert_box(ui, pal, at, width, Severity::Warning, "", &text, None, true).0;
     }
     // Production: a destructive action only shows its line (S10.4 d).
-    let production_text = refused.then(|| strings::production_refused(inputs.app));
+    let production_text = refused.then(|| refusal(app, inputs.app, action)).flatten();
     if let Some(text) = &production_text {
         let at = pos2(min.x, y + 12.0);
         y = alert_box(ui, pal, at, width, Severity::Warning, "", text, None, true).0;
@@ -638,7 +659,7 @@ fn panel(
     let off = if line.is_none() {
         Some(strings::NO_TESTS_COMMAND.to_owned())
     } else if refused {
-        Some(strings::production_refused(inputs.app))
+        refusal(app, inputs.app, action)
     } else if let Some(label) = inputs.busy {
         Some(strings::is_running(label))
     } else if line_now(inputs.runner, &[]).is_none() {
@@ -688,7 +709,8 @@ fn panel(
             })
         });
     }
-    state.last_shown = shown_args;
+    // A line cut off by the scroll area is not on screen, so Ctrl Enter does not take it.
+    state.last_shown = shown_args.filter(|_| ui.clip_rect().contains_rect(code));
     // Dry run checks the option and runs nothing (deviation S38). In production
     // reset runs nothing at all (S10.4 d).
     if matches!(action, Action::RollBack | Action::ResetMigrations) {
@@ -971,7 +993,7 @@ fn options(
                 continue;
             }
             // The package seeds after a pretend migrate: a dry run cannot seed.
-            let off = flag == "--seed" && options.pretend;
+            let off = flag == "--seed" && set.pretend && options.pretend;
             let value = match flag {
                 "--pretend" => &mut options.pretend,
                 "--drop-views" => &mut options.drop_views,

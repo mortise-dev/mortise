@@ -6,5 +6,6 @@
 mod actions;
 
 pub use actions::{
-    Action, Ask, Context, OptionSet, Options, Plan, Target, asks_again, plan, typed_name_matches,
+    Action, Ask, Context, OptionSet, Options, Plan, Target, asks_again, plan, refuses,
+    typed_name_matches,
 };

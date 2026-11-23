@@ -4,7 +4,7 @@
 //! repository, this data is absent and nothing else is affected.
 
 use std::collections::BTreeMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
 use serde::{Deserialize, Serialize};
@@ -44,6 +44,8 @@ fn git(root: &Path, args: &[&str]) -> Option<String> {
         .arg(root)
         // Paths as they are, not quoted and escaped.
         .args(["--no-pager", "-c", "core.quotepath=false"])
+        // Never start a file system monitor that the repository configures.
+        .args(["-c", "core.fsmonitor=false"])
         .args(args)
         // Never take a lock or write the index: Mortise only reads.
         .env("GIT_OPTIONAL_LOCKS", "0")
@@ -153,19 +155,36 @@ pub(crate) fn churn(root: &Path, folders: &[String]) -> BTreeMap<String, Churn> 
     churn
 }
 
-/// Counts the files of each folder that git cannot restore: changed, staged,
-/// added, deleted and untracked. Ignored files are left out. `folders` are paths
-/// relative to `root`, with `/`. `None` when git fails.
-pub(crate) fn uncommitted(root: &Path, folders: &[String]) -> Option<BTreeMap<String, u32>> {
-    let mut counts: BTreeMap<String, u32> = folders.iter().map(|f| (f.clone(), 0)).collect();
-    if folders.is_empty() {
-        return Some(counts);
-    }
-    // The paths of the status are relative to the top of the repository.
-    // The prefix is empty at the top and ends with `/` below it.
-    let prefix = git(root, &["rev-parse", "--show-prefix"])?;
-    let prefix = prefix.trim_end_matches(['\n', '\r']);
-
+/// For each folder in `dirs`, the files git cannot restore: changed, staged,
+/// added, deleted and untracked. Ignored files are left out. `None` for a folder
+/// git cannot tell about: outside the repository of `root`, a repository of its
+/// own such as a submodule, or every folder when git fails.
+pub(crate) fn uncommitted(root: &Path, dirs: &[PathBuf]) -> Vec<Option<u32>> {
+    let unknown = vec![None; dirs.len()];
+    let Some(top) = git(root, &["rev-parse", "--show-toplevel"])
+        .and_then(|top| std::fs::canonicalize(top.trim_end_matches(['\n', '\r'])).ok())
+    else {
+        return unknown;
+    };
+    // Each folder relative to the top of the repository, with `/`, as git prints
+    // the paths of a status.
+    let relative: Vec<Option<String>> = dirs
+        .iter()
+        .map(|dir| {
+            let dir = std::fs::canonicalize(dir).ok()?;
+            let parts: Vec<String> = dir
+                .strip_prefix(&top)
+                .ok()?
+                .components()
+                .map(|part| part.as_os_str().to_string_lossy().into_owned())
+                .collect();
+            (!parts.is_empty()).then(|| parts.join("/"))
+        })
+        .collect();
+    let mut counts: Vec<Option<u32>> = relative
+        .iter()
+        .map(|folder| folder.as_ref().map(|_| 0))
+        .collect();
     let mut args = vec![
         "status",
         "--porcelain=v1",
@@ -174,22 +193,37 @@ pub(crate) fn uncommitted(root: &Path, folders: &[String]) -> Option<BTreeMap<St
         "--no-renames",
         "--",
     ];
-    args.extend(folders.iter().map(String::as_str));
-    let status = git(root, &args)?;
+    args.extend(relative.iter().flatten().map(String::as_str));
+    if args.len() == 6 {
+        return counts;
+    }
+    let Some(status) = git(&top, &args) else {
+        return unknown;
+    };
     for entry in status.split('\0') {
-        // `XY path`: two status letters, a space, the path.
+        // `XY path`: two status letters, a space, the path from the top.
         let Some(path) = entry.get(3..) else {
             continue;
         };
-        let Some(path) = path.strip_prefix(prefix) else {
-            continue;
-        };
-        if let Some(folder) = folders.iter().find(|folder| {
-            path.strip_prefix(folder.as_str())
-                .is_some_and(|rest| rest.starts_with('/'))
-        }) {
-            *counts.entry(folder.clone()).or_default() += 1;
+        for (folder, count) in relative.iter().zip(counts.iter_mut()) {
+            let Some(rest) = folder
+                .as_deref()
+                .and_then(|folder| path.strip_prefix(folder))
+            else {
+                continue;
+            };
+            match rest {
+                // The folder itself is listed: it is a repository of its own, whose
+                // files this status does not list.
+                "" | "/" => *count = None,
+                _ if rest.starts_with('/') => {
+                    if let Some(count) = count {
+                        *count += 1;
+                    }
+                }
+                _ => {}
+            }
         }
     }
-    Some(counts)
+    counts
 }

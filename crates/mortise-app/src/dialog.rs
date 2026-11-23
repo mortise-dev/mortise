@@ -1,7 +1,7 @@
 //! The dialog (C14): a confirmation before something is lost or before others are
 //! affected. Forms live in the workspace, not here.
 
-use eframe::egui::{self, Align2, Key, Modifiers, Rect, Role, Sense, Shadow, Ui, vec2};
+use eframe::egui::{self, Align2, Event, Key, Rect, Role, Sense, Shadow, Ui, vec2};
 use mortise_core::Severity;
 
 use crate::draw::{self, Button, ButtonKind};
@@ -257,7 +257,19 @@ impl Dialog {
                 // Space and a click do.
                 let confirm_id = confirm.id(ui);
                 if self.danger && ui.memory(|memory| memory.has_focus(confirm_id)) {
-                    ui.input_mut(|input| input.consume_key(Modifiers::NONE, Key::Enter));
+                    // With any modifier: egui presses a focused button on Enter whatever
+                    // the modifiers are, and Ctrl Enter opened the dialog.
+                    ui.input_mut(|input| {
+                        input.events.retain(|event| {
+                            !matches!(
+                                event,
+                                Event::Key {
+                                    key: Key::Enter,
+                                    ..
+                                }
+                            )
+                        });
+                    });
                 }
                 let response = confirm.show(ui, pal, egui::pos2(confirm_x, y), keyboard);
                 if opened {
