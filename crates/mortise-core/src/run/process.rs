@@ -67,6 +67,15 @@ const DRAIN: Duration = Duration::from_secs(10);
 #[cfg(feature = "run")]
 const STOP_GRACE: Duration = Duration::from_secs(3);
 
+/// The longest a stop takes to end a run, from [`Run::stop`] to [`RunEvent::Ended`]:
+/// [`STOP_GRACE`] to the kill, [`GRACE`] and [`DETACH`] for the readers, and a margin
+/// for the last look at the program.
+#[cfg(feature = "run")]
+pub const STOP_WAIT: Duration = STOP_GRACE
+    .saturating_add(GRACE)
+    .saturating_add(DETACH)
+    .saturating_add(Duration::from_millis(250));
+
 /// The most text kept of one line in bytes, and, by [`capture`], of one stream.
 /// A newline counts as one byte, so a flood of empty lines is bounded too.
 #[cfg(feature = "run")]
@@ -207,6 +216,28 @@ impl Run {
     /// What arrived since the last call. It never blocks.
     pub fn events(&self) -> Vec<RunEvent> {
         self.events.try_iter().collect()
+    }
+
+    /// What arrives until the run ended or `deadline` passed, with
+    /// [`RunEvent::Ended`] last when it came. It sleeps between events. After a
+    /// [`Run::stop`], a deadline [`STOP_WAIT`] away leaves room for the end.
+    pub fn wait(&self, deadline: Instant) -> Vec<RunEvent> {
+        let mut arrived = Vec::new();
+        loop {
+            let left = deadline.saturating_duration_since(Instant::now());
+            match self.events.recv_timeout(left) {
+                Ok(event) => {
+                    let ended = matches!(event, RunEvent::Ended(_));
+                    arrived.push(event);
+                    if ended {
+                        return arrived;
+                    }
+                }
+                Err(RecvTimeoutError::Timeout | RecvTimeoutError::Disconnected) => {
+                    return arrived;
+                }
+            }
+        }
     }
 }
 
