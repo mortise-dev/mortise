@@ -2881,6 +2881,15 @@ pub fn taken_out(path: &str, kind: &str) -> String {
     )
 }
 
+/// Not in the spec: the factory of a model exists. Its flag stays, as the model's
+/// stub reads it (S9.3).
+pub fn factory_kept(path: &str) -> String {
+    format!(
+        "{path} exists. The model uses its factory, so the factory stays in the command. The \
+         run leaves the file as it is."
+    )
+}
+
 /// Not in the spec: the generator's own file exists (design D5).
 pub fn own_file_exists(path: &str) -> String {
     format!(

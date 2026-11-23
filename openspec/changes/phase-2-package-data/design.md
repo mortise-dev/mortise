@@ -430,6 +430,9 @@ accessible name and a 24 px target (`tests/accessibility.rs`).
   before 13.4: no dry run, no `--json`, its result read from the output.
 - `replace_words` gives `None` for a generator the package does not ship: it may call another
   generator and pass `--force` on. The form and the result then offer "Open the existing file" only.
+- S9.3 never takes `--factory` out: the model's stub renders `HasFactory` from it. A factory that
+  exists keeps its flag and reads "exists"; the run leaves it, as the model's calls go on after one
+  fails (`ModelMakeCommand` at 13.4.0). The button counts only the files the run writes.
 
 ## Risks / Trade-offs
 

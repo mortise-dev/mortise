@@ -388,6 +388,26 @@ fn a_dry_run_that_finds_the_policy_takes_it_out_of_the_command() {
 }
 
 #[test]
+fn a_dry_run_that_finds_the_factory_keeps_it_in_the_command() {
+    let (_desk, _root, mut harness) = model_form_13_4("Invoice");
+    click(&mut harness, Role::CheckBox, "Factory");
+    click(&mut harness, Role::Button, "List files");
+    wait_for(&mut harness, "4 files, 2 exist already");
+    // The model's stub uses the factory: its flag stays, the policy's goes, and the
+    // button counts the files the run writes.
+    let factory = harness.get_by_role_and_label(Role::CheckBox, "Factory");
+    assert_eq!(factory.accesskit_node().toggled(), Some(Toggled::True));
+    harness.get_by_label(
+        "database/factories/InvoiceFactory.php exists. The model uses its factory, so the \
+         factory stays in the command. The run leaves the file as it is.",
+    );
+    harness
+        .query_by_label_contains("Invoice Billing --factory --migration --json")
+        .unwrap();
+    assert!(!disabled(&harness, "Create the other 2 files"));
+}
+
+#[test]
 fn a_policy_that_exists_is_left_and_replace_asks_then_runs_force() {
     let (desk, root) = desk();
     let mut harness = desk.start();

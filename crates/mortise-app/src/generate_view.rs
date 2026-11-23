@@ -28,6 +28,8 @@ use crate::summary::alert_box;
 use crate::theme::{Face, Palette, Type, radius, size, ty};
 
 const MAKE_MODEL: &str = "module:make-model";
+/// The flag of `module:make-model` that S9.3 never takes out: the model's stub reads it.
+const FACTORY: &str = "factory";
 /// The files of `module:make-model` under "Also create", in the order of S9.2.
 const MODEL_CALLS: [&str; 7] = [
     "controller",
@@ -251,7 +253,8 @@ impl GenerateState {
     /// Takes the end of the dry run of `words`, the words of the form of `generator`
     /// (design D5). On the model form a file that exists and that a flag writes takes
     /// that flag out of the form, and `--all` becomes the other six (S9.3); the list
-    /// then belongs to the words without it. A form that changed meanwhile drops it.
+    /// then belongs to the words without it. The factory is the exception: its flag
+    /// stays, and the run leaves the file. A form that changed meanwhile drops it.
     pub fn take_files(
         &mut self,
         generator: &Generator,
@@ -276,7 +279,13 @@ impl GenerateState {
                 .unwrap_or_default();
             let flags = &mut self.filled.flags;
             for file in report.files.iter().filter(|f| f.action == FileAction::Keep) {
-                let Some(flag) = model_flag_of(model.trim(), &file.path) else {
+                // The model's stub renders `HasFactory` from `--factory`, so that flag
+                // stays. The factory call then fails on its file, and the model goes on
+                // with its other calls and exits 1 after them (`ModelMakeCommand::handle`
+                // and `callGenerator` at 13.4.0).
+                let Some(flag) =
+                    model_flag_of(model.trim(), &file.path).filter(|flag| *flag != FACTORY)
+                else {
                     continue;
                 };
                 if flags.remove("all") || MODEL_CALLS.iter().all(|call| flags.contains(*call)) {
@@ -1899,17 +1908,24 @@ fn files_this_creates(
         .arguments
         .get("model")
         .map_or("", |model| model.trim());
-    let taken = |file: &ReportedFile| {
-        generator.name == MAKE_MODEL
-            && file.action == FileAction::Keep
-            && model_flag_of(model, &file.path).is_some_and(|flag| taken_out.contains(&flag))
+    let flag_of = |file: &ReportedFile| {
+        (generator.name == MAKE_MODEL && file.action == FileAction::Keep)
+            .then(|| model_flag_of(model, &file.path))
+            .flatten()
     };
+    let taken = |file: &ReportedFile| flag_of(file).is_some_and(|flag| taken_out.contains(&flag));
+    // The factory keeps its flag: the run leaves its file as it is (S9.3).
+    let factory_kept = |file: &ReportedFile| flag_of(file) == Some(FACTORY);
     let own: Vec<&ReportedFile> = files
         .iter()
         .copied()
-        .filter(|file| file.action == FileAction::Keep && !taken(file))
+        .filter(|file| file.action == FileAction::Keep && !taken(file) && !factory_kept(file))
         .collect();
-    let taken_count = files.iter().filter(|file| taken(file)).count();
+    // The files the run does not write: taken out of the command, or the factory kept.
+    let not_written = files
+        .iter()
+        .filter(|file| taken(file) || factory_kept(file))
+        .count();
 
     // The rows by root folder, in the order the roots come; in a root, the files at
     // its top first, then by folder.
@@ -1958,9 +1974,12 @@ fn files_this_creates(
     };
     let shown = |file: &ReportedFile| placed(app, module, &file.path).1;
     for file in files.iter().filter(|file| taken(file)) {
-        let flag = model_flag_of(model, &file.path).unwrap_or_default();
+        let flag = flag_of(file).unwrap_or_default();
         let text = strings::taken_out(&shown(file), strings::model_call_kind(flag));
         y = sentence(y, &text, pal.ink_2);
+    }
+    for file in files.iter().filter(|file| factory_kept(file)) {
+        y = sentence(y, &strings::factory_kept(&shown(file)), pal.ink_2);
     }
     for file in &own {
         y = sentence(y, &strings::own_file_exists(&shown(file)), pal.bad);
@@ -1974,8 +1993,8 @@ fn files_this_creates(
 
     let create = if !own.is_empty() || files.is_empty() {
         None
-    } else if taken_count > 0 {
-        Some(strings::create_other_files(files.len() - taken_count))
+    } else if not_written > 0 {
+        Some(strings::create_other_files(files.len() - not_written))
     } else {
         Some(strings::create_n_files(files.len()))
     };
