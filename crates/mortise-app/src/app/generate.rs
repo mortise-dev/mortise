@@ -9,12 +9,12 @@ use mortise_core::{
 
 use super::{MortiseApp, Pending, ReadFor, place_of};
 use crate::app::workspace::Tab;
+use crate::generate::strings;
 use crate::generate::view::{
     CatalogRead, GenerateAsk, GenerateResult, GenerateRun, RunPlace, TakenOut, typed_names,
 };
 use crate::index::view::Selection;
 use crate::runner::view::{self as runner_view, Shown};
-use crate::strings;
 use crate::ui::dialog::Dialog;
 use crate::ui::toast::{Toast, ToastAction};
 
@@ -141,8 +141,8 @@ impl MortiseApp {
         let read = match &end {
             Ok(end) => end
                 .document::<Catalog>()
-                .map_err(|error| strings::no_document(end, &error)),
-            Err(error) => Err(strings::start_reason(error)),
+                .map_err(|error| crate::strings::no_document(end, &error)),
+            Err(error) => Err(crate::strings::start_reason(error)),
         };
         let catalog = &mut self.apps[index].catalog;
         match read {
@@ -182,8 +182,8 @@ impl MortiseApp {
         let listed = match &end {
             Ok(end) => end
                 .document::<mortise_core::GeneratorReport>()
-                .map_err(|error| strings::no_document(end, &error)),
-            Err(error) => Err(strings::start_reason(error)),
+                .map_err(|error| crate::strings::no_document(end, &error)),
+            Err(error) => Err(crate::strings::start_reason(error)),
         };
         let open = &mut self.apps[index];
         let catalog = open.catalog.in_use(&app.package);
@@ -397,7 +397,11 @@ impl MortiseApp {
             answer => (
                 mortise_core::generated_files(lines, forced),
                 mortise_core::autoload_failed(lines),
-                answer.and_then(|answer| answer.err().map(|e| strings::no_run_document(&e, end))),
+                answer.and_then(|answer| {
+                    answer
+                        .err()
+                        .map(|e| crate::strings::no_run_document(&e, end))
+                }),
             ),
         };
         // The files S9.3 took out of the command: the run left them, so its result
@@ -426,7 +430,8 @@ impl MortiseApp {
         let attached = form.is_some() && self.apps[index].generate.form() == form;
         let on_tab = in_view && attached && self.apps[index].tab == Tab::Generate;
         let failed_toast = |text: String, root: PathBuf| {
-            Toast::failed(text).with_action(strings::SHOW_OUTPUT, ToastAction::ShowOutput(root))
+            Toast::failed(text)
+                .with_action(crate::strings::SHOW_OUTPUT, ToastAction::ShowOutput(root))
         };
         let open = &mut self.apps[index];
         // A Replace of a left row of the result: that row changes, the others stay.
@@ -474,8 +479,8 @@ impl MortiseApp {
             // No toast while the drawer shows the failure.
             if !in_view {
                 let text = match end {
-                    RunEnd::Exited { code, .. } => strings::stopped_with(&label, code),
-                    RunEnd::Stopped { .. } => strings::was_stopped(&label),
+                    RunEnd::Exited { code, .. } => crate::strings::stopped_with(&label, code),
+                    RunEnd::Stopped { .. } => crate::strings::was_stopped(&label),
                 };
                 self.toast = Some(failed_toast(text, root));
             }
@@ -487,8 +492,8 @@ impl MortiseApp {
         if files.is_empty() {
             if !done && !in_view {
                 let text = match end {
-                    RunEnd::Exited { code, .. } => strings::stopped_with(&label, code),
-                    RunEnd::Stopped { .. } => strings::was_stopped(&label),
+                    RunEnd::Exited { code, .. } => crate::strings::stopped_with(&label, code),
+                    RunEnd::Stopped { .. } => crate::strings::was_stopped(&label),
                 };
                 self.toast = Some(failed_toast(text, root));
             }
