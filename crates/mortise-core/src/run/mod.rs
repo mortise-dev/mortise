@@ -15,20 +15,16 @@ pub(crate) mod process;
 #[cfg(feature = "run")]
 mod read;
 #[cfg(feature = "run")]
-mod recent;
-#[cfg(feature = "run")]
 pub use process::{Run, RunEnd, RunEvent, Runs, STOP_WAIT, StartError, Stream, stop_asks_first};
 #[cfg(feature = "run")]
 pub use read::{Read, ReadEnd};
-#[cfg(feature = "run")]
-pub use recent::{Ran, RecentRun, recent_runs};
 
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
-use crate::editor::split_words;
+use crate::program::split_words;
 
 /// The program through which PHP runs artisan for an app.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

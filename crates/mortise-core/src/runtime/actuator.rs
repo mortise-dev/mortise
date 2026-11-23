@@ -9,7 +9,7 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::environment::{Credentials, Environment};
+use crate::runtime::environment::{Credentials, Environment};
 
 /// The status the actuator reports, for the app or for one component.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

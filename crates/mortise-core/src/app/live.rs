@@ -11,7 +11,7 @@ use notify::{RecommendedWatcher, RecursiveMode};
 use notify_debouncer_full::{DebounceEventResult, Debouncer, RecommendedCache, new_debouncer};
 
 use crate::app::{AppSnapshot, ReadError, ReadOptions, read_app_cached};
-use crate::module::{Progress, ReadCache};
+use crate::modules::module::{Progress, ReadCache};
 
 /// How long file changes are collected before the app is read again.
 const QUIET: Duration = Duration::from_millis(300);

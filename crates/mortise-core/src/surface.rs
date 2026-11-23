@@ -11,9 +11,9 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 use crate::app::AppSnapshot;
-use crate::kind::{Kinds, TESTS};
-use crate::layout::Layout;
-use crate::module::{files_of, is_php};
+use crate::modules::kind::{Kinds, TESTS};
+use crate::modules::layout::Layout;
+use crate::modules::module::{files_of, is_php};
 use crate::php::{DeclaredKind, analyze};
 
 /// The folder kind of the package's command generator.

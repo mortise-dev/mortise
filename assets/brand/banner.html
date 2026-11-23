@@ -1,0 +1,46 @@
+<!doctype html>
+<!-- The README banner. tools/brand-images.sh draws it to banner.png at 1280 by 400, scale 2. -->
+<html>
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="brand.css">
+<style>
+  :root { --w: 1280px; --h: 400px; }
+  .copy { position: absolute; left: 72px; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; gap: 26px; }
+  .brand img { width: 128px; height: 128px; }
+  .name { font-size: 92px; }
+  .tagline { font-size: 25px; max-width: 520px; margin-top: 10px; }
+  .pill { font-size: 16px; }
+  .shot {
+    width: 820px;
+    left: 690px;
+    top: 58px;
+    transform: perspective(1600px) rotateY(-16deg) rotateX(6deg) rotateZ(-2deg);
+    transform-origin: left center;
+  }
+  .fade {
+    position: absolute; inset: 0; z-index: 1; pointer-events: none;
+    background: linear-gradient(180deg, transparent 70%, var(--frame) 100%);
+  }
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="shot"><img src="../../crates/mortise-app/tests/snapshots/s5.1-boundary-module-dark.png" alt=""></div>
+  <div class="fade"></div>
+  <div class="copy">
+    <div class="brand">
+      <img src="../icon/mortise.svg" alt="">
+      <div>
+        <div class="name">Mortise</div>
+        <div class="tagline">See inside your <b>Laravel modules</b>.</div>
+      </div>
+    </div>
+    <div class="pills">
+      <span class="pill"><i>&#9632;</i> nwidart/laravel-modules</span>
+      <span class="pill">macOS &middot; Windows &middot; Linux</span>
+    </div>
+  </div>
+</div>
+</body>
+</html>

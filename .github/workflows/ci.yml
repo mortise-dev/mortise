@@ -224,6 +224,8 @@ jobs:
 
   # Feature gates do not depend on the platform, so Linux is enough. Each feature builds alone,
   # so a gate on the wrong file fails here and not only in a build with the default features.
+  # It checks the library and the binaries only: the tests depend on the crate itself with its
+  # default features, so a check of every target would turn every feature on.
   core-features:
     name: Check core features
     needs: changes
@@ -237,10 +239,13 @@ jobs:
       - run: rustup toolchain install
       - uses: Swatinem/rust-cache@v2
       - name: Check each feature alone
+        # A warning fails the check: an import that only one feature uses shows up as unused.
+        env:
+          RUSTFLAGS: -D warnings
         run: |
           for features in "" watch actuator os-secrets run testing; do
             echo "::group::mortise-core with features: ${features:-none}"
-            cargo check -p mortise-core --all-targets --no-default-features ${features:+--features "$features"} --locked
+            cargo check -p mortise-core --lib --bins --no-default-features ${features:+--features "$features"} --locked
             echo "::endgroup::"
           done
 

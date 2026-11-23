@@ -10,8 +10,8 @@ use std::sync::OnceLock;
 
 use serde::{Deserialize, Serialize};
 
-use crate::composer::Version;
-use crate::package::{gives_data, ships};
+use crate::modules::composer::Version;
+use crate::package::gives_data;
 
 /// The artisan name of the generator of a new module.
 pub const MODULE_MAKE: &str = "module:make";
@@ -258,6 +258,24 @@ impl Catalog {
         groups.retain(|(_, generators)| !generators.is_empty());
         groups
     }
+}
+
+/// True when the package ships the generator named `generator`: it is in the
+/// catalog of 13.4.0 ([`Catalog::v13_4`]), `module:make` among them.
+///
+/// The package gives `--dry-run` and `--json` their meaning only for the options it
+/// adds itself (`PlansGeneratorRun::addGeneratorRunOptions`). An app's own generator
+/// may declare an option of that name and write its files anyway.
+pub(crate) fn ships(generator: &str) -> bool {
+    Catalog::v13_4().get(generator).is_some()
+}
+
+/// True when Mortise lists the files of `generator` by a dry run and reads the
+/// result of its run from its answer (design D5, D6): the package gives data
+/// ([`gives_data`]) and ships the generator ([`ships`]). An app's own generator
+/// runs as before 13.4.
+pub fn generator_gives_data(version: &Version, generator: &str) -> bool {
+    gives_data(version) && ships(generator)
 }
 
 /// The version that [`Catalog::shipped`] describes, when it is not the app's own

@@ -1,0 +1,48 @@
+<!doctype html>
+<!-- The social preview of the GitHub repository. tools/brand-images.sh draws it to
+     social.png at 1280 by 640, scale 1, the size GitHub asks for. -->
+<html>
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="brand.css">
+<style>
+  :root { --w: 1280px; --h: 640px; }
+  .copy { position: absolute; left: 80px; top: 50%; transform: translateY(-50%); width: 600px; display: flex; flex-direction: column; gap: 34px; z-index: 2; }
+  .brand img { width: 112px; height: 112px; }
+  .name { font-size: 84px; }
+  .tagline { font-size: 34px; line-height: 1.25; }
+  .points { display: flex; flex-direction: column; gap: 12px; font-size: 22px; color: var(--ink-2); font-weight: 500; }
+  .points span::before { content: "\2713"; color: var(--good); margin-right: 12px; font-weight: 700; }
+  .pill { font-size: 16px; padding: 5px 9px; }
+  .shot {
+    width: 900px;
+    left: 680px;
+    top: 92px;
+    transform: perspective(1800px) rotateY(-18deg) rotateX(5deg) rotateZ(-2deg);
+    transform-origin: left center;
+  }
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="shot"><img src="../../crates/mortise-app/tests/snapshots/s5.1-boundary-module-dark.png" alt=""></div>
+  <div class="copy">
+    <div class="brand">
+      <img src="../icon/mortise.svg" alt="">
+      <div class="name">Mortise</div>
+    </div>
+    <div class="tagline">A desktop companion<br>for <b>Laravel modules</b>.</div>
+    <div class="points">
+      <span>Modules, links and circular use at a glance</span>
+      <span>Boundary rules your team shares</span>
+      <span>Run the package's commands, never blind</span>
+    </div>
+    <div class="pills">
+      <span class="pill"><i>&#9632;</i> nwidart/laravel-modules</span>
+      <span class="pill">Rust &middot; egui</span>
+      <span class="pill">macOS &middot; Windows &middot; Linux</span>
+    </div>
+  </div>
+</div>
+</body>
+</html>
