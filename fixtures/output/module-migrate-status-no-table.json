@@ -10,5 +10,5 @@
   "exit": 0,
   "stdout": "{\"modules\":[{\"name\":\"Checkout\",\"migrations\":[{\"name\":\"2026_11_23_110149_create_orders_table\",\"ran\":false,\"batch\":null}]},{\"name\":\"Billing\",\"migrations\":[]}],\"migration_table\":false}\n",
   "stderr": "",
-  "root": "/private/tmp/claude-501/-Users-nicolaswidart--t3-worktrees-mortise-change-phase-2-package--2670127a323adadc/64d3ddb9-6432-4f43-920e-7e4d51853670/scratchpad/realapp"
+  "root": "/tmp/scratch-app"
 }

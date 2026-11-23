@@ -9,5 +9,5 @@
   "exit": 0,
   "stdout": "{\"modules\":[{\"name\":\"Billing\",\"migrations\":[{\"name\":\"2026_11_23_110213_create_invoices_table\",\"ran\":false,\"batch\":null},{\"name\":\"2026_11_23_110213_create_payment_intents_table\",\"ran\":false,\"batch\":null}]},{\"name\":\"Checkout\",\"migrations\":[{\"name\":\"2026_11_23_110149_create_orders_table\",\"ran\":true,\"batch\":1},{\"name\":\"2026_11_23_120000_create_order_items_table\",\"ran\":false,\"batch\":null}]},{\"name\":\"Loyalty\",\"migrations\":[]}],\"migration_table\":true}\n",
   "stderr": "",
-  "root": "/private/tmp/claude-501/-Users-nicolaswidart--t3-worktrees-mortise-change-phase-2-package--2670127a323adadc/64d3ddb9-6432-4f43-920e-7e4d51853670/scratchpad/realapp"
+  "root": "/tmp/scratch-app"
 }
