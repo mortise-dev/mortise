@@ -317,7 +317,9 @@ fn posix(line: &CommandLine) -> String {
 /// quotes as single quotes. A quoted program needs `& ` before it.
 ///
 /// Known limit: Windows PowerShell 5.1 drops an empty argument and mangles a `"`
-/// inside an argument to a program. PowerShell 7.3 and later pass both.
+/// inside an argument to a program. PowerShell 7.3 and later pass both, except to a
+/// `.bat` or `.cmd`: those still get their arguments the legacy way. So an empty
+/// argument can vanish when the copied Herd line (`herd.bat`) is pasted on Windows.
 #[cfg(feature = "run")]
 fn powershell(line: &CommandLine) -> String {
     const QUOTES: [char; 5] = ['\'', '\u{2018}', '\u{2019}', '\u{201A}', '\u{201B}'];
