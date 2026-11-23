@@ -403,7 +403,8 @@ const MODEL_CALLS: [(&str, &str, &str, &str); 6] = [
 /// - A generator that writes one file: the run's words and `--force`.
 /// - `module:make-model`: the file name is compared with the names the model
 ///   passes to its calls. A match gives that call with `--force`. The model's own
-///   file gives the run's words without the seven flags and `--all`, with `--force`.
+///   file gives the run's words without the seven flags and `--all`, with `--force`;
+///   `--factory` stays when the run made the factory, as the model's stub uses it.
 /// - A migration, `module:make-component` and `module:make`: `None`. A migration
 ///   gets a new date in its file name, so `--force` would not write the same file.
 ///
@@ -434,14 +435,19 @@ fn replace_from_model(
         if !model_generator.flag("force") {
             return None;
         }
-        let words: Vec<String> = run
-            .iter()
-            .filter(|word| {
-                let flag = word.strip_prefix("--").unwrap_or_default();
-                flag != "all" && !MODEL_FLAGS.contains(&flag)
-            })
-            .cloned()
-            .collect();
+        // The model stub renders its factory from `--factory`, so it stays; `--all`
+        // gives it too. The factory call then leaves its file: it has no `--force`.
+        let factory = all || options.contains(&"--factory");
+        let mut words: Vec<String> = Vec::with_capacity(run.len());
+        for word in run {
+            let flag = word.strip_prefix("--").unwrap_or_default();
+            let call = flag == "all" || MODEL_FLAGS.contains(&flag);
+            if call && factory && !words.iter().any(|kept| kept == "--factory") {
+                words.push("--factory".to_owned());
+            } else if !call {
+                words.push(word.clone());
+            }
+        }
         return Some(with_force(&words));
     }
 
@@ -843,14 +849,26 @@ mod tests {
                 "--force"
             ]))
         );
-        // The model's own file: the run without the flags of the calls.
+        // The model's own file: the run without the flags of the calls but
+        // `--factory`, which the model's stub reads. `--all` gives it too.
         assert_eq!(
             replace(&run, "Modules/Billing/app/Models/Invoice.php"),
             Some(words(&[
                 MAKE_MODEL,
                 "invoice",
                 "Billing",
+                "--factory",
                 "--fillable=total",
+                "--force"
+            ]))
+        );
+        assert_eq!(
+            replace(&[MAKE_MODEL, "Invoice", "Billing", "--all"], "Invoice.php"),
+            Some(words(&[
+                MAKE_MODEL,
+                "Invoice",
+                "Billing",
+                "--factory",
                 "--force"
             ]))
         );
