@@ -12,6 +12,7 @@ mod generate;
 mod keys;
 mod palette;
 mod runs;
+mod runtime;
 mod settings;
 
 use std::collections::BTreeMap;
@@ -37,7 +38,7 @@ use crate::generate::view::{GenerateAsk, GenerateInputs, GenerateRun, GenerateSt
 use crate::index::view::{self as index, IndexRuntime, IndexState, Selection};
 use crate::palette::view::{self as palette_view, PaletteAction, PaletteState};
 use crate::runner::view::{self as runner_view, AppRuns, RunnerView};
-use crate::runtime::view::{Brief, RuntimeAction, RuntimeView};
+use crate::runtime::view::{Brief, RuntimeView};
 use crate::settings::view::{
     self as settings_view, AppInfo, Section, SettingsAction, SettingsState,
 };
@@ -410,89 +411,6 @@ impl MortiseApp {
             self.secrets
                 .has(&self.settings.apps[current].root, environment)
         })
-    }
-
-    /// Keeps the runtime connection in step with the settings: the app on screen is
-    /// asked through its chosen environment, and no other app is asked.
-    fn sync_runtime(&mut self, ctx: &egui::Context) {
-        for (index, (open, entry)) in self.apps.iter_mut().zip(&self.settings.apps).enumerate() {
-            let installed =
-                matches!(open.live.state(), LiveState::Ready(app) if app.actuator.is_some());
-            let wanted = entry
-                .chosen_environment()
-                .filter(|_| self.current == Some(index) && installed);
-            let Some(environment) = wanted else {
-                open.runtime = None;
-                continue;
-            };
-            let secret = if environment.credentials.needs_secret() {
-                self.secrets.get(&entry.root, &environment.name)
-            } else {
-                None
-            };
-            let same = open.runtime.as_ref().is_some_and(|connected| {
-                &connected.environment == environment && connected.secret == secret
-            });
-            if !same {
-                let ctx = ctx.clone();
-                let live = LiveRuntime::open(environment.clone(), secret.clone(), move || {
-                    ctx.request_repaint();
-                });
-                open.runtime = Some(Connected {
-                    environment: environment.clone(),
-                    secret,
-                    live,
-                });
-            }
-            if let Some(connected) = &open.runtime {
-                // The window is visible: this frame is drawn.
-                connected.live.seen();
-                if let Some(answer) = connected.live.state().answer {
-                    open.last_answers
-                        .insert(environment.name.clone(), Brief::of_answer(&answer));
-                }
-            }
-        }
-    }
-
-    /// What the runtime box of the current app asked for.
-    fn runtime_action(&mut self, ctx: &egui::Context, action: RuntimeAction) {
-        let Some(current) = self.current else {
-            return;
-        };
-        match action {
-            RuntimeAction::Choose(name) => {
-                self.settings.apps[current].environment = Some(name);
-                self.save();
-            }
-            RuntimeAction::TryAgain => {
-                if let Some(connected) = &self.apps[current].runtime {
-                    connected.live.refresh();
-                }
-            }
-            RuntimeAction::AddEnvironment => {
-                self.open_settings(Section::Apps);
-                if let Some(state) = &mut self.settings_open {
-                    state.add_environment = true;
-                }
-            }
-            RuntimeAction::OpenSettings => {
-                self.open_settings(Section::Apps);
-                let entry = &self.settings.apps[current];
-                let chosen = entry.chosen_environment().map(|chosen| &chosen.name);
-                let place = entry
-                    .environments
-                    .iter()
-                    .position(|e| Some(&e.name) == chosen);
-                if let Some(state) = &mut self.settings_open {
-                    state.environment = place.unwrap_or(0);
-                }
-            }
-            RuntimeAction::Copy { text, said } => {
-                ctx.copy_text(text.to_owned());
-                self.toast = Some(Toast::done(said));
-            }
-        }
     }
 
     fn save(&mut self) {
