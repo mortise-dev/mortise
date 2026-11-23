@@ -1170,9 +1170,16 @@ impl MortiseApp {
 
     /// After a run of the app at `index` ended, with these words (design D7): once
     /// the migration state was read in this session, a migrate, roll back, reset,
-    /// refresh or fresh is followed by a read of the same target, whatever its exit
-    /// code. A delete forgets the state of the module it deleted.
-    fn after_run(&mut self, index: usize, args: &[String]) {
+    /// refresh or fresh started from the Actions tab is followed by the read it
+    /// showed (`then_read`), whatever its exit code. Run again from the drawer or the
+    /// history shows no such line, so no read follows it. A delete forgets the state
+    /// of the module it deleted.
+    fn after_run(
+        &mut self,
+        index: usize,
+        args: &[String],
+        then_read: Option<(Target, Vec<String>)>,
+    ) {
         let Some(open) = self.apps.get(index) else {
             return;
         };
@@ -1200,7 +1207,7 @@ impl MortiseApp {
         if !gives || open.package.migration_table.is_none() {
             return;
         }
-        if let Some((target, words)) = actions_view::reads_state_after(args) {
+        if let Some((target, words)) = then_read {
             self.read_migrations(index, target, words);
         }
     }
@@ -1350,6 +1357,8 @@ impl MortiseApp {
                     target,
                     args,
                     ask: Some(ask),
+                    // Run again shows no line of a read: none follows.
+                    then_read: None,
                 };
                 self.act(index, act);
                 return;
@@ -2603,10 +2612,14 @@ impl eframe::App for MortiseApp {
             let was = open.runs.running().is_some();
             running |= open.runs.poll();
             if was && open.runs.running().is_none() {
+                let action_run = open.action_run.take();
                 if let Some(args) = open.runs.args() {
-                    finished.push((index, args.to_vec()));
+                    let then_read = action_run
+                        .as_ref()
+                        .and_then(|(act, _)| act.then_read.clone());
+                    finished.push((index, args.to_vec(), then_read));
                 }
-                if let Some((act, modules_on)) = open.action_run.take() {
+                if let Some((act, modules_on)) = action_run {
                     ended.push((index, act, modules_on));
                 }
                 if let Some(generating) = open.generate_run.take() {
@@ -2642,8 +2655,8 @@ impl eframe::App for MortiseApp {
             self.generate_ended(index, generating);
         }
         // After the reads that ended, so that a read that follows a run can start.
-        for (index, args) in finished {
-            self.after_run(index, &args);
+        for (index, args, then_read) in finished {
+            self.after_run(index, &args, then_read);
         }
         if running {
             ctx.request_repaint_after(std::time::Duration::from_millis(100));

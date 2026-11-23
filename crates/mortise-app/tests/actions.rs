@@ -718,4 +718,21 @@ fn the_migration_state_is_read_when_asked_and_again_after_a_migrate() {
         read_ms(app).is_some_and(|ms| ms > before)
     });
     assert_eq!(runs(&mut harness, &desk, &root), 1);
+
+    // Run again in the drawer shows no line of a read: none follows it.
+    let before = read_ms(harness.state());
+    harness
+        .get_by_role_and_label(Role::Button, "Run again")
+        .click();
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while runs(&mut harness, &desk, &root) < 2 {
+        assert!(Instant::now() < deadline, "waited 20 s for the run again");
+    }
+    // A read would have ended within this second.
+    let until = Instant::now() + Duration::from_secs(1);
+    while Instant::now() < until {
+        std::thread::sleep(Duration::from_millis(20));
+        harness.run_steps(2);
+    }
+    assert_eq!(read_ms(harness.state()), before);
 }

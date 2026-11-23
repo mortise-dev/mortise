@@ -118,6 +118,10 @@ pub struct Act {
     pub args: Vec<String>,
     /// The question Mortise asks before it starts them, if any.
     pub ask: Option<Ask>,
+    /// The read of the migration state that follows the run, with its target: only
+    /// when the panel showed "After the run Mortise reads the state again:" and the
+    /// whole line of that read in the last frame (design D7).
+    pub then_read: Option<(Target, Vec<String>)>,
 }
 
 /// What the tab needs besides the app and its own state.
@@ -181,7 +185,7 @@ fn waiting_count(read: &[(&Module, &ModuleMigrations)]) -> usize {
 /// was read in this session, and the words of that read: a migrate, roll back,
 /// reset, refresh or fresh that is not a dry run (design D7). A fresh reads every
 /// module. The read takes the run's `--database`.
-pub fn reads_state_after(args: &[String]) -> Option<(Target, Vec<String>)> {
+fn reads_state_after(args: &[String]) -> Option<(Target, Vec<String>)> {
     let action = Action::from_artisan(args.first()?)?;
     if !matches!(
         action,
@@ -713,6 +717,7 @@ fn panel(
     // The migration state and its read, on a 13.4 app (design D7).
     let mut state_asked = None;
     let mut next_read_shown = None;
+    let last_read = state.read_shown.take();
     if gives_data(&app.package) {
         let pretend = action.options(target, true).pretend && state.options.pretend;
         let at = pos2(min.x, y + 12.0);
@@ -723,7 +728,7 @@ fn panel(
             action,
             pretend,
             read: read.as_deref(),
-            last_read: state.read_shown.as_deref(),
+            last_read: last_read.as_deref(),
             connection: &connection,
         };
         if let Some((bottom, box_asked, read_shown)) = state_box(ui, pal, at, width, &shown, inputs)
@@ -849,11 +854,16 @@ fn panel(
             Plan::Refused { .. } | Plan::NoCommand => None,
         }
         .map(|(args, ask)| {
+            // A read follows only when its sentence and its line were on screen.
+            let then_read = reads_state_after(&args).filter(|(_, words)| {
+                app.package_data.migration_table.is_some() && last_read.as_ref() == Some(words)
+            });
             BoundaryAction::Act(Act {
                 action,
                 target: target.clone(),
                 args,
                 ask,
+                then_read,
             })
         });
     }
