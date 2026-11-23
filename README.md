@@ -37,9 +37,10 @@ in WSL only; a Custom command is the way there.
 
 When the app also has [`nwidart/laravel-actuator`](https://github.com/nWidart/laravel-actuator)
 and is running, Mortise can ask it for its runtime status, its routes and its scheduled tasks.
-This is optional. Mortise asks for `health`, `info`, `mappings` and `scheduledtasks`, and never
-for `env`. A token or a password goes to the credential store of the operating system and is
-never written to a file.
+This is optional. Mortise asks for the actuator base path, `health`, `info`, `mappings`,
+`scheduledtasks` and `prometheus` only. It never asks for `env` and follows no redirect.
+A token or a password goes to the credential store of the operating system and is never written
+to a file.
 
 Status: phase 1 (read only) and phase 2 (running the package's commands) are built. The plans are
 `docs/plan/phase-1.md` and `docs/plan/phase-2.md`. Where the build differs from the specification is in

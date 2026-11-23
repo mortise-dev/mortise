@@ -237,6 +237,10 @@ pub const FINDINGS: &str = "Findings";
 pub const SUMMARY: &str = "Summary";
 pub const BOUNDARY: &str = "Boundary";
 pub const ACTIONS: &str = "Actions";
+pub const GENERATE: &str = "Generate";
+pub const METRICS: &str = "Metrics";
+/// The button that opens a module or a file in the editor.
+pub const OPEN_IN_EDITOR: &str = "Open in editor";
 
 /// What a locale lacks: `4 keys in en are missing in fr`. `from` is the other locale
 /// of a module with two. Not in the spec: more locales, and missing files.

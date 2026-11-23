@@ -1,0 +1,1 @@
+{"app":{"name":"ShopFixture","environment":"local","laravel":"13.43.0","timezone":"UTC","locale":"en"},"php":{"version":"8.4.27","sapi":"cli-server"},"os":{"name":"Darwin","version":"27.2.0","arch":"arm64"},"process":{"pid":87903,"memory":{"usage":2097152,"peak":2097152,"limit":134217728}}}

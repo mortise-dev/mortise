@@ -73,11 +73,11 @@ impl Tab {
 
     pub fn label(self) -> &'static str {
         match self {
-            Tab::Summary => "Summary",
-            Tab::Boundary => "Boundary",
-            Tab::Generate => "Generate",
-            Tab::Actions => "Actions",
-            Tab::Metrics => "Metrics",
+            Tab::Summary => crate::strings::SUMMARY,
+            Tab::Boundary => crate::strings::BOUNDARY,
+            Tab::Generate => crate::strings::GENERATE,
+            Tab::Actions => crate::strings::ACTIONS,
+            Tab::Metrics => crate::strings::METRICS,
         }
     }
 
@@ -103,11 +103,8 @@ impl Tab {
             // This one is written to match it.
             Tab::Metrics => Some((
                 Icon::Metrics,
-                "Metrics are not in this version",
-                "Metrics show requests, response time, errors, jobs and database time per \
-                 module, read from the running app. They need a metrics endpoint that \
-                 nwidart/laravel-actuator does not have yet, and arrive in a later release \
-                 of Mortise.",
+                strings::METRICS_UNAVAILABLE_TITLE,
+                strings::METRICS_UNAVAILABLE,
             )),
         }
     }
@@ -256,7 +253,7 @@ pub fn workspace(
     } else if let Some(module) = module.filter(|_| *tab != Tab::Generate) {
         let said = strings::open_module_in_editor(&module.name);
         let open = Button {
-            label: "Open in editor",
+            label: crate::strings::OPEN_IN_EDITOR,
             small: true,
             said: Some(&said),
             ..Default::default()

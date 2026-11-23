@@ -1,7 +1,8 @@
 # Shared helpers for the Mortise spec pages. Everything a page needs is inlined at build time.
-import html, json, re
+import html, json, os, re
 
-OUT = '/Users/nicolaswidart/Sites/php/packages/LaravelModules/docs/companion-app/spec'
+# The built pages go to docs/spec, beside this folder.
+OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'spec')
 
 # ---------------------------------------------------------------- tokens
 def _rgb(h):
@@ -732,7 +733,7 @@ def finish():
     for f, d in DOCS.items():
         d = re.sub(r'\[\[([A-Z]\d+\.\d+)\]\]', link, d)
         assert '[[' not in d, f
-        open(OUT + '/' + f, 'w').write(d); total += len(d.encode())
+        open(OUT + '/' + f, 'w', encoding='utf-8', newline='\n').write(d); total += len(d.encode())
         print('%-22s %7d bytes' % (f, len(d.encode())))
     print('total', total)
 SWITCH_JS = '''(function(){var b=document.querySelectorAll('[data-set-theme]');function set(t){document.querySelectorAll('.sw').forEach(function(e){e.setAttribute('data-theme',t)});b.forEach(function(x){x.classList.toggle('on',x.getAttribute('data-set-theme')===t)})}

@@ -6,3 +6,4 @@ node_modules/
 *.old.png
 /dist
 /.claude/worktrees
+__pycache__/

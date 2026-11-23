@@ -42,10 +42,10 @@ impl Section {
 
     pub fn label(self) -> &'static str {
         match self {
-            Section::Apps => "Apps",
+            Section::Apps => strings::SECTION_APPS,
             Section::Php => crate::strings::PHP,
-            Section::General => "General",
-            Section::Keyboard => "Keyboard",
+            Section::General => strings::SECTION_GENERAL,
+            Section::Keyboard => strings::SECTION_KEYBOARD,
         }
     }
 
@@ -181,108 +181,6 @@ pub enum SettingsAction {
     RemoveApp(usize),
 }
 
-/// One shortcut of the Keyboard section: what it does, its keys as written for
-/// Windows and Linux, and where it works.
-const SHORTCUTS: &[(&str, &str, &str)] = &[
-    ("Open the command palette", "Ctrl K", "Anywhere"),
-    // The drawer key is Ctrl on macOS too: Cmd ` cycles windows there (S7, Q9).
-    (
-        "Show or hide the runner drawer",
-        "Ctrl `  or Ctrl J",
-        "Anywhere",
-    ),
-    ("Collapse or open the module index", "Ctrl B", "Anywhere"),
-    (
-        "Select app 1 to 9 on the rail",
-        "Ctrl Alt 1 to 9",
-        "Anywhere",
-    ),
-    ("Add app", "Ctrl O", "Anywhere"),
-    ("New module", "Ctrl N", "Anywhere"),
-    ("Settings", "Ctrl ,", "Anywhere"),
-    (
-        "Read the app again, from disk and from the actuator",
-        "Ctrl R",
-        "Anywhere",
-    ),
-    ("Stop the running command", "Ctrl .", "Anywhere"),
-    ("Close the topmost thing", "Esc", "Anywhere"),
-    (
-        "Move focus to the next or previous region",
-        "F6  Shift F6",
-        "Anywhere",
-    ),
-    (
-        "Next or previous module",
-        "J  K  or Down  Up",
-        "Main window",
-    ),
-    ("First or last row of the index", "Home  End", "Main window"),
-    ("Filter modules", "/  or Ctrl F", "Main window"),
-    ("Change the order of the index", "S", "Main window"),
-    (
-        "Summary, Boundary, Generate, Actions, Metrics",
-        "1  2  3  4  5",
-        "Main window",
-    ),
-    (
-        "Generate, with the generator filter focused",
-        "G",
-        "Main window",
-    ),
-    ("Findings list of the app", "F", "Main window"),
-    ("Open the selected module in the editor", "E", "Main window"),
-    ("Show the shortcuts", "?", "Main window"),
-    (
-        "Move focus into the workspace",
-        "Enter  or Right",
-        "Module index",
-    ),
-    (
-        "Set the width of the index",
-        "Left  Right",
-        "Edge of the module index",
-    ),
-    ("Move an app on the rail", "Alt Up  Alt Down", "Rail"),
-    ("Move in a table or list", "J  K  or Down  Up", "Workspace"),
-    (
-        "Change a segmented control or the tab",
-        "Left  Right",
-        "Workspace",
-    ),
-    ("Run the generator or the action", "Ctrl Enter", "Workspace"),
-    ("Copy the command", "Ctrl Shift C", "Workspace"),
-    (
-        "Switch between Links and Public surface",
-        "P",
-        "Boundary, one module",
-    ),
-    (
-        "Scan the public surface",
-        "Ctrl Enter",
-        "Boundary, Public surface",
-    ),
-    (
-        "Add an entry to the proposal by hand",
-        "A",
-        "Boundary, Public surface",
-    ),
-    (
-        "Move, run, close",
-        "Up  Down  Enter  Esc",
-        "Command palette",
-    ),
-    ("Search in the next app", "Tab", "Command palette"),
-    (
-        "Run the last command again",
-        "Ctrl Shift R",
-        "Runner drawer",
-    ),
-    ("Show the history", "Ctrl Shift H", "Runner drawer"),
-    ("Copy the output", "Ctrl Shift O", "Runner drawer"),
-    ("Press the focused button, cancel", "Enter  Esc", "Dialog"),
-];
-
 /// Paints the list of sections into the index column. The rect includes the joint
 /// at its right edge.
 pub fn sections(
@@ -303,7 +201,7 @@ pub fn sections(
     let left = rect.left() + 12.0;
     let right = rect.right() - 1.0 - 12.0;
 
-    let version = format!("Mortise {}", env!("CARGO_PKG_VERSION"));
+    let version = strings::version(env!("CARGO_PKG_VERSION"));
     draw::label(
         ui,
         pos2(right, rect.top() + 30.0),
@@ -316,16 +214,16 @@ pub fn sections(
         ui,
         pos2(left, rect.top() + 12.0),
         Align2::LEFT_TOP,
-        "Settings",
+        strings::TITLE,
         ty::APP_NAME,
         pal.ink,
     );
-    draw::announce(ui, title, Role::Heading, "Settings");
+    draw::announce(ui, title, Role::Heading, strings::TITLE);
     draw::label(
         ui,
         pos2(left, rect.top() + 33.0),
         Align2::LEFT_TOP,
-        "Kept on this computer",
+        strings::SUBTITLE,
         ty::SECONDARY,
         pal.ink_2,
     );
@@ -393,7 +291,7 @@ pub fn sections(
     // The way back, at the foot.
     let foot_top = rect.bottom() - 34.0;
     draw::hline(ui, rect.left()..rect.right() - 1.0, foot_top, pal.line);
-    let back = format!("Back to {back_to}");
+    let back = strings::back_to(back_to);
     let foot = Rect::from_min_max(
         pos2(rect.left(), foot_top + 1.0),
         pos2(rect.right() - 1.0, rect.bottom()),
@@ -403,7 +301,7 @@ pub fn sections(
     if response.hovered() {
         ui.painter().rect_filled(foot, 0, pal.well);
     }
-    let cap = draw::keycap(ui, pal, pos2(right, foot.center().y), "Esc");
+    let cap = draw::keycap(ui, pal, pos2(right, foot.center().y), strings::ESC_KEY);
     let text = draw::galley_elided(ui, &back, ty::SECONDARY, pal.ink_2, cap.left() - 8.0 - left);
     draw::paint_galley(ui, pos2(left, foot.center().y), Align2::LEFT_CENTER, text);
     response.clicked().then_some(SettingsAction::Close)
@@ -562,8 +460,8 @@ impl Form<'_> {
             .iter()
             .position(|theme| *theme == general.theme)
             .unwrap_or(0);
-        let hint = "System follows the operating system and changes with it";
-        let (next, clicked) = self.choice(ui, y, "Theme", hint, &["System", "Light", "Dark"], at);
+        let hint = strings::THEME_HINT;
+        let (next, clicked) = self.choice(ui, y, strings::THEME, hint, strings::THEME_CHOICES, at);
         if let Some(clicked) = clicked {
             general.theme = themes[clicked];
             changed = true;
@@ -575,13 +473,13 @@ impl Form<'_> {
             .iter()
             .position(|size| *size == general.text_size)
             .unwrap_or(0);
-        let hint = "every size in the interface scales with it";
+        let hint = strings::TEXT_SIZE_HINT;
         let (next, clicked) = self.choice(
             ui,
             y,
-            "Text size",
+            strings::TEXT_SIZE,
             hint,
-            &["100%", "110%", "125%", "150%"],
+            strings::TEXT_SIZE_CHOICES,
             at,
         );
         if let Some(clicked) = clicked {
@@ -595,9 +493,9 @@ impl Form<'_> {
             .iter()
             .position(|motion| *motion == general.motion)
             .unwrap_or(0);
-        let hint = "System follows the reduced motion setting";
+        let hint = strings::MOTION_HINT;
         let (next, clicked) =
-            self.choice(ui, y, "Motion", hint, &["System", "Reduced", "Full"], at);
+            self.choice(ui, y, strings::MOTION, hint, strings::MOTION_CHOICES, at);
         if let Some(clicked) = clicked {
             general.motion = motions[clicked];
             changed = true;
@@ -613,15 +511,8 @@ impl Form<'_> {
             .iter()
             .position(|rows| *rows == general.index_rows)
             .unwrap_or(0);
-        let hint = "Automatic is two lines up to 20 modules, one line above";
-        let (next, clicked) = self.choice(
-            ui,
-            y,
-            "Module index rows",
-            hint,
-            &["Automatic", "Two lines", "One line"],
-            at,
-        );
+        let hint = strings::ROWS_HINT;
+        let (next, clicked) = self.choice(ui, y, strings::ROWS, hint, strings::ROWS_CHOICES, at);
         if let Some(clicked) = clicked {
             general.index_rows = rows[clicked];
             changed = true;
@@ -641,9 +532,9 @@ impl Form<'_> {
         let (next, clicked) = self.choice(
             ui,
             y,
-            "Open files with",
+            strings::OPEN_FILES_WITH,
             "",
-            &["VS Code", "PhpStorm", "Zed", "Custom"],
+            strings::EDITOR_CHOICES,
             at,
         );
         if let Some(clicked) = clicked {
@@ -664,7 +555,7 @@ impl Form<'_> {
                 ui,
                 self.pal,
                 field,
-                "Editor command",
+                strings::EDITOR_COMMAND,
                 &mut state.editor_command,
                 true,
                 self.keyboard,
@@ -689,14 +580,14 @@ impl Form<'_> {
 
         // Only where Mortise draws the window controls.
         if custom_frame {
-            let hint = "where the close, minimise and maximise buttons sit";
+            let hint = strings::CONTROLS_HINT;
             let at = usize::from(general.window_controls_left);
             let (next, clicked) = self.choice(
                 ui,
                 y,
-                "Window controls on Linux",
+                strings::CONTROLS,
                 hint,
-                &["Right", "Left"],
+                strings::CONTROLS_CHOICES,
                 at,
             );
             if let Some(clicked) = clicked {
@@ -706,10 +597,16 @@ impl Form<'_> {
             y = next;
 
             // Not in the drawing: the fallback of section 8, offered as a setting.
-            let hint = "The platform's own bar keeps what its window manager offers";
+            let hint = strings::TITLE_BAR_HINT;
             let at = usize::from(general.system_title_bar);
-            let (next, clicked) =
-                self.choice(ui, y, "Title bar", hint, &["Mortise", "Platform"], at);
+            let (next, clicked) = self.choice(
+                ui,
+                y,
+                strings::TITLE_BAR,
+                hint,
+                strings::TITLE_BAR_CHOICES,
+                at,
+            );
             if let Some(clicked) = clicked {
                 general.system_title_bar = clicked == 1;
                 changed = true;
@@ -765,10 +662,10 @@ impl Form<'_> {
         let environments_x = (table.left() + table.width() * 0.86).round();
         let head_mid = table.top() + size::TABLE_HEAD_H / 2.0;
         for (x, label) in [
-            (name_x, "App"),
-            (folder_x, "Folder"),
-            (versions_x, "Versions"),
-            (environments_x, "Environments"),
+            (name_x, strings::COL_APP),
+            (folder_x, strings::COL_FOLDER),
+            (versions_x, strings::COL_VERSIONS),
+            (environments_x, strings::COL_ENVIRONMENTS),
         ] {
             draw::label(
                 ui,
@@ -896,7 +793,7 @@ impl Form<'_> {
                 name: entry.name.clone(),
                 monogram: entry.monogram.clone(),
                 report: entry.coverage_report.clone().unwrap_or_default(),
-                limit: format!("{}%", entry.coverage_limit),
+                limit: strings::percent(entry.coverage_limit),
             };
             state.fields_of = Some((index, entry.clone()));
         }
@@ -998,7 +895,7 @@ impl Form<'_> {
         }
         y = name.bottom() + 12.0;
 
-        y = self.label(ui, y, "Folder", "");
+        y = self.label(ui, y, strings::COL_FOLDER, "");
         let folder = Rect::from_min_size(pos2(self.left, y), vec2(form_w, size::FIELD_H));
         draw::outlined(ui, folder, radius::CONTROL, pal.well, pal.line);
         draw::label(
@@ -1016,7 +913,7 @@ impl Form<'_> {
             ui,
             pos2(self.left + form_w - 96.0, y),
             Align2::LEFT_TOP,
-            "Coverage limit",
+            strings::COVERAGE_LIMIT,
             ty::LABEL,
             pal.ink,
         );
@@ -1045,7 +942,7 @@ impl Form<'_> {
         }
         if state.fields.report.is_empty() {
             // What Mortise does when the field is empty.
-            let hint = "found in phpunit.xml or the usual places";
+            let hint = strings::COVERAGE_HINT;
             draw::paint_text(
                 ui,
                 pos2(report.left() + 9.0, report.center().y),
@@ -1063,7 +960,7 @@ impl Form<'_> {
             ui,
             pal,
             limit,
-            "Coverage limit",
+            strings::COVERAGE_LIMIT,
             &mut state.fields.limit,
             false,
             self.keyboard,
@@ -1083,7 +980,7 @@ impl Form<'_> {
                 entry.coverage_limit = value;
                 changed = Some(true);
             }
-            state.fields.limit = format!("{}%", entry.coverage_limit);
+            state.fields.limit = strings::percent(entry.coverage_limit);
         }
         y = report.bottom() + 20.0;
 
@@ -1097,7 +994,7 @@ impl Form<'_> {
 
         // Removing an app: the folder and its files stay as they are. Not while it
         // runs a command, which would lose its stop and its history.
-        let label = format!("Remove {} from Mortise", entry.display_name());
+        let label = strings::remove_app(entry.display_name());
         let running = infos.get(index).and_then(|info| info.running.as_deref());
         let remove = Button {
             label: &label,
@@ -1854,7 +1751,7 @@ impl Form<'_> {
             ui,
             pal,
             field,
-            "Find a shortcut",
+            strings::FIND_SHORTCUT,
             &mut state.shortcut_filter,
             false,
             self.keyboard,
@@ -1864,12 +1761,12 @@ impl Form<'_> {
                 ui,
                 pos2(field.left() + 9.0, field.center().y),
                 Align2::LEFT_CENTER,
-                "Find a shortcut",
+                strings::FIND_SHORTCUT,
                 ty::BODY,
                 pal.ink_3,
             );
         }
-        let note = "On macOS Ctrl is Cmd. Shortcuts are fixed in this version.";
+        let note = strings::SHORTCUTS_NOTE;
         draw::label(
             ui,
             pos2(field.right() + 12.0, field.center().y),
@@ -1893,7 +1790,7 @@ impl Form<'_> {
             }
         };
         let wanted = state.shortcut_filter.trim().to_lowercase();
-        let shown: Vec<_> = SHORTCUTS
+        let shown: Vec<_> = strings::SHORTCUTS
             .iter()
             .filter(|(does, keys, place)| {
                 wanted.is_empty()
@@ -1915,7 +1812,11 @@ impl Form<'_> {
         let keys_x = (table.left() + table.width() * 0.50).round();
         let place_x = (table.left() + table.width() * 0.78).round();
         let head_mid = table.top() + size::TABLE_HEAD_H / 2.0;
-        for (x, label) in [(does_x, "Does"), (keys_x, "Keys"), (place_x, "Where")] {
+        for (x, label) in [
+            (does_x, strings::COL_DOES),
+            (keys_x, strings::COL_KEYS),
+            (place_x, strings::COL_WHERE),
+        ] {
             draw::label(
                 ui,
                 pos2(x, head_mid),
@@ -1952,7 +1853,7 @@ impl Form<'_> {
                             ui,
                             pos2(x, mid),
                             Align2::LEFT_CENTER,
-                            "or",
+                            strings::KEYS_OR,
                             ty::SECONDARY,
                             pal.ink_2,
                         )
@@ -1983,7 +1884,7 @@ impl Form<'_> {
                 );
             }
         }
-        let count = format!("{} of {} shown.", shown.len(), SHORTCUTS.len());
+        let count = strings::shown_of(shown.len(), strings::SHORTCUTS.len());
         draw::label(
             ui,
             pos2(self.left, table.bottom() + 10.0),

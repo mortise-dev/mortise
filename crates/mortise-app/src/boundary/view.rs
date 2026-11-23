@@ -547,7 +547,7 @@ impl View<'_> {
             ..Default::default()
         };
         let open = Button {
-            label: "Open in editor",
+            label: crate::strings::OPEN_IN_EDITOR,
             said: Some(strings::OPEN_FILE_IN_EDITOR),
             kind: ButtonKind::Primary,
             ..Default::default()

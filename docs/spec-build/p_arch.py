@@ -68,7 +68,7 @@ def build():
         ['Files and git', 'The app folder. No PHP, no dependencies installed beyond <code>composer.lock</code>.', 'Module list and on or off state, file and line counts, kinds of class, links between modules from <code>use</code> statements, coverage from <code>clover.xml</code>, commits. Findings are computed from these.', '1'],
         ['Actuator', 'A running app, a base URL, the actuator path, credentials if the app asks. No PHP runner, no package change. The app needs <code>nwidart/laravel-actuator</code>, found in <code>composer.lock</code>.', 'Runtime status and components (<code>health</code>), environment, git, PHP and memory (<code>info</code>), routes (<code>mappings</code>), scheduled tasks (<code>scheduledtasks</code>). Per module status and module data once the packages offer them.', '1, optional'],
         ['Artisan', 'A way to run PHP for the app: Herd, Sail, Docker or a command.', 'Generators, actions, migration state, translation check, tests.', '2'],
-        ['Metrics over the actuator', 'The actuator connection, and a Prometheus endpoint that has no module label yet.', 'Figures per module for the Metrics tab.', '3'],
+        ['Metrics over the actuator', 'The actuator connection, and its Prometheus endpoint. Without a module label, series are placed by route template and job class.', 'Figures per module for the Metrics tab.', '3'],
     ])
     b += '<h2>2.4 Findings and runtime: two things that were both called health</h2>'
     b += spec_table(['', 'Findings', 'Runtime'], [
@@ -83,12 +83,12 @@ def build():
     b += '<h2>2.5 What is on screen in each phase</h2>'
     y, n, e = 'Yes', 'No', 'Shown, explains itself'
     b += spec_table(['', 'Phase 1, read only', 'Phase 2, write', 'Phase 3, live'], [
-        ['Needs', 'The app folder. Optional: a running app with the actuator.', 'PHP for the app. Package additions P1 to P8.', 'A module label on the metrics endpoint of the actuator (A2, in part). Package work P10 (in part) for the per module parts. P9 and A1 are met.'],
+        ['Needs', 'The app folder. Optional: a running app with the actuator.', 'PHP for the app. Package additions P1 to P5, P7 and P8.', 'The metrics endpoint of the actuator. Without a module label (A2, in part), Mortise places requests through <code>mappings</code> and jobs by class namespace; database time per module needs the label. Package work P10 (in part) for the per module parts. P9 and A1 are met.'],
         ['Add app', 'Folder and runtime connection', 'Plus "Run PHP with"', 'Same'],
         ['App rail, module index', y, 'Plus "New module" in the footer', 'Plus the runtime mark per module, when the packages offer it'],
         ['Summary', 'Files, git, coverage, findings. With an environment: runtime box, routes, scheduled tasks.', 'Plus migration state, and the Run tests and Migrate buttons in the header', 'Plus runtime per module'],
         ['Findings list', 'Rules and file checks', 'Plus translations, and the waiting migrations under "To do"', 'Same'],
-        ['Boundary', 'Links, rules, and the public surface scan with its proposal', 'Same', 'Same. Accepting a public surface arrives when the package can store one (P6), in whichever phase that is.'], ['Generate tab', e, y, y], ['Actions tab', e, 'Yes, with the closed group of destructive actions', y], ['Metrics tab', e, e, y],
+        ['Boundary', 'Links, rules, and the public surface scan with its proposal', 'Same', 'Same. Accepting a public surface arrives when the package can store one (P6), planned for phase 4.'], ['Generate tab', e, y, y], ['Actions tab', e, 'Yes, with the closed group of destructive actions', y], ['Metrics tab', e, e, y],
         ['Runner drawer', 'Hidden', y, y], ['Command palette', 'Navigation, findings, settings', 'Plus generators and actions', 'Same'],
         ['Settings', 'Apps, General, Keyboard', 'Plus PHP', 'Same'],
     ])
@@ -97,6 +97,7 @@ def build():
           'Buttons, footer actions and palette entries of a later phase are left out, because a disabled button on every module is noise and a palette that lists what cannot run wastes the first result.</p>'
           '<p>The same explanation block has a permanent use. In a build that has the phase, a tab still explains itself when this app cannot use it: PHP was not found, or the app\'s version of the package is too old. '
           'In that case the controls that exist are drawn disabled, each with the reason in its tooltip.</p>') % r('S7.4')
+    b += '<p><strong>Phase 4</strong> is planned to hold accepting a public surface (P6; S5.8 and S5.9 show it) and the command line twin for CI (M1).</p>'
     b += '<h2>2.6 How it scales</h2>'
     b += spec_table(['Size', 'What changes'], [
         ['1 app, 5 modules', 'The rail holds one tile and the add tile. The index shows every module without scrolling, two lines a row. The app graph is drawn whole.'],
