@@ -216,8 +216,9 @@ impl<'a> Client<'a> {
         }
     }
 
-    /// Asks for `url`. With a limit, the body is read up to that many decoded bytes, and a read
-    /// of the body that fails, such as a timeout, is a failed request.
+    /// Asks for `url`. With a limit, only the body of a 200 or a 503 is read, up to that many
+    /// decoded bytes, and a read of it that fails, such as a timeout, is a failed request. Any
+    /// other status comes back with an empty body, so a body that breaks off cannot hide it.
     fn get(&self, url: &str, limit: Option<u64>) -> Result<Reply, ureq::Error> {
         // Laravel answers errors as JSON only when it is asked for JSON.
         let mut request = self.agent.get(url).header("Accept", "application/json");
@@ -245,6 +246,7 @@ impl<'a> Client<'a> {
                 response.body_mut().read_to_string().unwrap_or_default(),
                 false,
             ),
+            Some(_) if !matches!(status, 200 | 503) => (String::new(), false),
             Some(limit) => {
                 // The reader of `with_config()` has no limit of its own and decodes gzip, so
                 // this one counts decoded bytes. One byte past the limit says the body is longer.

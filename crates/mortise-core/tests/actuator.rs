@@ -760,6 +760,29 @@ fn prometheus_is_read_as_text_within_the_limit() {
             location: Some(format!("{}/login", stub.base_url))
         })
     );
+    // A 403 whose body breaks off is still not authorized.
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let broken = Environment {
+        base_url: format!("http://{}", listener.local_addr().unwrap()),
+        ..local(&stub)
+    };
+    std::thread::spawn(move || {
+        use std::io::{BufRead, Write};
+        let (stream, _) = listener.accept().unwrap();
+        let mut reader = std::io::BufReader::new(stream.try_clone().unwrap());
+        let mut line = String::new();
+        while reader.read_line(&mut line).is_ok_and(|read| read > 2) {
+            line.clear();
+        }
+        let _ = (&stream).write_all(b"HTTP/1.1 403 X\r\nContent-Length: 100\r\n\r\n{\"mess");
+    });
+    assert_eq!(
+        ask_metrics(&broken, &None),
+        Err(NoMetrics::NotAuthorized {
+            url: format!("{}/actuator/prometheus", broken.base_url),
+            status: 403
+        })
+    );
 
     let limit = usize::try_from(METRICS_BODY_LIMIT).unwrap();
     let full = "x".repeat(limit);
