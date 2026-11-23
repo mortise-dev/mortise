@@ -86,9 +86,12 @@ impl History {
     }
 
     /// Keeps a run and its output. The oldest runs past [`HISTORY_LIMIT`] go, with their logs.
-    /// A run with the id of a kept run replaces it.
+    /// A run with the id of a kept run replaces it. A lock on `runs.lock` keeps two
+    /// Mortise windows that record at the same time from losing a run.
     pub fn record(&self, mut entry: Entry, lines: &[String]) -> std::io::Result<()> {
         std::fs::create_dir_all(&self.dir)?;
+        let lock = std::fs::File::create(self.dir.join("runs.lock"))?;
+        lock.lock()?;
 
         let mut kept = String::new();
         for line in lines {
@@ -99,7 +102,9 @@ impl History {
             kept.push_str(line);
             kept.push('\n');
         }
-        std::fs::write(self.log(entry.id), kept)?;
+        let mut log = tempfile::NamedTempFile::new_in(&self.dir)?;
+        log.write_all(kept.as_bytes())?;
+        log.persist(self.log(entry.id))?;
 
         let mut runs = self.entries();
         runs.retain(|run| run.id != entry.id);
@@ -124,7 +129,8 @@ impl History {
         self.dir.join(format!("{id}.log"))
     }
 
-    /// Deletes each `.log` that no entry names. A failure leaves the file for the next record.
+    /// Deletes each log of the history, `<id>.log`, that no entry names. Other files
+    /// stay. A failure leaves the file for the next record.
     fn remove_unnamed_logs(&self, runs: &[Entry]) {
         let named: HashSet<String> = runs.iter().map(|run| format!("{}.log", run.id)).collect();
         let Ok(files) = std::fs::read_dir(&self.dir) else {
@@ -132,7 +138,10 @@ impl History {
         };
         for file in files.flatten() {
             let name = file.file_name().to_string_lossy().into_owned();
-            if name.ends_with(".log") && !named.contains(&name) {
+            let is_log = name
+                .strip_suffix(".log")
+                .is_some_and(|id| id.parse::<u64>().is_ok());
+            if is_log && !named.contains(&name) {
                 let _ = std::fs::remove_file(file.path());
             }
         }
@@ -182,6 +191,9 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let history = history(dir.path());
         assert!(history.entries().is_empty());
+        // A file the history did not write stays.
+        std::fs::create_dir_all(&history.dir).unwrap();
+        std::fs::write(history.dir.join("notes.log"), "").unwrap();
         for id in 1..=51 {
             history.record(entry(id), &[format!("run {id}")]).unwrap();
         }
@@ -191,6 +203,7 @@ mod tests {
         assert_eq!(entries[49].id, 2);
         assert!(history.output(1).is_empty());
         assert_eq!(history.output(2), vec!["run 2"]);
+        assert!(history.dir.join("notes.log").exists());
     }
 
     #[test]
