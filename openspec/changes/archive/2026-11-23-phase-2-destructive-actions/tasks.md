@@ -22,8 +22,8 @@
 
 ## 4. Integration
 
-- [ ] 4.1 Run `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings` and `cargo test --workspace` on macOS; all pass
-- [ ] 4.2 Run `openspec validate phase-2-destructive-actions --strict`
+- [x] 4.1 Run `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings` and `cargo test --workspace` on macOS; all pass
+- [x] 4.2 Run `openspec validate phase-2-destructive-actions --strict`
 
 ## Workflow follow-up
 
