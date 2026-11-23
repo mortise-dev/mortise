@@ -361,27 +361,28 @@ impl Owner {
             }
         };
         // `stopped` is `Some` when Mortise ended it, with the limit when that did.
+        // `ended` is true once `Process::stop` ran.
+        let mut ended = false;
         let stopped = loop {
             match process.exited() {
                 Ok(true) => break None,
                 Ok(false) => {}
                 Err(_) => {
                     process.stop(&mut forward);
+                    ended = true;
                     break None;
                 }
             }
             let at_limit = started.elapsed() >= limit;
             if at_limit || stop.load(Ordering::Relaxed) {
                 process.stop(&mut forward);
+                ended = true;
                 break Some(at_limit.then_some(limit));
             }
             process.read(TICK, &mut forward);
         };
         let elapsed = started.elapsed();
-        if stopped.is_some() {
-            stop.store(true, Ordering::Relaxed);
-        }
-        let (status, late) = process.finish(&stop, &mut forward);
+        let (status, late) = process.finish(ended, &stop, &mut forward);
         let end = match stopped {
             Some(limit) => RunEnd::Stopped { elapsed, limit },
             None if late => RunEnd::Stopped {
@@ -533,14 +534,16 @@ impl Process {
         let _ = self.child.kill();
     }
 
-    /// The end, once the program has exited or was stopped. `stop` is set when the
-    /// tree is being stopped. The readers get [`GRACE`] to finish. Then, on Unix,
+    /// The end, once the program has exited or was stopped. `stopped` is true when
+    /// [`Process::stop`] already ran. `stop` is the flag of a stop that the user or
+    /// the caller may still ask for. The readers get [`GRACE`] to finish. Then, on Unix,
     /// what is left in the group is killed, even a child that closed its pipes, and
     /// the program is reaped. The readers are joined and `forward` gets their last
     /// lines. It returns how the program ended, and whether a stop ended what was
     /// left of the tree.
     ///
-    /// A stop that comes while a child that outlived the program still writes ends
+    /// A stop that is asked for while a child that outlived the program still
+    /// writes, or that was asked for as the program ended and has not started, ends
     /// what is left as [`Process::stop`] does: SIGTERM to the group, and SIGKILL
     /// after [`STOP_GRACE`]. After a stop, the readers are not waited for past
     /// [`GRACE`] and [`DETACH`], so the run ends within [`STOP_WAIT`].
@@ -552,13 +555,13 @@ impl Process {
     /// when the pipe closes or the queue is gone.
     fn finish(
         &mut self,
+        stopped: bool,
         stop: &AtomicBool,
         forward: &mut impl FnMut(Stream, String),
     ) -> (Option<ExitStatus>, bool) {
         let stopping = || stop.load(Ordering::Relaxed);
-        let asked = stopping();
-        let mut done = self.wait_for_readers(GRACE, (!asked).then_some(stop), forward);
-        let mut late = !done && !asked && stopping();
+        let mut done = self.wait_for_readers(GRACE, (!stopped).then_some(stop), forward);
+        let mut late = !done && !stopped && stopping();
         if late {
             self.terminate();
             done = self.wait_for_readers(STOP_GRACE, None, forward);
@@ -568,7 +571,7 @@ impl Process {
         self.kill();
         let status = self.child.wait().ok();
         if !done {
-            let watch = !asked && !late;
+            let watch = !stopped && !late;
             done = self.wait_for_readers(DETACH, watch.then_some(stop), forward);
             late |= watch && !done && stopping();
         }
@@ -662,7 +665,7 @@ pub(crate) fn capture(
         }
         process.read(TICK, &mut keep);
     }
-    let (status, _) = process.finish(&AtomicBool::new(timed_out), &mut keep);
+    let (status, _) = process.finish(timed_out, &AtomicBool::new(false), &mut keep);
     Ok(Captured {
         code: status
             .and_then(|status| status.code())
@@ -823,6 +826,32 @@ fn skip_line(reader: &mut impl BufRead) -> std::io::Result<()> {
 #[cfg(all(test, feature = "run"))]
 mod tests {
     use super::*;
+
+    /// The owner reads the stop flag after it sees that the program exited, so a
+    /// stop asked for as the program ends is pending when the readers drain. Here
+    /// the program has exited before the flag is set, every time.
+    #[cfg(unix)]
+    #[test]
+    fn a_stop_pending_when_the_readers_drain_asks_the_rest_to_end() {
+        // The program ends at once. Its child writes and says when SIGTERM comes.
+        let line = CommandLine {
+            program: "/bin/sh".into(),
+            args: vec![
+                "-c".into(),
+                r#"(trap 'echo term; exit 0' TERM; while :; do echo tick; sleep 0.05; done) &"#
+                    .into(),
+            ],
+        };
+        let mut process = Process::start(&line, &std::env::temp_dir()).unwrap();
+        let mut lines = Vec::new();
+        let mut keep = |_, text: String| lines.push(text);
+        while !process.exited().unwrap() {
+            process.read(TICK, &mut keep);
+        }
+        let (_, late) = process.finish(false, &AtomicBool::new(true), &mut keep);
+        assert!(late);
+        assert!(lines.iter().any(|line| line == "term"), "{lines:?}");
+    }
 
     #[test]
     fn a_stop_of_a_migration_or_a_seed_asks_first() {
