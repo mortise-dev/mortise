@@ -202,6 +202,23 @@ struct FileList {
     taken_out: Vec<&'static str>,
 }
 
+impl FileList {
+    /// The flags of the model form whose files exist: those taken out, and the
+    /// factory's, which stays in the command (S9.3).
+    fn existing(&self, model: &str) -> Vec<&'static str> {
+        let mut flags = self.taken_out.clone();
+        let factory = self.listed.as_ref().is_ok_and(|report| {
+            report.files.iter().any(|file| {
+                file.action == FileAction::Keep && model_flag_of(model, &file.path) == Some(FACTORY)
+            })
+        });
+        if factory {
+            flags.push(FACTORY);
+        }
+        flags
+    }
+}
+
 /// What the Generate tab keeps for an open app, in memory.
 #[derive(Debug, Default)]
 pub struct GenerateState {
@@ -1082,14 +1099,15 @@ fn form(
         }
         let at = pos2(min.x, bottom + 12.0);
         if generator.name == MAKE_MODEL {
-            // The flags the file list took out, while it belongs to the form's words.
+            // The flags whose files exist, while the list belongs to the form's words.
             let words = generator.words(&state.filled, module.map(|m| m.name.as_str()));
-            let taken = state
+            let model = state.filled.arguments.get("model").map_or("", |m| m.trim());
+            let exists = state
                 .files_for(&words)
-                .map(|list| list.taken_out.clone())
+                .map(|list| list.existing(model))
                 .unwrap_or_default();
             model_fields(
-                ui, pal, at, col_w, generator, state, &taken, focus_name, inputs,
+                ui, pal, at, col_w, generator, state, &exists, focus_name, inputs,
             )
         } else {
             generator_fields(ui, pal, at, col_w, generator, state, focus_name, inputs)
@@ -1447,7 +1465,7 @@ fn model_fields(
     width: f32,
     generator: &Generator,
     state: &mut GenerateState,
-    taken: &[&str],
+    exists: &[&str],
     focus_name: bool,
     inputs: &GenerateInputs<'_>,
 ) -> f32 {
@@ -1501,7 +1519,7 @@ fn model_fields(
             )
         };
         let mut clicked = false;
-        let exists = taken.contains(flag);
+        let exists = exists.contains(flag);
         let row = flag_box(
             ui,
             pal,

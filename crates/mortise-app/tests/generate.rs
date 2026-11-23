@@ -404,6 +404,7 @@ fn a_dry_run_that_finds_the_factory_keeps_it_in_the_command() {
     // button counts the files the run writes.
     let factory = harness.get_by_role_and_label(Role::CheckBox, "Factory");
     assert_eq!(factory.accesskit_node().toggled(), Some(Toggled::True));
+    harness.get_by_label("Factory exists");
     harness.get_by_label(
         "database/factories/InvoiceFactory.php exists. The model uses its factory, so the \
          factory stays in the command. The run leaves the file as it is.",
