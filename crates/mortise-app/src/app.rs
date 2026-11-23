@@ -837,6 +837,7 @@ impl MortiseApp {
                 | Command::AllModules
                 | Command::Findings
                 | Command::Finding { .. }
+                | Command::Action { .. }
         ) {
             if self.current != Some(scope) {
                 self.select_app(scope);
@@ -887,6 +888,12 @@ impl MortiseApp {
                     }
                     self.reveal = true;
                 }
+            }
+            Command::Action { module, action } => {
+                if self.current != Some(scope) {
+                    self.select_app(scope);
+                }
+                self.open_action(module, action);
             }
             Command::App(index) => self.select_app(index),
             Command::AddApp => self.adding = Some(AddPanel::empty()),
@@ -1974,6 +1981,10 @@ impl eframe::App for MortiseApp {
                 scope: snapshot.as_deref().map(|app| (scope, app)),
                 apps: &names,
                 recent,
+                selected: self.apps.get(scope).and_then(|open| match &open.selection {
+                    Selection::Module(name) => Some(name.as_str()),
+                    Selection::All => None,
+                }),
                 mac,
             };
             let scope_name = names

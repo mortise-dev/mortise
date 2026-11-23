@@ -5,7 +5,7 @@ use eframe::egui::{
     self, Align2, Color32, FontId, Key, Rect, RichText, Role, ScrollArea, Sense, Shadow, Ui, Vec2,
     WidgetInfo, pos2, vec2,
 };
-use mortise_core::{AppSnapshot, Detail, FindingState, ModuleState, ThemeChoice, fuzzy};
+use mortise_core::{Action, AppSnapshot, Detail, FindingState, ModuleState, ThemeChoice, fuzzy};
 
 use crate::draw::{self, Icon, StampState};
 use crate::strings;
@@ -51,6 +51,11 @@ pub enum Command {
     /// Show or hide the runner drawer.
     Runner,
     Theme(ThemeChoice),
+    /// Open the Actions tab on an action. `None` is "All modules".
+    Action {
+        module: Option<String>,
+        action: Action,
+    },
 }
 
 /// One row: what it says, what stands at its right end, what it does.
@@ -64,6 +69,8 @@ pub struct Entry {
     pub state: Option<(String, bool)>,
     /// What Enter does, in a word, or the shortcut of the command.
     pub hint: String,
+    /// The artisan words of an action, after the label, in dim mono.
+    pub detail: Option<String>,
     pub command: Command,
 }
 
@@ -75,6 +82,8 @@ pub struct Source<'a> {
     pub apps: &'a [(String, usize)],
     /// The modules opened last in the app in scope, the latest first.
     pub recent: &'a [String],
+    /// The module selected in the index of the app in scope. `None` is "All modules".
+    pub selected: Option<&'a str>,
     pub mac: bool,
 }
 
@@ -99,6 +108,7 @@ pub fn entries(query: &str, source: &Source<'_>) -> Vec<Entry> {
         code: None,
         state: None,
         hint: hint.to_owned(),
+        detail: None,
         command,
     };
 
@@ -159,6 +169,58 @@ pub fn entries(query: &str, source: &Source<'_>) -> Vec<Entry> {
                 Some((score, module_entry(&module.name)?))
             });
             add(&strings::modules_in(app_name), modules.collect());
+
+            // The actions of the best module match, else of the selected module.
+            let matched = app
+                .modules
+                .iter()
+                .filter_map(|module| {
+                    Some((
+                        fuzzy(query, &format!("{} {}", module.name, module.code))?,
+                        module,
+                    ))
+                })
+                .min_by_key(|(score, _)| *score)
+                .map(|(_, module)| module);
+            let module = matched.or_else(|| source.selected.and_then(|name| app.module(name)));
+            let (group, actions): (String, Vec<(Option<&str>, Action)>) = match module {
+                Some(module) => {
+                    let on = !matches!(module.state, ModuleState::Off);
+                    let name = Some(module.name.as_str());
+                    let actions = Action::for_module(on).into_iter();
+                    (
+                        strings::actions_for(&module.name),
+                        actions.map(|action| (name, action)).collect(),
+                    )
+                }
+                None => (
+                    strings::ACTIONS_FOR_ALL.to_owned(),
+                    Action::for_all().into_iter().map(|a| (None, a)).collect(),
+                ),
+            };
+            let found = actions.into_iter().filter_map(|(module, action)| {
+                let label = strings::action_label(action, module);
+                let words = action_words(action, module);
+                // An action named by the query comes before one that only has the module.
+                let own = strings::action_button(action);
+                let score = match fuzzy(query, own) {
+                    Some(score) => score,
+                    None => {
+                        1000 + fuzzy(
+                            query,
+                            &format!("{label} {}", words.as_deref().unwrap_or("")),
+                        )?
+                    }
+                };
+                let command = Command::Action {
+                    module: module.map(str::to_owned),
+                    action,
+                };
+                let mut entry = entry(label, strings::ACTION, command);
+                entry.detail = words;
+                Some((score, entry))
+            });
+            add(&group, found.collect());
 
             let findings = app.findings.list.iter().filter_map(|finding| {
                 let module = finding.module.clone()?;
@@ -277,6 +339,12 @@ pub fn entries(query: &str, source: &Source<'_>) -> Vec<Entry> {
         add("Mortise", found.collect());
     }
     entries
+}
+
+/// The artisan words of an action on a module, or on all modules with `None`.
+fn action_words(action: Action, module: Option<&str>) -> Option<String> {
+    let command = action.artisan()?;
+    Some(format!("{command} {}", module.unwrap_or("--all")))
 }
 
 /// What the palette asks for in a frame.
@@ -492,6 +560,16 @@ fn palette_row(
         let stamp_min = pos2(x + 7.0, (mid - size::STAMP_H / 2.0).round());
         x = draw::stamp(ui, pal, stamp_min, code, StampState::default()).right();
     }
+    if let Some(detail) = &entry.detail {
+        draw::paint_text(
+            ui,
+            pos2(x + 12.0, mid),
+            Align2::LEFT_CENTER,
+            detail,
+            ty::CODE,
+            pal.ink_3,
+        );
+    }
     if let Some((word, problem)) = &entry.state {
         let color: Color32 = if *problem { pal.bad } else { pal.ink_2 };
         let mut at = x + 12.0;
@@ -537,6 +615,7 @@ mod tests {
             scope: None,
             apps: &[],
             recent: &[],
+            selected: None,
             mac: false,
         };
         assert_eq!(labels(&entries("", &source)), [("Apps", "Add app")]);
@@ -558,6 +637,7 @@ mod tests {
             scope: None,
             apps: &apps,
             recent: &[],
+            selected: None,
             mac: true,
         };
         let found = entries("land", &source);
@@ -584,6 +664,7 @@ mod tests {
             scope: None,
             apps: &[],
             recent: &[],
+            selected: None,
             mac: false,
         };
         let found = entries("dark", &source);
