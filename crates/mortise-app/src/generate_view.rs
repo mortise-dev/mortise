@@ -334,7 +334,7 @@ impl GenerateState {
     fn taken_out_files(
         &self,
         words: &[String],
-        catalog: &Catalog,
+        inputs: &GenerateInputs<'_>,
         package: &mortise_core::Version,
     ) -> Vec<TakenOut> {
         let Some(list) = self.files_for(words) else {
@@ -357,7 +357,7 @@ impl GenerateState {
             })
             .map(|file| TakenOut {
                 path: file.path.clone(),
-                replace: replace_words(catalog, &list.before, &file.path, package),
+                replace: replace_for(inputs, &list.before, &file.path, package),
             })
             .collect()
     }
@@ -464,6 +464,33 @@ pub fn file_path(root: &Path, printed: &str) -> PathBuf {
 /// The part of a path after the last `/` or `\`.
 fn file_name(path: &str) -> &str {
     path.rsplit(['/', '\\']).next().unwrap_or(path)
+}
+
+/// The words that write `path` again, left by a run of `words`, as `replace_words`
+/// gives them. Its guards read the runner's own options with the run's: a Custom
+/// line `php artisan --factory` gives the model its factory, and the package then
+/// passes `--force` to the factory too (design D6).
+fn replace_for(
+    inputs: &GenerateInputs<'_>,
+    words: &[String],
+    path: &str,
+    package: &mortise_core::Version,
+) -> Option<Vec<String>> {
+    let options = inputs
+        .runner
+        .map(RunnerKind::prefix)
+        .unwrap_or_default()
+        .into_iter()
+        .skip(1)
+        .filter(|word| word.starts_with('-'));
+    let end = words
+        .iter()
+        .position(|word| word == "--")
+        .unwrap_or(words.len());
+    let mut effective = words.to_vec();
+    effective.splice(end..end, options);
+    replace_words(inputs.catalog, &effective, path, package)?;
+    replace_words(inputs.catalog, words, path, package)
 }
 
 /// A path as the output prints it, relative to the folder of `module` when it is
@@ -1809,7 +1836,7 @@ fn command(
             generator: generator.name.clone(),
             module: name.clone(),
             args: run_args.clone(),
-            taken_out: state.taken_out_files(&words, inputs.catalog, &app.package),
+            taken_out: state.taken_out_files(&words, inputs, &app.package),
         })));
     }
     // A line cut off by the scroll area is not on screen, so Ctrl Enter does not
@@ -1840,12 +1867,10 @@ fn command(
         }));
     }
     // The generator's own file exists: Replace writes it again, after the dialog of S9.6.
-    let replace = files.replace.as_deref().and_then(|path| {
-        Some((
-            path,
-            replace_words(inputs.catalog, &words, path, &app.package)?,
-        ))
-    });
+    let replace = files
+        .replace
+        .as_deref()
+        .and_then(|path| Some((path, replace_for(inputs, &words, path, &app.package)?)));
     if let Some((path, replace_args)) = replace {
         let file = file_name(path);
         let label = strings::replace_file(file);
@@ -2036,7 +2061,7 @@ fn files_this_creates(
         y = sentence(y, &strings::factory_kept(&shown(file)), pal.ink_2);
     }
     for file in &own {
-        let replaceable = replace_words(inputs.catalog, words, &file.path, &app.package).is_some();
+        let replaceable = replace_for(inputs, words, &file.path, &app.package).is_some();
         let text = strings::own_file_exists(&shown(file), replaceable);
         y = sentence(y, &text, pal.bad);
     }
@@ -2490,7 +2515,7 @@ fn result_view(
         .find(|file| file.path == first_left.path)
     {
         Some(file) => file.replace.clone(),
-        None => replace_words(inputs.catalog, &result.args, &first_left.path, &app.package),
+        None => replace_for(inputs, &result.args, &first_left.path, &app.package),
     };
     let name = file_name(&first_left.path);
     let mut bottom = y - 12.0;

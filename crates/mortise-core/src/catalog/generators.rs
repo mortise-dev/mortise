@@ -502,7 +502,7 @@ fn replace_from_model(
     let (options, arguments) = split_run(run);
     let model = studly(arguments.first()?);
     let module = arguments.get(1).map(|module| module.as_str());
-    let all = options.contains(&"--all");
+    let all = turns_on(model_generator, &options, "all");
 
     if stem == file_name(&model) {
         if !model_generator.flag("force") {
@@ -512,7 +512,7 @@ fn replace_from_model(
         // gives it too. Before 13.4 the factory call then leaves its file: it has no
         // `--force`. From 13.4 on it gets `--force` and would write over the factory,
         // and without the flag the model loses its factory: no Replace.
-        let factory = all || options.contains(&"--factory");
+        let factory = all || turns_on(model_generator, &options, "factory");
         if factory && !released_before_13_4(package) {
             return None;
         }
@@ -533,7 +533,7 @@ fn replace_from_model(
     }
 
     let flag = model_flag_of(&model, left)?;
-    if !(all || options.contains(&format!("--{flag}").as_str())) {
+    if !(all || turns_on(model_generator, &options, flag)) {
         return None;
     }
     let (_, command, name_suffix, _) = MODEL_CALLS.iter().find(|(call, ..)| *call == flag)?;
@@ -551,6 +551,28 @@ fn replace_from_model(
         values: BTreeMap::new(),
     };
     Some(call.words(&filled, module))
+}
+
+/// True when the option words turn on the option `name` of `generator`: `--name`,
+/// or its shortcut in a group of short options, such as `-f` or `-mf`. A runner's
+/// own words can carry one (a Custom line `php artisan -f`), so a short group that
+/// holds the letter counts, whatever else it holds.
+fn turns_on(generator: &Generator, options: &[&str], name: &str) -> bool {
+    let long = format!("--{name}");
+    let shortcut = generator
+        .options
+        .iter()
+        .find(|option| option.name == name)
+        .and_then(|option| option.shortcut.as_deref())
+        .filter(|shortcut| !shortcut.is_empty());
+    options.iter().any(|word| {
+        *word == long
+            || word
+                .strip_prefix('-')
+                .filter(|group| !group.starts_with('-'))
+                .zip(shortcut)
+                .is_some_and(|(group, shortcut)| group.contains(shortcut))
+    })
 }
 
 /// True for a released version older than 13.4.0, whose model does not pass
@@ -1130,6 +1152,18 @@ mod tests {
                 "{raw}"
             );
         }
+        // A runner's own words count with the run's: the shortcut `-f` in a group is
+        // the factory too.
+        let v13_4 = version("13.4.0");
+        assert_eq!(
+            replace_words(
+                Catalog::v13_4(),
+                &words(&[MAKE_MODEL, "Invoice", "Billing", "-T", "-mf"]),
+                model_file,
+                &v13_4
+            ),
+            None
+        );
         // A call the run did not make, and a migration, get nothing.
         assert_eq!(replace(&run, "InvoiceController.php"), None);
         assert_eq!(
