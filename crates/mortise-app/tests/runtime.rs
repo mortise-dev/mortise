@@ -342,6 +342,37 @@ fn hidden_components_name_the_setting_that_hides_them() {
 }
 
 #[test]
+fn a_long_detail_stops_short_of_its_component_name() {
+    let stub = shop_api_actuator();
+    // What an app's own check of its modules can say: one detail per module.
+    let modules = (1..=30)
+        .map(|n| format!(r#""Module{n}":{{"enabled":true}}"#))
+        .collect::<Vec<_>>()
+        .join(",");
+    stub.set(
+        "/actuator/health",
+        Reply::ok(&format!(
+            r#"{{"status":"UP","components":{{"ping":{{"status":"UP"}},
+            "modules":{{"status":"UP","details":{{{modules}}}}}}}}}"#
+        )),
+    );
+    let (_desk, harness) = connected(&stub);
+
+    let name = harness.get_by_label("modules").rect();
+    // The label holds the whole detail, for a screen reader.
+    let detail = harness
+        .get_by(|node| {
+            node.value()
+                .is_some_and(|text| text.starts_with("Module1 "))
+        })
+        .rect();
+    assert!(
+        detail.left() > name.right(),
+        "the detail {detail:?} overlaps the name {name:?}"
+    );
+}
+
+#[test]
 fn an_app_that_is_down_quotes_the_failing_component() {
     let stub = shop_api_actuator();
     stub.set(
