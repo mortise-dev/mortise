@@ -2725,6 +2725,20 @@ impl eframe::App for MortiseApp {
         self.menu_actions(&ctx, menu_chosen);
     }
 
+    /// Closing Mortise stops the run of each app, as Stop does, and waits for the
+    /// ends, so no command goes on after the window (design D6 of phase-2-hardening).
+    /// No dialog asks. eframe calls this on every way out, Cmd Q on macOS too, and
+    /// the process ends only after it returns.
+    fn on_exit(&mut self) {
+        for open in &self.apps {
+            open.runs.stop();
+        }
+        let deadline = std::time::Instant::now() + mortise_core::STOP_WAIT;
+        for open in &mut self.apps {
+            open.runs.wait(deadline);
+        }
+    }
+
     fn clear_color(&self, visuals: &egui::Visuals) -> [f32; 4] {
         let theme = if visuals.dark_mode {
             Theme::Dark

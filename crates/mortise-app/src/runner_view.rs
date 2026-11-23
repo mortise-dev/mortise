@@ -7,7 +7,7 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use eframe::egui::text::LayoutJob;
 use eframe::egui::{
@@ -289,14 +289,38 @@ impl AppRuns {
     /// Takes in what the run sent. A run that ended is kept in the history.
     /// Returns true while it runs.
     pub fn poll(&mut self) -> bool {
+        match &self.current {
+            Some(Current {
+                state: State::Running(run),
+                ..
+            }) => {
+                let events = run.events();
+                self.take(events)
+            }
+            _ => false,
+        }
+    }
+
+    /// Waits until the run ended or `deadline` passed, as [`AppRuns::poll`] takes
+    /// in what it sent. A run that ended is kept in the history.
+    pub fn wait(&mut self, deadline: Instant) {
+        if let Some(Current {
+            state: State::Running(run),
+            ..
+        }) = &self.current
+        {
+            let events = run.wait(deadline);
+            self.take(events);
+        }
+    }
+
+    /// Takes in `events` of the run that runs. Returns true while it runs.
+    fn take(&mut self, events: Vec<RunEvent>) -> bool {
         let Some(current) = &mut self.current else {
             return false;
         };
-        let State::Running(run) = &current.state else {
-            return false;
-        };
         let mut ended = None;
-        for event in run.events() {
+        for event in events {
             match event {
                 RunEvent::Line { text, .. } => current.output.push(text),
                 RunEvent::Cut => current.cut = true,
