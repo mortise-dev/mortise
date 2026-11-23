@@ -72,6 +72,8 @@ fn wait_for(harness: &mut Harness<'static, MortiseApp>, text: &str) {
         std::thread::sleep(Duration::from_millis(20));
         harness.run_steps(2);
     }
+    // A run button takes its line once a frame drew it whole, the frame after the text.
+    harness.run_steps(2);
 }
 
 /// The artisan words of the runs kept in the history, the latest first.
@@ -420,8 +422,6 @@ fn a_dry_run_that_finds_the_factory_keeps_it_in_the_command() {
     click(&mut harness, Role::CheckBox, "Factory");
     click(&mut harness, Role::Button, "List files");
     wait_for(&mut harness, "4 files, 2 exist already");
-    // The button takes the line once a frame drew it whole.
-    harness.run_steps(2);
     // The model's stub uses the factory: its flag stays, the policy's goes, and the
     // button counts the files the run writes.
     let factory = harness.get_by_role_and_label(Role::CheckBox, "Factory");
