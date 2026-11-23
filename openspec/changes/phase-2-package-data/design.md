@@ -594,6 +594,10 @@ accessible name and a 24 px target (`tests/accessibility.rs`).
   that are on.
 - A failed read of the migration state keeps its target and connection. The state box shows its reason
   only for the same target and connection: going back to another connection shows that one's state alone.
+- The migration state belongs to the runner and working folder of its last read: another one may reach
+  another database. When PHP settings change either, the app forgets its whole migration state and the
+  error of its last read. A read that started with another runner or working folder is dropped when it
+  ends, as a dry run is.
 
 ## Risks / Trade-offs
 

@@ -778,4 +778,21 @@ fn the_migration_state_is_read_when_asked_and_forgotten_after_a_migrate() {
         .click();
     common::wait_until(&mut harness, "the state is forgotten", |app| !held(app));
     assert_eq!(runs(&mut harness, &desk, &root), 2);
+
+    // Another working folder may reach another database: the state goes.
+    harness
+        .get_by_role_and_label(Role::Button, "Read migration state")
+        .click();
+    common::wait_until(&mut harness, "the state is read", held);
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::K);
+    harness.run_steps(3);
+    type_in(&mut harness, "Search or run a command", "php");
+    harness
+        .get_by_role_and_label(Role::ListBoxOption, "Settings: PHP")
+        .click();
+    harness.run_steps(3);
+    type_in(&mut harness, "Working folder", ".");
+    harness.key_press(Key::Escape);
+    harness.run_steps(3);
+    common::wait_until(&mut harness, "the state is forgotten", |app| !held(app));
 }

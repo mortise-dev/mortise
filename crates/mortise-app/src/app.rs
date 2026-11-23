@@ -122,6 +122,9 @@ struct OpenApp {
     /// Why the last read of the migration state gave nothing, with its target and
     /// connection. The state box says so; the state stays as it was (design D2).
     migration_error: Option<actions_view::StateError>,
+    /// The runner and working folder of the last read of the migration state. Another
+    /// one may reach another database: the state is forgotten when they change (design D7).
+    state_place: Option<RunPlace>,
     /// The generators read from the app (P3, design D4).
     catalog: AppCatalog,
 }
@@ -220,8 +223,13 @@ enum ReadFor {
     /// and the runner and working folder it started with.
     DryRun { words: Vec<String>, place: RunPlace },
     /// `module:migrate-status --json` (P4, design D7), on a connection: its
-    /// `--database`, empty for the default.
-    Migrations { target: Target, connection: String },
+    /// `--database`, empty for the default. With the runner and working folder it
+    /// started with.
+    Migrations {
+        target: Target,
+        connection: String,
+        place: RunPlace,
+    },
 }
 
 /// A generator that runs, and what its end needs.
@@ -1112,9 +1120,11 @@ impl MortiseApp {
         match purpose {
             ReadFor::Catalog { package } => self.catalog_read(index, &package, end),
             ReadFor::DryRun { words, place } => self.dry_run_read(index, words, place, end),
-            ReadFor::Migrations { target, connection } => {
-                self.migrations_read(index, target, &connection, end)
-            }
+            ReadFor::Migrations {
+                target,
+                connection,
+                place,
+            } => self.migrations_read(index, target, &connection, place, end),
         }
     }
 
@@ -1122,19 +1132,41 @@ impl MortiseApp {
     /// connection their `--database` names (design D7).
     fn read_migrations(&mut self, index: usize, target: Target, words: Vec<String>) {
         let connection = mortise_core::Options::from_args(&words).database;
-        self.start_read(index, words, ReadFor::Migrations { target, connection });
+        let Some(entry) = self.settings.apps.get(index) else {
+            return;
+        };
+        let place = place_of(&entry.php);
+        let purpose = ReadFor::Migrations {
+            target,
+            connection,
+            place,
+        };
+        self.start_read(index, words, purpose);
     }
 
     /// Takes in a read of the migration state of `target` on `connection` (design
     /// D7): its document merges into the app's package data. Otherwise the state box
-    /// says why, and the state stays as it was (design D2).
+    /// says why, and the state stays as it was (design D2). A read that started with
+    /// another runner or working folder may have read another database: its answer,
+    /// or its error, is dropped.
     fn migrations_read(
         &mut self,
         index: usize,
         target: Target,
         connection: &str,
+        place: RunPlace,
         end: Result<mortise_core::ReadEnd, mortise_core::StartError>,
     ) {
+        if self
+            .settings
+            .apps
+            .get(index)
+            .map(|entry| place_of(&entry.php))
+            .as_ref()
+            != Some(&place)
+        {
+            return;
+        }
         let status = match end {
             Ok(end) => end
                 .document::<mortise_core::MigrationStatus>()
@@ -1151,6 +1183,7 @@ impl MortiseApp {
         let Some(open) = self.apps.get_mut(index) else {
             return;
         };
+        open.state_place = Some(place);
         let status = match status {
             Ok(status) => status,
             Err(reason) => {
@@ -1170,6 +1203,28 @@ impl MortiseApp {
         self.set_package(index, |package| {
             package.merge_migrations(status, &target, connection, &modules_on, now_ms);
         });
+    }
+
+    /// Forgets the whole migration state of each app whose runner or working folder
+    /// changed since its last state read, and why that read failed: another runner or
+    /// folder may reach another database (design D7).
+    fn forget_state_of_another_place(&mut self) {
+        for index in 0..self.apps.len() {
+            let place = self
+                .settings
+                .apps
+                .get(index)
+                .map(|entry| place_of(&entry.php));
+            let open = &mut self.apps[index];
+            if open.state_place.is_none() || open.state_place == place {
+                continue;
+            }
+            open.state_place = None;
+            open.migration_error = None;
+            self.set_package(index, |package| {
+                package.forget_migrations(&Target::All);
+            });
+        }
     }
 
     /// After a run of the app at `index` ended, with these words, from wherever it
@@ -1258,8 +1313,7 @@ impl MortiseApp {
         let Some(app) = self.snapshot(index) else {
             return;
         };
-        let php = &self.settings.apps[index].php;
-        if php.runner != place.runner || php.working_folder != place.folder {
+        if place_of(&self.settings.apps[index].php) != place {
             return;
         }
         let listed = match &end {
@@ -1891,11 +1945,7 @@ impl MortiseApp {
                 }
                 let args = mortise_core::with_dry_run(words.clone());
                 let words = words.clone();
-                let php = &self.settings.apps[index].php;
-                let place = RunPlace {
-                    runner: php.runner.clone(),
-                    folder: php.working_folder.clone(),
-                };
+                let place = place_of(&self.settings.apps[index].php);
                 self.start_read(index, args, ReadFor::DryRun { words, place });
                 return;
             }
@@ -2623,6 +2673,7 @@ impl eframe::App for MortiseApp {
         let menu_chosen = self.menu_chosen(&ctx);
         self.keys(ui);
         self.take_in();
+        self.forget_state_of_another_place();
         self.sync_runtime(&ctx);
         // Lines and the elapsed time show without a callback from the core.
         let mut running = false;
@@ -3418,7 +3469,16 @@ fn open_app(ctx: &egui::Context, entry: &AppEntry, data_dir: Option<&Path>) -> O
         package: PackageData::default(),
         reading: None,
         migration_error: None,
+        state_place: None,
         catalog: AppCatalog::default(),
+    }
+}
+
+/// Where the commands of an app with these PHP settings run.
+fn place_of(php: &mortise_core::PhpSettings) -> RunPlace {
+    RunPlace {
+        runner: php.runner.clone(),
+        folder: php.working_folder.clone(),
     }
 }
 
