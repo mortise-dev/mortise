@@ -25,3 +25,12 @@ The only file Mortise itself SHALL write in an app is `mortise.json`, and it ask
 #### Scenario: Save the rules of a new app
 - **WHEN** the user saves the rules of an app that has no `mortise.json`
 - **THEN** Mortise asks first, and writes only `mortise.json` through a temporary file beside it
+
+### Requirement: Mortise reads two lines of .env
+From the `.env` file of an app, Mortise SHALL read `APP_URL` and `APP_ENV` and no other line.
+`APP_URL` proposes the base URL of an environment. `APP_ENV` tells Mortise to ask before a command in
+production.
+
+#### Scenario: A .env with secrets
+- **WHEN** `.env` holds `APP_ENV=production`, `APP_URL=https://shop.test` and `DB_PASSWORD=secret`
+- **THEN** the app reads `production` and `https://shop.test`, and the password is not kept
