@@ -327,6 +327,10 @@ fn a_13_4_form_lists_its_files_by_a_dry_run_and_reads_the_answer_of_its_run() {
     assert!(ran(&mut harness, &desk, &root).is_empty());
     assert!(harness.query_by_label("Run again").is_none());
     assert!(contents(&root) == before, "the dry run changed the app");
+    // "List files again" drops the list, and "List files" reads the files anew.
+    click(&mut harness, Role::Button, "List files again");
+    click(&mut harness, Role::Button, "List files");
+    wait_for(&mut harness, "3 files, none exist yet");
 
     // Another name drops the list, also when the name comes back.
     type_into(&mut harness, "Model name", "Payment");
@@ -394,6 +398,9 @@ fn a_dry_run_that_finds_the_policy_takes_it_out_of_the_command() {
     run(&mut harness);
     wait_for(&mut harness, "Created 2 of 3 files in Billing.");
     harness.get_by_label("app/Policies/InvoicePolicy.php, exists, left as it is");
+    // The run ended: the flag it took out is the user's again, for the next form.
+    let policy = harness.get_by_role_and_label(Role::CheckBox, "Policy");
+    assert_eq!(policy.accesskit_node().toggled(), Some(Toggled::True));
     // Each left row has its own Replace; the one under the alert is the first's.
     click(
         &mut harness,

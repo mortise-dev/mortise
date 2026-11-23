@@ -148,6 +148,8 @@ pub struct GenerateResult {
     pub autoload_failed: bool,
     /// Why the run gave no answer, when the files were read from its output (design D6).
     fallback: Option<String>,
+    /// Why the last Replace of a row gave no answer. A Replace that answers clears it.
+    replace_fallback: Option<String>,
     /// The files S9.3 took out of the command, listed in `files` as left.
     taken_out: Vec<TakenOut>,
     /// When it was first painted, in seconds of egui's clock.
@@ -167,6 +169,7 @@ impl GenerateResult {
             files,
             autoload_failed,
             fallback: None,
+            replace_fallback: None,
             taken_out: Vec::new(),
             shown: None,
         }
@@ -261,6 +264,8 @@ pub struct GenerateState {
     pub result: Option<GenerateResult>,
     /// The file list of the last dry run, or why it gave none.
     files: Option<FileList>,
+    /// The file list a run took: its flags come back into the form when the run ends.
+    ran_with: Option<FileList>,
     /// The module the tab was drawn for last: `None` until it is first drawn.
     module: Option<Option<String>>,
     focus_filter: bool,
@@ -392,9 +397,14 @@ impl GenerateState {
     /// took out for it are the list's, not the user's: they come back into the form,
     /// with `all` when S9.3 took it.
     fn drop_list(&mut self) {
-        let Some(list) = self.files.take() else {
-            return;
-        };
+        if let Some(list) = self.files.take() {
+            self.give_back(list);
+        }
+    }
+
+    /// Gives back into the form the flags S9.3 took out for `list`, when the form is
+    /// still the one of its generator.
+    fn give_back(&mut self, list: FileList) {
         if list.before.first() != Some(&self.generator) {
             return;
         }
@@ -441,9 +451,19 @@ impl GenerateState {
             .collect()
     }
 
-    /// Drops the file list: a run starts that writes files.
+    /// Takes the file list off the form: a run starts that writes files. The run holds
+    /// the words without the flags S9.3 took out, and the line on screen stays the
+    /// line that runs until [`Self::run_ended`] gives them back.
     pub fn drop_files(&mut self) {
-        self.files = None;
+        self.ran_with = self.files.take();
+    }
+
+    /// The run that took the file list ended: the flags S9.3 took out come back into
+    /// the form, so the next run starts from the user's own choice.
+    pub fn run_ended(&mut self) {
+        if let Some(list) = self.ran_with.take() {
+            self.give_back(list);
+        }
     }
 
     /// The file list of the form whose words are `words`, if one is kept for them.
@@ -469,7 +489,8 @@ impl GenerateState {
     /// another path, such as one the app's generator paths now place elsewhere, gets a
     /// row of its own, and `row` stays as it was. The other rows stay, with their
     /// Replace. A run that read no file leaves the rows and shows `fallback`, why it
-    /// gave no answer. Returns false when the result holds no such row.
+    /// gave no answer, until a later Replace answers. Returns false when the result
+    /// holds no such row.
     pub fn replace_row(
         &mut self,
         row: &str,
@@ -495,9 +516,7 @@ impl GenerateState {
                 None => result.files.push(done.clone()),
             }
         }
-        if fallback.is_some() {
-            result.fallback = fallback;
-        }
+        result.replace_fallback = fallback;
         true
     }
 
@@ -2040,6 +2059,10 @@ fn command(
             words: words.clone(),
         }));
     }
+    if files.again {
+        state.drop_list();
+        ui.ctx().request_repaint();
+    }
     // The generator's own file exists: Replace writes it again, after the dialog of S9.6.
     let replace = files
         .replace
@@ -2088,6 +2111,8 @@ struct FilesShown {
     read_shown: Option<Vec<String>>,
     /// "List files" was pressed.
     list: bool,
+    /// "List files again" was pressed: the list goes, and "List files" comes back.
+    again: bool,
 }
 
 /// What the run of a dry run's list writes.
@@ -2252,6 +2277,24 @@ fn files_this_creates(
         strings::files_head(files.len(), exist)
     };
     let top = field_label(ui, pal, min, strings::FILES_THIS_CREATES, &head);
+    // A file may have changed since the dry run: "List files again" drops the list,
+    // and "List files" shows the line of its dry run again (deviation S55).
+    let off = read_off(inputs, true);
+    let again = Button {
+        label: strings::LIST_FILES_AGAIN,
+        small: true,
+        disabled: off.is_some(),
+        ..Default::default()
+    };
+    let mid = min.y + ty::LABEL.line / 2.0;
+    let at = pos2(min.x + width - again.width(ui), mid - again.height() / 2.0);
+    // The tree starts 4 px under the button.
+    let top = top.max(at.y + again.height() + 4.0);
+    let response = again.show(ui, pal, at, inputs.keyboard);
+    let again = response.clicked() && off.is_none();
+    if let Some(tip) = &off {
+        draw::tooltip(response, pal, tip);
+    }
     let mut y = file_tree(ui, pal, pos2(min.x, top), width, &roots);
 
     // What exists, then the errors other than the one of a file that exists.
@@ -2293,6 +2336,7 @@ fn files_this_creates(
         replace: own.map(|file| file.path.clone()),
         read_shown: None,
         list: false,
+        again,
     }
 }
 
@@ -2368,6 +2412,7 @@ fn list_files(
         replace: None,
         read_shown: whole.then_some(dry_run),
         list: pressed,
+        again: false,
     }
 }
 
@@ -2729,8 +2774,12 @@ fn result_view(
         let at = pos2(min.x, y + 12.0);
         y = alert_box(ui, pal, at, width, Severity::Problem, "", &text, None, true).0;
     }
-    // Read from the lines: the run gave no answer, and the result says why (design D6).
-    if let Some(reason) = &result.fallback {
+    // Read from the lines: the run, or the last Replace, gave no answer, and the
+    // result says why (design D6).
+    for reason in [&result.fallback, &result.replace_fallback]
+        .into_iter()
+        .flatten()
+    {
         let text = strings::read_from_output(reason);
         y = draw::paragraph(ui, pos2(min.x, y + 8.0), &text, HINT, pal.ink_2, width).bottom();
     }
@@ -2899,15 +2948,18 @@ mod tests {
         let model = "Modules/Billing/app/Models/Invoice.php";
         let policy = "Modules/Billing/app/Policies/InvoicePolicy.php";
         let mut state = GenerateState {
-            result: Some(GenerateResult::new(
-                Some("Billing".to_owned()),
-                Vec::new(),
-                vec![
-                    file(model, FileOutcome::Created),
-                    file(policy, FileOutcome::Left),
-                ],
-                false,
-            )),
+            result: Some(
+                GenerateResult::new(
+                    Some("Billing".to_owned()),
+                    Vec::new(),
+                    vec![
+                        file(model, FileOutcome::Created),
+                        file(policy, FileOutcome::Left),
+                    ],
+                    false,
+                )
+                .read_from_output(Some("first run".to_owned())),
+            ),
             ..Default::default()
         };
         // The app's policy path changed since the result: the replacement wrote
@@ -2925,12 +2977,15 @@ mod tests {
                 file(moved, FileOutcome::Replaced),
             ]
         );
-        assert_eq!(result.fallback.as_deref(), Some("no answer"));
-        // A file of the row's own path updates the row.
+        assert_eq!(result.replace_fallback.as_deref(), Some("no answer"));
+        // A file of the row's own path updates the row, and a Replace that answers
+        // clears the reason of the last one; the run's own stays.
         assert!(state.replace_row(policy, &[file(policy, FileOutcome::Replaced)], None));
+        let result = state.result.unwrap();
+        assert_eq!(result.files[1], file(policy, FileOutcome::Replaced));
         assert_eq!(
-            state.result.unwrap().files[1],
-            file(policy, FileOutcome::Replaced)
+            (result.fallback.as_deref(), result.replace_fallback),
+            (Some("first run"), None)
         );
     }
 

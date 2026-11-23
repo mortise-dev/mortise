@@ -535,6 +535,14 @@ accessible name and a 24 px target (`tests/accessibility.rs`).
   "<command> is running", as the run buttons are.
 - The flags S9.3 takes out belong to the file list, not to the user's choice. Every drop of the list for
   a change of the words (another name, another flag) or of the place gives them back, with `all`.
+- A run that starts takes the file list off the form and holds the words without those flags. When it
+  ends, the flags come back into the form, so "Generate another" starts from the user's choice. The
+  line on screen stays the line that runs while it runs.
+- The result keeps why the last Replace gave no answer apart from why the run gave none. A Replace that
+  answers clears its own reason; the run's stays.
+- After a list, "List files again" beside its head drops the list and gives back its flags. "List files"
+  and the line of its dry run come back, so a file that changed gets a fresh answer for the same form.
+  The button runs nothing itself: the line of the dry run is not on screen beside the list.
 
 ## Risks / Trade-offs
 

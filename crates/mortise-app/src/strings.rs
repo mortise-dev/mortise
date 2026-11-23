@@ -3061,6 +3061,9 @@ pub const CREATE_MODULE: &str = "Create module";
 pub const FILES_THIS_CREATES: &str = "Files this creates";
 /// Not in the spec: the button that starts the dry run of the form (design D5).
 pub const LIST_FILES: &str = "List files";
+/// Not in the spec: the button beside the head of a file list that drops the list, so
+/// that "List files" and the line of its dry run come back for a fresh answer.
+pub const LIST_FILES_AGAIN: &str = "List files again";
 /// A file of the list that exists (S9.3).
 pub const EXISTS: &str = "exists";
 
