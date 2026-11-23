@@ -74,6 +74,80 @@ pub fn plain(line: &str) -> String {
     spans(line).into_iter().map(|span| span.text).collect()
 }
 
+/// The deepest JSON that [`json_lines`] indents. Each level adds two spaces to every
+/// line inside it, so the depth bounds the indented form at a few times the line.
+const JSON_DEPTH: usize = 32;
+
+/// The lines of a line that holds one JSON object or array, indented by two spaces
+/// per level, with the keys in the order the command wrote them. `None` when the
+/// line holds something else, an empty object or array, or JSON nested deeper than
+/// [`JSON_DEPTH`] levels.
+pub fn json_lines(line: &str) -> Option<Vec<String>> {
+    let text = line.trim();
+    if !(text.starts_with('{') || text.starts_with('['))
+        || serde_json::from_str::<serde::de::IgnoredAny>(text).is_err()
+    {
+        return None;
+    }
+    let mut lines = Vec::new();
+    let mut current = String::new();
+    let mut depth = 0usize;
+    let mut in_string = false;
+    let mut escaped = false;
+    let mut chars = text.chars().peekable();
+    let break_line = |lines: &mut Vec<String>, current: &mut String, depth: usize| {
+        lines.push(std::mem::take(current));
+        current.push_str(&"  ".repeat(depth));
+    };
+    while let Some(c) = chars.next() {
+        if in_string {
+            current.push(c);
+            if escaped {
+                escaped = false;
+            } else if c == '\\' {
+                escaped = true;
+            } else if c == '"' {
+                in_string = false;
+            }
+            continue;
+        }
+        match c {
+            '"' => {
+                in_string = true;
+                current.push(c);
+            }
+            '{' | '[' => {
+                while chars.next_if(|next| next.is_whitespace()).is_some() {}
+                current.push(c);
+                if chars.next_if(|next| matches!(next, '}' | ']')).is_some() {
+                    current.push(if c == '{' { '}' } else { ']' });
+                } else {
+                    depth += 1;
+                    // Deep nesting would grow the indentation past any use.
+                    if depth > JSON_DEPTH {
+                        return None;
+                    }
+                    break_line(&mut lines, &mut current, depth);
+                }
+            }
+            '}' | ']' => {
+                depth -= 1;
+                break_line(&mut lines, &mut current, depth);
+                current.push(c);
+            }
+            ',' => {
+                current.push(c);
+                break_line(&mut lines, &mut current, depth);
+            }
+            ':' => current.push_str(": "),
+            c if c.is_whitespace() => {}
+            c => current.push(c),
+        }
+    }
+    lines.push(current);
+    (lines.len() > 1).then_some(lines)
+}
+
 /// The style after the codes of one SGR sequence, read left to right.
 fn sgr(params: &str, mut style: Style) -> Style {
     let mut codes = params.split(';');
@@ -150,6 +224,36 @@ mod tests {
                 .collect();
             assert_eq!(spans(line), want, "{line:?}");
             assert_eq!(plain(line), *text, "{line:?}");
+        }
+    }
+
+    #[test]
+    fn json_lines_indent_a_json_line_in_its_order() {
+        let line = r#"  {"b":[1, {"x":"a,b:{\"}"}],"a":{},"c":[ ]}"#;
+        assert_eq!(
+            json_lines(line).unwrap(),
+            [
+                "{",
+                r#"  "b": ["#,
+                "    1,",
+                "    {",
+                r#"      "x": "a,b:{\"}""#,
+                "    }",
+                "  ],",
+                r#"  "a": {},"#,
+                r#"  "c": []"#,
+                "}",
+            ]
+        );
+        for other in [
+            "INFO Checking",
+            "{not json",
+            "[]",
+            "\"text\"",
+            "{\"a\":1} tail",
+            &format!("{}1{}", "[".repeat(33), "]".repeat(33)),
+        ] {
+            assert_eq!(json_lines(other), None, "{other:?}");
         }
     }
 }

@@ -577,16 +577,11 @@ pub struct GenerateInputs<'a> {
     pub reduced_motion: bool,
 }
 
-/// The title of the workspace on the Generate tab.
-pub fn title(state: &GenerateState, module: Option<&Module>, app: &str) -> String {
-    match module {
-        Some(module) => strings::generate_in(&module.name),
-        None if state.view == View::Form && state.generator == MODULE_MAKE => {
-            strings::new_module_in(app)
-        }
-        // Not in the spec.
-        None => strings::generate_in(app),
-    }
+/// The title of the workspace on the Generate tab, when it differs from the other
+/// tabs: the new module form names the app it creates a module in.
+pub fn title(state: &GenerateState, module: Option<&Module>, app: &str) -> Option<String> {
+    (module.is_none() && state.view == View::Form && state.generator == MODULE_MAKE)
+        .then(|| strings::new_module_in(app))
 }
 
 /// The path of a file as the output prints it, to open: under the app folder when

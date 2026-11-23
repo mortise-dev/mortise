@@ -127,7 +127,7 @@ fn the_picker_counts_the_generators_and_its_filter_opens_a_form() {
     let mut harness = desk.start();
     generate_in(&mut harness, "Billing");
     harness.get_by_label("41 generators for Billing, and New module. Enter opens the form.");
-    harness.get_by_role_and_label(Role::Heading, "Generate in Billing");
+    harness.get_by_role_and_label(Role::Heading, "Billing");
     assert!(
         harness
             .query_by_label("for nwidart/laravel-modules 13.3")
