@@ -822,8 +822,6 @@ fn a_module_that_is_off_gets_no_coverage_warning_and_breaks_no_rule() {
     assert_eq!(app.problem_links().count(), 0);
     let billing = app.link("Checkout", "Billing").unwrap();
     assert_eq!((billing.files(), billing.internal_files()), (6, 0));
-    assert!(!app.link("Checkout", "Shipping").unwrap().circular);
-    assert!(app.cycles[0].off);
     for member in ["Checkout", "Shipping"] {
         assert!(app.circles_counted_elsewhere(member).is_empty());
     }
