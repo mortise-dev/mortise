@@ -13,8 +13,6 @@ mod findings;
 mod generate;
 mod matcher;
 mod modules;
-#[cfg(feature = "run")]
-mod output;
 mod package;
 mod php;
 mod program;
@@ -25,6 +23,10 @@ mod surface;
 #[cfg(feature = "testing")]
 pub mod testing;
 
+#[cfg(feature = "run")]
+pub use actions::output::{
+    FailedMigration, MigrationCount, failed_migration, migration_count, prohibited,
+};
 pub use actions::plan::{
     Action, Ask, Context, OptionSet, Options, Plan, asks_again, plan, refuses, typed_name_matches,
 };
@@ -47,6 +49,10 @@ pub use generate::catalog::{
     Argument, Catalog, Filled, Generator, GeneratorOption, Group, MODULE_MAKE, NameRule,
     class_name_ok, model_flag_of, module_name_ok, replace_words, shipped_mark,
 };
+#[cfg(feature = "run")]
+pub use generate::output::{
+    FileOutcome, GeneratedFile, app_relative, autoload_failed, generated_files, reported_files,
+};
 pub use matcher::fuzzy;
 pub use modules::clover::Coverage;
 pub use modules::code::{ALL_CODE, propose_codes, propose_monogram};
@@ -56,11 +62,6 @@ pub use modules::kind::{OTHER, TESTS};
 pub use modules::layout::{Layout, LayoutKey, read_layout};
 pub use modules::module::{KindCount, Manifest, Module, ModuleState, Progress, ReadCache};
 pub use modules::target::Target;
-#[cfg(feature = "run")]
-pub use output::{
-    FailedMigration, FileOutcome, GeneratedFile, MigrationCount, app_relative, autoload_failed,
-    failed_migration, generated_files, migration_count, prohibited, reported_files,
-};
 pub use package::{
     DataError, FileAction, FileResult, GeneratorReport, LangModule, LangReport, Locale,
     MigrationRow, MigrationStatus, ModuleMigrations, ModuleStatus, ModuleTests, PackageData,
