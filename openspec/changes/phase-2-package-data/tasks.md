@@ -27,10 +27,10 @@
 
 ## 5. Images, accessibility, docs (15.8 sonnet, after 4)
 
-- [ ] 5.1 Images, light and dark, for each changed screen and S9.3, with `UPDATE_SNAPSHOTS=1 cargo test -p mortise-app --test images`; look at each new or changed image
-- [ ] 5.2 Accessible names and 24 px targets of the new controls in `tests/accessibility.rs`
-- [ ] 5.3 `docs/deviations.md`: S39, S41, S42 and S44 hold for an app before 13.4; add the rows of the reads, "List files", the state box, the toasts and sentences not in the spec, each with how it was checked
-- [ ] 5.4 README: what 13.4 adds
+- [x] 5.1 Images, light and dark, for each changed screen and S9.3, with `UPDATE_SNAPSHOTS=1 cargo test -p mortise-app --test images`; look at each new or changed image
+- [x] 5.2 Accessible names and 24 px targets of the new controls in `tests/accessibility.rs`
+- [x] 5.3 `docs/deviations.md`: S39, S41, S42 and S44 hold for an app before 13.4; add the rows of the reads, "List files", the state box, the toasts and sentences not in the spec, each with how it was checked
+- [x] 5.4 README: what 13.4 adds
 
 ## 6. Integration
 

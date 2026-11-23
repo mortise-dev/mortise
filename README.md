@@ -41,9 +41,21 @@ Status: phase 1 (read only) and phase 2 (running the package's commands) are bui
 - Closing Mortise stops every run and waits up to 5 seconds for each to end. On Windows, the
   PHP child of a launcher such as `herd.bat` that already exited goes on (`docs/deviations.md`, S53).
 
-Not yet: the file lists before a run, the migration state (counts, tables) and Run tests wait
-for data from the package. Until then the Actions and Generate tabs say so where they leave
-something out.
+An app with `nwidart/laravel-modules` 13.4 or later gets more from the package:
+
+- The Generate tab reads the list of generators from the app, so it shows what that version has.
+- "List files" runs a generator as a dry run and shows the files it would write. The result of a
+  run comes from the package's answer.
+- The Actions tab and the Summary show the migration state after you press "Read migration state":
+  waiting and ran migrations, the last batch and the tables a reset drops.
+  Mortise reads it again after a migrate, roll back, reset, refresh or fresh.
+- Run tests runs `module:test`, with a filter and a parallel option, and the toast counts the tests.
+- Findings lists translation keys a language lacks, after Check translations, and the work to do,
+  such as waiting migrations. The work to do is not counted as findings.
+
+An older package keeps the earlier behaviour: the 13.3 list of generators, the file list after a run,
+no migration state, and Run tests off until the package has the command. The tabs say so where they
+leave something out.
 
 The only file Mortise writes in an app is `mortise.json`, and it asks before it creates it.
 The package's commands write the other files. Mortise never writes them.
