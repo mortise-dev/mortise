@@ -1856,9 +1856,15 @@ impl MortiseApp {
             Toast::failed(text).with_action(strings::SHOW_OUTPUT, ToastAction::ShowOutput(root))
         };
         let open = &mut self.apps[index];
+        // A Replace of a left row of the result: that row changes, the others stay.
+        let row_taken = attached
+            && run
+                .row
+                .as_deref()
+                .is_some_and(|row| open.generate.replace_row(row, &files));
         // A run with `--json` that read no file, such as one that failed at boot: the
         // form keeps its line and says why the answer was not read (design D2).
-        if attached && files.is_empty() && fallback.is_some() {
+        if attached && !row_taken && files.is_empty() && fallback.is_some() {
             let result =
                 GenerateResult::new(run.module.clone(), run.args.clone(), Vec::new(), false);
             open.generate
@@ -1949,7 +1955,7 @@ impl MortiseApp {
         if let Some(toast) = toast {
             self.toast = Some(toast);
         }
-        if attached {
+        if attached && !row_taken {
             let result = GenerateResult::new(run.module, run.args, files, false);
             open.generate
                 .show_result(result.read_from_output(fallback).with_taken_out(taken_out));

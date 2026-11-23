@@ -88,6 +88,9 @@ pub struct GenerateRun {
     pub args: Vec<String>,
     /// The files whose flags S9.3 took out of the command: the run leaves them.
     pub taken_out: Vec<TakenOut>,
+    /// The path of the left row of the result on screen that this run replaces. Its
+    /// end updates that row, and the other rows keep their Replace.
+    pub row: Option<String>,
 }
 
 /// A file that S9.3 took out of the command because it exists (design D5). The run
@@ -450,6 +453,29 @@ impl GenerateState {
                 .iter()
                 .all(|file| matches!(file.outcome, FileOutcome::Created | FileOutcome::Replaced));
         self.result = Some(result);
+    }
+
+    /// Takes the end of a Replace of the left row `row` of the result on screen: the
+    /// row gets what the run did to its file, and the other rows stay as they are,
+    /// with their Replace. A run that read no file leaves the row. Returns false when
+    /// the result holds no such row.
+    pub fn replace_row(&mut self, row: &str, files: &[GeneratedFile]) -> bool {
+        let Some(left) = self.result.as_mut().and_then(|result| {
+            result
+                .files
+                .iter_mut()
+                .find(|file| file.path == row && file.outcome == FileOutcome::Left)
+        }) else {
+            return false;
+        };
+        let done = match files {
+            [only] => Some(only),
+            files => files.iter().find(|file| file.path == row),
+        };
+        if let Some(done) = done {
+            left.outcome = done.outcome;
+        }
+        true
     }
 
     /// Esc on the picker clears its filter. Returns true when it did.
@@ -1926,6 +1952,7 @@ fn command(
             module: name.clone(),
             args: run_args.clone(),
             taken_out: state.taken_out_files(&words, inputs, &app.package),
+            row: None,
         })));
     }
     // A line cut off by the scroll area is not on screen, so Ctrl Enter does not
@@ -1979,6 +2006,7 @@ fn command(
                     module: name,
                     args: run_words(app, replace_args),
                     taken_out: Vec::new(),
+                    row: None,
                 },
             }));
         }
@@ -2676,6 +2704,7 @@ fn replace_asked(
             module: result.module.clone(),
             args: run_words(app, words),
             taken_out: Vec::new(),
+            row: Some(path.to_owned()),
         },
     })
 }

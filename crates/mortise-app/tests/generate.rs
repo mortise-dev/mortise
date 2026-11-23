@@ -485,7 +485,10 @@ fn a_policy_that_exists_is_left_and_replace_asks_then_runs_force() {
     assert_eq!(ran(&mut harness, &desk, &root).len(), 1);
     click(&mut harness, Role::Button, "Replace file");
     wait_for(&mut harness, "Replaced 1 file in Billing.");
-    harness.get_by_role_and_label(Role::Heading, "Replaced in Billing");
+    // The row of the policy changes in the result; the other rows stay.
+    harness.get_by_role_and_label(Role::Heading, "Created in Billing");
+    harness.get_by_label("app/Policies/InvoicePolicy.php, replaced");
+    harness.get_by_label("app/Models/Invoice.php");
     assert_eq!(
         ran(&mut harness, &desk, &root)[0],
         ["module:make-policy", "InvoicePolicy", "Billing", "--force"]
