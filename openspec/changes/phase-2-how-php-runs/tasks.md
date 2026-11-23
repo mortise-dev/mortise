@@ -6,10 +6,10 @@
 
 ## 2. Core groundwork (parallel)
 
-- [ ] 2.1 Add `run/process.rs` with `command()` (stdin null, `CREATE_NO_WINDOW` on Windows) and the feature `run` (D1, D2). `git.rs` and `editor.rs` use it. Move the splitter of `editor_arguments` into `editor::split_words`. Verify `cargo test -p mortise-core` and `cargo build -p mortise-core --no-default-features` without a warning
-- [ ] 2.2 Add `RunnerKind` with `prefix()` and `from_line()`, and `CommandLine` with `artisan()` and `display()` and both quoting functions (D3, D7, D8). Verify with the unit tables of D7 and one test of `from_line` for each kind
-- [ ] 2.3 Add `run/detect.rs` with `detect()` and `herd_config_dir()` (D11). Verify with temp-folder tests: parked, linked (`cfg(unix)`), Sail with and without a compose file, each compose name, the order, empty folder, broken `config.json`
-- [ ] 2.4 Read `APP_ENV` from `.env` with `APP_URL` and no other line; keep it on `AppSnapshot`. Remove deviation S15 from `docs/deviations.md`. Verify with the assertion added to the existing `.env` test in `app.rs`
+- [x] 2.1 Add `run/process.rs` with `command()` (stdin null, `CREATE_NO_WINDOW` on Windows) and the feature `run` (D1, D2). `git.rs` and `editor.rs` use it. Move the splitter of `editor_arguments` into `editor::split_words`. Verify `cargo test -p mortise-core` and `cargo build -p mortise-core --no-default-features` without a warning
+- [x] 2.2 Add `RunnerKind` with `prefix()` and `from_line()`, and `CommandLine` with `artisan()` and `display()` and both quoting functions (D3, D7, D8). Verify with the unit tables of D7 and one test of `from_line` for each kind
+- [x] 2.3 Add `run/detect.rs` with `detect()` and `herd_config_dir()` (D11). Verify with temp-folder tests: parked, linked (`cfg(unix)`), Sail with and without a compose file, each compose name, the order, empty folder, broken `config.json`
+- [x] 2.4 Read `APP_ENV` from `.env` with `APP_URL` and no other line; keep it on `AppSnapshot`. Remove deviation S15 from `docs/deviations.md`. Verify with the assertion added to the existing `.env` test in `app.rs`
 
 ## 3. Settings
 
