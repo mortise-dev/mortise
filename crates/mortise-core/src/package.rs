@@ -319,6 +319,9 @@ pub struct PackageData {
     /// The connection the migration state was read for (`--database`). Empty for
     /// the default connection.
     pub migration_connection: String,
+    /// The last read of every module (`--all`) holds since: nothing was forgotten
+    /// after it. A module that is on and has no entry was not in its answer.
+    pub migrations_of_all: bool,
     /// Whether the database has a migrations table, from the last state read.
     pub migration_table: Option<bool>,
     /// The last translation report, by module.
@@ -362,12 +365,25 @@ impl PackageData {
         (self.migration_connection == connection.trim()).then_some(&self.migrations)
     }
 
+    /// True when the state on `connection` says something of every module in `modules_on`:
+    /// each has an entry, or a read of every module holds since (design D7). A count over
+    /// the modules that are on is then whole.
+    pub fn migrations_of_every(&self, connection: &str, modules_on: &[&str]) -> bool {
+        self.migrations_for(connection).is_some_and(|migrations| {
+            self.migrations_of_all || modules_on.iter().all(|name| migrations.contains_key(*name))
+        })
+    }
+
     /// Forgets the migration state of `target`, whatever connection it was read for:
     /// every module for [`Target::All`], else the module's entry, by name in any case.
     /// A "no migrations table" answer goes too: the run may have made the table.
-    /// True when something was forgotten.
+    /// A read of every module no longer covers them all. True when something was forgotten.
     pub fn forget_migrations(&mut self, target: &Target) -> bool {
-        let before = (self.migrations.len(), self.migration_table);
+        let before = (
+            self.migrations.len(),
+            self.migration_table,
+            self.migrations_of_all,
+        );
         match target {
             Target::All => self.migrations.clear(),
             Target::Module(name) => self
@@ -377,7 +393,13 @@ impl PackageData {
         if self.migration_table == Some(false) {
             self.migration_table = None;
         }
-        before != (self.migrations.len(), self.migration_table)
+        self.migrations_of_all = false;
+        before
+            != (
+                self.migrations.len(),
+                self.migration_table,
+                self.migrations_of_all,
+            )
     }
 
     /// Takes in a state read of `target` on `connection`, read at `read_ms`. A read of
@@ -396,8 +418,10 @@ impl PackageData {
         if self.migration_connection != connection {
             self.migrations.clear();
             self.migration_connection = connection.to_string();
+            self.migrations_of_all = false;
         }
         if *target == Target::All {
+            self.migrations_of_all = true;
             let listed: BTreeSet<&str> = status
                 .modules
                 .iter()
@@ -656,6 +680,8 @@ mod tests {
             &["Billing", "Checkout", "Loyalty"],
             1,
         );
+        // The read of every module covers a module that is on and not in its answer.
+        assert!(data.migrations_of_every("", &["Checkout", "Catalog"]));
         let checkout = &data.migrations["Checkout"];
         assert_eq!(
             checkout.waiting,
@@ -686,6 +712,7 @@ mod tests {
         // A run forgets its module whatever the connection, and a "no table" answer.
         data.migration_table = Some(false);
         assert!(data.forget_migrations(&Target::Module("billing".into())));
+        assert!(!data.migrations_of_every("", &["Catalog"]));
         assert!(data.migrations.is_empty() && data.migration_table.is_none());
         assert!(!data.forget_migrations(&Target::All));
 

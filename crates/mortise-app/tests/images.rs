@@ -600,8 +600,10 @@ fn actions_with_package_data() {
             ((400.0, 120.0), (880.0, 350.0)),
         );
         press(&mut harness, Key::Escape);
-        // S10.2 f: "All modules".
+        // S10.2 f: "All modules", once every module is read.
         select(&mut harness, "All modules");
+        click(&mut harness, Role::Button, "Read migration state");
+        wait_for(&mut harness, "3 migrations in 2 modules");
         read_time(&mut shots, &mut harness, "s10.2f-all-modules-state");
         // S4.3: the Summary of Checkout.
         select(&mut harness, "Checkout");

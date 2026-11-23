@@ -2488,6 +2488,9 @@ pub const RAN: &str = "Ran";
 pub const NOT_READ_YET: &str = "Not read yet.";
 /// Not in the spec: the state box when the state was read for another connection.
 pub const NOT_READ_FOR_CONNECTION: &str = "Not read for this connection.";
+/// Not in the spec: the state box of "All modules" when some of the modules that
+/// are on were read, not all.
+pub const NOT_READ_FOR_EVERY_MODULE: &str = "Not read for every module yet.";
 /// Not in the spec: the button that reads the migration state.
 pub const READ_MIGRATION_STATE: &str = "Read migration state";
 /// Not in the spec: the state box while its read runs.

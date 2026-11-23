@@ -683,6 +683,12 @@ fn the_migration_state_is_read_when_asked_and_forgotten_after_a_migrate() {
     // A read is not a run: the drawer and the history did not get it.
     assert_eq!(runs(&mut harness, &desk, &root), 0);
 
+    // "All modules" counts nothing from one module: `--all` runs the others too.
+    actions_of(&mut harness, "All modules");
+    harness.get_by_label("Not read for every module yet.");
+    harness.get_by_role_and_label(Role::Button, "Migrate");
+    actions_of(&mut harness, "Checkout");
+
     // Roll back lists its last batch; reset names the table it drops.
     select(&mut harness, "Roll back");
     run(&mut harness);

@@ -149,14 +149,22 @@ pub fn connection<'a>(action: Action, target: &Target, options: &'a Options) -> 
 }
 
 /// The migration state of the module, or of each module that is on for "All
-/// modules", on `connection`, from the reads of this session. `None` when none of
-/// them was read for that connection.
+/// modules", on `connection`, from the reads of this session. `None` when it was
+/// not read for that connection, and for "All modules" until the state covers every
+/// module that is on: a count of some would leave out what `--all` runs in the others.
 fn migration_state<'a>(
     app: &'a AppSnapshot,
     module: Option<&'a Module>,
     connection: &str,
 ) -> Option<Vec<(&'a Module, &'a ModuleMigrations)>> {
     let migrations = app.package_data.migrations_for(connection)?;
+    if module.is_none()
+        && !app
+            .package_data
+            .migrations_of_every(connection, &modules_on(app))
+    {
+        return None;
+    }
     let read: Vec<(&Module, &ModuleMigrations)> = match module {
         Some(module) => migrations
             .get(&module.name)
@@ -170,6 +178,15 @@ fn migration_state<'a>(
             .collect(),
     };
     (!read.is_empty()).then_some(read)
+}
+
+/// The names of the modules that are on.
+fn modules_on(app: &AppSnapshot) -> Vec<&str> {
+    app.modules
+        .iter()
+        .filter(|module| module.state == ModuleState::On)
+        .map(|module| module.name.as_str())
+        .collect()
 }
 
 /// The migrations waiting in a state from [`migration_state`].
@@ -1003,6 +1020,20 @@ fn state_box(
     {
         // A state of another connection says nothing about this one.
         rows.push(StateRow::Text(strings::NOT_READ_FOR_CONNECTION.to_owned()));
+    } else if module.is_none()
+        && app
+            .package_data
+            .migrations_for(connection)
+            .is_some_and(|migrations| {
+                modules_on(app)
+                    .iter()
+                    .any(|name| migrations.contains_key(*name))
+            })
+    {
+        // Some modules were read, not all: "All modules" offers the read of them all.
+        rows.push(StateRow::Text(
+            strings::NOT_READ_FOR_EVERY_MODULE.to_owned(),
+        ));
     } else {
         rows.push(StateRow::Text(strings::NOT_READ_YET.to_owned()));
     }

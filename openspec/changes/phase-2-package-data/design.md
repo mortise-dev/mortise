@@ -573,6 +573,11 @@ accessible name and a 24 px target (`tests/accessibility.rs`).
   `PackageData::forget_migrations`). A "no migrations table" answer goes with it. The box then reads
   "Not read yet." as before any read. This replaces `then_read`, the sentence "After the run Mortise
   reads the state again:" and the forget of a fresh by connection above.
+- Under "All modules" the counts, the list, "Migrate (N)" and the row detail show only when the state
+  covers every module that is on: each has an entry, or a read of every module holds since
+  (`PackageData::migrations_of_all`, cleared by any forget; `migrations_of_every`). `module:migrate --all`
+  runs the modules that were not read too. With some modules read, the box reads "Not read for every
+  module yet." (not in the spec) and offers the read of every module.
 
 ## Risks / Trade-offs
 
