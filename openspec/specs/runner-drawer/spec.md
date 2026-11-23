@@ -66,6 +66,10 @@ offer "Open settings", which opens how PHP runs for that app.
 - **WHEN** the runner is Herd and `herd` is not installed
 - **THEN** the drawer reads: The command did not start: "herd: command not found". Choose how PHP runs for shop-api in Settings.
 
+#### Scenario: Windows refuses a batch argument
+- **WHEN** the runner is Herd on Windows and the standard library refuses to pass an argument to `herd.bat`
+- **THEN** the drawer reads "The command did not start" with the reason the standard library gave, and nothing runs
+
 ### Requirement: Run buttons while a command runs
 While a command runs in an app, every control that starts a command in that app SHALL be disabled with
 the tooltip "<command> is running".
