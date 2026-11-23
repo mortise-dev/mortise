@@ -228,6 +228,12 @@ impl GenerateState {
     pub fn shows_form(&self) -> bool {
         self.view == View::Form
     }
+
+    /// The generator and the module of the form on screen, or `None` on the picker.
+    pub fn form(&self) -> Option<(String, Option<String>)> {
+        let module = self.module.clone().flatten();
+        (self.view == View::Form).then(|| (self.generator.clone(), module))
+    }
 }
 
 /// What the tab needs besides the app and its own state.
@@ -1380,14 +1386,19 @@ fn command(
     }
 
     let force = new_module && state.filled.flags.contains("force");
+    let ready = names_ok(generator, &state.filled);
+    // The button and Ctrl Enter run only the line that was whole on screen in the
+    // last frame (deviation S40's rule).
+    let shown = state.last_shown.as_ref() == Some(&words);
     let off = if let Some(label) = inputs.busy {
         Some(strings::is_running(label))
     } else if line_now(inputs.runner, &[]).is_none() {
         Some(strings::choose_php(inputs.app))
+    } else if ready && !shown {
+        Some(strings::SCROLL_TO_COMMAND.to_owned())
     } else {
         None
     };
-    let ready = names_ok(generator, &state.filled);
     let keys = run_keys(inputs.mac);
     let run = Button {
         label: if new_module {
@@ -1408,8 +1419,7 @@ fn command(
     let y = y + 12.0;
     let response = run.show(ui, pal, pos2(min.x, y), inputs.keyboard);
     let x = response.rect.right() + 8.0;
-    // Ctrl Enter runs only the line that was on screen in the last frame.
-    let pressed = response.clicked() || (run_key && state.last_shown.as_ref() == Some(&words));
+    let pressed = response.clicked() || run_key;
     if let Some(tip) = &off {
         draw::tooltip(response, pal, tip);
     }

@@ -2148,6 +2148,10 @@ pub fn module_seeder(module: &str) -> String {
     format!("{module}DatabaseSeeder")
 }
 
+/// Not in the spec: a run button is off while its line was not whole on screen,
+/// because a command runs only with its exact line on screen first.
+pub const SCROLL_TO_COMMAND: &str = "Scroll up to see the whole command first.";
+
 /// Not in the spec: a run button is off because no way to run PHP is chosen (design D4).
 pub fn choose_php(app: &str) -> String {
     format!("Choose how PHP runs for {app} in Settings.")
@@ -2895,15 +2899,19 @@ pub fn replace_module_title(names: &[&str]) -> String {
     }
 }
 
-/// `Modules/Loyalty exists with 23 files. module:make --force writes the generated
-/// files over it.` The sentence for a module Mortise does not see is not in the spec.
+/// `Modules/Loyalty exists with 23 files. module:make --force deletes the folder,
+/// then generates the module again. Files you wrote in it are lost.` The package
+/// deletes the folder first, so the spec's sentence is not used (deviation S50).
+/// The sentence for a module Mortise does not see is not in the spec.
 pub fn replace_module_body(existing: Option<(&str, u64)>) -> String {
     match existing {
         Some((folder, n)) => format!(
-            "{folder} exists with {}. module:make --force writes the generated files over it.",
+            "{folder} exists with {}. module:make --force deletes the folder, then generates \
+             the module again. Files you wrote in it are lost.",
             files(n)
         ),
-        None => "module:make --force writes the generated files over the module if it exists."
+        None => "If the module exists, module:make --force deletes its folder, then generates \
+                 the module again. Files you wrote in it are lost."
             .to_owned(),
     }
 }

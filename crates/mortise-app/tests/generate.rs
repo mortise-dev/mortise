@@ -284,10 +284,17 @@ fn a_policy_that_exists_is_left_and_replace_asks_then_runs_force() {
 #[test]
 fn ctrl_n_opens_the_new_module_form_and_replace_asks_first() {
     let (desk, root) = desk();
-    // Loyalty exists already, so that Replace has a module to name.
-    let loyalty = root.join("Modules/Loyalty");
-    common::copy_dir(&root.join("Modules/Catalog"), &loyalty);
-    common::rename_in_files(&loyalty, "Catalog", "Loyalty");
+    // The fake ends once the gate file exists, so that the module appears during the run.
+    let gate = desk.path().join("gate");
+    let mut settings = desk.saved();
+    settings.apps[0].php.runner = Some(RunnerKind::Custom {
+        line: format!(
+            "\"{}\" gate \"{}\"",
+            env!("CARGO_BIN_EXE_app-fake-artisan"),
+            gate.display()
+        ),
+    });
+    settings.save(&desk.settings_path()).unwrap();
     let mut harness = desk.start();
     harness
         .get_by_role_and_label(Role::ListBoxOption, "Checkout")
@@ -322,7 +329,7 @@ fn ctrl_n_opens_the_new_module_form_and_replace_asks_first() {
     );
     run(&mut harness);
     harness.get_by_role_and_label(Role::Heading, "Replace the module Loyalty?");
-    harness.get_by_label_contains("Modules/Loyalty exists with ");
+    harness.get_by_label_contains("module:make --force deletes its folder, then generates");
     // The dialog shows the line of the form.
     let line = "module:make --no-interaction --ansi Loyalty --api --force";
     assert_eq!(harness.query_all_by_label_contains(line).count(), 2);
@@ -336,6 +343,11 @@ fn ctrl_n_opens_the_new_module_form_and_replace_asks_first() {
         "Replace the module if it exists",
     );
     run(&mut harness);
+    // The module is written while the command runs, as the package does it.
+    let loyalty = root.join("Modules/Loyalty");
+    common::copy_dir(&root.join("Modules/Catalog"), &loyalty);
+    common::rename_in_files(&loyalty, "Catalog", "Loyalty");
+    std::fs::write(&gate, "").unwrap();
     wait_for(&mut harness, "Created the module Loyalty.");
     common::wait_until(&mut harness, "Loyalty is selected", |app| {
         app.selection() == Selection::Module("Loyalty".into())

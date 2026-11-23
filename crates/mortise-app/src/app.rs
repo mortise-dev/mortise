@@ -109,9 +109,21 @@ struct OpenApp {
     /// What the Generate tab keeps: the picker, the form and the last result.
     generate: GenerateState,
     /// The generator that runs, with the modules the app had when it started.
-    generate_run: Option<(GenerateRun, BTreeSet<String>)>,
+    generate_run: Option<Generating>,
     /// After `module:make`: the module to select once a snapshot has it.
     select_new: Option<SelectNew>,
+}
+
+/// A generator that runs, and what its end needs.
+struct Generating {
+    run: GenerateRun,
+    /// The modules the app had when it started.
+    before: BTreeSet<String>,
+    /// The line that runs carries `--force`, in the runner's words or in the run's.
+    forced: bool,
+    /// The generator and the module of the form it was started from: its result
+    /// shows only while that form is still on screen.
+    form: Option<(String, Option<String>)>,
 }
 
 /// The module `module:make` created, to select once the app is read with it
@@ -1419,7 +1431,9 @@ impl MortiseApp {
         };
         let dialog = match &ask {
             GenerateAsk::NewModule => return,
-            GenerateAsk::Run(run) if run.generator != MODULE_MAKE || !forced(&run.args) => None,
+            GenerateAsk::Run(run) if run.generator != MODULE_MAKE || !forced(runner, &run.args) => {
+                None
+            }
             GenerateAsk::Run(run) => {
                 let names = typed_names(&run.args);
                 let names: Vec<&str> = names.iter().map(String::as_str).collect();
@@ -1484,27 +1498,42 @@ impl MortiseApp {
                 .map(|module| module.name.clone())
                 .collect()
         });
+        let forced = forced(self.settings.apps[index].php.runner.as_ref(), &run.args);
         self.start_run(index, run.args.clone());
         let open = &mut self.apps[index];
         open.select_new = None;
-        open.generate_run = open.runs.running().is_some().then_some((run, before));
+        let form = open.generate.form();
+        open.generate_run = open.runs.running().is_some().then_some(Generating {
+            run,
+            before,
+            forced,
+            form,
+        });
     }
 
     /// The result and the toast after a generator of the app at `index` ended
     /// (design D6). The result comes from the output lines, not from the exit code.
-    fn generate_ended(&mut self, index: usize, run: GenerateRun, before: BTreeSet<String>) {
+    fn generate_ended(&mut self, index: usize, generating: Generating) {
+        let Generating {
+            run,
+            before,
+            forced,
+            form,
+        } = generating;
         let Some((end, lines)) = self.apps[index].runs.ended() else {
             return;
         };
         let done = matches!(end, RunEnd::Exited { code: Some(0), .. });
-        let files = mortise_core::generated_files(lines, forced(&run.args));
+        let files = mortise_core::generated_files(lines, forced);
         let autoload_failed = mortise_core::autoload_failed(lines);
         let label = run.args.join(" ");
         let in_view = self.runner.shown == Shown::Open
             && self.current == Some(index)
             && self.settings_open.is_none()
             && self.adding.is_none();
-        let on_tab = in_view && self.apps[index].tab == Tab::Generate;
+        // The result belongs to the form the run started from (design D6).
+        let attached = form.is_some() && self.apps[index].generate.form() == form;
+        let on_tab = in_view && attached && self.apps[index].tab == Tab::Generate;
         let failed_toast = |text: String, root: PathBuf| {
             Toast::failed(text).with_action(strings::SHOW_OUTPUT, ToastAction::ShowOutput(root))
         };
@@ -1513,23 +1542,31 @@ impl MortiseApp {
 
         if run.generator == MODULE_MAKE {
             let names = typed_names(&run.args);
-            if done || autoload_failed {
-                // The module is selected once the app is read with it.
+            // A run that wrote files made a module, whatever its exit code: it is
+            // selected once the app is read with it. When composer dump-autoload
+            // failed, the form keeps its alert on screen instead (design D6).
+            let wrote = files
+                .iter()
+                .any(|file| matches!(file.outcome, FileOutcome::Created | FileOutcome::Replaced));
+            open.live.refresh();
+            if autoload_failed {
+                if attached {
+                    open.generate
+                        .show_result(GenerateResult::new(None, run.args, files, true));
+                }
+            } else if wrote {
                 open.select_new = Some(SelectNew {
                     before,
                     names: names.clone(),
                 });
-                open.live.refresh();
             }
-            if autoload_failed {
-                open.generate
-                    .show_result(GenerateResult::new(None, run.args, files, true));
-            } else if done {
+            if done && !autoload_failed {
                 open.generate.clear_name();
                 let names: Vec<&str> = names.iter().map(String::as_str).collect();
                 self.toast = Some(Toast::done(strings::created_modules(&names)));
                 return;
             }
+            // No toast while the drawer shows the failure.
             if !in_view {
                 let text = match end {
                     RunEnd::Exited { code, .. } => strings::stopped_with(&label, code),
@@ -1585,8 +1622,10 @@ impl MortiseApp {
         if let Some(toast) = toast {
             self.toast = Some(toast);
         }
-        open.generate
-            .show_result(GenerateResult::new(run.module, run.args, files, false));
+        if attached {
+            open.generate
+                .show_result(GenerateResult::new(run.module, run.args, files, false));
+        }
     }
 
     // --- Rules ---
@@ -2046,16 +2085,16 @@ impl eframe::App for MortiseApp {
                 if let Some((act, modules_on)) = open.action_run.take() {
                     ended.push((index, act, modules_on));
                 }
-                if let Some((run, before)) = open.generate_run.take() {
-                    generated.push((index, run, before));
+                if let Some(generating) = open.generate_run.take() {
+                    generated.push((index, generating));
                 }
             }
         }
         for (index, act, modules_on) in ended {
             self.action_ended(index, &act, modules_on);
         }
-        for (index, run, before) in generated {
-            self.generate_ended(index, run, before);
+        for (index, generating) in generated {
+            self.generate_ended(index, generating);
         }
         if running {
             ctx.request_repaint_after(std::time::Duration::from_millis(100));
@@ -2801,9 +2840,14 @@ fn destructive_words(args: &[String]) -> Option<(Action, Target)> {
     Some((action, target))
 }
 
-/// True when generator words carry `--force`, before a `--`.
-fn forced(args: &[String]) -> bool {
-    args.iter()
+/// True when the line that runs `args` carries `--force` before a `--`: in the
+/// words of the runner, such as a Custom line `php artisan --force`, or in the run's.
+fn forced(runner: Option<&RunnerKind>, args: &[String]) -> bool {
+    let words: Vec<&str> = args.iter().map(String::as_str).collect();
+    let line = runner
+        .and_then(|runner| mortise_core::CommandLine::artisan(runner, &words))
+        .map_or_else(|| args.to_vec(), |line| line.args);
+    line.iter()
         .take_while(|word| *word != "--")
         .any(|word| word == "--force")
 }

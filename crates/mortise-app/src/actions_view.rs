@@ -633,8 +633,9 @@ fn panel(
         Plan::NoCommand => None,
     };
     let shown_args = shown.cloned();
-    // Ctrl Enter runs only the line that was on screen in the last frame.
-    let run_key = run_key && state.last_shown == shown_args;
+    // The button and Ctrl Enter run only the line that was whole on screen in the
+    // last frame.
+    let whole = state.last_shown == shown_args;
     let line = shown.map(|args| {
         line_now(inputs.runner, args).unwrap_or_else(|| format!("php artisan {}", args.join(" ")))
     });
@@ -664,6 +665,8 @@ fn panel(
         Some(strings::is_running(label))
     } else if line_now(inputs.runner, &[]).is_none() {
         Some(strings::choose_php(inputs.app))
+    } else if !whole {
+        Some(strings::SCROLL_TO_COMMAND.to_owned())
     } else {
         None
     };
