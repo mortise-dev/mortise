@@ -21,10 +21,10 @@ use mortise_core::{
 };
 
 use crate::boundary::BoundaryAction;
+use crate::draw::alert_box;
 use crate::draw::{self, Button, ButtonKind, Icon};
 use crate::runner_view::line_now;
 use crate::strings;
-use crate::summary::alert_box;
 use crate::theme::{Face, Palette, Type, radius, size, ty};
 
 const MAKE_MODEL: &str = "module:make-model";

@@ -13,9 +13,9 @@ use mortise_core::{AppSnapshot, Module, Proposal, SurfaceEntry, SurfaceKind, Sur
 
 use crate::boundary::BoundaryAction;
 use crate::draw::{self, Button, ButtonKind, Icon};
+use crate::draw::{EmptyMark, empty_state};
 use crate::strings;
 use crate::theme::{Palette, Type, radius, size, ty};
-use crate::workspace::{EmptyMark, empty_state};
 
 /// How many files a scan reads in one frame.
 const FILES_A_FRAME: usize = 8;

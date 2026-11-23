@@ -20,6 +20,7 @@ use crate::add::{self, AddAction, AddPanel, Checked};
 use crate::boundary::{BoundaryAction, BoundaryState};
 use crate::chrome::{self, Chrome};
 use crate::dialog::{Answer, Dialog, Typed};
+use crate::draw::EmptyMark;
 use crate::draw::{self, Button, ButtonKind};
 use crate::generate_view::{
     CatalogRead, GenerateAsk, GenerateInputs, GenerateResult, GenerateRun, GenerateState, RunPlace,
@@ -36,7 +37,7 @@ use crate::summary::{Sort, SummaryState};
 use crate::surface_view::SurfaceInputs;
 use crate::theme::{self, radius, size};
 use crate::toast::{Toast, ToastAction};
-use crate::workspace::{self, EmptyMark, Tab, WorkState};
+use crate::workspace::{self, Tab, WorkState};
 
 /// The row of the index that is selected: the whole app or one module.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -3119,13 +3120,13 @@ impl eframe::App for MortiseApp {
                     ui.painter().rect_filled(rest, 0, pal.surface);
                     let title = strings::cannot_read_title(shown_name);
                     let text = strings::read_error(&error);
-                    workspace::empty_state(ui, pal, rest, EmptyMark::None, &title, &[&text], 0.0);
+                    draw::empty_state(ui, pal, rest, EmptyMark::None, &title, &[&text], 0.0);
                 }
             }
         } else {
             // First run: no apps yet.
             ui.painter().rect_filled(rest, 0, pal.surface);
-            let at = workspace::empty_state(
+            let at = draw::empty_state(
                 ui,
                 pal,
                 rest,

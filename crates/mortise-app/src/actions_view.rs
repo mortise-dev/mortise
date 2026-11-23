@@ -15,10 +15,10 @@ use mortise_core::{
 };
 
 use crate::boundary::BoundaryAction;
+use crate::draw::alert_box;
 use crate::draw::{self, Button, ButtonKind, Icon, ListNav, StampState};
 use crate::runner_view::line_now;
 use crate::strings;
-use crate::summary::alert_box;
 use crate::theme::{Face, Palette, Type, radius, size, ty};
 
 /// The list of actions is 250 px wide (S10.1).

@@ -7,12 +7,12 @@ use eframe::egui::{
     vec2,
 };
 use mortise_core::{
-    AppSnapshot, Check, FindingState, Git, Module, ModuleState, Severity, routes_by_module,
-    routes_of, tasks_of,
+    AppSnapshot, Check, FindingState, Git, Module, ModuleState, routes_by_module, routes_of,
+    tasks_of,
 };
 
 use crate::boundary::BoundaryAction;
-use crate::draw::{self, Button, StampState};
+use crate::draw::{self, StampState};
 use crate::runtime_view::{self, Brief, RuntimeAction, RuntimeView};
 use crate::strings;
 use crate::theme::{Face, Palette, Type, radius, size, ty};
@@ -296,7 +296,7 @@ fn all_modules(
     let all = app.findings.list.len();
     let show = strings::show_all_findings(all);
     if let Some((severity, bold, rest)) = strings::app_alert(app, shared.name) {
-        let (bottom, clicked) = alert_box(
+        let (bottom, clicked) = draw::alert_box(
             ui,
             pal,
             pos2(left, y),
@@ -491,7 +491,7 @@ fn one_module(
     // What is wrong with the module, at the top of the view it concerns.
     if let Some((severity, bold, rest)) = strings::module_alert(app, shared.name, &module.name) {
         let at = pos2(left, top);
-        top = alert_box(ui, pal, at, inner, severity, &bold, &rest, None, paint).0 + 12.0;
+        top = draw::alert_box(ui, pal, at, inner, severity, &bold, &rest, None, paint).0 + 12.0;
     }
     // A circle is counted once. The other members say where.
     for carrier in app.circles_counted_elsewhere(&module.name) {
@@ -1493,64 +1493,4 @@ fn dependencies(
         y += height;
     }
     Some(rect.bottom())
-}
-
-/// An alert (C19) at the top of the view it concerns. A problem has the bad-soft
-/// fill, the bad outline and the problem mark; a warning has the surface fill, the
-/// warn outline and the wedge. It may carry one small button on the right.
-/// Returns its bottom edge and whether the button was pressed.
-#[expect(clippy::too_many_arguments)]
-pub(crate) fn alert_box(
-    ui: &Ui,
-    pal: &Palette,
-    min: eframe::egui::Pos2,
-    width: f32,
-    severity: Severity,
-    bold: &str,
-    rest: &str,
-    button: Option<(&str, &str)>,
-    paint: bool,
-) -> (f32, bool) {
-    let button = button.map(|(label, keys)| Button {
-        label,
-        small: true,
-        keys: Some(keys),
-        ..Default::default()
-    });
-    let button_w = button
-        .as_ref()
-        .map_or(0.0, |button| button.width(ui) + 12.0);
-    let text_x = min.x + 13.0 + size::STATE_MARK + 9.0;
-    let text_w = min.x + width - 13.0 - button_w - text_x;
-    let parts = [
-        (bold, ty::BODY.with_face(Face::Sans700), pal.ink),
-        (rest, ty::BODY, pal.ink),
-    ];
-    let galley = draw::rich_galley(ui, &parts, text_w);
-    let rect = Rect::from_min_size(min, vec2(width, (galley.size().y + 20.0).max(40.0)));
-    if !paint {
-        return (rect.bottom(), false);
-    }
-    let (fill, outline) = match severity {
-        Severity::Problem => (pal.bad_soft, pal.bad),
-        Severity::Warning => (pal.surface, pal.warn),
-    };
-    draw::outlined(ui, rect, radius::CONTROL, fill, outline);
-    let mark = Rect::from_min_size(rect.min + vec2(13.0, 13.0), Vec2::splat(size::STATE_MARK));
-    match severity {
-        Severity::Problem => draw::mark_bad(ui, mark, pal.bad, fill),
-        Severity::Warning => draw::mark_warn(ui, mark, pal.warn),
-    }
-    let text = draw::paint_galley(
-        ui,
-        pos2(text_x, rect.top() + 10.0),
-        Align2::LEFT_TOP,
-        galley,
-    );
-    draw::announce(ui, text, Role::Label, &format!("{bold}{rest}"));
-    let clicked = button.is_some_and(|button| {
-        let at = pos2(rect.right() - 13.0 - button.width(ui), rect.top() + 9.0);
-        button.show(ui, pal, at, false).clicked()
-    });
-    (rect.bottom(), clicked)
 }

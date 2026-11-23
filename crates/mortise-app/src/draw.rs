@@ -11,7 +11,9 @@ use eframe::egui::{
     StrokeKind, Ui, Vec2, WidgetInfo, pos2, vec2,
 };
 
-use crate::theme::{Palette, Type, radius, size, stroke, ty};
+use mortise_core::Severity;
+
+use crate::theme::{Face, Palette, Type, radius, size, stroke, ty};
 
 // ---------------------------------------------------------------------------
 // Text
@@ -966,6 +968,145 @@ pub fn progress(ui: &Ui, pal: &Palette, min: Pos2, width: f32, label: &str, shar
     );
     bar.widget_info(|| WidgetInfo::labeled(Role::ProgressIndicator, true, label));
     track.bottom()
+}
+
+// ---------------------------------------------------------------------------
+// Alert (C19)
+
+/// An alert (C19) at the top of the view it concerns. A problem has the bad-soft
+/// fill, the bad outline and the problem mark; a warning has the surface fill, the
+/// warn outline and the wedge. It may carry one small button on the right.
+/// Returns its bottom edge and whether the button was pressed.
+#[expect(clippy::too_many_arguments)]
+pub(crate) fn alert_box(
+    ui: &Ui,
+    pal: &Palette,
+    min: eframe::egui::Pos2,
+    width: f32,
+    severity: Severity,
+    bold: &str,
+    rest: &str,
+    button: Option<(&str, &str)>,
+    paint: bool,
+) -> (f32, bool) {
+    let button = button.map(|(label, keys)| Button {
+        label,
+        small: true,
+        keys: Some(keys),
+        ..Default::default()
+    });
+    let button_w = button
+        .as_ref()
+        .map_or(0.0, |button| button.width(ui) + 12.0);
+    let text_x = min.x + 13.0 + size::STATE_MARK + 9.0;
+    let text_w = min.x + width - 13.0 - button_w - text_x;
+    let parts = [
+        (bold, ty::BODY.with_face(Face::Sans700), pal.ink),
+        (rest, ty::BODY, pal.ink),
+    ];
+    let galley = rich_galley(ui, &parts, text_w);
+    let rect = Rect::from_min_size(min, vec2(width, (galley.size().y + 20.0).max(40.0)));
+    if !paint {
+        return (rect.bottom(), false);
+    }
+    let (fill, outline) = match severity {
+        Severity::Problem => (pal.bad_soft, pal.bad),
+        Severity::Warning => (pal.surface, pal.warn),
+    };
+    outlined(ui, rect, radius::CONTROL, fill, outline);
+    let mark = Rect::from_min_size(rect.min + vec2(13.0, 13.0), Vec2::splat(size::STATE_MARK));
+    match severity {
+        Severity::Problem => mark_bad(ui, mark, pal.bad, fill),
+        Severity::Warning => mark_warn(ui, mark, pal.warn),
+    }
+    let text = paint_galley(
+        ui,
+        pos2(text_x, rect.top() + 10.0),
+        Align2::LEFT_TOP,
+        galley,
+    );
+    announce(ui, text, Role::Label, &format!("{bold}{rest}"));
+    let clicked = button.is_some_and(|button| {
+        let at = pos2(rect.right() - 13.0 - button.width(ui), rect.top() + 9.0);
+        button.show(ui, pal, at, false).clicked()
+    });
+    (rect.bottom(), clicked)
+}
+
+// ---------------------------------------------------------------------------
+// Empty state (C18)
+
+/// What stands above the title of an empty-state block.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EmptyMark {
+    None,
+    Icon(Icon),
+    /// The Mortise mark, on the first run.
+    Brand,
+}
+
+/// The empty-state block (C18): left aligned, a mark, a title, a paragraph of at most
+/// 46 characters a line, then room of `action_h` for the action. Centred in the
+/// height of `body`. Returns where the action starts.
+pub fn empty_state(
+    ui: &Ui,
+    pal: &Palette,
+    body: Rect,
+    mark: EmptyMark,
+    title: &str,
+    paragraphs: &[&str],
+    action_h: f32,
+) -> Pos2 {
+    // 46 times the width of a zero in the body type.
+    let text_w = 46.0 * 0.535 * ty::BODY.size;
+    let title_type = ty::TITLE;
+
+    let paragraphs: Vec<_> = paragraphs
+        .iter()
+        .map(|text| (galley_wrapped(ui, text, ty::BODY, pal.ink_2, text_w), *text))
+        .collect();
+    let mark_h = if mark == EmptyMark::None {
+        0.0
+    } else {
+        28.0 + 12.0
+    };
+    let action = if action_h > 0.0 { 12.0 + action_h } else { 0.0 };
+    let height = mark_h
+        + title_type.line
+        + paragraphs
+            .iter()
+            .map(|(galley, _)| 12.0 + galley.size().y)
+            .sum::<f32>()
+        + action;
+
+    let left = body.left() + 28.0;
+    let mut y = (body.center().y - height / 2.0)
+        .round()
+        .max(body.top() + 26.0);
+    let mark_rect = Rect::from_min_size(pos2(left, y), Vec2::splat(28.0));
+    match mark {
+        EmptyMark::None => {}
+        EmptyMark::Icon(icon) => self::icon(ui, mark_rect, icon, pal.ink),
+        EmptyMark::Brand => brand_mark(ui, pal, mark_rect.expand(3.5)),
+    }
+    y += mark_h;
+    let title_rect = paint_text(
+        ui,
+        pos2(left, y),
+        Align2::LEFT_TOP,
+        title,
+        title_type,
+        pal.ink,
+    );
+    announce(ui, title_rect, Role::Heading, title);
+    y += title_type.line;
+    for (galley, text) in paragraphs {
+        y += 12.0;
+        let rect = paint_galley(ui, pos2(left, y), Align2::LEFT_TOP, galley);
+        announce(ui, rect, Role::Label, text);
+        y = rect.bottom();
+    }
+    pos2(left, y + 12.0)
 }
 
 // ---------------------------------------------------------------------------

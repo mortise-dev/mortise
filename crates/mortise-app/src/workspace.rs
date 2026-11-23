@@ -1,14 +1,12 @@
 //! The workspace: a header with the title and the five tabs, and the body of the open tab.
 
-use eframe::egui::{
-    Align2, Color32, Key, Modifiers, Pos2, Rect, Role, Ui, Vec2, WidgetInfo, pos2, vec2,
-};
+use eframe::egui::{Align2, Color32, Key, Modifiers, Rect, Role, Ui, WidgetInfo, pos2, vec2};
 use mortise_core::{Action, AppSnapshot};
 
 use crate::actions_view::{self, ActionsInputs, ActionsState};
 use crate::app::Selection;
 use crate::boundary::{self, BoundaryAction, BoundaryState};
-use crate::draw::{self, Button, ButtonKind, Icon, StampState};
+use crate::draw::{self, Button, ButtonKind, EmptyMark, Icon, StampState, empty_state};
 use crate::findings_view;
 use crate::generate_view::{self, GenerateInputs, GenerateState};
 use crate::strings;
@@ -426,82 +424,4 @@ pub fn workspace(
 /// The id of a tab, to give it focus.
 pub fn tab_id(ui: &Ui, tab: Tab) -> eframe::egui::Id {
     ui.scope_id().with(("tab", tab.digit()))
-}
-
-/// What stands above the title of an empty-state block.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum EmptyMark {
-    None,
-    Icon(Icon),
-    /// The Mortise mark, on the first run.
-    Brand,
-}
-
-/// The empty-state block (C18): left aligned, a mark, a title, a paragraph of at most
-/// 46 characters a line, then room of `action_h` for the action. Centred in the
-/// height of `body`. Returns where the action starts.
-pub fn empty_state(
-    ui: &Ui,
-    pal: &Palette,
-    body: Rect,
-    mark: EmptyMark,
-    title: &str,
-    paragraphs: &[&str],
-    action_h: f32,
-) -> Pos2 {
-    // 46 times the width of a zero in the body type.
-    let text_w = 46.0 * 0.535 * ty::BODY.size;
-    let title_type = ty::TITLE;
-
-    let paragraphs: Vec<_> = paragraphs
-        .iter()
-        .map(|text| {
-            (
-                draw::galley_wrapped(ui, text, ty::BODY, pal.ink_2, text_w),
-                *text,
-            )
-        })
-        .collect();
-    let mark_h = if mark == EmptyMark::None {
-        0.0
-    } else {
-        28.0 + 12.0
-    };
-    let action = if action_h > 0.0 { 12.0 + action_h } else { 0.0 };
-    let height = mark_h
-        + title_type.line
-        + paragraphs
-            .iter()
-            .map(|(galley, _)| 12.0 + galley.size().y)
-            .sum::<f32>()
-        + action;
-
-    let left = body.left() + 28.0;
-    let mut y = (body.center().y - height / 2.0)
-        .round()
-        .max(body.top() + 26.0);
-    let mark_rect = Rect::from_min_size(pos2(left, y), Vec2::splat(28.0));
-    match mark {
-        EmptyMark::None => {}
-        EmptyMark::Icon(icon) => draw::icon(ui, mark_rect, icon, pal.ink),
-        EmptyMark::Brand => draw::brand_mark(ui, pal, mark_rect.expand(3.5)),
-    }
-    y += mark_h;
-    let title_rect = draw::paint_text(
-        ui,
-        pos2(left, y),
-        Align2::LEFT_TOP,
-        title,
-        title_type,
-        pal.ink,
-    );
-    draw::announce(ui, title_rect, Role::Heading, title);
-    y += title_type.line;
-    for (galley, text) in paragraphs {
-        y += 12.0;
-        let rect = draw::paint_galley(ui, pos2(left, y), Align2::LEFT_TOP, galley);
-        draw::announce(ui, rect, Role::Label, text);
-        y = rect.bottom();
-    }
-    pos2(left, y + 12.0)
 }
