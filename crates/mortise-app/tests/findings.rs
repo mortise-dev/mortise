@@ -57,12 +57,24 @@ fn the_summary_of_a_module_says_what_is_wrong_with_it() {
     harness.run();
     harness.get_by_label("Notifications is 39% covered. The limit for shop-api is 50%.");
 
+    // Shipping is in the circle that Checkout carries: it says where it is counted.
+    harness
+        .get_by_role_and_label(Role::ListBoxOption, "Shipping")
+        .click();
+    harness.run();
+    harness.get_by_label("Part of a circle counted on Checkout");
+
     // A module without findings has no alert.
     harness
         .get_by_role_and_label(Role::ListBoxOption, "Billing")
         .click();
     harness.run();
     assert!(harness.query_by_label_contains("problem").is_none());
+    assert!(
+        harness
+            .query_by_label_contains("Part of a circle")
+            .is_none()
+    );
 }
 
 #[test]
