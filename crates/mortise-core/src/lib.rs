@@ -93,6 +93,8 @@ pub use runtime::environment::{Credentials, Environment};
 pub use runtime::live::{
     LiveRuntime, Pace, RuntimeState, module_of, routes_by_module, routes_of, tasks_of,
 };
+#[cfg(feature = "actuator")]
+pub use runtime::modules::{ModuleRuntime, RuntimeByModule, by_module};
 pub use runtime::secrets::{Kept, Secrets};
 pub use settings::{AppEntry, General, IndexRows, Motion, Settings, SettingsError, ThemeChoice};
 pub use surface::{Proposal, ScanCounts, SurfaceEntry, SurfaceKind, SurfaceScan, Typed};

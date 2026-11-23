@@ -6,8 +6,8 @@ use std::time::{Duration, Instant};
 
 use mortise_core::testing::{Reply, StubActuator};
 use mortise_core::{
-    Answer, Credentials, Environment, LiveRuntime, Pace, Runtime, RuntimeState, Status, ask,
-    ask_status, module_of, read_app, routes_by_module, routes_of, tasks_of,
+    Answer, AppSnapshot, Credentials, Environment, LiveRuntime, Pace, Runtime, RuntimeState,
+    Status, ask, ask_status, by_module, module_of, read_app, routes_by_module, routes_of, tasks_of,
 };
 
 fn local(stub: &StubActuator) -> Environment {
@@ -46,7 +46,15 @@ fn everything_an_open_app_exposes_is_read() {
         .collect();
     assert_eq!(
         names,
-        ["ping", "readinessState", "diskSpace", "db", "cache"]
+        [
+            "ping",
+            "readinessState",
+            "diskSpace",
+            "db",
+            "cache",
+            "module:billing:gateway",
+            "modules"
+        ]
     );
     assert!(
         components
@@ -410,6 +418,110 @@ fn routes_and_tasks_are_given_to_the_module_of_their_class() {
     assert_eq!(inventory.len(), 1);
     assert_eq!(inventory[0].target, r"Modules\Inventory\Jobs\SyncStock");
     assert!(tasks_of(&app, "Billing", &tasks).is_empty());
+}
+
+/// The modules of the recorded app: Blog, Billing and Legacy, made from shop-api's Billing.
+fn recorded_app() -> AppSnapshot {
+    let mut app =
+        read_app(&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/shop-api"))
+            .unwrap();
+    let billing = app
+        .modules
+        .iter()
+        .find(|module| module.name == "Billing")
+        .unwrap()
+        .clone();
+    let named = |name: &str| {
+        let mut module = billing.clone();
+        module.name = name.to_owned();
+        module
+    };
+    app.modules = vec![named("Billing"), named("Blog"), named("Legacy")];
+    app
+}
+
+/// The components of a health answer, read by the client.
+fn components_of(health: &str) -> Vec<mortise_core::Component> {
+    let stub = StubActuator::healthy();
+    stub.set("/actuator/health", Reply::ok(health));
+    answered(ask(&local(&stub), &None)).components.unwrap()
+}
+
+#[test]
+fn the_recorded_health_gives_each_module_its_indicators() {
+    let recorded = include_str!("../../../fixtures/actuator/health.json");
+    let split = by_module(&recorded_app(), &components_of(recorded));
+
+    // module:blog:storage belongs to Blog by its lower case name, under its key.
+    let blog = split.of("Blog").unwrap();
+    assert_eq!(blog.status, Status::Up);
+    assert_eq!(blog.error, None);
+    assert_eq!(blog.indicators.len(), 1);
+    assert_eq!(blog.indicators[0].name, "storage");
+    assert_eq!(
+        blog.indicators[0].details,
+        [("drafts".to_owned(), "3".to_owned())]
+    );
+    assert_eq!(split.of("Billing").unwrap().indicators[0].name, "gateway");
+    // Legacy is turned off and registers no indicator: it has no status.
+    assert!(split.of("Legacy").is_none());
+    let order: Vec<&str> = split.modules.iter().map(|m| m.module.as_str()).collect();
+    assert_eq!(order, ["Billing", "Blog"]);
+
+    // The module components leave the app's own list.
+    let own: Vec<&str> = split.app.iter().map(|c| c.name.as_str()).collect();
+    assert_eq!(
+        own,
+        [
+            "ping",
+            "readinessState",
+            "diskSpace",
+            "db",
+            "migrations",
+            "cache"
+        ]
+    );
+}
+
+#[test]
+fn a_module_takes_its_worst_indicator_and_the_error_of_the_modules_component() {
+    let health = r#"{"status":"DOWN","components":{
+        "db":{"status":"UP"},
+        "module:billing:gateway":{"status":"UNKNOWN"},
+        "module:billing:queue":{"status":"UP"},
+        "module:blog:storage":{"status":"UP"},
+        "module:blog:search":{"status":"OUT_OF_SERVICE"},
+        "module:legacy:x":{"status":"UP"},
+        "module:ghost:x":{"status":"DOWN"},
+        "modules":{"status":"DOWN","details":{"modules":{
+            "Billing":{"enabled":true},
+            "Legacy":{"enabled":true,"error":"Enabled in the status store, not found on disk."},
+            "Ghost":{"enabled":true,"error":"Enabled in the status store, not found on disk."}}}}}}"#;
+    let split = by_module(&recorded_app(), &components_of(health));
+
+    // Down, Out of service, Up, Unknown: Unknown is the mildest.
+    assert_eq!(split.of("Billing").unwrap().status, Status::Up);
+    assert_eq!(split.of("Blog").unwrap().status, Status::OutOfService);
+    // An error of the modules component makes the module Down, whatever its
+    // indicators say, with the app's sentence.
+    let legacy = split.of("Legacy").unwrap();
+    assert_eq!(legacy.status, Status::Down);
+    assert_eq!(
+        legacy.error.as_deref(),
+        Some("Enabled in the status store, not found on disk.")
+    );
+
+    // An indicator of no module stays the app's, under its full name. The modules
+    // component stays with the error of the name that is no module only.
+    let own: Vec<&str> = split.app.iter().map(|c| c.name.as_str()).collect();
+    assert_eq!(own, ["db", "module:ghost:x", "modules"]);
+    assert_eq!(
+        split.app[2].details,
+        [(
+            "Ghost".to_owned(),
+            "Enabled in the status store, not found on disk.".to_owned()
+        )]
+    );
 }
 
 fn wait_for(

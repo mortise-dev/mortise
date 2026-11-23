@@ -2,6 +2,7 @@
 //! told to, and the fake artisan of the `fake-artisan` binary.
 //!
 //! The bodies of the actuator are those of the tests of `nwidart/laravel-actuator` 1.0.0.
+//! The module components of `healthy` are those of `fixtures/actuator/health.json`.
 
 use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader, Write};
@@ -88,7 +89,9 @@ impl StubActuator {
                 "readinessState":{"status":"UP"},
                 "diskSpace":{"status":"UP","details":{"total":494384795648,"free":213212008448,"threshold":10485760,"path":"/var/www","exists":true}},
                 "db":{"status":"UP","details":{"connection":"mysql","database":"MySQL","validationQuery":"select 1"}},
-                "cache":{"status":"UP","details":{"store":"redis"}}},
+                "cache":{"status":"UP","details":{"store":"redis"}},
+                "module:billing:gateway":{"status":"UP","details":{"provider":"fake","latencyMs":12}},
+                "modules":{"status":"UP","details":{"modules":{"Billing":{"enabled":true},"Blog":{"enabled":true},"Legacy":{"enabled":false}}}}},
                 "groups":["liveness","readiness"]}"#,
             ),
         );

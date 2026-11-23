@@ -5,4 +5,6 @@ pub(crate) mod actuator;
 pub(crate) mod environment;
 #[cfg(feature = "actuator")]
 pub(crate) mod live;
+#[cfg(feature = "actuator")]
+pub(crate) mod modules;
 pub(crate) mod secrets;
