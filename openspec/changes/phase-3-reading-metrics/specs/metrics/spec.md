@@ -14,7 +14,7 @@
 - **THEN** its lines are skipped and both histograms are read
 
 #### Scenario: A bad line
-- **WHEN** one line of an answer has no value, or a label value with no closing quote
+- **WHEN** one line of an answer has no value, a label value with no closing quote, or two labels with no comma between them
 - **THEN** that line is skipped and every other line is read
 
 ### Requirement: Metrics are kept in memory only
@@ -25,29 +25,52 @@ Mortise SHALL keep what it reads from `prometheus` in memory. It SHALL NOT write
 - **THEN** the config folder and the data folder of Mortise hold the same files with the same content as before
 
 ### Requirement: A read keeps running totals for 24 hours within a stated bound
-Mortise SHALL keep, per route with its method, per job class and per `module` label, running totals of the request count, the count of 5xx answers, the request time, the bucket counts and the job count. It SHALL keep every read of the last hour and one read per 5 minutes of the 23 hours before. It SHALL drop a read older than 24 hours. It SHALL keep at most 520 reads, so memory stays flat once 24 hours are kept.
+Mortise SHALL keep, per route with its method, per job class and per `module` label, running totals of the request count, the count of 5xx answers, the request time, the bucket counts and the job count. It SHALL keep one read per 15 s of the last hour, the newest read always, and one read per 5 minutes of the 23 hours before. It SHALL drop a read older than 24 hours. It SHALL keep at most 520 reads, however often it reads, so memory stays flat once 24 hours are kept.
 
 #### Scenario: 24 hours of reads
 - **WHEN** 7,000 reads arrive 15 s apart for the same series
 - **THEN** no more than 520 reads are kept, and the number does not grow after read 5,760
 
+#### Scenario: A burst of reads
+- **WHEN** "Try again" makes reads 1 s apart for two hours
+- **THEN** no more than 520 reads are kept, and the rate of the last minute is unchanged
+
 #### Scenario: A range that reaches into the thinned part
 - **WHEN** figures are asked for a span of 24 hours
 - **THEN** they equal the figures worked out from every read, because a kept read holds totals and not differences
 
+### Requirement: A read keeps at most 32,768 numbers
+A read SHALL keep at most 32,768 numbers: 3 and one per bucket bound, for each series of the kept reads. A read over that SHALL be refused as a whole and SHALL add nothing.
+
+#### Scenario: An answer over the cap
+- **WHEN** an answer holds 11,000 job series, 3 numbers each
+- **THEN** nothing of it is kept, and the Metrics tab reads "The metrics of local have too many series" with "Try again"
+
 ### Requirement: A counter that goes down starts a new rate
-Mortise SHALL treat a counter that is lower than at the read before as a reset. That read SHALL add nothing for the series and SHALL be the start of its next rate. No rate SHALL be negative.
+Mortise SHALL treat a counter that is lower than at the read before as a reset. That read SHALL add nothing for the series and SHALL be the start of its next rate. Each status of a route SHALL be a series of its own: a reset of one status SHALL NOT hide the growth of another. No rate SHALL be negative.
 
 #### Scenario: The store of the app is cleared
 - **WHEN** a route counts 100, then 3, then 5 requests in three reads 15 s apart
 - **THEN** the second read adds 0, the third adds 2, and no figure is below zero
 
+#### Scenario: A reset of one status
+- **WHEN** a route counts 100 answers of 200 and 100 of 404, then 110 of 200 and 1 of 404
+- **THEN** the second read adds 10 for the route
+
 ### Requirement: No rate is worked out across a gap or from one read
-Mortise SHALL work out no rate from the first read. It SHALL work out no rate across a gap: two reads more than 45 s apart, such as while the tab was closed or the window hidden. The read after a gap SHALL start again as a first read. A rate SHALL divide by the time between reads that Mortise did cover.
+Mortise SHALL work out no rate from the first read. It SHALL work out no rate across a gap: two reads more than 45 s apart, such as while the tab was closed or the window hidden. The read after a gap SHALL start again as a first read, and SHALL give no rate while it is the newest read. A series that is missing from that read SHALL add nothing when it returns. A rate SHALL divide by the time between reads that Mortise did cover.
 
 #### Scenario: The tab was closed for an hour
 - **WHEN** the tab closes at 1,000 requests and opens an hour later at 61,000 requests
 - **THEN** the 60,000 requests in between add to no figure, and the first rate comes with the second read after the tab opened
+
+#### Scenario: A read after a gap shows no rate
+- **WHEN** reads come at 0 s and 15 s, then at 61 s
+- **THEN** the read at 61 s gives no rate, not the rate of 0 s to 15 s
+
+#### Scenario: A series that returns after a gap
+- **WHEN** a route counts 2 before a gap, is missing from the first read after it, and counts 50 in the read after that
+- **THEN** its return adds nothing, and the read after adds what it grew by from 50
 
 #### Scenario: The first read
 - **WHEN** one read exists
@@ -124,7 +147,7 @@ The Metrics tab SHALL NOT show the S7.4 block. It SHALL show S7.1 when no enviro
 - **THEN** the tab shows the sentence of the runtime box, and "Open settings" opens Settings on that environment
 
 ### Requirement: An answer without metrics has its own sentence
-For a 503 from `prometheus` the Metrics tab SHALL quote the first line of the body as the app wrote it. For an empty answer it SHALL say in one sentence that metrics are off in the app. For an answer over the body limit it SHALL name the limit. Each SHALL offer "Try again". These sentences are not in the spec. A failed read after good ones SHALL show its sentence, not an old table.
+For a 503 from `prometheus` the Metrics tab SHALL quote the first line of the body as the app wrote it. For an empty answer it SHALL say in one sentence that metrics are off in the app. For an answer over the body limit it SHALL name the limit. For an answer with more series than a read keeps it SHALL name the most numbers a read keeps. Each SHALL offer "Try again". These sentences are not in the spec. A failed read after good ones SHALL show its sentence, not an old table.
 
 #### Scenario: A 503
 - **WHEN** `prometheus` answers 503 with `The metrics store cannot be read.`
