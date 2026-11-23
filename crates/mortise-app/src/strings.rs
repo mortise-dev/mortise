@@ -40,73 +40,11 @@ pub const STATE_UNKNOWN: &str = "Unknown";
 pub const NO_APPS_BODY: &str = "Add the folder of a Laravel app that uses nwidart/laravel-modules. \
     Mortise reads its modules from disk and changes nothing until you run a command.";
 pub const ADD_APP: &str = "Add app";
-pub const BACK: &str = "Back";
 pub const CANCEL: &str = "Cancel";
-pub const APP_FOLDER: &str = "App folder";
-pub const APP_FOLDER_HINT: &str = "the folder that holds artisan";
-pub const PATH_PLACEHOLDER: &str = "Path to the app, or drop the folder on this window";
-pub const CHOOSE_FOLDER: &str = "Choose folder";
-pub const CHOOSE_FOLDER_HINT: &str = "Opens the folder dialog of the operating system";
-pub const READS_NOTE: &str = "Mortise reads composer.lock, the module.json files and \
-    modules_statuses.json. It writes nothing into the app.";
-pub const FOUND_TITLE: &str = "Found in this folder";
-pub const FOUND_NOTE: &str = "read from disk, nothing run";
-pub const SHOWN_TITLE: &str = "Shown in the rail as";
-pub const SHOWN_NOTE: &str = "you can change both in Settings";
 pub const NAME: &str = "Name";
 pub const MONOGRAM: &str = "Monogram";
-pub const MODULES: &str = "Modules";
-pub const LARAVEL: &str = "Laravel";
 pub const COPY_COMMAND: &str = "Copy command";
-pub const CHECK_AGAIN: &str = "Check again";
 pub const COPIED_COMMAND: &str = "Copied the command.";
-pub const REQUIRE_PACKAGE: &str = "composer require nwidart/laravel-modules";
-/// Not in the spec: the actuator line of "Found in this folder" when the app does not have it.
-pub const NOT_INSTALLED: &str = "not installed";
-
-/// `Add booking-engine`
-pub fn add_named(name: &str) -> String {
-    format!("Add {name}")
-}
-
-/// `Add booking-engine, read only`: the add button after the test of PHP failed (`b.addro`).
-pub fn add_read_only(name: &str) -> String {
-    format!("Add {name}, read only")
-}
-
-/// Not in the spec: the button of an app that is already in Mortise.
-pub fn open_named(name: &str) -> String {
-    format!("Open {name}")
-}
-
-/// `Added booking-engine. 5 modules read.`
-pub fn added(name: &str, modules: usize) -> String {
-    let read = if modules == 1 {
-        "1 module read".to_owned()
-    } else {
-        format!("{modules} modules read")
-    };
-    format!("Added {name}. {read}.")
-}
-
-/// `shop-api is already in Mortise. Press Enter to open it.`
-pub fn already_added(name: &str) -> String {
-    format!("{name} is already in Mortise. Press Enter to open it.")
-}
-
-/// `5 in Modules/, 5 on`
-pub fn modules_found(app: &AppSnapshot) -> (String, String, String) {
-    let on = if app.layout.uses_file_activator() {
-        format!(", {} on", app.modules_on())
-    } else {
-        String::new()
-    };
-    (
-        format!("{} in ", app.modules.len()),
-        format!("{}/", app.modules_dir_shown()),
-        on,
-    )
-}
 
 /// Not in the spec: the name of the cross on a toast, for a screen reader.
 pub const CLOSE_MESSAGE: &str = "Close the message";
@@ -273,7 +211,6 @@ pub const GIT_CHURN: &str = "Git churn";
 pub const MIGRATIONS: &str = "Migrations";
 pub const COVERAGE_REPORT: &str = "Coverage report";
 pub const GIT: &str = "Git";
-pub const NO_REPORT_FOUND: &str = "none found, coverage shows as unknown";
 /// Not in the spec: the Git line of "Found in this folder" outside a repository.
 pub const NOT_A_REPOSITORY: &str = "not a repository";
 /// Not in the spec: the Git line when the git program cannot be started.
@@ -388,24 +325,6 @@ pub fn coverage_from(path: &str, written: Option<i64>, now: i64) -> String {
     match written {
         Some(written) => format!("From {path}, written {}", ago(now, written)),
         None => format!("From {path}"),
-    }
-}
-
-/// `branch main`
-pub fn git_found(git: &mortise_core::Git) -> (String, String) {
-    match git {
-        mortise_core::Git::Repository {
-            branch: Some(branch),
-            ..
-        } => ("branch ".to_owned(), branch.clone()),
-        // Not in the spec: a commit that is checked out without a branch.
-        mortise_core::Git::Repository {
-            branch: None,
-            commit: Some(commit),
-        } => ("at ".to_owned(), commit.clone()),
-        mortise_core::Git::Repository { .. } => ("no commit yet".to_owned(), String::new()),
-        mortise_core::Git::NotARepository => (NOT_A_REPOSITORY.to_owned(), String::new()),
-        mortise_core::Git::NoGit => (GIT_NOT_FOUND.to_owned(), String::new()),
     }
 }
 
@@ -1521,7 +1440,6 @@ pub const TEST: &str = "Test";
 pub const BASE_URL: &str = "Base URL";
 pub const BASE_URL_HINT: &str = "from APP_URL in .env";
 pub const ACTUATOR_PATH: &str = "Actuator path";
-pub const RUNTIME_OPTIONAL: &str = "Runtime, optional";
 pub const COL_ENVIRONMENT: &str = "Environment";
 pub const COL_PATH: &str = "Path";
 pub const COL_LAST_ANSWER: &str = "Last answer";
