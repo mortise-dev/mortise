@@ -154,6 +154,7 @@ deviations, and what was not checked.
 | 14 | Generate | `catalog`, `output.rs`, name validation | S9.1, S9.2 without the file list, S9.4, S9.5, S9.6. "New module" in the index footer, Ctrl N, generators in the palette, "Replace" with its confirmation |
 | 15 | Package data | Read P2, P3, P4, P5, P7 and P8 when the package has them, by its version in `composer.lock` | The file list of S9.2, S9.3, S9.4. "Waiting" and "Last batch" in S10.1 and S10.2, tables named in S10.3 to S10.5, migration state on S4.3, "To do" and translations in S6.4. Run tests runs |
 | 16 | Hardening | | Images for each new screen id in both themes, accessibility names, Windows and Linux looked at, the real-PHP CI job, README, deviations |
+| 17 | Package by feature | One folder per feature in `mortise-core/src`: `modules`, `app`, `boundary`, `runtime`, `actions`, `generate`, `palette`. `lib.rs` keeps its public names. CI builds each feature alone | One folder per feature in `mortise-app/src`, `ui/` for the theme and components, `app/` for the wiring, a `strings.rs` per feature. No screen changes |
 
 Milestone 15 starts when `laravel-modules` 13.4 is released. Milestones 10 to 14 need nothing new
 from the package.
@@ -199,3 +200,105 @@ for Composer. It catches a change in the package's output before a user does.
 - Output reading without P5 breaks when the package changes a sentence. The real-PHP job is the guard.
 - Phase 2 makes Mortise run code. A command line from settings is never passed through a shell, and
   no part of a module name or option is joined into a string that a shell reads.
+
+## 8. Milestone 17: package by feature
+
+Sections 1 to 7 end at 7, so this section is 8. Milestone 17 is one OpenSpec change,
+`phase-2-package-by-feature`, merged through three pull requests. It moves code and changes no behaviour.
+Nothing a user sees changes.
+
+Goal: the code is organised by feature, not by layer, and follows the domain ideas that fit a single-user
+desktop app of this size.
+
+### 8.1 What was there
+
+- `mortise-core` was half by feature: `run/` and `catalog/` were folders and 24 files were flat.
+  Four module cycles existed: `run` and `editor`, `git.rs` and `run::process::command`,
+  `catalog` and `package`, and `catalog/cache.rs`, `run/recent.rs` with `run::history`.
+- `catalog/` and `output.rs` each held two features, Actions and Generate.
+- `mortise-app` was by layer: `*_view.rs` for screens, `draw.rs`, `dialog.rs` and `toast.rs` for components,
+  one `strings.rs` of 3,106 lines, and one `app.rs` of 3,396 lines that wired every feature.
+- Three helpers sat in the wrong module (`summary::alert_box`, `workspace::empty_state`, `app::Selection`),
+  and `BoundaryAction` was what every tab returns.
+- CI never built the core with `--no-default-features`, so a feature gate in the wrong place went unseen.
+
+### 8.2 Domain model
+
+The feature folders use the words of Mortise: App and module index, Boundary, Findings, Runtime, Runner,
+Package data, Actions, Generate, Settings, Palette. The shared kernel is `php.rs`, starting a program and
+`Version`.
+
+- Each outside format keeps one reader: `package.rs` (the package's JSON), the output readers (artisan's text),
+  `runtime/actuator.rs` (the actuator's JSON), `php.rs` (PHP source).
+- `AppSnapshot` stays plain data that the screens show.
+- Three aggregates guard a rule: Settings, Rules and Runs. Everything else is values and functions.
+- Not used: repository traits, ports and adapters, domain events, buses, CQRS, `domain/`, `application/` and
+  `infrastructure/` folders, and renaming code to the words on screen. Each would add code and no behaviour.
+
+### 8.3 Target structure
+
+Two crates stay. A crate per feature would turn about 87 `pub(crate)` items into public API.
+
+- `mortise-core/src`: `lib.rs` (the flat list of public names), `php.rs`, `program.rs` (`command`,
+  `split_words`), `package.rs`, `findings.rs`, `surface.rs`, `editor.rs`, `settings.rs`, `testing.rs`, and the
+  folders `modules/`, `app/`, `boundary/`, `runtime/`, `run/`, `actions/`, `generate/`, `palette/`.
+  `surface.rs` stays out of `boundary/` to avoid a cycle.
+- A feature uses only features above it in this order: `php` and `program`, `modules`, `boundary`, `findings`,
+  `run`, `package`, `actions`, `generate`, `app`, `surface`, `runtime` and `palette`, `editor`, `settings`.
+- `mortise-app/src`: `strings.rs` (text that more than one feature shows), `ui/` (theme, fonts, draw, dialog,
+  toast), `app/` (the window, and one wiring file per feature), and one folder per feature with its `view.rs`
+  and its `strings.rs`. The wiring stays under `app/`, so no field of `MortiseApp` becomes `pub(crate)`.
+- New rule in `AGENTS.md`, approved by the owner: all interface text is in a file named `strings.rs`.
+
+### 8.4 Steps
+
+Every commit passes the three cargo checks, adds no test and changes no assertion. Files move with `git mv`.
+The snapshot images stay byte for byte the same.
+
+| Step | Scope |
+|---|---|
+| P0 | Propose the OpenSpec change, with a small `code-layout` capability |
+| C0 | CI: build the core with no default features and with each of `watch`, `actuator`, `os-secrets`, `run`, `testing` |
+| C1 | `program.rs`: `command()` and `split_words()` |
+| C2 | `modules/`: the seven reading files and `Target` |
+| C3 | `app/`, `boundary/`, `runtime/`, and the gates `watch` and `actuator` |
+| C4 | Split `catalog/` and `output.rs` into `actions/` and `generate/` |
+| C5 | `palette/` |
+| A1 | Move `alert_box`, `empty_state` and `EmptyMark` to `draw.rs` |
+| A2 | `Selection` to the index. `BoundaryAction` becomes `WorkAction` |
+| A3 | `ui/` |
+| A4 | The feature folders, one `mod.rs` each |
+| A5 | `app/mod.rs`, with chrome, rail, menu and workspace beside it |
+| A6 | Split `app/mod.rs` into the wiring files, one commit each |
+| S1 | Split `strings.rs` per feature, one commit per feature |
+| D1 | Update `AGENTS.md`, `README.md`, `CONTRIBUTING.md`, `docs/deviations.md` and this plan |
+| D2 | Archive the change |
+
+The core track (C) and the app track (A) touch different files and run in parallel. Text and documents (S, D)
+follow the app track.
+
+### 8.5 Risks and what is left out
+
+- Conflicts with work in flight: milestone 17 starts after milestone 15 is archived.
+- A feature gate in the wrong place: the CI job of C0 catches it.
+- Include paths: a missed `include_bytes!` or `include_str!` path fails the build.
+- Visibility: nothing becomes more private, because `-D warnings` turns dead code into errors.
+- A move that seems to need a test changed behaviour: stop and look.
+
+Left out on purpose: more crates, a controller per feature in place of `impl MortiseApp`, splitting the long
+frame function and the big views, one action enum per tab, gating all of `run/process.rs`, and merging the test
+binaries of `mortise-app`.
+
+### 8.6 What the build did
+
+The change `phase-2-package-by-feature` records the design and, at the end of its `design.md`, how the build
+differed from this plan. The main differences:
+
+- A feature `mod.rs` declares its files and re-exports nothing, so each item has one path. The core's `lib.rs`
+  still re-exports every public name.
+- `ships()` and `generator_gives_data()` moved to `generate/catalog.rs`.
+- The CI feature check builds the library and the binaries only (`--lib --bins`), with `-D warnings`, because
+  the tests turn every feature on.
+- `app/mod.rs` is 1,542 lines, a little over the aim, because `set_rules`, `save_rules` and shared helpers stay.
+- 604 names were placed in `strings.rs` files, not 561: 96 shared, the rest in twelve feature files.
+- The check of the snapshot images covers 140 files, not 122.
