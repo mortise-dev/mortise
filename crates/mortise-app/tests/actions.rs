@@ -394,6 +394,18 @@ fn a_run_turns_every_run_button_off() {
     wait_for(&mut harness, "Stopped after");
 }
 
+/// Gives the field of this name focus and types `text` into it.
+fn type_in(harness: &mut Harness<'static, MortiseApp>, field: &str, text: &str) {
+    harness
+        .get_by_role_and_label(Role::TextInput, field)
+        .focus();
+    harness.run_steps(2);
+    harness
+        .get_by_role_and_label(Role::TextInput, field)
+        .type_text(text);
+    harness.run_steps(3);
+}
+
 /// True while a row of this name is in the list.
 fn listed(harness: &Harness<'static, MortiseApp>, row: &str) -> bool {
     harness
@@ -463,4 +475,76 @@ fn the_destructive_group_opens_with_its_keys_and_a_reset_dry_run_runs_at_once() 
     select(&mut harness, "Billing");
     assert!(!listed(&harness, "Delete module"));
     harness.get_by_role_and_label(Role::Heading, "Migrate Billing");
+}
+
+#[test]
+fn delete_asks_for_the_name_and_selects_all_modules_when_it_ends() {
+    let (desk, root) = desk("");
+    let mut harness = desk.start();
+    actions_of(&mut harness, "Checkout");
+    select(&mut harness, "Destructive");
+    select(&mut harness, "Delete module");
+    let field = "Type Checkout to confirm";
+    let confirm = |harness: &Harness<'static, MortiseApp>| {
+        let buttons = harness.get_all_by_role_and_label(Role::Button, "Delete module");
+        !buttons.last().unwrap().accesskit_node().is_disabled()
+    };
+
+    // Ctrl Enter only opens the dialog, with focus on Cancel.
+    run(&mut harness);
+    harness.get_by_role_and_label(Role::Heading, "Delete the module Checkout?");
+    assert!(
+        harness
+            .get_by_role_and_label(Role::Button, "Cancel")
+            .is_focused()
+    );
+    // The app is not in a repository: the panel and the dialog say git cannot tell.
+    let no_git = "Mortise cannot tell whether these files are in git.";
+    assert_eq!(harness.get_all_by_label(no_git).count(), 2);
+    // The name must match exactly. Esc in the field cancels.
+    type_in(&mut harness, field, "checkout");
+    assert!(!confirm(&harness));
+    assert!(
+        harness
+            .get_by_role_and_label(Role::TextInput, field)
+            .is_focused()
+    );
+    harness.key_press(Key::Escape);
+    harness.run_steps(3);
+    assert!(
+        harness
+            .query_by_role_and_label(Role::TextInput, field)
+            .is_none()
+    );
+
+    run(&mut harness);
+    type_in(&mut harness, field, "Checkout");
+    assert!(confirm(&harness));
+    // Enter does not confirm, in the field or anywhere else.
+    harness.key_press(Key::Enter);
+    harness.run_steps(3);
+    harness.get_by_role_and_label(Role::Heading, "Delete the module Checkout?");
+    assert_eq!(runs(&mut harness, &desk, &root), 0);
+
+    harness
+        .get_all_by_role_and_label(Role::Button, "Delete module")
+        .last()
+        .unwrap()
+        .click();
+    harness.run_steps(3);
+    wait_for(&mut harness, "Deleted the module Checkout.");
+    let entries = History::open(&desk.data_dir(), &root).entries();
+    assert_eq!(entries[0].args, ["module:delete", "Checkout", "--force"]);
+    assert_eq!(harness.state().selection(), Selection::All);
+    assert_eq!(harness.state().tab(), Tab::Actions);
+
+    // Run again asks in the same dialog, for the name again.
+    harness.key_press_modifiers(Modifiers::COMMAND | Modifiers::SHIFT, Key::R);
+    harness.run_steps(3);
+    harness.get_by_role_and_label(Role::Heading, "Delete the module Checkout?");
+    harness.get_by_role_and_label(Role::TextInput, field);
+    assert!(!confirm(&harness));
+    harness.key_press(Key::Escape);
+    harness.run_steps(3);
+    assert_eq!(runs(&mut harness, &desk, &root), 1);
 }

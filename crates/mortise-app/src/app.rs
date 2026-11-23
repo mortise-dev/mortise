@@ -6,8 +6,8 @@ use std::sync::Arc;
 
 use eframe::egui::{self, Event, Key, KeyboardShortcut, Modifiers, Rect, Theme, Ui, pos2, vec2};
 use mortise_core::{
-    Action, Ask, Environment, LiveRuntime, ReadOptions, Rules, RunEnd, RunnerKind, Runs,
-    RuntimeState, Secret, Secrets, Target, ThemeChoice,
+    Action, Ask, Environment, LiveRuntime, ModuleState, ReadOptions, Rules, RunEnd, RunnerKind,
+    Runs, RuntimeState, Secret, Secrets, Target, ThemeChoice,
 };
 use mortise_core::{
     AppEntry, AppSnapshot, LiveApp, LiveState, ReadCache, Settings, SettingsError,
@@ -18,7 +18,7 @@ use crate::actions_view::{self, Act, ActionsInputs, ActionsState};
 use crate::add::{self, AddAction, AddPanel, Checked};
 use crate::boundary::{BoundaryAction, BoundaryState};
 use crate::chrome::{self, Chrome};
-use crate::dialog::{Answer, Dialog};
+use crate::dialog::{Answer, Dialog, Typed};
 use crate::draw::{self, Button, ButtonKind};
 use crate::index::{self, IndexRuntime, IndexState};
 use crate::palette::{self, Command, PaletteAction, PaletteState};
@@ -99,9 +99,10 @@ struct OpenApp {
     runs: AppRuns,
     /// What the Actions tab keeps: the selected action and the options.
     actions: ActionsState,
-    /// The action that runs, when it was started from the Actions tab: its end
-    /// gets a toast (design D6).
-    action_run: Option<Act>,
+    /// The action that runs, when it was started from the Actions tab or asked about
+    /// again: its end gets a toast (design D6). With it, the modules that were on
+    /// when it started, for the toast of a fresh (design D7).
+    action_run: Option<(Act, usize)>,
 }
 
 /// A folder that is read for the add panel.
@@ -956,6 +957,43 @@ impl MortiseApp {
         let Some(args) = runs.again(&mut self.runner, runner) else {
             return;
         };
+        // Reset, refresh, fresh and delete do not run in production: the Actions tab
+        // shows the line to copy. Outside it they ask again in their own dialog, for
+        // these exact words; a dry run of reset runs at once (design D7).
+        if let Some((action, target)) = destructive_words(&args) {
+            if !Action::destructive(&target).contains(&action) {
+                return;
+            }
+            let production = self
+                .snapshot(index)
+                .is_some_and(|app| actions_view::production(&app));
+            if production {
+                if self.current != Some(index) {
+                    self.select_app(index);
+                }
+                let module = match target {
+                    Target::Module(name) => Some(name),
+                    Target::All => None,
+                };
+                self.open_action(module, action);
+                return;
+            }
+            if mortise_core::asks_again(&args) {
+                let ask = match action {
+                    Action::FreshMigrate => Ask::TypeAppName,
+                    Action::DeleteModule => Ask::TypeModuleName,
+                    _ => Ask::NamingTables,
+                };
+                let act = Act {
+                    action,
+                    target,
+                    args,
+                    ask: Some(ask),
+                };
+                self.act(index, act);
+                return;
+            }
+        }
         if !mortise_core::asks_again(&args) {
             self.start_run(index, args);
             return;
@@ -1073,9 +1111,12 @@ impl MortiseApp {
                     strings::production_confirm(act.action).to_owned(),
                 )
             },
-            // The four destructive actions and their dialogs come in milestone 13;
-            // nothing on screen asks for them yet.
-            Ask::NamingTables | Ask::TypeAppName | Ask::TypeModuleName => return,
+            Ask::NamingTables | Ask::TypeAppName | Ask::TypeModuleName => {
+                match self.destructive_dialog(index, ask, &act) {
+                    Some(dialog) => dialog,
+                    None => return,
+                }
+            }
         };
         // Focus starts on Cancel, so Enter never confirms an action (S10.3).
         let dialog = Dialog {
@@ -1086,20 +1127,125 @@ impl MortiseApp {
         self.dialog_opened = true;
     }
 
+    /// The strongest dialog of a destructive action (S10.5, design D6): the title
+    /// names the action and the object, the body names what is lost, and fresh and
+    /// delete ask for a name to be typed. Without the migration state the tables are
+    /// not named and the buttons carry no count (deviation S42).
+    fn destructive_dialog(&self, index: usize, ask: Ask, act: &Act) -> Option<Dialog> {
+        let app = self.snapshot(index)?;
+        let entry = &self.settings.apps[index];
+        let app_name = entry.display_name();
+        let module = match &act.target {
+            Target::Module(name) => name.as_str(),
+            Target::All => "",
+        };
+        let title = strings::destructive_question(act.action, module, app_name);
+        let confirm = strings::action_button(act.action).to_owned();
+        let typed = ask.name_to_type(app_name, &act.target).map(|name| Typed {
+            name: name.to_owned(),
+            text: String::new(),
+        });
+        let dialog = match act.action {
+            Action::ResetMigrations => Dialog {
+                left: Some(strings::DRY_RUN.to_owned()),
+                lines: vec![strings::nothing_outside(module)],
+                ..Dialog::new(title, strings::reset_body(module), confirm)
+            },
+            Action::RefreshMigrations => Dialog {
+                lines: vec![strings::NO_DRY_RUN.to_owned()],
+                ..Dialog::new(title, strings::refresh_body(module), confirm)
+            },
+            Action::FreshMigrate => {
+                let on = app
+                    .modules
+                    .iter()
+                    .filter(|module| module.state == ModuleState::On)
+                    .count();
+                // The line that runs, as the panel shows it (deviation S37).
+                let line = runner_view::line_now(entry.php.runner.as_ref(), &act.args)
+                    .unwrap_or_else(|| format!("php artisan {}", act.args.join(" ")));
+                Dialog {
+                    code: Some(line),
+                    ..Dialog::new(title, strings::fresh_body(on), confirm)
+                }
+            }
+            Action::DeleteModule => {
+                let found = app.module(module)?;
+                let users = actions_view::users_on(&app, module);
+                let users: Vec<&str> = users.iter().map(String::as_str).collect();
+                let statuses = actions_view::statuses_file(&app);
+                let body = strings::delete_body(
+                    &app.path_shown(&found.dir),
+                    found.files,
+                    statuses.as_deref(),
+                    &users,
+                );
+                // What git cannot bring back: left out when there is nothing.
+                let alert = match found.uncommitted {
+                    Some(0) => None,
+                    Some(n) => Some(strings::uncommitted(n)),
+                    None => Some(strings::CANNOT_TELL_GIT.to_owned()),
+                };
+                Dialog {
+                    alert,
+                    ..Dialog::new(title, body, confirm)
+                }
+            }
+            _ => return None,
+        };
+        Some(Dialog {
+            danger: true,
+            typed,
+            ..dialog
+        })
+    }
+
+    /// "Dry run" of a dialog: the panel of the action, with the option checked.
+    /// Nothing runs (deviation S38).
+    fn check_dry_run(&mut self, index: usize, act: &Act) {
+        let shown = self.apps.get(index).is_some_and(|open| {
+            open.tab == Tab::Actions && open.actions.shows(&act.target, act.action)
+        });
+        if !shown && self.current == Some(index) {
+            let module = match &act.target {
+                Target::Module(name) => Some(name.clone()),
+                Target::All => None,
+            };
+            self.open_action(module, act.action);
+        }
+        if let Some(open) = self.apps.get_mut(index) {
+            open.actions.options.pretend = true;
+        }
+    }
+
+    /// The snapshot of the app at `index`, once it is read.
+    fn snapshot(&self, index: usize) -> Option<Arc<AppSnapshot>> {
+        match self.apps.get(index)?.live.state() {
+            LiveState::Ready(app) => Some(app),
+            _ => None,
+        }
+    }
+
     /// Starts the words of an action and keeps what it was, for the toast at its end.
     fn start_action(&mut self, index: usize, act: Act) {
         if self.apps[index].runs.running().is_some() {
             return;
         }
+        let modules_on = self.snapshot(index).map_or(0, |app| {
+            app.modules
+                .iter()
+                .filter(|module| module.state == ModuleState::On)
+                .count()
+        });
         self.start_run(index, act.args.clone());
         let open = &mut self.apps[index];
-        open.action_run = open.runs.running().is_some().then_some(act);
+        open.action_run = open.runs.running().is_some().then_some((act, modules_on));
     }
 
     /// The toast after an action of the app at `index` ended (design D6). A dry run
     /// and Check translations get none when they succeed. A failure gets one only when
     /// the drawer does not show it.
-    fn action_ended(&mut self, index: usize, act: &Act) {
+    fn action_ended(&mut self, index: usize, act: &Act, modules_on: usize) {
         let Some((end, lines)) = self.apps[index].runs.ended() else {
             return;
         };
@@ -1119,6 +1265,16 @@ impl MortiseApp {
                 Action::Migrate => strings::migrated(object, count.ran),
                 Action::RollBack => strings::rolled_back(object, count.rolled_back),
                 Action::Seed => strings::seeded(object),
+                Action::ResetMigrations => strings::reset_done(object, count.rolled_back),
+                Action::RefreshMigrations => strings::refreshed(object, count.ran),
+                Action::FreshMigrate => {
+                    strings::dropped_all(self.settings.apps[index].display_name(), modules_on)
+                }
+                // The module is gone: the index selects "All modules"; the tab stays.
+                Action::DeleteModule => {
+                    self.apps[index].selection = Selection::All;
+                    strings::deleted_module(object)
+                }
                 _ => return,
             };
             self.toast = Some(Toast::done(text));
@@ -1597,13 +1753,13 @@ impl eframe::App for MortiseApp {
             running |= open.runs.poll();
             if was
                 && open.runs.running().is_none()
-                && let Some(act) = open.action_run.take()
+                && let Some((act, modules_on)) = open.action_run.take()
             {
-                ended.push((index, act));
+                ended.push((index, act, modules_on));
             }
         }
-        for (index, act) in ended {
-            self.action_ended(index, &act);
+        for (index, act, modules_on) in ended {
+            self.action_ended(index, &act, modules_on);
         }
         if running {
             ctx.request_repaint_after(std::time::Duration::from_millis(100));
@@ -2037,7 +2193,7 @@ impl eframe::App for MortiseApp {
         }
 
         // A dialog, over everything else.
-        if let Some((dialog, _)) = &self.dialog {
+        if let Some((dialog, _)) = &mut self.dialog {
             let answer = dialog.show(ui, pal, self.dialog_opened, self.keyboard);
             self.dialog_opened = false;
             match (answer, self.dialog.take_if(|_| answer.is_some())) {
@@ -2065,10 +2221,8 @@ impl eframe::App for MortiseApp {
                     self.start_action(index, act)
                 }
                 // "Dry run" checks the option on the panel and runs nothing (deviation S38).
-                (Some(Answer::Left), Some((_, Pending::Action { index, .. }))) => {
-                    if let Some(open) = self.apps.get_mut(index) {
-                        open.actions.options.pretend = true;
-                    }
+                (Some(Answer::Left), Some((_, Pending::Action { index, act }))) => {
+                    self.check_dry_run(index, &act)
                 }
                 _ => {}
             }
@@ -2281,6 +2435,22 @@ fn system_reduces_motion() -> bool {
 #[cfg(not(target_os = "macos"))]
 fn system_reduces_motion() -> bool {
     false
+}
+
+/// The action and the target of artisan words of reset, refresh, fresh or delete:
+/// `--all`, or the module, which is the second word or the word after `--`.
+fn destructive_words(args: &[String]) -> Option<(Action, Target)> {
+    let action = Action::from_artisan(args.first()?).filter(|action| action.is_destructive())?;
+    let target = if args
+        .iter()
+        .take_while(|word| *word != "--")
+        .any(|word| word == "--all")
+    {
+        Target::All
+    } else {
+        Target::Module(runner_view::module_named(args)?)
+    };
+    Some((action, target))
 }
 
 /// What a dialog waits to do.
