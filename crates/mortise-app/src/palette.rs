@@ -698,7 +698,12 @@ fn palette_row(
         right = draw::keycap(ui, pal, pos2(right, mid), "Enter").left() - 6.0;
     }
     let chord = entry.keys;
-    let hint = entry.hint.as_str();
+    // A current row with no hint of its own says what Enter does.
+    let hint = if current && entry.hint.is_empty() {
+        "Open"
+    } else {
+        entry.hint.as_str()
+    };
     if !hint.is_empty() {
         right = if chord && !current {
             draw::keycap(ui, pal, pos2(right, mid), hint).left()
