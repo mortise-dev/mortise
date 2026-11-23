@@ -630,6 +630,8 @@ impl eframe::App for MortiseApp {
         let mut first_run_add = false;
         let mut drawer_rect = Rect::NOTHING;
         let mut drawer_actions = Vec::new();
+        // The app whose workspace is drawn in this frame.
+        let mut drawn = None;
         let monogram = self.monogram_preview();
         if let Some(panel) = &mut self.adding {
             // The bar is drawn only after 300 ms, so quick work does not flash, and only
@@ -820,7 +822,6 @@ impl eframe::App for MortiseApp {
                             entry.display_name(),
                         ))
                     } else {
-                        metrics::closed(open.runtime.as_ref());
                         None
                     };
 
@@ -896,6 +897,7 @@ impl eframe::App for MortiseApp {
                         &mut open.tab,
                         state,
                     );
+                    drawn = Some(current);
                     // A module chosen in the workspace shows in the index in the next frame.
                     if work_action.is_some() {
                         ctx.request_repaint();
@@ -1251,6 +1253,8 @@ impl eframe::App for MortiseApp {
         }
         #[cfg(target_os = "macos")]
         self.menu_actions(&ctx, menu_chosen);
+        // Last, once nothing else in the frame can change the tab or what is on screen.
+        self.follow_metrics(drawn);
     }
 
     /// Closing Mortise stops the run of each app, as Stop does, and waits for the

@@ -14,6 +14,7 @@ use eframe::egui::{Key, Modifiers, Role};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable as _;
 use mortise_app::app::MortiseApp;
+use mortise_core::Pace;
 use mortise_core::testing::{Reply, StubActuator};
 
 const ONE_READ: &str = "A rate needs two reads. The second read comes 15 s after the first.";
@@ -70,7 +71,17 @@ fn without_prometheus_in_the_links_the_tab_says_how_to_expose_it() {
     let stub = StubActuator::recorded();
     let links = stub.reply("/actuator").unwrap();
     stub.expose(&["health", "info", "mappings", "scheduledtasks"]);
-    let (_desk, mut harness) = connected(&stub);
+    let mut desk = Desk::new();
+    // Metrics are read every 100 ms, so a read after the tab closed would show at once.
+    desk.pace = Pace {
+        metrics: Duration::from_millis(100),
+        ..Pace::default()
+    };
+    let root = desk.app("shop-api");
+    desk.knows(&[(&root, "SA")]);
+    desk.connect(&[environment("local", &stub)]);
+    let mut harness = desk.start();
+    wait_for_answer(&mut harness);
     open_metrics(&mut harness);
 
     harness.get_by_role_and_label(Role::Heading, "Metrics are not exposed on local");
@@ -91,6 +102,27 @@ fn without_prometheus_in_the_links_the_tab_says_how_to_expose_it() {
         .click();
     wait_for(&mut harness, "Requests/min");
     harness.get_by_role_and_label(Role::ColumnHeader, "Jobs/min");
+
+    // Settings take the place of the tab: no read of `prometheus` starts after that.
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::Comma);
+    let prometheus = || {
+        stub.asked()
+            .iter()
+            .filter(|path| *path == "/actuator/prometheus")
+            .count()
+    };
+    let draw_for = |harness: &mut Harness<'static, MortiseApp>, time: Duration| {
+        let until = Instant::now() + time;
+        while Instant::now() < until {
+            harness.step();
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    };
+    // A read on its way ends.
+    draw_for(&mut harness, Duration::from_millis(300));
+    let asked = prometheus();
+    draw_for(&mut harness, Duration::from_millis(600));
+    assert_eq!(prometheus(), asked);
 }
 
 #[test]

@@ -4,7 +4,8 @@ use std::sync::Arc;
 
 use mortise_core::{Answer, AppSnapshot, Figures, LAST_MINUTE, NotKept};
 
-use super::Connected;
+use super::{Connected, MortiseApp};
+use crate::app::workspace::Tab;
 use crate::metrics::view::MetricsView;
 
 /// The figures the tab drew last, with what they were worked out from.
@@ -15,15 +16,29 @@ pub(super) struct Kept {
     figures: Figures,
 }
 
-/// Tells the worker in a frame that does not draw the tab: no read of `prometheus` starts.
-pub(super) fn closed(connected: Option<&Connected>) {
-    if let Some(connected) = connected {
-        connected.live.metrics_closed();
+impl MortiseApp {
+    /// Tells each environment whether its Metrics tab is open, from the state at the end of the
+    /// frame: the workspace of the app was drawn, nothing took its place since, and its tab is
+    /// still Metrics. The worker reads `prometheus` only while the tab is open. Settings, the add
+    /// panel, another app or another tab close it, in the frame they come.
+    pub(super) fn follow_metrics(&self, drawn: Option<usize>) {
+        let shown = drawn.filter(|&index| {
+            self.current == Some(index) && self.adding.is_none() && self.settings_open.is_none()
+        });
+        for (index, open) in self.apps.iter().enumerate() {
+            let Some(connected) = &open.runtime else {
+                continue;
+            };
+            if shown == Some(index) && open.tab == Tab::Metrics {
+                connected.live.metrics_seen();
+            } else {
+                connected.live.metrics_closed();
+            }
+        }
     }
 }
 
-/// What the Metrics tab shows in this frame, first match wins. Call it only in a frame that
-/// draws the tab: it tells the worker that the tab is open.
+/// What the Metrics tab shows in this frame, first match wins.
 pub(super) fn tab<'a>(
     connected: Option<&'a mut Connected>,
     app: &Arc<AppSnapshot>,
@@ -32,8 +47,6 @@ pub(super) fn tab<'a>(
     let Some(connected) = connected else {
         return MetricsView::NotConnected { app: name };
     };
-    // The worker reads `prometheus` only while the tab draws itself.
-    connected.live.metrics_seen();
     let environment = connected.environment.name.as_str();
     let Some(answer) = connected.live.state().answer else {
         return MetricsView::Waiting { environment };
