@@ -613,7 +613,9 @@ fn the_rules_of_mortise_json_decide_what_is_a_problem() {
     assert_eq!(app.link("Checkout", "Billing").unwrap().internal_files(), 0);
     // The circle is still known, but no module is told it is counted elsewhere.
     assert_eq!(app.cycles.len(), 1);
-    assert!(app.circles_counted_elsewhere("Shipping").is_empty());
+    for member in ["Checkout", "Shipping"] {
+        assert!(app.circles_counted_elsewhere(member).is_empty());
+    }
 }
 
 #[test]
@@ -822,4 +824,7 @@ fn a_module_that_is_off_gets_no_coverage_warning_and_breaks_no_rule() {
     assert_eq!((billing.files(), billing.internal_files()), (6, 0));
     assert!(!app.link("Checkout", "Shipping").unwrap().circular);
     assert!(app.cycles[0].off);
+    for member in ["Checkout", "Shipping"] {
+        assert!(app.circles_counted_elsewhere(member).is_empty());
+    }
 }
