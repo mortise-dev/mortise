@@ -575,8 +575,25 @@ Text of `metrics/strings.rs`. S7.1 and S7.2 are the spec's words. The rest is ma
 
 ## Measured
 
-Task 20.7 fills this in: the time of `Reading::of` for the generated answer in a release build, the
-peak size of the process with and without the read, and the computer it ran on.
+Measured on 2026-11-23 on an Apple M3 Max with 128 GB of memory (137438953472 bytes), macOS, release
+build. Nothing ran on Windows or Linux.
+
+**Time.** `a_large_answer_is_folded_within_the_budget` folds the generated answer of 4.6, 3678352 bytes,
+in 11.5 ms, 5.6 ms and 5.8 ms in three runs. The first run is the slowest, as the caches are cold. The
+budget of D8 is 50 ms. All three runs are within it.
+
+**Memory.** `/usr/bin/time -l` on the release test binary, three runs each:
+
+| Test | Maximum resident set size |
+|---|---|
+| `a_large_answer_is_folded_within_the_budget` (builds the text and reads it) | 12.6 MB (12615680 to 12648448 bytes) |
+| `the_real_clock_adds_the_time_asleep_and_never_goes_back` (no answer) | 7.06 MB (7061504 to 7077888 bytes) |
+
+The difference is 5.55 MB. The text is 3.68 MB, so 1.87 MB is left. That includes the growth of the
+`String` that builds the text (it doubles, and the old block lives while the new one is made) and the
+`Reading` of about 170 KB. The read alone is below 1.87 MB. The budget of D8 is under 2 MB beside the
+text, so it holds. The number is an upper bound, because the test cannot tell the read from the builder
+of the text.
 
 ## Risks / Trade-offs
 
