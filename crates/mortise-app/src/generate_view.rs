@@ -2032,6 +2032,33 @@ struct FilesShown {
     list: bool,
 }
 
+/// What the run of a dry run's list writes.
+#[derive(Debug, PartialEq, Eq)]
+struct Writes<'a> {
+    /// The generator's own file, which exists: Create is off.
+    own: Option<&'a ReportedFile>,
+    /// How many files the run writes.
+    written: usize,
+}
+
+/// What the run of `generator` writes, from the files of its dry run in write order.
+/// The first file is the generator's own. When it is kept, the run cannot write it,
+/// and Create is off. A later kept file belongs to a generator it calls, such as the
+/// view of `module:make-component` or a model's policy or factory: the run leaves it,
+/// and it does not stop Create. `module:make` has no own file: the package leaves a
+/// module that exists and makes the others. Only the files the run writes count.
+fn writes<'a>(generator: &str, files: &[&'a ReportedFile]) -> Writes<'a> {
+    let own = files
+        .first()
+        .copied()
+        .filter(|file| generator != MODULE_MAKE && file.action == FileAction::Keep);
+    let written = files
+        .iter()
+        .filter(|file| file.action != FileAction::Keep)
+        .count();
+    Writes { own, written }
+}
+
 /// The folder a printed path is shown under, and the rest of it: under the module
 /// folder for a file generator (`Modules/Billing/`), under the folder of its module
 /// for `module:make` (`Modules/Loyalty/`). A path outside both is shown as printed,
@@ -2113,16 +2140,7 @@ fn files_this_creates(
     let taken = |file: &ReportedFile| flag_of(file).is_some_and(|flag| taken_out.contains(&flag));
     // The factory keeps its flag: the run leaves its file as it is (S9.3).
     let factory_kept = |file: &ReportedFile| flag_of(file) == Some(FACTORY);
-    let own: Vec<&ReportedFile> = files
-        .iter()
-        .copied()
-        .filter(|file| file.action == FileAction::Keep && !taken(file) && !factory_kept(file))
-        .collect();
-    // The files the run does not write: taken out of the command, or the factory kept.
-    let not_written = files
-        .iter()
-        .filter(|file| taken(file) || factory_kept(file))
-        .count();
+    let Writes { own, written } = writes(&generator.name, &files);
 
     // The rows by root folder, in the order the roots come; in a root, the files at
     // its top first, then by folder.
@@ -2178,7 +2196,7 @@ fn files_this_creates(
     for file in files.iter().filter(|file| factory_kept(file)) {
         y = sentence(y, &strings::factory_kept(&shown(file)), pal.ink_2);
     }
-    for file in &own {
+    if let Some(file) = own {
         let replaceable = replace_for(inputs, words, &file.path, &app.package).is_some();
         let text = strings::own_file_exists(&shown(file), replaceable);
         y = sentence(y, &text, pal.bad);
@@ -2190,18 +2208,18 @@ fn files_this_creates(
         }
     }
 
-    let create = if !own.is_empty() || files.is_empty() {
+    let create = if own.is_some() || files.is_empty() {
         None
-    } else if not_written > 0 {
-        Some(strings::create_other_files(files.len() - not_written))
+    } else if written < files.len() {
+        Some(strings::create_other_files(written))
     } else {
         Some(strings::create_n_files(files.len()))
     };
     FilesShown {
         bottom: y,
         create,
-        blocked: !own.is_empty(),
-        replace: own.first().map(|file| file.path.clone()),
+        blocked: own.is_some(),
+        replace: own.map(|file| file.path.clone()),
         read_shown: None,
         list: false,
     }
@@ -2734,4 +2752,43 @@ fn mark_rect(right: f32, mid: f32) -> Rect {
         ),
         Vec2::splat(size::STATE_MARK),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_the_generator_s_own_file_stops_create() {
+        let file = |path: &str, action| ReportedFile {
+            path: path.to_owned(),
+            exists: action == FileAction::Keep,
+            action,
+            result: None,
+        };
+        // A component whose view exists: the class is written, the view is left.
+        let class = file("app/View/Components/Badge.php", FileAction::Create);
+        let view = file(
+            "resources/views/components/badge.blade.php",
+            FileAction::Keep,
+        );
+        assert_eq!(
+            writes("module:make-component", &[&class, &view]),
+            Writes {
+                own: None,
+                written: 1
+            }
+        );
+        // A model that exists stops Create; its policy that exists does not.
+        let model = file("app/Models/Invoice.php", FileAction::Keep);
+        let policy = file("app/Policies/InvoicePolicy.php", FileAction::Keep);
+        assert_eq!(
+            writes(MAKE_MODEL, &[&model, &policy]),
+            Writes {
+                own: Some(&model),
+                written: 0
+            }
+        );
+        assert_eq!(writes(MODULE_MAKE, &[&model]).own, None);
+    }
 }
