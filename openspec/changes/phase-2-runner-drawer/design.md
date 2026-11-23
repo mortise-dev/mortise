@@ -90,16 +90,19 @@ spec).
 - one owner thread that holds the `Child`.
 
 The owner loops every 50 ms: it forwards lines from the readers to the run's channel, checks the stop
-flag and the limit, and calls `try_wait`. It keeps a count of forwarded bytes; past `OUTPUT_LIMIT` it
+flag and the limit, and checks whether the leader has exited. The readers send into a bounded channel
+of 1024 lines, and the owner takes at most that many per loop, so steady output never delays a stop. It keeps a count of forwarded bytes; past `OUTPUT_LIMIT` it
 sends `Cut` once and drops later lines, while the readers keep reading so the program never blocks.
 The per-line cut of 64 KiB stays. The 64 KiB per stream of `capture` stays a `capture` rule.
 
 The end, in this order:
 
-1. The leader has exited (by itself or after a stop).
+1. The leader has exited (by itself or after a stop). On Unix the owner sees this with
+   `waitid(.., EXITED | NOHANG | NOWAIT)` (`rustix`, safe), which does not reap the leader, so its pid,
+   the id of the group, cannot be given to another process yet.
 2. The owner waits up to 250 ms for both readers to finish (`JoinHandle::is_finished`).
-3. Still open: on Unix it sends SIGKILL to the group, which ends any process left in it, and the pipes
-   close. On Windows see D4.
+3. On Unix it sends SIGKILL to the group, always: a child that ignored SIGTERM and closed its pipes
+   ends too. Then it reaps the leader. On Windows see D4.
 4. It joins both readers and forwards their last lines.
 5. It removes the app from `Runs`, then sends `Ended`. So when the interface sees `Ended`, a new start
    in that app is accepted, and no thread of the run is alive.
@@ -131,7 +134,9 @@ An error of `kill_process_group` with `ESRCH` means the group is gone; that is n
 no way to name its children without a job object, and a job object needs `unsafe` or a new crate that
 wraps it. So on Windows step 3 of D2 does nothing: the readers end when the child closes the pipe, and
 the owner detaches them after 1 s, as for `setsid`. Stop and the time limit end the tree while the
-leader still lives, so carried-over finding 1 is fixed on Windows. This is a known limit, recorded in
+leader still lives, so carried-over finding 1 is fixed on Windows. The same limit holds when `taskkill`
+fails, or when the launcher exits just before it: then only the launcher is ended. Both are rare;
+the drawer still reads "Stopped". This is a known limit, recorded in
 the report, not in `docs/deviations.md`: the spec says nothing about it.
 
 - Alternative: the `win32job` crate. Rejected for now: it pulls the `windows` crate and a licence row
@@ -199,9 +204,11 @@ pub fn data_dir() -> Option<PathBuf>;   // MORTISE_DATA_DIR, else the data folde
 
 Layout: `<data_dir>/runs/<key>/runs.json` (the entries, the latest first, and the app folder for a
 reader) and `<key>/<id>.log` (the lines, `\n` after each). `<key>` is 16 hex digits of FNV-1a 64 of the
-app folder's path as a lossy string: stable across releases, no new crate. `record` writes the log,
-then `runs.json` through a temporary file in the same folder and a rename, as settings do. It keeps
-`HISTORY_LIMIT` entries and removes the logs of those it drops, and any `.log` no entry names. It keeps
+app folder's path as a lossy string: stable across releases, no new crate. `record` holds a lock on
+`<key>/runs.lock` (`File::lock`, std), so two Mortise windows do not lose a run. It writes the log,
+then `runs.json`, each through a temporary file in the same folder and a rename, as settings do. It
+keeps `HISTORY_LIMIT` entries and removes the logs of those it drops, and any `<id>.log` no entry
+names; it removes no other file. It keeps
 at most `OUTPUT_LIMIT` bytes of lines and sets `cut` when it drops some. A run that did not start is
 not recorded.
 
@@ -250,6 +257,8 @@ milestone 10. New:
   prints `Aborted.` on stderr and exits 1.
 - `orphan`: starts a copy of itself with `wait` that inherits both pipes, prints its pid, and exits 0.
 - `orphan-wait`: as `orphan`, then waits 60 s itself.
+- `orphan-quiet`: as `orphan-wait`, but the child ignores SIGTERM and has no pipes, so only a kill of
+  the group ends it.
 - any other word: the recording in `fixtures/output/` whose `args` equal the remaining words without
   `--no-interaction` and `--ansi`. It prints `stdout`, then `stderr`, and exits with `exit`. No match:
   `Command "<word>" is not defined.` on stderr, exit 1.
