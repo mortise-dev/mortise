@@ -443,6 +443,8 @@ accessible name and a 24 px target (`tests/accessibility.rs`).
   Laravel's alias. Another class imported as `Schema` does not count.
 - `Generator::refused_name(argument, text)` checks each white-space separated name of an array
   argument, as `words` splits it, and the whole text of another argument. A form uses it for its errors.
+- A `module:make` run whose composer dump-autoload failed and whose files came from the lines keeps
+  the reason: the form shows "Read from the output: ..." under its line, beside the alert.
 
 ## Risks / Trade-offs
 

@@ -1751,11 +1751,12 @@ fn command(
 
     // The dry run's line, when it is whole on screen in this frame.
     state.read_shown = files.as_mut().and_then(|files| files.read_shown.take());
-    // A run that read no file and gave no answer: why, under the line (design D2).
+    // A run that gave no answer and shows no result, as one that read no file or whose
+    // composer dump-autoload failed: why, under the line (design D2).
     if let Some(reason) = state
         .result
         .as_ref()
-        .filter(|result| result.files.is_empty())
+        .filter(|result| result.files.is_empty() || result.autoload_failed)
         .and_then(|result| result.fallback.as_deref())
     {
         let text = strings::read_from_output(reason);

@@ -1849,8 +1849,9 @@ impl MortiseApp {
             open.live.refresh();
             if autoload_failed {
                 if attached {
-                    open.generate
-                        .show_result(GenerateResult::new(None, run.args, files, true));
+                    // Read from the lines when the answer was missing or cut: why.
+                    let result = GenerateResult::new(None, run.args, files, true);
+                    open.generate.show_result(result.read_from_output(fallback));
                 }
             } else if wrote {
                 open.select_new = Some(SelectNew {
