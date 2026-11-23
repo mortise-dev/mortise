@@ -14,12 +14,24 @@ name = "mortise_app"
 name = "mortise"
 path = "src/main.rs"
 
+# The artisan of the tests, the same as that of `mortise-core`. A release build
+# leaves `testing` off, so it is not built.
+[[bin]]
+name = "fake-artisan"
+path = "src/bin/fake-artisan.rs"
+required-features = ["testing"]
+
+[features]
+# The helpers of `mortise_core::testing` and the fake artisan, for the tests.
+testing = ["mortise-core/testing"]
+
 [dependencies]
 eframe.workspace = true
 mortise-core.workspace = true
 rfd.workspace = true
 
 [dev-dependencies]
+mortise-app = { path = ".", features = ["testing"] }
 mortise-core = { workspace = true, features = ["testing"] }
 egui_kittest.workspace = true
 image.workspace = true

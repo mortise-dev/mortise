@@ -2373,6 +2373,7 @@ dependencies = [
  "eframe",
  "egui_kittest",
  "image",
+ "mortise-app",
  "mortise-core",
  "muda",
  "objc2-app-kit 0.3.2",

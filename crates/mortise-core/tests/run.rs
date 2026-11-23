@@ -84,3 +84,13 @@ fn timed_out_at_the_limit() {
     );
     assert!(started.elapsed() < Duration::from_secs(10));
 }
+
+#[test]
+fn the_fake_replays_a_recording() {
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_fake-artisan"))
+        .args(["module:make", "--no-interaction", "--ansi", "Blog"])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(0));
+    assert!(!output.stdout.is_empty());
+}
