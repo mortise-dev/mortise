@@ -13,12 +13,12 @@
 
 ## 3. Interface (13.3 opus, after 2)
 
-- [ ] 3.1 Add the closed group, the four panels, production and the keys to `actions_view.rs` (D5). Text in `strings.rs`, each string not in the spec marked so. Verify with `tests/actions.rs`: closed on open, J stops at the group, Enter opens it, another module closes it, production turns the run button off and keeps Copy
-- [ ] 3.2 Add `lines`, `code` and `typed` to `Dialog` and the four dialogs of S10.5 in `app.rs` (D6). Verify with `tests/actions.rs`: Ctrl Enter on Delete opens the dialog with focus on Cancel, the button stays off for "checkout", turns on for "Checkout", Enter does not confirm, the delete runs, the toast shows and the index selects "All modules"; a reset dry run runs without a dialog
-- [ ] 3.3 Run again of the four, the toasts, and the selection after a delete (D7); the prohibited sentence in `runner_view.rs` (D4). Verify with one Run again case in `tests/actions.rs` and one prohibited case in `tests/runner.rs`
-- [ ] 3.4 Add the word rule to `palette.rs` (D8). Verify with one case in `tests/palette.rs`: "checkout" lists no destructive row, "delete checkout" lists Delete module Checkout
-- [ ] 3.5 Add or extend deviations in `docs/deviations.md` for what differs from the spec (the P4 fallbacks of the four, the group row's "closed"), each with how it was checked
-- [ ] 3.6 Add images for S10.4 a to d and S10.5 a to d, light and dark, with `UPDATE_SNAPSHOTS=1 cargo test -p mortise-app --test images`, and look at each new or changed image
+- [x] 3.1 Add the closed group, the four panels, production and the keys to `actions_view.rs` (D5). Text in `strings.rs`, each string not in the spec marked so. Verify with `tests/actions.rs`: closed on open, J stops at the group, Enter opens it, another module closes it, production turns the run button off and keeps Copy
+- [x] 3.2 Add `lines`, `code` and `typed` to `Dialog` and the four dialogs of S10.5 in `app.rs` (D6). Verify with `tests/actions.rs`: Ctrl Enter on Delete opens the dialog with focus on Cancel, the button stays off for "checkout", turns on for "Checkout", Enter does not confirm, the delete runs, the toast shows and the index selects "All modules"; a reset dry run runs without a dialog
+- [x] 3.3 Run again of the four, the toasts, and the selection after a delete (D7); the prohibited sentence in `runner_view.rs` (D4). Verify with one Run again case in `tests/actions.rs` and one prohibited case in `tests/runner.rs`
+- [x] 3.4 Add the word rule to `palette.rs` (D8). Verify with one case in `tests/palette.rs`: "checkout" lists no destructive row, "delete checkout" lists Delete module Checkout
+- [x] 3.5 Add or extend deviations in `docs/deviations.md` for what differs from the spec (the P4 fallbacks of the four, the group row's "closed"), each with how it was checked
+- [x] 3.6 Add images for S10.4 a to d and S10.5 a to d, light and dark, with `UPDATE_SNAPSHOTS=1 cargo test -p mortise-app --test images`, and look at each new or changed image
 
 ## 4. Integration
 
