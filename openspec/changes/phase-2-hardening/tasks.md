@@ -36,5 +36,5 @@
 
 ## 8. Integration
 
-- [ ] 8.1 Run `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings` and `cargo test --workspace` on macOS; all pass
-- [ ] 8.2 Run `openspec validate phase-2-hardening --strict`
+- [x] 8.1 Run `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings` and `cargo test --workspace` on macOS; all pass
+- [x] 8.2 Run `openspec validate phase-2-hardening --strict`
