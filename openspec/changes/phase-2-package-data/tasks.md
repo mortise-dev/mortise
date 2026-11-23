@@ -6,10 +6,10 @@
 
 ## 2. Recordings (15.2 sonnet)
 
-- [ ] 2.1 Make a scratch app with `nwidart/laravel-modules` 13.4.0 (PHP 8.4, Composer, SQLite), with modules Billing and Checkout as D10 needs, and record each command of D10 into `fixtures/output/` with `made_with` naming 13.4.0 and a `root` key. Verify each file parses, `args` are unique across the folder, and note the byte size of the P3 line in the README
-- [ ] 2.2 Teach the fake artisan to replace `root` with its working folder, written with `/`. Verify with one test in `testing.rs` or the existing replay test
-- [ ] 2.3 Correct the package facts of `design.md` where the recordings differ
-- [ ] 2.4 Extend `crates/mortise-core/tests/real_php.rs` (ignored) with a dry run that leaves the app unchanged, a `--json` generator run, `module:migrate-status --json`, `module:test` and `module:lang --json` (D10). Run it against the scratch app with `MORTISE_REAL_APP`
+- [x] 2.1 Make a scratch app with `nwidart/laravel-modules` 13.4.0 (PHP 8.4, Composer, SQLite), with modules Billing and Checkout as D10 needs, and record each command of D10 into `fixtures/output/` with `made_with` naming 13.4.0 and a `root` key. Verify each file parses, `args` are unique across the folder, and note the byte size of the P3 line in the README
+- [x] 2.2 Teach the fake artisan to replace `root` with its working folder, written with `/`. Verify with one test in `testing.rs` or the existing replay test
+- [x] 2.3 Correct the package facts of `design.md` where the recordings differ
+- [x] 2.4 Extend `crates/mortise-core/tests/real_php.rs` (ignored) with a dry run that leaves the app unchanged, a `--json` generator run, `module:migrate-status --json`, `module:test` and `module:lang --json` (D10). Run it against the scratch app with `MORTISE_REAL_APP`
 
 ## 3. Core groundwork (15.3a opus, after 2)
 

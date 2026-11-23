@@ -1,0 +1,18 @@
+{
+  "command": "php artisan module:make-model PaymentIntent Billing --migration --policy --fillable=order_id,amount,currency,status --dry-run --json --no-interaction --ansi",
+  "args": [
+    "module:make-model",
+    "PaymentIntent",
+    "Billing",
+    "--migration",
+    "--policy",
+    "--fillable=order_id,amount,currency,status",
+    "--dry-run",
+    "--json"
+  ],
+  "made_with": "nwidart/laravel-modules 13.4.0, laravel/framework 13.43.0, PHP 8.4.27, macOS",
+  "exit": 0,
+  "stdout": "{\"command\":\"module:make-model\",\"dry_run\":true,\"files\":[{\"path\":\"/private/tmp/claude-501/-Users-nicolaswidart--t3-worktrees-mortise-change-phase-2-package--2670127a323adadc/64d3ddb9-6432-4f43-920e-7e4d51853670/scratchpad/realapp/Modules/Billing/app/Models/PaymentIntent.php\",\"exists\":false,\"action\":\"create\"},{\"path\":\"/private/tmp/claude-501/-Users-nicolaswidart--t3-worktrees-mortise-change-phase-2-package--2670127a323adadc/64d3ddb9-6432-4f43-920e-7e4d51853670/scratchpad/realapp/Modules/Billing/database/migrations/2026_11_23_110209_create_payment_intents_table.php\",\"exists\":false,\"action\":\"create\"},{\"path\":\"/private/tmp/claude-501/-Users-nicolaswidart--t3-worktrees-mortise-change-phase-2-package--2670127a323adadc/64d3ddb9-6432-4f43-920e-7e4d51853670/scratchpad/realapp/Modules/Billing/app/Policies/PaymentIntentPolicy.php\",\"exists\":false,\"action\":\"create\"}],\"errors\":[]}\n",
+  "stderr": "",
+  "root": "/private/tmp/claude-501/-Users-nicolaswidart--t3-worktrees-mortise-change-phase-2-package--2670127a323adadc/64d3ddb9-6432-4f43-920e-7e4d51853670/scratchpad/realapp"
+}

@@ -10,8 +10,8 @@ built the runner (`Runs::start`, one run per app, time limit), the drawer and it
 `AppSnapshot::package` holds the package version from `composer.lock` (`composer::Version`: `raw` and the
 branch `alias`). An app without `composer.lock` is not read at all (`ReadError::NoLock`).
 
-Package facts, read at the tag `v13.4.0` (source and docs read, not yet run; task 15.2 records the real
-output and corrects this section where it differs):
+Package facts, read at the tag `v13.4.0` and checked against the output recorded in `fixtures/output`
+(task 15.2). The recorded shapes match the facts below, with these additions:
 
 - JSON rules of every `--json` command: standard output holds one JSON document on one line and nothing
   else; every other message goes to standard error; no ANSI codes, even with `--ansi`; the exit code
@@ -23,7 +23,8 @@ output and corrects this section where it differs):
   "result"?}],"errors":[...]}`. `path` is absolute with forward slashes. `action` is `create`, `replace`,
   `keep` or `delete` (the folder `module:make --force` deletes first). `result` (real runs only) is
   `created`, `replaced`, `exists`, `deleted` or `failed`. A dry run writes nothing and exits with the code
-  the real run would give: a `keep` file gives exit 1 and its error. Files are in write order and
+  the real run would give: a `keep` file gives exit 1 and its error, with the absolute path of the file in the
+  text of the error. Files are in write order and
   include the files of called generators (`module:make-model --all`, `module:make-component`,
   `module:make`). `module:make-model` passes `--force` to the generators it calls (PR #2302).
 - P4 `module:migrate-status [<module>...|--all] --json`: `{"modules":[{"name","migrations":[{"name",
@@ -34,7 +35,8 @@ output and corrects this section where it differs):
 - P7 `module:test [<module>...] [--all] [--filter=] [--parallel] [--json]`: the runner output goes to
   standard error; standard output ends with `{"modules":[{"name","ran","passed","failed","skipped",
   "exit_code"}],"passed","failed","skipped","exit_code"}`. `ran: false` for a module without `tests`;
-  counts are `null` then, or when the runner wrote no report. `--all` takes every module, on or off.
+  counts are `null` then, or when the runner wrote no report. A `tests` folder with no test gives `ran: true`
+  and counts of 0. `--all` takes every module, on or off. The runner output goes to standard error.
 - P8 `module:lang [<module>...|--all] --json`: `{"modules":[{"name","checked","locales":{"<locale>":
   {"missing_files":[...],"missing_keys":{"<file>":["key",...]}}}}]}`. `checked: false` with fewer than
   two locales. Exit 1 when a key or file is missing. `{"modules":[]}` and a non-zero exit when no module.

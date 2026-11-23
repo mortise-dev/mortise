@@ -15,7 +15,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use mortise_core::{
     Action, Catalog, Context, FileOutcome, Filled, GeneratedFile, MODULE_MAKE, MigrationCount,
-    Options, PhpSettings, Plan, RunEnd, RunEvent, RunnerKind, Runs, STOP_WAIT, Target,
+    Options, PhpSettings, Plan, RunEnd, RunEvent, RunnerKind, Runs, STOP_WAIT, Stream, Target,
     autoload_failed, failed_migration, generated_files, migration_count, read_app,
 };
 
@@ -80,6 +80,64 @@ fn try_run(runs: &Runs, app: &Path, args: &[String]) -> Result<Vec<String>, Stri
     started.stop();
     started.wait(Instant::now() + STOP_WAIT);
     Err(format!("{args:?} did not end:\n{}", lines.join("\n")))
+}
+
+/// Runs `args` to its end and gives its exit code and the lines of standard
+/// output and of standard error, apart.
+fn run_split(runs: &Runs, app: &Path, args: &[&str]) -> (i32, Vec<String>, Vec<String>) {
+    let args: Vec<String> = args.iter().map(|word| word.to_string()).collect();
+    let started = runs
+        .start(app, &php(), &args, LIMIT)
+        .unwrap_or_else(|error| panic!("{args:?} did not start: {error:?}"));
+    let (mut out, mut err) = (Vec::new(), Vec::new());
+    for event in started.wait(Instant::now() + LIMIT + Duration::from_secs(10)) {
+        match event {
+            RunEvent::Line {
+                stream: Stream::Out,
+                text,
+            } => out.push(text),
+            RunEvent::Line { text, .. } => err.push(text),
+            RunEvent::Cut => panic!("{args:?}: the output passed the limit"),
+            RunEvent::Ended(RunEnd::Exited {
+                code: Some(code), ..
+            }) => return (code, out, err),
+            RunEvent::Ended(end) => panic!("{args:?} ended with {end:?}"),
+        }
+    }
+    started.stop();
+    panic!("{args:?} did not end");
+}
+
+/// The JSON document that a `--json` command wrote: the one line of standard output.
+fn document(out: &[String], err: &[String]) -> serde_json::Value {
+    assert_eq!(out.len(), 1, "stdout: {out:?}\nstderr: {err:?}");
+    serde_json::from_str(&out[0]).unwrap_or_else(|error| panic!("{error}: {}", out[0]))
+}
+
+/// Every file under `folder` with its size and a hash of its contents.
+fn listing(folder: &Path) -> BTreeMap<PathBuf, (u64, u64)> {
+    use std::hash::{Hash, Hasher};
+    let mut found = BTreeMap::new();
+    let mut open = vec![folder.to_path_buf()];
+    while let Some(next) = open.pop() {
+        for entry in std::fs::read_dir(next).unwrap().flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                open.push(path);
+            } else {
+                let bytes = std::fs::read(&path).unwrap();
+                let mut hasher = std::collections::hash_map::DefaultHasher::new();
+                bytes.hash(&mut hasher);
+                found.insert(path, (bytes.len() as u64, hasher.finish()));
+            }
+        }
+    }
+    found
+}
+
+fn write(path: &Path, text: &str) {
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(path, text).unwrap();
 }
 
 /// Rolls back and deletes [`module`] when it drops, also after a failed assertion.
@@ -250,5 +308,139 @@ fn make_generate_migrate_and_delete_a_module() {
     run(&runs, &app, &delete);
     made.removed = true;
     assert!(!has_module(&app));
+    assert!(!module_dir(&app).exists());
+}
+
+#[test]
+#[ignore = "needs PHP and the app in MORTISE_REAL_APP"]
+fn json_output_of_the_package_commands() {
+    let app = app();
+    let runs = Runs::new();
+    let module = module();
+    assert!(
+        !has_module(&app) && !module_dir(&app).exists(),
+        "The app already has a module {module}. The test does not change a module it did \
+         not make: delete it, or use another app."
+    );
+    let mut made = Made {
+        runs: &runs,
+        app: &app,
+        removed: false,
+    };
+    run(
+        &runs,
+        &app,
+        &generator(MODULE_MAKE, &[("name", module)], &[], None),
+    );
+    let dir = module_dir(&app);
+
+    // A dry run lists the files and writes nothing.
+    let before = listing(&dir);
+    let (code, out, err) = run_split(
+        &runs,
+        &app,
+        &[
+            "module:make-model",
+            "Widget",
+            module,
+            "--migration",
+            "--dry-run",
+            "--json",
+        ],
+    );
+    let json = document(&out, &err);
+    assert_eq!(code, 0, "{err:?}");
+    assert_eq!(json["dry_run"], true);
+    let files = json["files"].as_array().unwrap();
+    assert_eq!(files.len(), 2, "{json}");
+    for file in files {
+        assert!(file["path"].as_str().unwrap().contains(module), "{file}");
+        assert_eq!(
+            (&file["action"], &file["exists"]),
+            (&"create".into(), &false.into())
+        );
+        assert!(file.get("result").is_none(), "{file}");
+    }
+    assert_eq!(listing(&dir), before);
+
+    // The real run lists the same files as created.
+    let (code, out, err) = run_split(
+        &runs,
+        &app,
+        &[
+            "module:make-model",
+            "Widget",
+            module,
+            "--migration",
+            "--json",
+        ],
+    );
+    let json = document(&out, &err);
+    assert_eq!(code, 0, "{err:?}");
+    assert_eq!(json["dry_run"], false);
+    let files = json["files"].as_array().unwrap();
+    assert_eq!(files.len(), 2, "{json}");
+    for file in files {
+        assert_eq!(file["result"], "created", "{file}");
+        assert!(
+            Path::new(file["path"].as_str().unwrap()).is_file(),
+            "{file}"
+        );
+    }
+
+    // The migration waits, then it has run in batch 1 or later.
+    let status = |runs: &Runs| {
+        let (code, out, err) = run_split(runs, &app, &["module:migrate-status", module, "--json"]);
+        assert_eq!(code, 0, "{err:?}");
+        let json = document(&out, &err);
+        let migrations = json["modules"][0]["migrations"].as_array().unwrap().clone();
+        (json["migration_table"].clone(), migrations)
+    };
+    let (_, migrations) = status(&runs);
+    assert_eq!(migrations.len(), 1, "{migrations:?}");
+    assert_eq!(migrations[0]["ran"], false);
+    run(&runs, &app, &action(Action::Migrate));
+    let (table, migrations) = status(&runs);
+    assert_eq!(table, true);
+    assert_eq!(migrations[0]["ran"], true);
+    assert!(migrations[0]["batch"].as_u64().unwrap() >= 1);
+    run(&runs, &app, &action(Action::RollBack));
+
+    // One key of the fr file is missing.
+    write(
+        &dir.join("lang/en/messages.php"),
+        "<?php\n\nreturn ['welcome' => 'Welcome', 'bye' => 'Bye'];\n",
+    );
+    write(
+        &dir.join("lang/fr/messages.php"),
+        "<?php\n\nreturn ['welcome' => 'Bienvenue'];\n",
+    );
+    let (code, out, err) = run_split(&runs, &app, &["module:lang", module, "--json"]);
+    let json = document(&out, &err);
+    assert_eq!(code, 1, "{err:?}");
+    assert_eq!(json["modules"][0]["checked"], true);
+    assert_eq!(
+        json["modules"][0]["locales"]["fr"]["missing_keys"]["messages.php"],
+        serde_json::json!(["bye"])
+    );
+
+    // One test passes.
+    write(
+        &dir.join("tests/Unit/SumTest.php"),
+        &format!(
+            "<?php\n\nnamespace Modules\\{module}\\Tests\\Unit;\n\nuse PHPUnit\\Framework\\TestCase;\n\n\
+             class SumTest extends TestCase\n{{\n    public function test_a_sum(): void\n    {{\n        \
+             $this->assertSame(4, 2 + 2);\n    }}\n}}\n"
+        ),
+    );
+    let (code, out, err) = run_split(&runs, &app, &["module:test", module, "--json"]);
+    let json = document(&out, &err);
+    assert_eq!(code, 0, "{err:?}");
+    assert_eq!(json["passed"], 1, "{json}");
+    assert_eq!(json["failed"], 0, "{json}");
+    assert_eq!(json["modules"][0]["ran"], true);
+
+    run(&runs, &app, &action(Action::DeleteModule));
+    made.removed = true;
     assert!(!module_dir(&app).exists());
 }
