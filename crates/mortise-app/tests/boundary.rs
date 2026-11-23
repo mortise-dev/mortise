@@ -417,8 +417,25 @@ fn the_graph_of_12_modules_gives_each_node_its_full_name() {
     harness.run_steps(12);
     assert_eq!(harness.get_all_by_label("Addresses").count(), before + 1);
 
-    // Tab reaches every node, and the graph scrolls each one into view. The graph runs
-    // from 13 px left of its title to 13 px right of its control.
+    // Tab reaches every node, and each one is scrolled into view.
+    tab_through_the_graph(&mut harness, &names);
+
+    // At 960 by 400 and 150% text size the graph runs past the window both ways: the
+    // page scrolls down to a node as the graph scrolls across.
+    let mut settings = desk.saved();
+    settings.general.text_size = 150;
+    settings.save(&desk.settings_path()).unwrap();
+    desk.size = vec2(960.0, 400.0);
+    let mut harness = desk.start();
+    harness.key_press(Key::Num2);
+    harness.run();
+    tab_through_the_graph(&mut harness, &names);
+}
+
+/// Tabs from the links control across the graph. Each node that gets focus is inside
+/// the graph, which runs from 13 px left of its title to 13 px right of its control,
+/// and inside the window.
+fn tab_through_the_graph(harness: &mut Harness<'static, MortiseApp>, names: &[String]) {
     let heading = harness
         .get_by_role_and_label(Role::Heading, "16 links between 12 modules")
         .rect();
@@ -426,6 +443,7 @@ fn the_graph_of_12_modules_gives_each_node_its_full_name() {
         .get_by_role_and_label(Role::RadioButton, "Problems only")
         .rect();
     let (left, right) = (heading.left() - 13.0, control.right() + 16.0);
+    let window = harness.ctx.content_rect();
     harness
         .get_by_role_and_label(Role::RadioButton, "Problems only")
         .focus();
@@ -446,6 +464,10 @@ fn the_graph_of_12_modules_gives_each_node_its_full_name() {
             assert!(
                 left <= rect.left() && rect.right() <= right,
                 "{name} {rect:?}"
+            );
+            assert!(
+                window.top() <= rect.top() && rect.bottom() <= window.bottom(),
+                "{name} {rect:?} {window:?}"
             );
             reached.insert(name);
         }

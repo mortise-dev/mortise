@@ -967,6 +967,7 @@ impl View<'_> {
         let step = (inner_w - 44.0 - node_w) / (cols - 1.0).max(1.0);
         let mut body = |ui: &Ui, dx: f32| {
             let mut nodes: Vec<Node<'_>> = Vec::new();
+            let mut focused = None;
             for (c, column) in layout.iter().enumerate() {
                 let height = column.len() as f32 * node_h + (column.len() as f32 - 1.0) * row_gap;
                 let top = area_top + ((area_h - height) / 2.0).round();
@@ -1034,9 +1035,10 @@ impl View<'_> {
                     Sense::click(),
                 );
                 response.widget_info(|| WidgetInfo::labeled(Role::Button, true, &node.module.name));
-                // A node that Tab reaches is scrolled into the graph when it scrolls.
+                // A node that Tab reaches is scrolled into view.
                 if response.gained_focus() {
                     response.scroll_to_me(None);
+                    focused = Some(node.rect);
                 }
                 let fill = if response.hovered() {
                     pal.well
@@ -1051,22 +1053,29 @@ impl View<'_> {
                 }
                 draw::tooltip(response, pal, &node.module.name);
             }
+            focused
         };
         if inner_w > width {
             let band = Rect::from_min_max(
                 pos2(rect.left() + 1.0, area_top - 8.0),
                 pos2(rect.right() - 1.0, area_top + area_h + 20.0),
             );
-            ui.scope_builder(UiBuilder::new().max_rect(band), |ui| {
+            let focused = ui.scope_builder(UiBuilder::new().max_rect(band), |ui| {
                 ScrollArea::horizontal()
                     .id_salt("app-graph")
                     .auto_shrink(false)
                     .show(ui, |ui| {
                         let origin = ui.cursor().min;
-                        body(ui, origin.x - band.left());
+                        let focused = body(ui, origin.x - band.left());
                         ui.allocate_space(vec2(inner_w - 2.0, band.height()));
-                    });
+                        focused
+                    })
+                    .inner
             });
+            // The graph's scroll area takes the request of both axes: ask the page too.
+            if let Some(node) = focused.inner {
+                ui.scroll_to_rect(node, None);
+            }
         } else {
             body(ui, 0.0);
         }
