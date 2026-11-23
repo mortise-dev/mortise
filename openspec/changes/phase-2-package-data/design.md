@@ -584,6 +584,9 @@ accessible name and a 24 px target (`tests/accessibility.rs`).
 - A run of `module:lang --json` that gives no readable report (none, malformed, or cut past 64 KiB)
   keeps the last report and gets a failed toast with "Show output": "Mortise could not read the
   translation report: "<reason>". Findings show the last report." (not in the spec).
+- `PackageData::migrations_of_all` holds the modules that were on at the read of every module, not a
+  flag. A module turned on after that read is covered only by its own entry, so "All modules" reads
+  "Not read for every module yet." until a read covers it.
 
 ## Risks / Trade-offs
 

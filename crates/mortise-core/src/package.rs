@@ -319,9 +319,10 @@ pub struct PackageData {
     /// The connection the migration state was read for (`--database`). Empty for
     /// the default connection.
     pub migration_connection: String,
-    /// The last read of every module (`--all`) holds since: nothing was forgotten
-    /// after it. A module that is on and has no entry was not in its answer.
-    pub migrations_of_all: bool,
+    /// The modules that were on at the last read of every module (`--all`), while
+    /// that read holds: nothing was forgotten after it. Such a module with no entry
+    /// was not in its answer. Empty without such a read.
+    pub migrations_of_all: BTreeSet<String>,
     /// Whether the database has a migrations table, from the last state read.
     pub migration_table: Option<bool>,
     /// The last translation report, by module.
@@ -366,11 +367,13 @@ impl PackageData {
     }
 
     /// True when the state on `connection` says something of every module in `modules_on`:
-    /// each has an entry, or a read of every module holds since (design D7). A count over
-    /// the modules that are on is then whole.
+    /// each has an entry, or was on at a read of every module that holds since (design D7).
+    /// A count over the modules that are on is then whole.
     pub fn migrations_of_every(&self, connection: &str, modules_on: &[&str]) -> bool {
         self.migrations_for(connection).is_some_and(|migrations| {
-            self.migrations_of_all || modules_on.iter().all(|name| migrations.contains_key(*name))
+            modules_on.iter().all(|name| {
+                migrations.contains_key(*name) || self.migrations_of_all.contains(*name)
+            })
         })
     }
 
@@ -382,7 +385,7 @@ impl PackageData {
         let before = (
             self.migrations.len(),
             self.migration_table,
-            self.migrations_of_all,
+            self.migrations_of_all.len(),
         );
         match target {
             Target::All => self.migrations.clear(),
@@ -393,12 +396,12 @@ impl PackageData {
         if self.migration_table == Some(false) {
             self.migration_table = None;
         }
-        self.migrations_of_all = false;
+        self.migrations_of_all.clear();
         before
             != (
                 self.migrations.len(),
                 self.migration_table,
-                self.migrations_of_all,
+                self.migrations_of_all.len(),
             )
     }
 
@@ -418,10 +421,10 @@ impl PackageData {
         if self.migration_connection != connection {
             self.migrations.clear();
             self.migration_connection = connection.to_string();
-            self.migrations_of_all = false;
+            self.migrations_of_all.clear();
         }
         if *target == Target::All {
-            self.migrations_of_all = true;
+            self.migrations_of_all = modules_on.iter().map(|name| name.to_string()).collect();
             let listed: BTreeSet<&str> = status
                 .modules
                 .iter()
@@ -677,11 +680,13 @@ mod tests {
             all,
             &Target::All,
             "",
-            &["Billing", "Checkout", "Loyalty"],
+            &["Billing", "Checkout", "Loyalty", "Shipping"],
             1,
         );
-        // The read of every module covers a module that is on and not in its answer.
-        assert!(data.migrations_of_every("", &["Checkout", "Catalog"]));
+        // The read of every module covers a module that was on and is not in its answer,
+        // not one turned on after it.
+        assert!(data.migrations_of_every("", &["Checkout", "Shipping"]));
+        assert!(!data.migrations_of_every("", &["Checkout", "Catalog"]));
         let checkout = &data.migrations["Checkout"];
         assert_eq!(
             checkout.waiting,
