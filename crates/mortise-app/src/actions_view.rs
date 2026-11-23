@@ -40,6 +40,9 @@ pub struct ActionsState {
     /// The words the panel showed in the last frame it was drawn. Ctrl Enter runs
     /// only these, so a key never runs a line that was not on screen.
     last_shown: Option<Vec<String>>,
+    /// The words of the read of the migration state whose line was whole on screen
+    /// in the last frame. "Read migration state" runs only these (design D7).
+    read_shown: Option<Vec<String>>,
     /// The group "Destructive" is open (S10.4).
     destructive_open: bool,
     /// The row of the group is the current row of the list. The panel keeps the
@@ -54,6 +57,7 @@ impl Default for ActionsState {
             action: Action::Migrate,
             options: Options::default(),
             last_shown: None,
+            read_shown: None,
             destructive_open: false,
             on_group: false,
         }
@@ -69,6 +73,7 @@ impl ActionsState {
             action,
             options: Options::default(),
             last_shown: None,
+            read_shown: None,
             destructive_open: action.is_destructive(),
             on_group: false,
         }
@@ -89,6 +94,7 @@ impl ActionsState {
         }
         if !shown {
             self.last_shown = None;
+            self.read_shown = None;
             self.on_group = false;
             self.close_group();
         }
@@ -690,6 +696,7 @@ fn panel(
     }
     // The migration state and its read, on a 13.4 app (design D7).
     let mut state_asked = None;
+    let mut next_read_shown = None;
     if gives_data(&app.package) {
         let pretend = action.options(target, true).pretend && state.options.pretend;
         let at = pos2(min.x, y + 12.0);
@@ -700,12 +707,16 @@ fn panel(
             action,
             pretend,
             read: read.as_deref(),
+            last_read: state.read_shown.as_deref(),
         };
-        if let Some((bottom, box_asked)) = state_box(ui, pal, at, width, &shown, inputs) {
+        if let Some((bottom, box_asked, read_shown)) = state_box(ui, pal, at, width, &shown, inputs)
+        {
             y = bottom;
             state_asked = box_asked;
+            next_read_shown = read_shown;
         }
     }
+    state.read_shown = next_read_shown;
     y = options(
         ui,
         pal,
@@ -880,6 +891,8 @@ struct StateShown<'a> {
     pretend: bool,
     /// The state of the target, from [`migration_state`].
     read: Option<&'a [(&'a Module, &'a ModuleMigrations)]>,
+    /// The words of the read whose line was whole on screen in the last frame.
+    last_read: Option<&'a [String]>,
 }
 
 /// A row of the state box.
@@ -912,8 +925,9 @@ fn clock(ms: i64) -> String {
 /// The state box of Migrate, Roll back, Reset and Refresh (S10.1 to S10.4), with
 /// the button that reads the state and the line it runs (design D7). After a read
 /// in this session the line also says that a read follows the run. Fresh has no
-/// box, only that line. Returns the bottom and what was asked for, or `None` when
-/// the panel shows neither.
+/// box, only that line. The button runs only a line that was whole on screen in
+/// the last frame. Returns the bottom, what was asked for and the words of the line
+/// when it is whole on screen in this frame, or `None` when the panel shows neither.
 fn state_box(
     ui: &Ui,
     pal: &Palette,
@@ -921,7 +935,7 @@ fn state_box(
     width: f32,
     shown: &StateShown<'_>,
     inputs: &ActionsInputs<'_>,
-) -> Option<(f32, Option<BoundaryAction>)> {
+) -> Option<(f32, Option<BoundaryAction>, Option<Vec<String>>)> {
     let StateShown {
         app,
         module,
@@ -929,6 +943,7 @@ fn state_box(
         action,
         pretend,
         read,
+        last_read,
     } = *shown;
     let title = match action {
         Action::Migrate => strings::WAITING,
@@ -954,10 +969,16 @@ fn state_box(
                 .bottom()
                 + 4.0;
         }
-        draw::code_block(ui, pal, pos2(min.x, y), width, &line).bottom()
+        let code = draw::code_block(ui, pal, pos2(min.x, y), width, &line);
+        // Its text sits 12 px and 10 px inside the code block.
+        let whole = ui.clip_rect().contains_rect(code.shrink2(vec2(12.0, 10.0)));
+        (code.bottom(), whole.then(|| args.clone()))
     };
     if action == Action::FreshMigrate {
-        return after.then(|| (after_line(min.y), None));
+        return after.then(|| {
+            let (bottom, whole) = after_line(min.y);
+            (bottom, None, whole)
+        });
     }
 
     let all = module.is_none();
@@ -1093,10 +1114,12 @@ fn state_box(
         y += height;
     }
 
-    // The button that reads, and when the state was read.
+    // The button that reads, and when the state was read. It runs only the line
+    // that was whole on screen in the last frame, as the run button does (S37).
     let off = match inputs.busy {
         Some(label) => Some(strings::is_running(label)),
         None if line_now(inputs.runner, &[]).is_none() => Some(strings::choose_php(inputs.app)),
+        None if last_read != Some(&args[..]) => Some(strings::SCROLL_TO_COMMAND.to_owned()),
         None => None,
     };
     let button = Button {
@@ -1132,7 +1155,8 @@ fn state_box(
             pal.ink_2,
         );
     }
-    Some((after_line(button_rect.bottom() + 8.0), asked))
+    let (bottom, whole) = after_line(button_rect.bottom() + 8.0);
+    Some((bottom, asked, whole))
 }
 
 /// A row of "What is lost": its name, in parts that are set in mono or not, and its

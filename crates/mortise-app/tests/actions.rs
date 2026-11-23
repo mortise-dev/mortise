@@ -655,6 +655,14 @@ fn the_migration_state_is_read_when_asked_and_again_after_a_migrate() {
     harness
         .query_by_label_contains("module:migrate-status --no-interaction --ansi Checkout --json")
         .unwrap();
+    // A line cut off at the bottom of the window is not read (S37).
+    let size = harness.ctx.content_rect().size();
+    harness.set_size(eframe::egui::vec2(size.x, 300.0));
+    harness.run_steps(3);
+    let read = harness.get_by_role_and_label(Role::Button, "Read migration state");
+    assert!(read.accesskit_node().is_disabled());
+    harness.set_size(size);
+    harness.run_steps(3);
     harness
         .get_by_role_and_label(Role::Button, "Read migration state")
         .click();
