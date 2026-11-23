@@ -195,7 +195,7 @@ pub fn add_panel(
             .auto_shrink(false)
             .show(ui, |ui| {
                 ui.spacing_mut().item_spacing = Vec2::ZERO;
-                reveal_focus(ui, back_id);
+                reveal_focus(ui, body, back_id);
                 let origin = ui.cursor().min;
                 let area = Rect::from_min_size(origin, vec2(ui.available_width(), body.height()));
                 let (body_action, bottom) =
@@ -211,8 +211,9 @@ pub fn add_panel(
 }
 
 /// Scrolls to the control that just got focus, so that Tab never leaves it out of
-/// sight. The way back, in the header, does not scroll with the body.
-fn reveal_focus(ui: &mut Ui, header_id: egui::Id) {
+/// sight. The way back, in the header, does not scroll with the body, and neither
+/// does a control beside the panel, such as a rail tile.
+fn reveal_focus(ui: &mut Ui, body: Rect, header_id: egui::Id) {
     let store = ui.scope_id().with("focused");
     let focused = ui.memory(|memory| memory.focused());
     let before = ui.data_mut(|data| data.get_temp::<Option<egui::Id>>(store).flatten());
@@ -220,7 +221,9 @@ fn reveal_focus(ui: &mut Ui, header_id: egui::Id) {
     if focused == before || focused == Some(header_id) {
         return;
     }
-    if let Some(response) = focused.and_then(|id| ui.ctx().read_response(id)) {
+    if let Some(response) = focused.and_then(|id| ui.ctx().read_response(id))
+        && body.x_range().contains(response.rect.center().x)
+    {
         ui.scroll_to_rect(response.rect.expand(8.0), None);
     }
 }
