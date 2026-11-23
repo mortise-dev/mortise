@@ -233,8 +233,17 @@ pub fn workspace(
             icon: Some(Icon::Test),
             ..Default::default()
         };
+        // "Migrate (1)" once the migration state is read (S4.3, design D7).
+        let read = app
+            .package_data
+            .migrations_for("")
+            .and_then(|migrations| migrations.get(&module.name));
+        let migrate_label = match read {
+            Some(state) => strings::migrate_counted(state.waiting.len()),
+            None => strings::action_button(Action::Migrate).to_owned(),
+        };
         let migrate = Button {
-            label: strings::action_button(Action::Migrate),
+            label: &migrate_label,
             kind: ButtonKind::Primary,
             small: true,
             icon: Some(Icon::Migrate),

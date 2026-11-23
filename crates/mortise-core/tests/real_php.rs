@@ -178,6 +178,7 @@ fn action(action: Action) -> Vec<String> {
         production: false,
         users_on: &[],
         modules_folder_assumed: false,
+        package_data: true,
     };
     match mortise_core::plan(
         action,

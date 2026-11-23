@@ -1,10 +1,11 @@
-//! The Findings list (S6.4): every finding of the app, grouped by kind, and the
-//! checks that found nothing. It is a second view of the Summary of "All modules".
+//! The Findings list (S6.4): every finding of the app, grouped by kind, the work to
+//! do that is not a finding, and the checks that found nothing. It is a second view
+//! of the Summary of "All modules".
 
 use eframe::egui::{
     Align2, Color32, Rect, Role, ScrollArea, Sense, Ui, UiBuilder, Vec2, WidgetInfo, pos2, vec2,
 };
-use mortise_core::{AppSnapshot, Check, Detail, Finding, Severity};
+use mortise_core::{Action, AppSnapshot, Check, Detail, Finding, Severity};
 
 use crate::boundary::BoundaryAction;
 use crate::draw::{self, StampState};
@@ -27,6 +28,13 @@ fn opens(finding: &Finding, app: &AppSnapshot) -> (&'static str, Option<Boundary
             Some(BoundaryAction::ShowLink {
                 module,
                 other: of.clone(),
+            }),
+        ),
+        (Detail::MissingTranslations { .. }, Some(module)) => (
+            strings::ACTIONS,
+            Some(BoundaryAction::OpenModuleAction {
+                module,
+                action: Action::CheckTranslations,
             }),
         ),
         (_, Some(module)) => (strings::SUMMARY, Some(BoundaryAction::Select(module))),
@@ -63,7 +71,9 @@ pub fn findings(
                     y = draw::paragraph(ui, pos2(left, y), &text, ty::BODY, pal.ink, inner)
                         .bottom()
                         + 12.0;
-                } else {
+                }
+                // Work to do shows even when nothing was found.
+                if !app.findings.list.is_empty() || !app.findings.todo.is_empty() {
                     y = list(
                         ui,
                         pal,
@@ -85,7 +95,29 @@ pub fn findings(
     action
 }
 
-/// The findings, problems first, each with its module, its check and where it opens.
+/// The groups of the list, in the order they show.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Group {
+    Problems,
+    Warnings,
+    /// Work in progress: no mark, and not counted as a finding.
+    Todo,
+}
+
+/// One row of the list, laid out.
+struct Row<'a> {
+    group: Group,
+    /// The module whose stamp shows.
+    module: Option<&'a str>,
+    sentence: String,
+    check: String,
+    /// Where Enter lands, in a word, and what it does.
+    place: &'static str,
+    opens: Option<BoundaryAction>,
+}
+
+/// The findings, problems first, then the work to do, each with its module, its check
+/// and where it opens.
 #[expect(clippy::too_many_arguments)]
 fn list(
     ui: &Ui,
@@ -104,30 +136,46 @@ fn list(
     let text_w = check_x - 16.0 - text_x;
     const GROUP_H: f32 = 30.0;
 
+    let findings = app.findings.list.iter().map(|finding| {
+        let (place, opens) = opens(finding, app);
+        Row {
+            group: match finding.severity {
+                Severity::Problem => Group::Problems,
+                Severity::Warning => Group::Warnings,
+            },
+            module: finding.module.as_deref(),
+            sentence: strings::finding(finding, app, name),
+            check: strings::check_name(finding.check, app),
+            place,
+            opens,
+        }
+    });
+    // A waiting migration opens Migrate for its module.
+    let todo = app.findings.todo.iter().map(|todo| Row {
+        group: Group::Todo,
+        module: Some(&todo.module),
+        sentence: strings::migrations_waiting(&todo.module, todo.waiting),
+        check: strings::MIGRATIONS.to_owned(),
+        place: strings::ACTIONS,
+        opens: Some(BoundaryAction::OpenModuleAction {
+            module: todo.module.clone(),
+            action: Action::Migrate,
+        }),
+    });
     // Lay the sentences out first: a row is as high as its sentence.
-    let rows: Vec<_> = app
-        .findings
-        .list
-        .iter()
-        .map(|finding| {
-            let sentence = strings::finding(finding, app, name);
-            let galley = draw::galley_wrapped(ui, &sentence, ty::BODY, pal.ink, text_w);
+    let rows: Vec<_> = findings
+        .chain(todo)
+        .map(|row| {
+            let galley = draw::galley_wrapped(ui, &row.sentence, ty::BODY, pal.ink, text_w);
             let height = (galley.size().y + 14.0).max(size::TABLE_ROW_H + 6.0);
-            (finding, sentence, galley, height)
+            (row, galley, height)
         })
         .collect();
-    let groups = [Severity::Problem, Severity::Warning]
-        .into_iter()
-        .filter(|severity| {
-            app.findings
-                .list
-                .iter()
-                .any(|finding| finding.severity == *severity)
-        })
-        .count();
+    let mut groups: Vec<Group> = rows.iter().map(|(row, ..)| row.group).collect();
+    groups.dedup();
     let height = size::TABLE_HEAD_H
-        + groups as f32 * GROUP_H
-        + rows.iter().map(|row| row.3).sum::<f32>()
+        + groups.len() as f32 * GROUP_H
+        + rows.iter().map(|row| row.2).sum::<f32>()
         + 1.0;
     let rect = Rect::from_min_size(min, vec2(width, height));
     draw::outlined(ui, rect, radius::CONTROL, Color32::TRANSPARENT, pal.line_2);
@@ -151,18 +199,19 @@ fn list(
 
     let mut group = None;
     let last = rows.len().saturating_sub(1);
-    // The list is one stop: J and K move through it, Enter opens a finding where it
+    // The list is one stop: J and K move through it, Enter opens a row where it
     // lives. It takes focus when nothing else holds it, so the keys work at once.
     let nav = draw::ListNav::over(ui, "findings", rows.len(), selected);
     if !rows.is_empty() && ui.memory(|memory| memory.focused()).is_none() {
         nav.focus(ui);
     }
-    for (index, (finding, sentence, galley, row_h)) in rows.into_iter().enumerate() {
-        if group != Some(finding.severity) {
-            group = Some(finding.severity);
-            let (name, count) = match finding.severity {
-                Severity::Problem => (strings::PROBLEMS, app.findings.problems()),
-                Severity::Warning => (strings::WARNINGS, app.findings.warnings()),
+    for (index, (row_data, galley, row_h)) in rows.into_iter().enumerate() {
+        if group != Some(row_data.group) {
+            group = Some(row_data.group);
+            let (name, count) = match row_data.group {
+                Group::Problems => (strings::PROBLEMS, app.findings.problems()),
+                Group::Warnings => (strings::WARNINGS, app.findings.warnings()),
+                Group::Todo => (strings::TODO_NOT_COUNTED, app.findings.todo.len()),
             };
             let mid = y + GROUP_H / 2.0;
             draw::label(
@@ -189,11 +238,11 @@ fn list(
             pos2(rect.left() + 1.0, y),
             pos2(rect.right() - 1.0, y + row_h),
         );
-        let (place, opens) = opens(finding, app);
         let is_selected = index == (*selected).min(last);
         let response = ui.interact(row, nav.id(index), nav.sense(index));
         nav.after(ui, index, &response);
-        response.widget_info(|| WidgetInfo::selected(Role::Row, true, is_selected, &sentence));
+        let sentence = &row_data.sentence;
+        response.widget_info(|| WidgetInfo::selected(Role::Row, true, is_selected, sentence));
         let behind = if is_selected {
             // A selected list row: well fill, a line above and below, and the peg.
             ui.painter().rect_filled(row, 0, pal.well);
@@ -216,7 +265,7 @@ fn list(
         };
         if response.clicked() {
             *selected = index;
-            *action = opens;
+            *action = row_data.opens;
         }
 
         let top_mid = row.top() + (size::TABLE_ROW_H + 6.0) / 2.0;
@@ -224,25 +273,30 @@ fn list(
             pos2(row.left() + 14.0, top_mid - 6.0),
             Vec2::splat(size::STATE_MARK),
         );
-        match finding.severity {
-            Severity::Problem => draw::mark_bad(ui, mark, pal.bad, behind),
-            Severity::Warning => draw::mark_warn(ui, mark, pal.warn),
+        match row_data.group {
+            Group::Problems => draw::mark_bad(ui, mark, pal.bad, behind),
+            Group::Warnings => draw::mark_warn(ui, mark, pal.warn),
+            Group::Todo => {}
         }
-        if let Some(module) = finding.module.as_deref().and_then(|name| app.module(name)) {
+        if let Some(module) = row_data.module.and_then(|name| app.module(name)) {
             let stamp_min = pos2(module_x, (top_mid - size::STAMP_H / 2.0).round());
             draw::stamp(ui, pal, stamp_min, &module.code, StampState::default());
         }
         draw::paint_galley(ui, pos2(text_x, row.top() + 7.0), Align2::LEFT_TOP, galley);
-        let check_name = strings::check_name(finding.check, app);
-        let check =
-            draw::galley_elided(ui, &check_name, ty::BODY, pal.ink_2, right - 80.0 - check_x);
+        let check = draw::galley_elided(
+            ui,
+            &row_data.check,
+            ty::BODY,
+            pal.ink_2,
+            right - 80.0 - check_x,
+        );
         let check_rect = draw::paint_galley(ui, pos2(check_x, top_mid), Align2::LEFT_CENTER, check);
-        draw::announce(ui, check_rect, Role::Label, &check_name);
+        draw::announce(ui, check_rect, Role::Label, &row_data.check);
         draw::paint_text(
             ui,
             pos2(right, top_mid),
             Align2::RIGHT_CENTER,
-            place,
+            row_data.place,
             ty::BODY,
             pal.ink_2,
         );
@@ -286,7 +340,7 @@ fn quiet_checks(
     for (i, result) in quiet.iter().enumerate() {
         let mid = y + size::LIST_LINE_H / 2.0;
         let sentence = strings::check_passed(result.check, app);
-        draw::label(
+        let said = draw::label(
             ui,
             pos2(rect.left() + 13.0, mid),
             Align2::LEFT_CENTER,
@@ -294,6 +348,17 @@ fn quiet_checks(
             ty::BODY,
             pal.ink,
         );
+        // The command the check reads from, dim, after the sentence.
+        if let Some(source) = strings::check_source(result.check) {
+            draw::label(
+                ui,
+                pos2(said.right() + 6.0, mid),
+                Align2::LEFT_CENTER,
+                source,
+                ty::PATH,
+                pal.ink_3,
+            );
+        }
         let checked = strings::checked(result);
         let text = draw::label(
             ui,

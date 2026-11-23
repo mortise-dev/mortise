@@ -3,12 +3,19 @@
 
 mod common;
 
-use common::{Desk, shop_api};
-use eframe::egui::{Key, Role};
+use std::collections::BTreeMap;
+
+use common::{Desk, fixture, shop_api};
+use eframe::egui::{Key, Role, Theme};
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT as _, Queryable as _};
 use mortise_app::app::{MortiseApp, Selection};
+use mortise_app::boundary::BoundaryAction;
 use mortise_app::workspace::Tab;
+use mortise_app::{findings_view, fonts, theme};
+use mortise_core::{
+    Action, PackageData, ReadCache, ReadOptions, Target, document, read_app_cached,
+};
 
 fn modules(harness: &Harness<'static, MortiseApp>) -> Vec<String> {
     harness
@@ -18,7 +25,7 @@ fn modules(harness: &Harness<'static, MortiseApp>) -> Vec<String> {
         .collect()
 }
 
-fn rows(harness: &Harness<'static, MortiseApp>) -> Vec<String> {
+fn rows<State>(harness: &Harness<'_, State>) -> Vec<String> {
     harness
         .query_all_by_role(Role::Row)
         .filter_map(|row| row.accesskit_node().label())
@@ -259,4 +266,75 @@ fn broken_files_of_the_package_are_findings() {
     );
     assert!(rows.contains(&"modules_statuses.json lists Legacy, which has no folder.".to_owned()));
     assert_eq!(harness.state().app().unwrap().findings.problems(), 4);
+}
+
+/// The output of a recording of `fixtures/output`, a line each.
+fn recording(name: &str) -> Vec<String> {
+    let path = fixture("output").join(format!("{name}.json"));
+    let json: serde_json::Value = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+    let stdout = json["stdout"].as_str().unwrap();
+    stdout.lines().map(str::to_owned).collect()
+}
+
+#[test]
+fn package_data_adds_translation_warnings_and_work_to_do() {
+    // The state of Checkout has one migration waiting; fr lacks 2 keys of en.
+    let mut package = PackageData::default();
+    let state = document(&recording("module-migrate-status-waiting")).unwrap();
+    package.merge_migrations(state, &Target::Module("Checkout".into()), "", &[], 0);
+    package.merge_translations(document(&recording("module-lang-json")).unwrap());
+    let options = ReadOptions {
+        package,
+        ..ReadOptions::default()
+    };
+    let root = fixture("shop-api");
+    let app =
+        read_app_cached(&root, &BTreeMap::new(), &options, &mut ReadCache::default()).unwrap();
+
+    let mut harness = Harness::builder()
+        .with_size((1100.0, 800.0))
+        .with_context_setup(fonts::install)
+        .build_ui_state(
+            move |ui, (selected, opened): &mut (usize, Option<BoundaryAction>)| {
+                let body = ui.max_rect();
+                let pal = theme::palette(Theme::Light);
+                if let Some(action) =
+                    findings_view::findings(ui, pal, body, &app, "shop-api", selected)
+                {
+                    *opened = Some(action);
+                }
+            },
+            (0, None),
+        );
+    harness.run();
+    let rows = rows(&harness);
+    assert_eq!(
+        rows[2..],
+        [
+            "Checkout: 2 keys in en are missing in fr.",
+            "Notifications is 39% covered. The limit for shop-api is 50%.",
+            "Checkout has 1 migration waiting.",
+        ]
+    );
+    harness.get_by_label("To do, not counted as findings");
+    harness.get_by_label("3 of 7 checks");
+
+    // Each opens the Actions tab of Checkout on its action.
+    for (row, action) in [
+        (
+            "Checkout: 2 keys in en are missing in fr.",
+            Action::CheckTranslations,
+        ),
+        ("Checkout has 1 migration waiting.", Action::Migrate),
+    ] {
+        harness.get_by_role_and_label(Role::Row, row).click();
+        harness.run();
+        assert_eq!(
+            harness.state().1,
+            Some(BoundaryAction::OpenModuleAction {
+                module: "Checkout".into(),
+                action
+            })
+        );
+    }
 }

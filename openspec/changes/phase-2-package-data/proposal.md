@@ -28,8 +28,8 @@ S42, S44) can show what the spec draws, for an app whose package has the data.
   result says so.
 - P4: "Waiting" and "Last batch" in S10.1 and S10.2, the counts on Migrate and Roll back, the migrations
   in the roll back dialog, "9 ran" and the tables named in S10.4 and S10.5, the migration line and
-  "Migrate (1)" on S4.3, and "To do" in Findings (S6.4). The state is read when the user asks, and read
-  again after a migrate, roll back, reset, refresh or fresh that the user started, as the panel says.
+  "Migrate (1)" on S4.3, and "To do" in Findings (S6.4). The state is read only when the user asks. A migrate,
+  roll back, reset, refresh or fresh forgets the state it may have changed, so the user reads it again.
 - P7: Run tests runs `module:test <module> --json` (or `--all`), with `--filter` and `--parallel`.
   The placeholder of S10.2 e goes for a 13.4 app. The toast counts the tests.
 - P8: Check translations runs `module:lang --json`. Its report gives the check "Translations are

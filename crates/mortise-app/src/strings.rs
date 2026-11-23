@@ -711,6 +711,42 @@ pub const LOW_COVERAGE: &str = "Low coverage";
 pub const WARNING: &str = "Warning";
 pub const SUMMARY: &str = "Summary";
 pub const BOUNDARY: &str = "Boundary";
+pub const ACTIONS: &str = "Actions";
+pub const TODO_NOT_COUNTED: &str = "To do, not counted as findings";
+
+/// `Checkout has 1 migration waiting.`: a row of the To do group of Findings.
+pub fn migrations_waiting(module: &str, n: usize) -> String {
+    if n == 1 {
+        format!("{module} has 1 migration waiting.")
+    } else {
+        format!("{module} has {n} migrations waiting.")
+    }
+}
+
+/// What a locale lacks: `4 keys in en are missing in fr`. `from` is the other locale
+/// of a module with two. Not in the spec: more locales, and missing files.
+fn missing_translations(locale: &str, keys: usize, files: usize, from: Option<&str>) -> String {
+    let keys_part = match keys {
+        0 => None,
+        1 => Some("1 key".to_owned()),
+        n => Some(format!("{n} keys")),
+    };
+    let files_part = match files {
+        0 => None,
+        1 => Some("1 file".to_owned()),
+        n => Some(format!("{n} files")),
+    };
+    let what = match (keys_part, files_part) {
+        (Some(keys), Some(files)) => format!("{keys} and {files}"),
+        (Some(one), None) | (None, Some(one)) => one,
+        (None, None) => String::new(),
+    };
+    let verb = if keys + files == 1 { "is" } else { "are" };
+    match from {
+        Some(from) => format!("{what} in {from} {verb} missing in {locale}"),
+        None => format!("{what} {verb} missing in {locale}"),
+    }
+}
 
 /// `1 warning`
 pub fn warnings(n: usize) -> String {
@@ -841,6 +877,16 @@ pub fn finding(finding: &mortise_core::Finding, app: &AppSnapshot, name: &str) -
         Detail::LowCoverage { percent, limit } => {
             format!("{module} is {percent}% covered. The limit for {name} is {limit}%.")
         }
+        // `Checkout: 4 keys in en are missing in fr.`
+        Detail::MissingTranslations {
+            locale,
+            keys,
+            files,
+            from,
+        } => format!(
+            "{module}: {}.",
+            missing_translations(locale, *keys, *files, from.as_deref())
+        ),
     }
 }
 
@@ -851,6 +897,7 @@ pub fn check_name(check: mortise_core::Check, app: &AppSnapshot) -> String {
         Check::NoCircularUse => "Rule: no circular use".to_owned(),
         Check::PublicSurfaceOnly => format!("Rule: {} only", list_of(&app.rules.public_folders)),
         Check::CoverageLimit => "Coverage limit".to_owned(),
+        Check::TranslationsComplete => "Translations".to_owned(),
         // Not in the spec: the drawing has no finding of these three.
         Check::ValidManifest => "Valid module.json".to_owned(),
         Check::NamespaceMatchesFolder => "Namespace".to_owned(),
@@ -875,6 +922,15 @@ pub fn check_passed(check: mortise_core::Check, app: &AppSnapshot) -> String {
         }
         // Not in the spec.
         Check::CoverageLimit => format!("Every module is covered {}% or more", app.coverage_limit),
+        Check::TranslationsComplete => "Translations are complete".to_owned(),
+    }
+}
+
+/// The command a check reads from, after its sentence: `module:lang`.
+pub fn check_source(check: mortise_core::Check) -> Option<&'static str> {
+    match check {
+        mortise_core::Check::TranslationsComplete => Some("module:lang"),
+        _ => None,
     }
 }
 
@@ -883,6 +939,10 @@ pub fn checked(result: &mortise_core::CheckResult) -> String {
     match result.check {
         mortise_core::Check::NoStaleStatus if result.checked == 1 => "1 entry".to_owned(),
         mortise_core::Check::NoStaleStatus => format!("{} entries", result.checked),
+        // `5 modules with lang files`
+        mortise_core::Check::TranslationsComplete => {
+            format!("{} with lang files", modules(result.checked))
+        }
         _ => modules(result.checked),
     }
 }
@@ -946,6 +1006,13 @@ fn clauses(module: &str, app: &AppSnapshot, name: &str, own: bool) -> Vec<String
                     format!("{n} of its files {verb} {what} directly")
                 }
             }
+            // Not in the spec: the sentence without the module in front.
+            Detail::MissingTranslations {
+                locale,
+                keys,
+                files,
+                from,
+            } => missing_translations(locale, *keys, *files, from.as_deref()),
             _ => {
                 let sentence = finding(found, app, name);
                 let mut letters = sentence.trim_end_matches('.').chars();
@@ -1081,6 +1148,22 @@ mod tests {
                 "3 of its files read X directly".into()
             ]),
             "It and Shipping use each other (6 files), and 3 of its files read X directly."
+        );
+    }
+
+    #[test]
+    fn missing_translations_count_keys_and_files() {
+        assert_eq!(
+            missing_translations("fr", 1, 0, Some("en")),
+            "1 key in en is missing in fr"
+        );
+        assert_eq!(
+            missing_translations("de", 4, 1, None),
+            "4 keys and 1 file are missing in de"
+        );
+        assert_eq!(
+            missing_translations("fr", 0, 2, Some("en")),
+            "2 files in en are missing in fr"
         );
     }
 
@@ -2130,6 +2213,9 @@ pub const ROLL_BACK_HINT: &str = "Destructive. Mortise asks before it runs. The 
 pub const TESTS_PLACEHOLDER: &str = "[the package's command for the tests of one module]";
 /// Not in the spec: why Run tests and its Copy command are off (design D4).
 pub const NO_TESTS_COMMAND: &str = "The package has no command for the tests of one module yet.";
+/// Not in the spec: the options of `module:test` (13.4, design D8).
+pub const TESTS_FILTER: &str = "Filter, a test name or pattern";
+pub const RUN_IN_PARALLEL: &str = "Run in parallel";
 
 /// The hint of the database field: Migrate says what an empty field means, Seed
 /// names the option only.
@@ -2267,6 +2353,26 @@ pub const TESTS_TEXT: &str = "The package will provide a command that runs the t
 /// Not in the spec: where the tests of "All modules" are, after their count.
 pub const TESTS_IN_MODULES_ON: &str = "in the modules that are on.";
 
+/// Not in the spec: where the tests of "All modules" are on 13.4, after their count.
+/// `module:test --all` takes every module, on or off.
+pub const TESTS_IN_EVERY_MODULE: &str = "in every module, on or off.";
+
+/// The toast of Run tests that passed: `31 tests passed in Checkout.` (C13). For
+/// "All modules" the object is the count of modules that ran: not in the spec.
+pub fn tests_passed(passed: u32, object: &str) -> String {
+    format!("{} passed in {object}.", tests(passed))
+}
+
+/// Not in the spec: the toast of Run tests that failed, `3 of 31 tests failed in Checkout.`
+pub fn tests_failed(failed: u32, total: u32, object: &str) -> String {
+    format!("{failed} of {} failed in {object}.", tests(total))
+}
+
+/// Not in the spec: the toast of Run tests in a module without a tests folder.
+pub fn no_tests_folder(module: &str) -> String {
+    format!("{module} has no tests folder.")
+}
+
 /// The alert of Turn off (S10.2 a): `Shipping and Notifications use Checkout. ...`
 /// Not in the spec: the sentence for one module.
 pub fn turn_off_alert(users: &[&str], module: &str) -> String {
@@ -2367,6 +2473,148 @@ pub fn seeded(object: &str) -> String {
 /// Not in the spec: the failed toast of a run that was stopped.
 pub fn was_stopped(label: &str) -> String {
     format!("{label} was stopped.")
+}
+
+// ---------------------------------------------------------------------------
+// The migration state (P4, design D7)
+
+/// The title of the state box of Migrate (S10.1, S10.2 f).
+pub const WAITING: &str = "Waiting";
+/// The title of the state box of Roll back (S10.2 c).
+pub const LAST_BATCH: &str = "Last batch";
+/// Not in the spec: the title of the state box of Reset and Refresh.
+pub const RAN: &str = "Ran";
+/// Not in the spec: the state box before a read.
+pub const NOT_READ_YET: &str = "Not read yet.";
+/// Not in the spec: the state box when the state was read for another connection.
+pub const NOT_READ_FOR_CONNECTION: &str = "Not read for this connection.";
+/// Not in the spec: the state box of "All modules" when some of the modules that
+/// are on were read, not all.
+pub const NOT_READ_FOR_EVERY_MODULE: &str = "Not read for every module yet.";
+/// Not in the spec: the button that reads the migration state.
+pub const READ_MIGRATION_STATE: &str = "Read migration state";
+/// Not in the spec: the state box while its read runs.
+pub const STATE_READING: &str = "Reading";
+/// Not in the spec: the button that reads the migration state again.
+pub const STATE_READ_AGAIN: &str = "Read again";
+/// Not in the spec: the state box when nothing waits, and the row detail of Migrate.
+pub const NOTHING_WAITING: &str = "Nothing waiting";
+/// Not in the spec: the state box of Roll back, Reset and Refresh when nothing ran.
+pub const NOTHING_RAN_YET: &str = "Nothing ran";
+/// Not in the spec: the state box when the database has no migrations table.
+pub const NO_MIGRATIONS_TABLE: &str = "The database has no migrations table yet.";
+
+/// `1 migration`, `9 migrations` (S10.1).
+pub fn migrations(n: usize) -> String {
+    match n {
+        1 => "1 migration".to_owned(),
+        n => format!("{} migrations", count(n as u64)),
+    }
+}
+
+/// `1 migration in 1 module` (S10.2 f). Not in the spec: the other counts.
+pub fn migrations_in_modules(n: usize, modules: usize) -> String {
+    match modules {
+        1 => format!("{} in 1 module", migrations(n)),
+        m => format!("{} in {} modules", migrations(n), count(m as u64)),
+    }
+}
+
+/// The row detail of Migrate: `1 waiting` (S10.1).
+pub fn waiting(n: usize) -> String {
+    match n {
+        0 => NOTHING_WAITING.to_owned(),
+        n => format!("{} waiting", count(n as u64)),
+    }
+}
+
+/// The row detail of Roll back: `last batch, 1` (S10.1).
+pub fn last_batch(n: usize) -> String {
+    format!("last batch, {}", count(n as u64))
+}
+
+/// The row detail of Reset and Refresh, and the Migrations line of S4.3: `9 ran`.
+pub fn ran(n: usize) -> String {
+    format!("{} ran", count(n as u64))
+}
+
+/// `Migrate (1)`, the run button of Migrate and of the header of S4.3 with waiting
+/// migrations (S10.1, S4.3).
+pub fn migrate_counted(waiting: usize) -> String {
+    match waiting {
+        0 => action_button(mortise_core::Action::Migrate).to_owned(),
+        n => format!("Migrate ({})", count(n as u64)),
+    }
+}
+
+/// `Roll back 1 migration`, the button of the roll back dialog (S10.3). Not in the
+/// spec: the other counts.
+pub fn roll_back_counted(n: usize) -> String {
+    format!("Roll back {}", migrations(n))
+}
+
+/// `Reset 9 migrations` (S10.5 a).
+pub fn reset_counted(n: usize) -> String {
+    format!("Reset {}", migrations(n))
+}
+
+/// `Refresh 9 migrations` (S10.5 b).
+pub fn refresh_counted(n: usize) -> String {
+    format!("Refresh {}", migrations(n))
+}
+
+/// Not in the spec: when the state was read, `Read at 14:05`.
+pub fn state_read_at(clock: &str) -> String {
+    format!("Read at {clock}")
+}
+
+/// Not in the spec, design D2: a state read that gave no document.
+pub fn migration_state_failed(reason: &str) -> String {
+    format!("Mortise could not read the migration state: \"{reason}\".")
+}
+
+/// `7 tables` (S10.4).
+pub fn tables(n: usize) -> String {
+    match n {
+        1 => "1 table".to_owned(),
+        n => format!("{} tables", count(n as u64)),
+    }
+}
+
+/// ` and 2 more`, after the tables named in a row of "What is lost" (S10.4). Not in
+/// the spec: after the migrations or tables a dialog lists, at most six.
+pub fn and_more(n: usize) -> String {
+    format!(" and {} more", count(n as u64))
+}
+
+/// `Every table and column created by the 9 migrations of Checkout that ran` (S10.4).
+/// Not in the spec: the sentence for one migration.
+pub fn reset_loses_counted(module: &str, ran: usize) -> String {
+    match ran {
+        1 => format!("Every table and column created by the 1 migration of {module} that ran"),
+        n => format!(
+            "Every table and column created by the {} migrations of {module} that ran",
+            count(n as u64)
+        ),
+    }
+}
+
+/// `7 tables come back empty` (S10.4 a). Not in the spec: one table.
+pub fn tables_come_back_empty(n: usize) -> String {
+    match n {
+        1 => "1 table comes back empty".to_owned(),
+        n => format!("{} come back empty", tables(n)),
+    }
+}
+
+/// `7 tables. Nothing outside Checkout is touched.` (S10.5 a)
+pub fn tables_untouched(n: usize, module: &str) -> String {
+    format!("{}. {}", tables(n), nothing_outside(module))
+}
+
+/// `7 tables. This command has no dry run.` (S10.5 b)
+pub fn tables_no_dry_run(n: usize) -> String {
+    format!("{}. {NO_DRY_RUN}", tables(n))
 }
 
 // ---------------------------------------------------------------------------
@@ -2909,6 +3157,14 @@ pub fn own_file_exists(path: &str, replaceable: bool) -> String {
 /// Not in the spec: an error of the dry run, in quotes, under the list (design D5).
 pub fn quoted(text: &str) -> String {
     format!("\"{}\"", text.trim())
+}
+
+/// Not in the spec: a run of `module:lang --json` that gave no report (design D9).
+pub fn translations_not_read(reason: &str) -> String {
+    format!(
+        "Mortise could not read the translation report: \"{reason}\". Findings show the last \
+         report."
+    )
 }
 
 /// Not in the spec: a dry run that gave no document (design D2).

@@ -6,9 +6,9 @@ use std::sync::Arc;
 
 use eframe::egui::{self, Event, Key, KeyboardShortcut, Modifiers, Rect, Theme, Ui, pos2, vec2};
 use mortise_core::{
-    Action, Ask, Catalog, Environment, FileOutcome, LiveRuntime, MODULE_MAKE, ModuleState,
-    PackageData, ReadOptions, Rules, RunEnd, RunnerKind, Runs, RuntimeState, Secret, Secrets,
-    Target, ThemeChoice, Version, gives_data,
+    Action, Ask, Catalog, Environment, FileOutcome, LangReport, LiveRuntime, MODULE_MAKE,
+    ModuleState, PackageData, ReadOptions, Rules, RunEnd, RunnerKind, Runs, RuntimeState, Secret,
+    Secrets, Target, TestReport, ThemeChoice, Version, gives_data,
 };
 use mortise_core::{
     AppEntry, AppSnapshot, LiveApp, LiveState, ReadCache, Settings, SettingsError,
@@ -119,6 +119,12 @@ struct OpenApp {
     package: PackageData,
     /// The read of package data that runs, if one does (design D3).
     reading: Option<PackageRead>,
+    /// Why the last read of the migration state gave nothing, with its target and
+    /// connection. The state box says so; the state stays as it was (design D2).
+    migration_error: Option<actions_view::StateError>,
+    /// The runner and working folder of the last read of the migration state. Another
+    /// one may reach another database: the state is forgotten when they change (design D7).
+    state_place: Option<RunPlace>,
     /// The generators read from the app (P3, design D4).
     catalog: AppCatalog,
 }
@@ -216,8 +222,14 @@ enum ReadFor {
     /// A generator with `--dry-run --json` (P2, design D5): the words of the form,
     /// and the runner and working folder it started with.
     DryRun { words: Vec<String>, place: RunPlace },
-    /// `module:migrate-status --json` (P4, design D7).
-    Migrations { target: Target },
+    /// `module:migrate-status --json` (P4, design D7), on a connection: its
+    /// `--database`, empty for the default. With the runner and working folder it
+    /// started with.
+    Migrations {
+        target: Target,
+        connection: String,
+        place: RunPlace,
+    },
 }
 
 /// A generator that runs, and what its end needs.
@@ -1067,7 +1079,6 @@ impl MortiseApp {
 
     /// Changes the package data of the app at `index` and reads the app again, so
     /// that its snapshot holds the new data (design D7).
-    #[allow(dead_code)] // The reads of P4 and P8 call it.
     fn set_package(&mut self, index: usize, change: impl FnOnce(&mut PackageData)) {
         let (Some(open), Some(entry)) = (self.apps.get_mut(index), self.settings.apps.get(index))
         else {
@@ -1109,7 +1120,140 @@ impl MortiseApp {
         match purpose {
             ReadFor::Catalog { package } => self.catalog_read(index, &package, end),
             ReadFor::DryRun { words, place } => self.dry_run_read(index, words, place, end),
-            ReadFor::Migrations { .. } => {}
+            ReadFor::Migrations {
+                target,
+                connection,
+                place,
+            } => self.migrations_read(index, target, &connection, place, end),
+        }
+    }
+
+    /// Starts a read of the migration state of `target` with `words`, on the
+    /// connection their `--database` names (design D7).
+    fn read_migrations(&mut self, index: usize, target: Target, words: Vec<String>) {
+        let connection = mortise_core::Options::from_args(&words).database;
+        let Some(entry) = self.settings.apps.get(index) else {
+            return;
+        };
+        let place = place_of(&entry.php);
+        let purpose = ReadFor::Migrations {
+            target,
+            connection,
+            place,
+        };
+        self.start_read(index, words, purpose);
+    }
+
+    /// Takes in a read of the migration state of `target` on `connection` (design
+    /// D7): its document merges into the app's package data. Otherwise the state box
+    /// says why, and the state stays as it was (design D2). A read that started with
+    /// another runner or working folder may have read another database: its answer,
+    /// or its error, is dropped.
+    fn migrations_read(
+        &mut self,
+        index: usize,
+        target: Target,
+        connection: &str,
+        place: RunPlace,
+        end: Result<mortise_core::ReadEnd, mortise_core::StartError>,
+    ) {
+        if self
+            .settings
+            .apps
+            .get(index)
+            .map(|entry| place_of(&entry.php))
+            .as_ref()
+            != Some(&place)
+        {
+            return;
+        }
+        let status = match end {
+            Ok(end) => end
+                .document::<mortise_core::MigrationStatus>()
+                .map_err(|error| strings::no_document(&end, &error)),
+            Err(error) => Err(strings::start_reason(&error)),
+        };
+        let modules_on: Vec<String> = self.snapshot(index).map_or_else(Vec::new, |app| {
+            app.modules
+                .iter()
+                .filter(|module| module.state == ModuleState::On)
+                .map(|module| module.name.clone())
+                .collect()
+        });
+        let Some(open) = self.apps.get_mut(index) else {
+            return;
+        };
+        open.state_place = Some(place);
+        let status = match status {
+            Ok(status) => status,
+            Err(reason) => {
+                open.migration_error = Some(actions_view::StateError {
+                    target,
+                    connection: connection.trim().to_owned(),
+                    reason,
+                });
+                return;
+            }
+        };
+        open.migration_error = None;
+        let modules_on: Vec<&str> = modules_on.iter().map(String::as_str).collect();
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |since| since.as_millis() as i64);
+        self.set_package(index, |package| {
+            package.merge_migrations(status, &target, connection, &modules_on, now_ms);
+        });
+    }
+
+    /// Forgets the whole migration state of each app whose runner or working folder
+    /// changed since its last state read, and why that read failed: another runner or
+    /// folder may reach another database (design D7).
+    fn forget_state_of_another_place(&mut self) {
+        for index in 0..self.apps.len() {
+            let place = self
+                .settings
+                .apps
+                .get(index)
+                .map(|entry| place_of(&entry.php));
+            let open = &mut self.apps[index];
+            if open.state_place.is_none() || open.state_place == place {
+                continue;
+            }
+            open.state_place = None;
+            open.migration_error = None;
+            self.set_package(index, |package| {
+                package.forget_migrations(&Target::All);
+            });
+        }
+    }
+
+    /// After a run of the app at `index` ended, with these words, from wherever it
+    /// started (design D7). A migrate, roll back, reset, refresh or fresh, whatever its
+    /// exit code, forgets the migration state it may have changed: the box then reads
+    /// "Not read yet." again. A delete that exited with 0 forgets its module.
+    fn after_run(&mut self, index: usize, args: &[String]) {
+        self.documents_ended(index, args);
+        let Some(open) = self.apps.get(index) else {
+            return;
+        };
+        let forget = match (destructive_words(args), open.runs.ended()) {
+            (
+                Some((Action::DeleteModule, Target::Module(name))),
+                Some(runner_view::RunOver {
+                    end: RunEnd::Exited { code: Some(0), .. },
+                    ..
+                }),
+            ) => Some(Target::Module(name)),
+            _ => mortise_core::migrations_changed_by(args),
+        };
+        let Some(target) = forget else {
+            return;
+        };
+        // The app is read again only when something goes.
+        if open.package.clone().forget_migrations(&target) {
+            self.set_package(index, |package| {
+                package.forget_migrations(&target);
+            });
         }
     }
 
@@ -1169,8 +1313,7 @@ impl MortiseApp {
         let Some(app) = self.snapshot(index) else {
             return;
         };
-        let php = &self.settings.apps[index].php;
-        if php.runner != place.runner || php.working_folder != place.folder {
+        if place_of(&self.settings.apps[index].php) != place {
             return;
         }
         let listed = match &end {
@@ -1362,14 +1505,31 @@ impl MortiseApp {
                 if production {
                     body = format!("{body} {}", strings::production_body(&name));
                 }
+                // With the migration state the dialog lists the last batch and
+                // counts it (S10.3); without it, only the dry run (deviation S41).
+                let connection = mortise_core::Options::from_args(&act.args).database;
+                let last_batch: Vec<String> = self
+                    .snapshot(index)
+                    .and_then(|app| {
+                        let migrations = app.package_data.migrations_for(&connection)?;
+                        migrations.get(&object).map(|state| {
+                            state
+                                .last_batch()
+                                .into_iter()
+                                .map(|ran| ran.name.clone())
+                                .collect()
+                        })
+                    })
+                    .unwrap_or_default();
+                let confirm = match last_batch.len() {
+                    0 => strings::action_button(Action::RollBack).to_owned(),
+                    n => strings::roll_back_counted(n),
+                };
                 Dialog {
                     danger: true,
                     left: Some(strings::DRY_RUN.to_owned()),
-                    ..Dialog::new(
-                        strings::roll_back_title(&object),
-                        body,
-                        strings::action_button(Action::RollBack).to_owned(),
-                    )
+                    code: (!last_batch.is_empty()).then(|| bounded(&last_batch, "\n")),
+                    ..Dialog::new(strings::roll_back_title(&object), body, confirm)
                 }
             }
             Ask::Production => Dialog {
@@ -1414,15 +1574,48 @@ impl MortiseApp {
             name: name.to_owned(),
             text: String::new(),
         });
+        // With the migration state of the connection the words run on, reset and
+        // refresh name the tables and count the migrations (S10.5 a and b); without
+        // it they do not (deviation S42).
+        let connection = mortise_core::Options::from_args(&act.args).database;
+        let state = app
+            .package_data
+            .migrations_for(&connection)
+            .and_then(|migrations| migrations.get(module));
+        let ran = state.map_or(0, |state| state.ran.len());
+        let tables = state.map_or(&[][..], |state| state.tables.as_slice());
+        let code = (!tables.is_empty()).then(|| bounded(tables, ", "));
         let dialog = match act.action {
             Action::ResetMigrations => Dialog {
                 left: Some(strings::DRY_RUN.to_owned()),
-                lines: vec![strings::nothing_outside(module)],
-                ..Dialog::new(title, strings::reset_body(module), confirm)
+                code,
+                lines: vec![match tables.len() {
+                    0 => strings::nothing_outside(module),
+                    n => strings::tables_untouched(n, module),
+                }],
+                ..Dialog::new(
+                    title,
+                    strings::reset_body(module),
+                    match ran {
+                        0 => confirm,
+                        n => strings::reset_counted(n),
+                    },
+                )
             },
             Action::RefreshMigrations => Dialog {
-                lines: vec![strings::NO_DRY_RUN.to_owned()],
-                ..Dialog::new(title, strings::refresh_body(module), confirm)
+                code,
+                lines: vec![match tables.len() {
+                    0 => strings::NO_DRY_RUN.to_owned(),
+                    n => strings::tables_no_dry_run(n),
+                }],
+                ..Dialog::new(
+                    title,
+                    strings::refresh_body(module),
+                    match ran {
+                        0 => confirm,
+                        n => strings::refresh_counted(n),
+                    },
+                )
             },
             Action::FreshMigrate => {
                 let on = app
@@ -1492,6 +1685,7 @@ impl MortiseApp {
                 .assumed
                 .contains(&mortise_core::LayoutKey::ModulesFolder)
                 || layout.modules_dir != app.layout.modules_dir,
+            package_data: mortise_core::gives_data(&app.package),
         };
         mortise_core::refuses(action, &context)
     }
@@ -1556,11 +1750,16 @@ impl MortiseApp {
 
     /// The toast after an action of the app at `index` ended (design D6). A dry run
     /// and Check translations get none when they succeed. A failure gets one only when
-    /// the drawer does not show it.
+    /// the drawer does not show it. On 13.4 a run of tests whose document counts its
+    /// tests gets the toast of [`Self::documents_ended`] instead (design D8).
     fn action_ended(&mut self, index: usize, act: &Act, modules_on: usize) {
+        if self.tests_ended(index, &act.args).is_some() {
+            return;
+        }
         let Some(runner_view::RunOver { end, lines, .. }) = self.apps[index].runs.ended() else {
             return;
         };
+        let count = mortise_core::migration_count(lines);
         let object = match &act.target {
             Target::Module(module) => module.as_str(),
             Target::All => strings::ALL_MODULES_OBJECT,
@@ -1570,7 +1769,6 @@ impl MortiseApp {
             if mortise_core::has_option(&act.args, "--pretend") {
                 return;
             }
-            let count = mortise_core::migration_count(lines);
             let text = match act.action {
                 Action::TurnOff => strings::turned_off(object),
                 Action::TurnOn => strings::turned_on(object),
@@ -1592,21 +1790,81 @@ impl MortiseApp {
             self.toast = Some(Toast::done(text));
             return;
         }
-        let in_view = self.runner.shown == Shown::Open
-            && self.current == Some(index)
-            && self.settings_open.is_none()
-            && self.adding.is_none();
-        if in_view {
+        if self.output_in_view(index) {
             return;
         }
         let text = match end {
             RunEnd::Exited { code, .. } => strings::stopped_with(&label, code),
             RunEnd::Stopped { .. } => strings::was_stopped(&label),
         };
+        self.failed_toast(index, text);
+    }
+
+    /// True when the drawer shows the output of the app at `index`: a failure there
+    /// needs no toast.
+    fn output_in_view(&self, index: usize) -> bool {
+        self.runner.shown == Shown::Open
+            && self.current == Some(index)
+            && self.settings_open.is_none()
+            && self.adding.is_none()
+    }
+
+    /// The toast of a failed run of the app at `index`, with "Show output".
+    fn failed_toast(&mut self, index: usize, text: String) {
         let root = self.settings.apps[index].root.clone();
         let toast =
             Toast::failed(text).with_action(strings::SHOW_OUTPUT, ToastAction::ShowOutput(root));
         self.toast = Some(toast);
+    }
+
+    /// The toast of a run of `module:test --json` of the app at `index` that ended,
+    /// counted from its document (design D8). `None` for other words, or when the
+    /// document does not count the tests.
+    fn tests_ended(&self, index: usize, args: &[String]) -> Option<String> {
+        if !is_json_run(args, Action::RunTests) {
+            return None;
+        }
+        let over = self.apps.get(index)?.runs.ended()?;
+        let report =
+            mortise_core::whole_document::<TestReport>(over.stdout, over.stdout_cut).ok()?;
+        tests_toast(&report, &words_target(args)?)
+    }
+
+    /// The documents of a run of the app at `index` that ended, from wherever it
+    /// started: the Actions tab, Run again or the history (design D8, D9). The report
+    /// of `module:lang --json` goes into the package data, and `module:test --json`
+    /// gets the toast that counts its tests, whatever the exit code. A failure gets
+    /// that toast only when the drawer does not show it. A translation report that
+    /// cannot be read gets a failed toast with the reason: Findings keep the last one.
+    fn documents_ended(&mut self, index: usize, args: &[String]) {
+        if let Some(text) = self.tests_ended(index, args) {
+            let passed = matches!(
+                self.apps[index].runs.ended(),
+                Some(runner_view::RunOver {
+                    end: RunEnd::Exited { code: Some(0), .. },
+                    ..
+                })
+            );
+            if passed {
+                self.toast = Some(Toast::done(text));
+            } else if !self.output_in_view(index) {
+                self.failed_toast(index, text);
+            }
+            return;
+        }
+        if !is_json_run(args, Action::CheckTranslations) {
+            return;
+        }
+        let Some(report) = self.apps[index].runs.ended().map(|over| {
+            mortise_core::whole_document::<LangReport>(over.stdout, over.stdout_cut)
+                .map_err(|error| strings::no_run_document(&error, over.end))
+        }) else {
+            return;
+        };
+        match report {
+            Ok(report) => self.set_package(index, |data| data.merge_translations(report)),
+            Err(reason) => self.failed_toast(index, strings::translations_not_read(&reason)),
+        }
     }
 
     /// What the button of a toast asked for.
@@ -1687,11 +1945,7 @@ impl MortiseApp {
                 }
                 let args = mortise_core::with_dry_run(words.clone());
                 let words = words.clone();
-                let php = &self.settings.apps[index].php;
-                let place = RunPlace {
-                    runner: php.runner.clone(),
-                    folder: php.working_folder.clone(),
-                };
+                let place = place_of(&self.settings.apps[index].php);
                 self.start_read(index, args, ReadFor::DryRun { words, place });
                 return;
             }
@@ -2419,16 +2673,22 @@ impl eframe::App for MortiseApp {
         let menu_chosen = self.menu_chosen(&ctx);
         self.keys(ui);
         self.take_in();
+        self.forget_state_of_another_place();
         self.sync_runtime(&ctx);
         // Lines and the elapsed time show without a callback from the core.
         let mut running = false;
         let mut ended = Vec::new();
         let mut generated = Vec::new();
+        let mut finished = Vec::new();
         for (index, open) in self.apps.iter_mut().enumerate() {
             let was = open.runs.running().is_some();
             running |= open.runs.poll();
             if was && open.runs.running().is_none() {
-                if let Some((act, modules_on)) = open.action_run.take() {
+                let action_run = open.action_run.take();
+                if let Some(args) = open.runs.args() {
+                    finished.push((index, args.to_vec()));
+                }
+                if let Some((act, modules_on)) = action_run {
                     ended.push((index, act, modules_on));
                 }
                 if let Some(generating) = open.generate_run.take() {
@@ -2462,6 +2722,9 @@ impl eframe::App for MortiseApp {
         }
         for (index, generating) in generated {
             self.generate_ended(index, generating);
+        }
+        for (index, args) in finished {
+            self.after_run(index, &args);
         }
         if running {
             ctx.request_repaint_after(std::time::Duration::from_millis(100));
@@ -2737,6 +3000,13 @@ impl eframe::App for MortiseApp {
                             held,
                             keyboard: self.keyboard,
                             mac,
+                            reading_state: open.reading.as_ref().and_then(|reading| match &reading
+                                .purpose
+                            {
+                                ReadFor::Migrations { target, .. } => Some(target),
+                                _ => None,
+                            }),
+                            state_error: open.migration_error.as_ref(),
                         },
                         generate: &mut open.generate,
                         generate_inputs: GenerateInputs {
@@ -3030,9 +3300,17 @@ impl eframe::App for MortiseApp {
                 };
                 self.open_action(module, action);
             }
+            Some(BoundaryAction::OpenModuleAction { module, action }) => {
+                self.open_action(Some(module), action);
+            }
             Some(BoundaryAction::Act(act)) => {
                 if let Some(current) = self.current {
                     self.act(current, act);
+                }
+            }
+            Some(BoundaryAction::ReadMigrations { target, args }) => {
+                if let Some(current) = self.current {
+                    self.read_migrations(current, target, args);
                 }
             }
             Some(BoundaryAction::Generate(GenerateAsk::NewModule)) => {
@@ -3190,7 +3468,17 @@ fn open_app(ctx: &egui::Context, entry: &AppEntry, data_dir: Option<&Path>) -> O
         select_new: None,
         package: PackageData::default(),
         reading: None,
+        migration_error: None,
+        state_place: None,
         catalog: AppCatalog::default(),
+    }
+}
+
+/// Where the commands of an app with these PHP settings run.
+fn place_of(php: &mortise_core::PhpSettings) -> RunPlace {
+    RunPlace {
+        runner: php.runner.clone(),
+        folder: php.working_folder.clone(),
     }
 }
 
@@ -3248,20 +3536,96 @@ fn system_reduces_motion() -> bool {
     false
 }
 
-/// The action and the target of artisan words of reset, refresh, fresh or delete:
-/// `--all`, or the module, which is the second word or the word after `--`.
+/// The toast of Run tests from the document of `module:test --json` on `target`
+/// (design D8), or `None` when the document has no counts. A module that ran
+/// without counts, such as when PHPUnit stopped before its report, leaves the
+/// totals short: then there is no count either. Nor is there when no test failed
+/// and the exit code says the run failed (a warning under `failOnWarning`): the
+/// count cannot say what failed.
+fn tests_toast(report: &TestReport, target: &Target) -> Option<String> {
+    let object = match target {
+        Target::Module(name) => {
+            let listed = report
+                .modules
+                .iter()
+                .find(|module| module.name.eq_ignore_ascii_case(name));
+            if listed.is_some_and(|module| !module.ran) {
+                return Some(strings::no_tests_folder(name));
+            }
+            name.clone()
+        }
+        Target::All => match report.modules.iter().filter(|module| module.ran).count() {
+            0 => return None,
+            n => strings::modules(n),
+        },
+    };
+    if report
+        .modules
+        .iter()
+        .any(|module| module.ran && (module.passed.is_none() || module.failed.is_none()))
+    {
+        return None;
+    }
+    let (passed, failed) = (report.passed?, report.failed?);
+    if failed == 0 {
+        if report.exit_code.is_some_and(|code| code != 0) {
+            return None;
+        }
+        return Some(strings::tests_passed(passed, &object));
+    }
+    let total = passed + failed + report.skipped.unwrap_or(0);
+    Some(strings::tests_failed(failed, total, &object))
+}
+
+/// The names a dialog lists at most: the migrations of a roll back, the tables of
+/// a reset or a refresh. With the footer, the dialog fits in a window 600 px high.
+const DIALOG_NAMES: usize = 6;
+
+/// At most [`DIALOG_NAMES`] of `names` joined by `separator`, then "and 24 more"
+/// (not in the spec): on a line of its own after a line break, else after the last name.
+fn bounded(names: &[String], separator: &str) -> String {
+    let mut text = names
+        .iter()
+        .take(DIALOG_NAMES)
+        .map(String::as_str)
+        .collect::<Vec<_>>()
+        .join(separator);
+    if names.len() > DIALOG_NAMES {
+        let more = strings::and_more(names.len() - DIALOG_NAMES);
+        if separator == "\n" {
+            text.push('\n');
+            text.push_str(more.trim_start());
+        } else {
+            text.push_str(&more);
+        }
+    }
+    text
+}
+
+/// The action and the target of artisan words of reset, refresh, fresh or delete.
 fn destructive_words(args: &[String]) -> Option<(Action, Target)> {
     let action = Action::from_artisan(args.first()?).filter(|action| action.is_destructive())?;
-    let target = if args
+    Some((action, words_target(args)?))
+}
+
+/// The target of artisan words: `--all`, or the module, which is the second word
+/// or the word after `--`.
+fn words_target(args: &[String]) -> Option<Target> {
+    if args
         .iter()
         .take_while(|word| *word != "--")
         .any(|word| word == "--all")
     {
-        Target::All
+        Some(Target::All)
     } else {
-        Target::Module(runner_view::module_named(args)?)
-    };
-    Some((action, target))
+        runner_view::module_named(args).map(Target::Module)
+    }
+}
+
+/// True when artisan words run `action` with `--json`: its answer is a document.
+fn is_json_run(args: &[String], action: Action) -> bool {
+    args.first().and_then(|word| Action::from_artisan(word)) == Some(action)
+        && mortise_core::has_option(args, "--json")
 }
 
 /// True when the line that runs `args` carries `--force` before a `--`: in the
@@ -3482,4 +3846,67 @@ pub fn run(chrome: Chrome, folder: Option<PathBuf>) -> eframe::Result {
             Ok(Box::new(app))
         }),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The document of a recording in `fixtures/output`.
+    fn recorded(name: &str) -> TestReport {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../fixtures/output")
+            .join(format!("{name}.json"));
+        let json: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+        let stdout: Vec<String> = json["stdout"]
+            .as_str()
+            .unwrap()
+            .lines()
+            .map(str::to_owned)
+            .collect();
+        mortise_core::document(&stdout).unwrap()
+    }
+
+    #[test]
+    fn the_toast_of_run_tests_counts_from_the_document() {
+        let checkout = Target::Module("Checkout".to_owned());
+        assert_eq!(
+            tests_toast(&recorded("module-test-fail"), &checkout).as_deref(),
+            Some("1 of 1 test failed in Checkout.")
+        );
+        let mut all = recorded("module-test-all");
+        assert_eq!(
+            tests_toast(&all, &Target::All).as_deref(),
+            Some("1 of 2 tests failed in 3 modules.")
+        );
+        // No test failed and the run failed: the count cannot say why.
+        all.failed = Some(0);
+        assert_eq!(tests_toast(&all, &Target::All), None);
+        // A module that ran without counts leaves the totals short: no count.
+        all.exit_code = Some(0);
+        all.modules[1].passed = None;
+        assert_eq!(tests_toast(&all, &Target::All), None);
+        let mut report = recorded("module-test-pass");
+        report.modules[0].ran = false;
+        assert_eq!(
+            tests_toast(&report, &checkout).as_deref(),
+            Some("Checkout has no tests folder.")
+        );
+        // Without counts the toasts of an action without data apply.
+        report.modules[0].ran = true;
+        report.passed = None;
+        assert_eq!(tests_toast(&report, &checkout), None);
+    }
+
+    #[test]
+    fn a_dialog_lists_six_names_then_counts_the_rest() {
+        let names: Vec<String> = (1..=30).map(|n| format!("t{n}")).collect();
+        assert_eq!(bounded(&names, "\n"), "t1\nt2\nt3\nt4\nt5\nt6\nand 24 more");
+        assert_eq!(
+            bounded(&names[..7], ", "),
+            "t1, t2, t3, t4, t5, t6 and 1 more"
+        );
+        assert_eq!(bounded(&names[..2], ", "), "t1, t2");
+    }
 }

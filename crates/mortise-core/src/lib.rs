@@ -59,6 +59,7 @@ pub use editor::{Editor, EditorError, editor_arguments, open_in_editor};
 pub use environment::{Credentials, Environment};
 pub use findings::{
     Check, CheckResult, DEFAULT_COVERAGE_LIMIT, Detail, Finding, FindingState, Findings, Severity,
+    Todo,
 };
 pub use git::{CHURN_DAYS, Churn, Git};
 pub use kind::{OTHER, TESTS};
@@ -77,7 +78,8 @@ pub use package::{
     DataError, FileAction, FileResult, GeneratorReport, LangModule, LangReport, Locale,
     MigrationRow, MigrationStatus, ModuleMigrations, ModuleStatus, ModuleTests, PackageData,
     RanMigration, ReportedFile, TestReport, document, generator_gives_data, gives_data, has_option,
-    migration_file, whole_document, with_dry_run, with_json,
+    migrate_status_args, migration_file, migrations_changed_by, whole_document, with_dry_run,
+    with_json,
 };
 pub use rules::{RULES_FILE, Rules, RulesError, RulesSource};
 #[cfg(feature = "run")]

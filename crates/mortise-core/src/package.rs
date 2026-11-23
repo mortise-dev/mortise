@@ -107,6 +107,61 @@ pub fn with_dry_run(words: Vec<String>) -> Vec<String> {
     with_flags(words, &["--dry-run", "--json"])
 }
 
+/// The words of a read of the migration state of `target` on `database`:
+/// `module:migrate-status Checkout --database=testing --json`, or `--all`. An empty
+/// `database` is the default connection and is left out. A module name that starts
+/// with `-` goes after `--`, as [`crate::plan`] puts it.
+pub fn migrate_status_args(target: &Target, database: &str) -> Vec<String> {
+    let mut words = vec!["module:migrate-status".to_string()];
+    let mut last = None;
+    match target {
+        Target::Module(name) if name.starts_with('-') => last = Some(name.clone()),
+        Target::Module(name) => words.push(name.clone()),
+        Target::All => words.push("--all".to_string()),
+    }
+    let database = database.trim();
+    if !database.is_empty() {
+        words.push(format!("--database={database}"));
+    }
+    if let Some(name) = last {
+        words.extend(["--".to_string(), name]);
+    }
+    with_json(words)
+}
+
+/// The migration state that a run of the artisan words `args` may have changed, when
+/// it ends, whatever its exit code (design D7): a migrate, roll back, reset, refresh
+/// or fresh that is not a dry run (`--pretend`). Every module for `--all`, for a fresh
+/// or for words that name no module; else the module the words name, the second word
+/// or the word after `--`. `None` for other words.
+pub fn migrations_changed_by(args: &[String]) -> Option<Target> {
+    const CHANGE: [&str; 5] = [
+        "module:migrate",
+        "module:migrate-rollback",
+        "module:migrate-reset",
+        "module:migrate-refresh",
+        "module:migrate-fresh",
+    ];
+    let command = args
+        .first()
+        .filter(|word| CHANGE.contains(&word.as_str()))?;
+    if has_option(args, "--pretend") {
+        return None;
+    }
+    let at = args.iter().position(|word| word == "--");
+    let options = &args[..at.unwrap_or(args.len())];
+    let module = match at {
+        Some(at) => args.get(at + 1),
+        None => options.get(1).filter(|word| !word.starts_with('-')),
+    };
+    match module {
+        Some(name) if command != "module:migrate-fresh" && !has_option(args, "--all") => {
+            Some(Target::Module(name.clone()))
+        }
+        _ => Some(Target::All),
+    }
+}
+
 fn with_flags(mut words: Vec<String>, flags: &[&str]) -> Vec<String> {
     let at = words
         .iter()
@@ -259,8 +314,15 @@ pub struct Locale {
 /// It lives in memory only: the database changes outside Mortise.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PackageData {
-    /// The migration state, by module name.
+    /// The migration state, by module name, of [`Self::migration_connection`].
     pub migrations: BTreeMap<String, ModuleMigrations>,
+    /// The connection the migration state was read for (`--database`). Empty for
+    /// the default connection.
+    pub migration_connection: String,
+    /// The modules that were on at the last read of every module (`--all`), while
+    /// that read holds: nothing was forgotten after it. Such a module with no entry
+    /// was not in its answer. Empty without such a read.
+    pub migrations_of_all: BTreeSet<String>,
     /// Whether the database has a migrations table, from the last state read.
     pub migration_table: Option<bool>,
     /// The last translation report, by module.
@@ -298,17 +360,71 @@ impl ModuleMigrations {
 }
 
 impl PackageData {
-    /// Takes in a state read of `target`, read at `read_ms`. A module of the document
-    /// replaces its entry. Under `--all`, a module in `modules_on` that the document
-    /// does not hold is removed, because the package lists every module that is on.
+    /// The migration state when it was read for `connection` (empty for the default).
+    /// A state of another connection says nothing about this one.
+    pub fn migrations_for(&self, connection: &str) -> Option<&BTreeMap<String, ModuleMigrations>> {
+        (self.migration_connection == connection.trim()).then_some(&self.migrations)
+    }
+
+    /// True when the state on `connection` says something of every module in `modules_on`:
+    /// each has an entry, or was on at a read of every module that holds since (design D7).
+    /// A count over the modules that are on is then whole.
+    pub fn migrations_of_every(&self, connection: &str, modules_on: &[&str]) -> bool {
+        self.migrations_for(connection).is_some_and(|migrations| {
+            modules_on.iter().all(|name| {
+                migrations.contains_key(*name) || self.migrations_of_all.contains(*name)
+            })
+        })
+    }
+
+    /// Forgets the migration state of `target`, whatever connection it was read for:
+    /// every module for [`Target::All`], else the module's entry, by name in any case.
+    /// A "no migrations table" answer goes too: the run may have made the table.
+    /// A read of every module no longer covers them all. True when something was forgotten.
+    pub fn forget_migrations(&mut self, target: &Target) -> bool {
+        let before = (
+            self.migrations.len(),
+            self.migration_table,
+            self.migrations_of_all.len(),
+        );
+        match target {
+            Target::All => self.migrations.clear(),
+            Target::Module(name) => self
+                .migrations
+                .retain(|module, _| !module.eq_ignore_ascii_case(name)),
+        }
+        if self.migration_table == Some(false) {
+            self.migration_table = None;
+        }
+        self.migrations_of_all.clear();
+        before
+            != (
+                self.migrations.len(),
+                self.migration_table,
+                self.migrations_of_all.len(),
+            )
+    }
+
+    /// Takes in a state read of `target` on `connection`, read at `read_ms`. A read of
+    /// another connection than the state's replaces the whole state. A module of the
+    /// document replaces its entry. Under `--all`, a module in `modules_on` that the
+    /// document does not hold is removed, because the package lists every module that is on.
     pub fn merge_migrations(
         &mut self,
         status: MigrationStatus,
         target: &Target,
+        connection: &str,
         modules_on: &[&str],
         read_ms: i64,
     ) {
+        let connection = connection.trim();
+        if self.migration_connection != connection {
+            self.migrations.clear();
+            self.migration_connection = connection.to_string();
+            self.migrations_of_all.clear();
+        }
         if *target == Target::All {
+            self.migrations_of_all = modules_on.iter().map(|name| name.to_string()).collect();
             let listed: BTreeSet<&str> = status
                 .modules
                 .iter()
@@ -506,6 +622,16 @@ mod tests {
             with_dry_run(words(&["module:make", "--", "--force"])),
             words(&["module:make", "--dry-run", "--json", "--", "--force"])
         );
+        assert_eq!(
+            migrate_status_args(&Target::Module("-Odd".into()), " testing "),
+            words(&[
+                "module:migrate-status",
+                "--database=testing",
+                "--json",
+                "--",
+                "-Odd"
+            ])
+        );
         // Once only, and a module named `--json` after `--` is not the option.
         assert_eq!(
             with_json(words(&["module:make-model", "Invoice", "--json"])),
@@ -518,10 +644,49 @@ mod tests {
     }
 
     #[test]
+    fn a_migration_command_changes_the_state_of_its_target() {
+        let changed = |line: &[&str]| migrations_changed_by(&words(line));
+        let checkout = Some(Target::Module("Checkout".into()));
+        assert_eq!(
+            changed(&["module:migrate", "Checkout", "--database=testing"]),
+            checkout
+        );
+        assert_eq!(
+            changed(&["module:migrate-rollback", "--", "Checkout"]),
+            checkout
+        );
+        assert_eq!(
+            changed(&["module:migrate-refresh", "--all"]),
+            Some(Target::All)
+        );
+        assert_eq!(
+            changed(&["module:migrate-fresh", "--force"]),
+            Some(Target::All)
+        );
+        assert_eq!(
+            changed(&["module:migrate-reset", "--force"]),
+            Some(Target::All)
+        );
+        assert_eq!(changed(&["module:migrate", "Checkout", "--pretend"]), None);
+        assert_eq!(changed(&["module:migrate-status", "Checkout"]), None);
+        assert_eq!(changed(&["module:seed", "Checkout"]), None);
+    }
+
+    #[test]
     fn a_read_replaces_the_modules_it_holds() {
         let mut data = PackageData::default();
         let all: MigrationStatus = document(&stdout("module-migrate-status-all")).unwrap();
-        data.merge_migrations(all, &Target::All, &["Billing", "Checkout", "Loyalty"], 1);
+        data.merge_migrations(
+            all,
+            &Target::All,
+            "",
+            &["Billing", "Checkout", "Loyalty", "Shipping"],
+            1,
+        );
+        // The read of every module covers a module that was on and is not in its answer,
+        // not one turned on after it.
+        assert!(data.migrations_of_every("", &["Checkout", "Shipping"]));
+        assert!(!data.migrations_of_every("", &["Checkout", "Catalog"]));
         let checkout = &data.migrations["Checkout"];
         assert_eq!(
             checkout.waiting,
@@ -535,7 +700,7 @@ mod tests {
 
         // A read of two modules keeps the third, and says there is no table.
         let two: MigrationStatus = document(&stdout("module-migrate-status-no-table")).unwrap();
-        data.merge_migrations(two, &Target::Module("Checkout".into()), &[], 2);
+        data.merge_migrations(two, &Target::Module("Checkout".into()), "", &[], 2);
         assert_eq!(data.migration_table, Some(false));
         assert_eq!(data.migrations["Checkout"].ran, []);
         assert_eq!(data.migrations["Checkout"].read_ms, 2);
@@ -546,8 +711,21 @@ mod tests {
             modules: Vec::new(),
             migration_table: true,
         };
-        data.merge_migrations(none, &Target::All, &["Checkout", "Loyalty"], 3);
+        data.merge_migrations(none.clone(), &Target::All, "", &["Checkout", "Loyalty"], 3);
         assert_eq!(data.migrations.keys().collect::<Vec<_>>(), ["Billing"]);
+
+        // A run forgets its module whatever the connection, and a "no table" answer.
+        data.migration_table = Some(false);
+        assert!(data.forget_migrations(&Target::Module("billing".into())));
+        assert!(!data.migrations_of_every("", &["Catalog"]));
+        assert!(data.migrations.is_empty() && data.migration_table.is_none());
+        assert!(!data.forget_migrations(&Target::All));
+
+        // The state is of one connection: a read of another replaces it all.
+        assert!(data.migrations_for("testing").is_none());
+        data.merge_migrations(none, &Target::Module("Checkout".into()), "testing", &[], 4);
+        assert!(data.migrations_for("").is_none());
+        assert_eq!(data.migrations_for(" testing").map(BTreeMap::len), Some(0));
 
         // A report of one module keeps the others.
         data.merge_translations(document(&stdout("module-lang-all-json")).unwrap());

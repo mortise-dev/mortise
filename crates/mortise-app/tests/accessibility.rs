@@ -462,6 +462,49 @@ fn the_actions_tab_and_its_dialogs() {
 }
 
 #[test]
+fn the_actions_and_findings_of_an_app_with_package_data() {
+    let desk = runner_desk(&fake(""), &[]);
+    common::package_version(&desk.path().join("shop-api"), "v13.4.0");
+    let mut harness = desk.start();
+    select(&mut harness, "Checkout");
+    press(&mut harness, Key::Num4);
+    audit(&harness, "Migrate, state not read");
+    harness
+        .get_by_role_and_label(Role::Button, "Read migration state")
+        .click();
+    wait_for(&mut harness, "2026_11_23_120000_create_order_items_table");
+    audit(&harness, "Migrate, state read");
+    harness.get_by_role_and_label(Role::Button, "Read again");
+    // Run tests has a filter field and Run in parallel.
+    select(&mut harness, "Run tests");
+    harness.get_by_role_and_label(Role::TextInput, "Filter, a test name or pattern");
+    harness.get_by_role_and_label(Role::CheckBox, "Run in parallel");
+    audit(&harness, "Run tests, options");
+    // The To do group of Findings, after Check translations.
+    select(&mut harness, "Check translations");
+    chord(&mut harness, Key::Enter);
+    common::wait_until(&mut harness, "the translation report", |app| {
+        app.app()
+            .is_some_and(|app| app.package_data.translations.is_some())
+    });
+    press(&mut harness, Key::F);
+    for row in [
+        "Checkout has 1 migration waiting.",
+        "2 keys in en are missing in fr.",
+    ] {
+        harness
+            .query_all_by_role(Role::Row)
+            .find(|node| {
+                node.accesskit_node()
+                    .label()
+                    .is_some_and(|l| l.contains(row))
+            })
+            .unwrap_or_else(|| panic!("no row: {row}"));
+    }
+    audit(&harness, "Findings with a To do group");
+}
+
+#[test]
 fn the_generate_tab_its_result_and_replace() {
     let desk = runner_desk(&fake(""), &[]);
     let mut harness = desk.start();

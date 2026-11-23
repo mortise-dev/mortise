@@ -56,22 +56,26 @@ the cache stale.
 - **WHEN** the generators were read with 13.4.0 and the lock now gives 13.4.1
 - **THEN** the picker shows the shipped list until the user reads the generators again
 
-### Requirement: When the migration state is read again
-After a read of the migration state in a session, a migrate, roll back, reset, refresh or fresh that the
-user starts from Mortise SHALL be followed by a read with the same target, whatever its exit code. The
-panel MUST show that line before the run. A dry run, a seed and a delete are not followed by a read.
+### Requirement: The migration state after a migration command
+When a migrate, roll back, reset, refresh or fresh that is not a dry run ends, from anywhere and whatever
+its exit code, Mortise SHALL forget the migration state it may have changed: every module for `--all` or a fresh, else its module,
+whatever connection the state was read for. Mortise MUST NOT start a read of the state after it.
 
 #### Scenario: Migrate after a read
 - **WHEN** the state of Checkout was read and the user runs Migrate
-- **THEN** after the migrate ends `module:migrate-status Checkout --json` runs and "Waiting" shows the new state
+- **THEN** after the migrate ends the state box reads "Not read yet." with "Read migration state", and no state command runs
 
-#### Scenario: Migrate before any read
-- **WHEN** the state was never read and the user runs Migrate
-- **THEN** no state command runs after it
+#### Scenario: A dry run keeps the state
+- **WHEN** the state of Checkout was read and the user runs Migrate with `--pretend`
+- **THEN** after the run the state box still shows the state that was read
+
+#### Scenario: A fresh forgets every module
+- **WHEN** the state of every module was read and the user runs Fresh
+- **THEN** after the run every state box reads "Not read yet."
 
 ### Requirement: Translations in Findings
-After Check translations ran with its JSON answer, Findings SHALL list the check "Translations are
-complete" and a warning for each language of a module that lacks keys or files, such as "Checkout: 4 keys
+After Check translations ran with its JSON answer and checked a module of the app, Findings SHALL list
+the check "Translations are complete" and a warning for each language of a module that lacks keys or files, such as "Checkout: 4 keys
 in en are missing in fr.". A check of one module MUST keep the report of the others.
 
 #### Scenario: A missing key

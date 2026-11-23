@@ -161,6 +161,19 @@ impl Desk {
     }
 }
 
+/// Sets the version of `nwidart/laravel-modules` in the `composer.lock` of the app
+/// in `root`, a copy of shop-api, which has `v13.3.0`. A test that needs 13.4 uses it.
+pub fn package_version(root: &Path, version: &str) {
+    let lock = root.join("composer.lock");
+    let text = std::fs::read_to_string(&lock).unwrap();
+    let changed = text.replace(
+        "\"version\": \"v13.3.0\"",
+        &format!("\"version\": \"{version}\""),
+    );
+    assert_ne!(text, changed, "the lock names no v13.3.0");
+    std::fs::write(lock, changed).unwrap();
+}
+
 /// A desk with shop-api known and open, started.
 pub fn shop_api() -> (Desk, Harness<'static, MortiseApp>) {
     let desk = Desk::new();
@@ -349,18 +362,6 @@ pub fn ran(desk: &Desk, root: &Path, runs: &[(&str, i64)]) -> i64 {
     now_ms
 }
 
-/// Gives the app in `root` another version of `nwidart/laravel-modules` in its
-/// `composer.lock`, such as `v13.4.0` for the package data.
-pub fn package_version(root: &Path, version: &str) {
-    let lock = root.join("composer.lock");
-    let json = std::fs::read_to_string(&lock).unwrap();
-    let json = json.replace(
-        "\"version\": \"v13.3.0\"",
-        &format!("\"version\": \"{version}\""),
-    );
-    std::fs::write(lock, json).unwrap();
-}
-
 pub fn turn_off(root: &Path, module: &str) {
     let statuses = root.join("modules_statuses.json");
     let json = std::fs::read_to_string(&statuses).unwrap();
@@ -443,6 +444,14 @@ pub fn pad_module(root: &Path, module: &str, files: usize) {
         );
         std::fs::write(dir.join(format!("Service{i}.php")), source).unwrap();
     }
+}
+
+/// Copies the shop-api fixture and gives it this version of `nwidart/laravel-modules`
+/// in its `composer.lock`, such as `v13.4.0`.
+pub fn app_with_package(desk: &Desk, folder: &str, version: &str) -> PathBuf {
+    let root = desk.app(folder);
+    package_version(&root, version);
+    root
 }
 
 /// Copies the shop-api fixture and gives it `count` modules, by copying Catalog

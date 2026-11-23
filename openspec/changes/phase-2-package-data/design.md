@@ -251,11 +251,12 @@ pub struct PackageData {
     spec). For a module: `module:migrate-status <Module> --json`; for "All modules": `module:migrate-status
     --all --json`. The result merges into `migrations` by module (a module of the document replaces its
     entry; under `--all`, a module that is on and absent from the document is removed).
-  - After a read in this session, a migrate, roll back, reset, refresh or fresh started from Mortise reads
-    the state again when it ends, whatever its exit code, with the same target (fresh: `--all`). The state
-    box of those panels says so before the run: "After the run Mortise reads the state again:" and the
-    line (not in the spec). A dry run (`--pretend`) is not followed by a read. Seed and delete are not:
-    delete removes the module's entry.
+  - When a migrate, roll back, reset, refresh or fresh ends, from the Actions tab, a dialog, Run again or
+    the history, whatever its exit code, Mortise forgets the state it may have changed
+    (`package::migrations_changed_by`): every module for `--all`, a fresh or words without a module, else
+    the module's entry, whatever connection it was read for. No read follows: the box reads "Not read
+    yet." with "Read migration state" and its line again. A dry run (`--pretend`) and a seed forget
+    nothing. A delete that exits with 0 removes the module's entry.
   - "Read at 14:05" stands in the state box after a read (not in the spec).
 - **On screen** with a state for the module:
   - S10.1: "Waiting" with "1 migration" (the names in the box), the button "Migrate (1)", and the row
@@ -358,6 +359,52 @@ accessible name and a 24 px target (`tests/accessibility.rs`).
 - The app's reads: `OpenApp::reading` holds at most one `PackageRead { read, label, purpose: ReadFor }`,
   polled each frame; `start_read` starts one and `read_ended` takes its end (a start error ends it at
   once). `OpenApp::busy()` gives the label of a run or a read; every run button uses it.
+
+### Changed while building 15.5
+
+- `package::migrate_status_args(target)` gives the words of a state read, with a module name that
+  starts with `-` after `--`. The panel shows them and the app runs them.
+- The button that reads ("Read migration state", then "Read again" with "Read at 14:05") and its line
+  stand under the state box. After a read in this session the line has "After the run Mortise reads the
+  state again:" above it, so the one line serves both. Fresh has no box: after a read its panel shows
+  that sentence and the line under "What is lost".
+- "A read in this session" is `PackageData::migration_table` being set. A delete forgets the module's
+  state only when it exits with 0. (After review: only a run started from the Actions tab is followed by
+  a read; Run again from the drawer or the history is not.)
+- The box of Reset and Refresh is titled "Ran" and lists the migrations that ran (not in the spec).
+  Without a waiting migration the button reads "Migrate", and the box "Nothing waiting"; without a ran
+  one the box reads "Nothing ran" (not in the spec).
+- Under "All modules" the state is that of the modules that are on and were read. The box shows
+  "Reading" while a read of its target or of "All modules" runs.
+- The roll back dialog keeps its dry run on the left and lists the last batch in its code box. The
+  tables row names five tables and then "and 2 more"; the dialogs list them all.
+- S4.3 reads "9 ran" alone when nothing waits.
+
+### Changed while building 15.6
+
+- `Action::options(target, package_data)` takes the gate: Run tests has no options to draw
+  before 13.4. `Action::artisan()` still gives none for Run tests; `Action::from_artisan`
+  knows `module:test`, so a test run in the history is found again.
+- "All modules" on 13.4 counts the tests of every module and reads "307 tests in every module,
+  on or off." (not in the spec): `module:test --all` takes every module, on or off. The row
+  detail keeps the count of the modules that are on.
+- The kind of the Run tests toast follows the exit code, as for every action: a failed run gets
+  its toast, "3 of 31 tests failed in Checkout.", only when the drawer does not show it. A run
+  with exit 0 and no counts gets no toast, as Run tests had none in milestone 12.
+- The field "Filter, a test name or pattern" shows `--filter` beside its label in dim mono,
+  as a checkbox shows its option.
+
+### Changed while building 15.7
+
+- `findings::Subject` takes `package: &PackageData`. The translation check and the to do list skip
+  modules of the report or the state that are not in the app; the check counts only those that are.
+- A row of Findings opens a module's action through `BoundaryAction::OpenModuleAction { module,
+  action }`: `OpenAction` takes the selected module, and Findings has "All modules" selected.
+- In the palette a translation warning opens Check translations of its module, with "Actions".
+- In the alert of a module's Summary the translation clause drops the module in front:
+  "... , and 2 keys in en are missing in fr." (not in the spec).
+- The quiet row draws `module:lang` dim after "Translations are complete", as S6.4 does.
+- With no finding and some work to do, the To do group shows below "No findings. ...".
 
 ### Changed while building 15.3
 
@@ -497,13 +544,67 @@ accessible name and a 24 px target (`tests/accessibility.rs`).
 - After a list, "List files again" beside its head drops the list and gives back its flags. "List files"
   and the line of its dry run come back, so a file that changed gets a fresh answer for the same form.
   The button runs nothing itself: the line of the dry run is not on screen beside the list.
+- "Read migration state" and "Read again" run only a line that was whole on screen in the last frame,
+  as the run buttons do (S37). Otherwise they are off with "Scroll up to see the whole command first.".
+- Only a run started from the Actions tab, or from its dialogs, is followed by a read of the state: there
+  "After the run Mortise reads the state again:" and the whole line of that read were on screen. `Act`
+  carries that read (`then_read`). Run again from the drawer or the history shows no such line and starts
+  no read.
+- The state is of one connection: `PackageData::migration_connection` (empty for the default). A read
+  takes the panel's `--database` (`module:migrate-status Checkout --database=testing --json`), and a read
+  of another connection replaces the whole state. A panel shows the counts, lists and tables only for
+  the connection its line runs on; otherwise its box reads "Not read for this connection." (not in the
+  spec) and offers the read for it. The read after a run takes the run's `--database`. S4.3, the Summary
+  and the To do list of Findings show the state of the default connection only.
+- The roll back, reset and refresh dialogs list at most six migrations or tables, then "and 24 more" (not
+  in the spec), so the dialog and its buttons fit in a window 600 px high.
+- A fresh that ends, whatever its exit code, forgets the state of its connection before the read after
+  it: a module that is off keeps no migrations or tables the fresh dropped.
+- Every run of `module:lang --json` or `module:test --json` that ends gives its document, also from Run
+  again or the history: the report goes into `PackageData`, and the tests get their count toast. The
+  end of every run (`after_run`) takes it in; a run from the panel gets that toast only, not a second one.
+- A module that ran with no counts (PHPUnit stopped before its report) gives no count toast: the totals
+  would count it as 0. A failed run then gets the toast of milestone 12.
+- No read follows a migration command. The read after a run could use a runner changed during the run,
+  start when its sentence was cut off, and was skipped by Run again, which left an old state in place.
+  Now a migrate, roll back, reset, refresh or fresh that ends, from anywhere and whatever its exit code
+  (not a dry run), forgets the state it may have changed: all of it for `--all` or a fresh, else its
+  module's entry, whatever connection it was read for (`package::migrations_changed_by`,
+  `PackageData::forget_migrations`). A "no migrations table" answer goes with it. The box then reads
+  "Not read yet." as before any read. This replaces `then_read`, the sentence "After the run Mortise
+  reads the state again:" and the forget of a fresh by connection above.
+- Under "All modules" the counts, the list, "Migrate (N)" and the row detail show only when the state
+  covers every module that is on: each has an entry, or a read of every module holds since
+  (`PackageData::migrations_of_all`, cleared by any forget; `migrations_of_every`). `module:migrate --all`
+  runs the modules that were not read too. With some modules read, the box reads "Not read for every
+  module yet." (not in the spec) and offers the read of every module.
+- A test run whose document counts no failed test but whose exit code is not 0 (PHPUnit with
+  `failOnWarning`) gives no count toast: "1 test passed" would name a failed run. The toast of
+  milestone 12 applies.
+- A run of `module:lang --json` that gives no readable report (none, malformed, or cut past 64 KiB)
+  keeps the last report and gets a failed toast with "Show output": "Mortise could not read the
+  translation report: "<reason>". Findings show the last report." (not in the spec).
+- `PackageData::migrations_of_all` holds the modules that were on at the read of every module, not a
+  flag. A module turned on after that read is covered only by its own entry, so "All modules" reads
+  "Not read for every module yet." until a read covers it.
+- "Translations are complete" counts as a check only when the report checked a module of the app. A
+  report whose modules all have one locale (`checked: false`) adds no passing check with 0 modules.
+- On a 13.4 app the row detail of Run tests under "All modules" counts the tests of every module, on
+  or off, as its panel and `module:test --all` do (`tests_counted`). Before 13.4 both count the modules
+  that are on.
+- A failed read of the migration state keeps its target and connection. The state box shows its reason
+  only for the same target and connection: going back to another connection shows that one's state alone.
+- The migration state belongs to the runner and working folder of its last read: another one may reach
+  another database. When PHP settings change either, the app forgets its whole migration state and the
+  error of its last read. A read that started with another runner or working folder is dropped when it
+  ends, as a dry run is.
 
 ## Risks / Trade-offs
 
 - [The user must press "List files" and "Read migration state"] → One more step than the spec draws.
   It follows the rule of `AGENTS.md`; the owner can change the rule later. Deviation rows record it.
-- [The migration state goes stale when the database changes outside Mortise] → It is read again after
-  each migration command Mortise runs, and "Read at" shows its age.
+- [The migration state goes stale when the database changes outside Mortise] → Each migration command
+  Mortise runs forgets the state it may have changed, and "Read at" shows its age.
 - [Tables come from the migration files] → A table built from a variable is not named. The panel then
   names fewer tables or none; the dry run of reset still prints the SQL.
 - [A long P3 line] → Measured in 15.2; the line limit of standard output grows only if needed.

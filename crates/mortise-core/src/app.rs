@@ -454,6 +454,7 @@ pub fn read_app_cached(
         statuses_file: &shown(&root, &layout.statuses_file),
         has_coverage_report: report_path.is_some(),
         coverage_limit: options.coverage_limit,
+        package: &options.package,
     });
 
     let package_data = options.package.with_tables(&modules);

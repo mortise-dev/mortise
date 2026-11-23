@@ -632,13 +632,40 @@ fn a_module_without_composer_json_takes_its_namespace_from_the_config() {
     assert_eq!(app.link("Checkout", "Billing").unwrap().files(), 6);
 }
 
+/// The lines of the standard output of a recording in `fixtures/output`.
+fn recorded(name: &str) -> Vec<String> {
+    let path = fixture("output").join(format!("{name}.json"));
+    let json: serde_json::Value = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+    json["stdout"]
+        .as_str()
+        .unwrap()
+        .lines()
+        .map(String::from)
+        .collect()
+}
+
 #[test]
 fn finds_what_breaks_a_rule_or_a_check() {
-    use mortise_core::{Check, Detail, FindingState, Severity};
+    use mortise_core::{
+        Check, Detail, FindingState, PackageData, ReadCache, ReadOptions, Severity, Target, Todo,
+        document, read_app_cached,
+    };
 
-    let app = read_app(&fixture("shop-api")).unwrap();
+    // The user read the migration state of every module and checked the translations
+    // of Checkout: 2 keys of en are missing in fr.
+    let mut package = PackageData::default();
+    let state = document(&recorded("module-migrate-status-all")).unwrap();
+    package.merge_migrations(state, &Target::All, "", &[], 0);
+    package.merge_translations(document(&recorded("module-lang-json")).unwrap());
+    let mut options = ReadOptions {
+        package,
+        ..ReadOptions::default()
+    };
+    let root = fixture("shop-api");
+    let mut cache = ReadCache::default();
+    let app = read_app_cached(&root, &BTreeMap::new(), &options, &mut cache).unwrap();
     let findings = &app.findings;
-    assert_eq!((findings.problems(), findings.warnings()), (2, 1));
+    assert_eq!((findings.problems(), findings.warnings()), (2, 2));
 
     // A circle is counted once, on Checkout: the side with fewer files to change.
     let circle = &findings.list[0];
@@ -666,7 +693,24 @@ fn finds_what_breaks_a_rule_or_a_check() {
         }
     );
 
-    let coverage = &findings.list[2];
+    // A translation warning counts like any warning.
+    let translations = &findings.list[2];
+    assert_eq!(
+        (translations.severity, translations.check),
+        (Severity::Warning, Check::TranslationsComplete)
+    );
+    assert_eq!(translations.module.as_deref(), Some("Checkout"));
+    assert_eq!(
+        translations.detail,
+        Detail::MissingTranslations {
+            locale: "fr".into(),
+            keys: 2,
+            files: 0,
+            from: Some("en".into())
+        }
+    );
+
+    let coverage = &findings.list[3];
     assert_eq!(
         (coverage.severity, coverage.check),
         (Severity::Warning, Check::CoverageLimit)
@@ -689,8 +733,33 @@ fn finds_what_breaks_a_rule_or_a_check() {
     assert!(app.circles_counted_elsewhere("Checkout").is_empty());
     assert!(app.circles_counted_elsewhere("Billing").is_empty());
 
-    // Two rules and four checks ran. Three of the six found nothing.
-    assert_eq!(findings.rules_and_checks(), (2, 4));
+    // Waiting migrations are to do, not findings: Billing above is still good.
+    assert_eq!(
+        findings.todo,
+        [
+            Todo {
+                module: "Billing".into(),
+                waiting: 2
+            },
+            Todo {
+                module: "Checkout".into(),
+                waiting: 1
+            }
+        ]
+    );
+
+    // Two rules and five checks ran. Three of the seven found nothing.
+    // Translations looked at the one module with two locales.
+    assert_eq!(findings.rules_and_checks(), (2, 5));
+    let translations = findings.checks.last().unwrap();
+    assert_eq!(
+        (
+            translations.check,
+            translations.checked,
+            translations.findings
+        ),
+        (Check::TranslationsComplete, 1, 1)
+    );
     let quiet: Vec<_> = findings
         .checks
         .iter()
@@ -705,6 +774,13 @@ fn finds_what_breaks_a_rule_or_a_check() {
             (Check::NoStaleStatus, 7)
         ]
     );
+
+    // A report that checked no module, each with one locale, gives no result.
+    for module in &mut options.package.translations.as_mut().unwrap().modules {
+        (module.checked, module.locales) = (false, BTreeMap::new());
+    }
+    let app = read_app_cached(&root, &BTreeMap::new(), &options, &mut cache).unwrap();
+    assert_eq!(app.findings.rules_and_checks(), (2, 4));
 }
 
 #[test]

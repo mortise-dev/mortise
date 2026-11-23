@@ -22,13 +22,19 @@ use mortise_core::history::History;
 fn desk(words: &str) -> (Desk, PathBuf) {
     let desk = Desk::new();
     let root = desk.app("shop-api");
-    desk.knows(&[(&root, "SA")]);
+    through_fake(&desk, &root, words);
+    (desk, root)
+}
+
+/// Makes the app in `root` known and open, run through the fake artisan with `words`
+/// before the artisan arguments.
+fn through_fake(desk: &Desk, root: &std::path::Path, words: &str) {
+    desk.knows(&[(root, "SA")]);
     let mut settings = desk.saved();
     settings.apps[0].php.runner = Some(RunnerKind::Custom {
         line: format!("\"{}\"{words}", env!("CARGO_BIN_EXE_app-fake-artisan")),
     });
     settings.save(&desk.settings_path()).unwrap();
-    (desk, root)
 }
 
 /// Selects a module in the index and opens the Actions tab.
@@ -319,6 +325,54 @@ fn the_header_opens_the_panel_and_run_tests_is_off() {
 }
 
 #[test]
+fn run_tests_on_13_4_runs_module_test_and_check_translations_keeps_its_report() {
+    let desk = Desk::new();
+    let root = common::app_with_package(&desk, "shop-api", "v13.4.0");
+    through_fake(&desk, &root, "");
+    let mut harness = desk.start();
+    actions_of(&mut harness, "Checkout");
+    select(&mut harness, "Run tests");
+    harness.get_by_label("2 tests in Modules/Checkout/tests.");
+    run(&mut harness);
+    wait_for(&mut harness, "1 test passed in Checkout.");
+    let entries = History::open(&desk.data_dir(), &root).entries();
+    assert_eq!(entries[0].args, ["module:test", "Checkout", "--json"]);
+    // Run again in the drawer counts its tests too.
+    harness.key_press(Key::Escape);
+    harness.run_steps(3);
+    assert!(harness.query_by_label_contains("1 test passed").is_none());
+    harness
+        .get_by_role_and_label(Role::Button, "Run again")
+        .click();
+    harness.run_steps(3);
+    wait_for(&mut harness, "1 test passed in Checkout.");
+
+    // The options of `module:test` change the line (design D8).
+    type_in(&mut harness, "Filter, a test name or pattern", "Order");
+    harness
+        .get_by_role_and_label(Role::CheckBox, "Run in parallel")
+        .click();
+    harness.run_steps(3);
+    harness
+        .query_by_label_contains("--ansi Checkout --filter=Order --parallel --json")
+        .unwrap();
+
+    // Its report goes into the package data, although keys are missing (exit 1).
+    select(&mut harness, "Check translations");
+    run(&mut harness);
+    common::wait_until(&mut harness, "the report of Checkout", |app| {
+        app.app().is_some_and(|app| {
+            app.package_data
+                .translations
+                .as_ref()
+                .is_some_and(|report| report.modules.iter().any(|m| m.name == "Checkout"))
+        })
+    });
+    let entries = History::open(&desk.data_dir(), &root).entries();
+    assert_eq!(entries[0].args, ["module:lang", "Checkout", "--json"]);
+}
+
+#[test]
 fn a_failed_migration_is_named_and_the_toast_shows_the_output() {
     // The fake ends only once the gate file exists, so the drawer is hidden first.
     let (desk, root) = desk("");
@@ -368,6 +422,29 @@ fn a_failed_migration_is_named_and_the_toast_shows_the_output() {
         .query_by_label_contains("module:migrate --no-interaction --ansi Shipping --pretend")
         .unwrap();
     assert_eq!(runs(&mut harness, &desk, &root), 1);
+}
+
+#[test]
+fn a_translation_report_that_cannot_be_read_says_why() {
+    let desk = Desk::new();
+    let root = common::app_with_package(&desk, "shop-api", "v13.4.0");
+    // The fake prints one line too long to keep whole.
+    through_fake(&desk, &root, " long");
+    let mut harness = desk.start();
+    actions_of(&mut harness, "Checkout");
+    select(&mut harness, "Check translations");
+    run(&mut harness);
+    wait_for(
+        &mut harness,
+        "Mortise could not read the translation report: \"the answer was cut",
+    );
+    harness.get_by_label_contains("Findings show the last report.");
+    assert!(
+        harness
+            .state()
+            .app()
+            .is_some_and(|app| app.package_data.translations.is_none())
+    );
 }
 
 #[test]
@@ -588,4 +665,134 @@ fn delete_asks_for_the_name_and_selects_all_modules_when_it_ends() {
          there. Copy it and run it where you can watch the database.",
     );
     assert_eq!(runs(&mut harness, &desk, &root), 1);
+}
+
+#[test]
+fn the_migration_state_is_read_when_asked_and_forgotten_after_a_migrate() {
+    let (desk, root) = desk("");
+    common::package_version(&root, "v13.4.0");
+    // The migration that ran in the recording creates a table.
+    let migrations = root.join("Modules/Checkout/database/migrations");
+    std::fs::create_dir_all(&migrations).unwrap();
+    std::fs::write(
+        migrations.join("2026_11_23_110149_create_orders_table.php"),
+        "<?php\nreturn new class extends Migration {\n    public function up(): void\n    {\n        \
+         Schema::create('orders', function (Blueprint $table) {\n            $table->id();\n        \
+         });\n    }\n};\n",
+    )
+    .unwrap();
+    let mut harness = desk.start();
+    actions_of(&mut harness, "Checkout");
+    harness.get_by_label("Not read yet.");
+    harness
+        .query_by_label_contains("module:migrate-status --no-interaction --ansi Checkout --json")
+        .unwrap();
+    // A line cut off at the bottom of the window is not read (S37).
+    let size = harness.ctx.content_rect().size();
+    harness.set_size(eframe::egui::vec2(size.x, 300.0));
+    harness.run_steps(3);
+    let read = harness.get_by_role_and_label(Role::Button, "Read migration state");
+    assert!(read.accesskit_node().is_disabled());
+    harness.set_size(size);
+    harness.run_steps(3);
+    harness
+        .get_by_role_and_label(Role::Button, "Read migration state")
+        .click();
+    harness.run_steps(3);
+    wait_for(&mut harness, "2026_11_23_120000_create_order_items_table");
+    harness.get_by_label("1 migration");
+    harness.get_by_role_and_label(Role::Button, "Migrate (1)");
+    harness.get_by_role_and_label(Role::Button, "Read again");
+    // A read is not a run: the drawer and the history did not get it.
+    assert_eq!(runs(&mut harness, &desk, &root), 0);
+
+    // "All modules" counts nothing from one module: `--all` runs the others too.
+    actions_of(&mut harness, "All modules");
+    harness.get_by_label("Not read for every module yet.");
+    harness.get_by_role_and_label(Role::Button, "Migrate");
+    actions_of(&mut harness, "Checkout");
+
+    // Roll back lists its last batch; reset names the table it drops.
+    select(&mut harness, "Roll back");
+    run(&mut harness);
+    harness.get_by_role_and_label(Role::Button, "Roll back 1 migration");
+    harness
+        .get_by_role_and_label(Role::Button, "Cancel")
+        .click();
+    harness.run_steps(3);
+    select(&mut harness, "Destructive");
+    select(&mut harness, "Reset migrations");
+    harness.get_by_label("orders, 1 table");
+    // The state is of the default connection: another one shows none and reads its own.
+    type_in(&mut harness, "Database connection", "testing");
+    harness.get_by_label("Not read for this connection.");
+    harness
+        .query_by_label_contains(
+            "migrate-status --no-interaction --ansi Checkout --database=testing --json",
+        )
+        .unwrap();
+    // A failed read of that connection says so there only.
+    harness
+        .get_by_role_and_label(Role::Button, "Read migration state")
+        .click();
+    wait_for(&mut harness, "Mortise could not read the migration state");
+    harness
+        .get_by_role_and_label(Role::TextInput, "Database connection")
+        .focus();
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::A);
+    harness.key_press(Key::Backspace);
+    harness.run_steps(3);
+    assert!(
+        harness
+            .query_by_label_contains("could not read the migration state")
+            .is_none()
+    );
+
+    // A migrate forgets the state of its module, and no read follows it.
+    select(&mut harness, "Migrate");
+    let held = |app: &MortiseApp| {
+        app.app()
+            .is_some_and(|app| app.package_data.migrations.contains_key("Checkout"))
+    };
+    run(&mut harness);
+    wait_for(&mut harness, "Migrated Checkout: 1 migration ran.");
+    common::wait_until(&mut harness, "the state is forgotten", |app| !held(app));
+    // A read would have ended within this second.
+    let until = Instant::now() + Duration::from_secs(1);
+    while Instant::now() < until {
+        std::thread::sleep(Duration::from_millis(20));
+        harness.run_steps(2);
+    }
+    assert!(!held(harness.state()));
+    harness.get_by_label("Not read yet.");
+    harness.get_by_role_and_label(Role::Button, "Read migration state");
+    assert_eq!(runs(&mut harness, &desk, &root), 1);
+
+    // Run again in the drawer forgets it too.
+    harness
+        .get_by_role_and_label(Role::Button, "Read migration state")
+        .click();
+    common::wait_until(&mut harness, "the state is read", held);
+    harness
+        .get_by_role_and_label(Role::Button, "Run again")
+        .click();
+    common::wait_until(&mut harness, "the state is forgotten", |app| !held(app));
+    assert_eq!(runs(&mut harness, &desk, &root), 2);
+
+    // Another working folder may reach another database: the state goes.
+    harness
+        .get_by_role_and_label(Role::Button, "Read migration state")
+        .click();
+    common::wait_until(&mut harness, "the state is read", held);
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::K);
+    harness.run_steps(3);
+    type_in(&mut harness, "Search or run a command", "php");
+    harness
+        .get_by_role_and_label(Role::ListBoxOption, "Settings: PHP")
+        .click();
+    harness.run_steps(3);
+    type_in(&mut harness, "Working folder", ".");
+    harness.key_press(Key::Escape);
+    harness.run_steps(3);
+    common::wait_until(&mut harness, "the state is forgotten", |app| !held(app));
 }
