@@ -16,9 +16,13 @@ use eframe::egui::{Key, Modifiers, Role, Theme};
 use egui_kittest::kittest::{NodeT as _, Queryable as _};
 use egui_kittest::{Harness, SnapshotOptions, SnapshotResults};
 use mortise_app::app::MortiseApp;
+use mortise_core::history::{Ended, Entry, History};
 use mortise_core::{CommandLine, RunnerKind};
 
 const THEMES: [(Theme, &str); 2] = [(Theme::Light, "light"), (Theme::Dark, "dark")];
+
+/// A box of the window: its top left and bottom right.
+type Part = ((f64, f64), (f64, f64));
 
 /// The images of one test. They are compared when the test ends.
 struct Shots {
@@ -49,13 +53,33 @@ impl Shots {
         &mut self,
         harness: &mut Harness<'static, MortiseApp>,
         screen: &str,
+        part: ((f64, f64), (f64, f64)),
+    ) {
+        self.take_part_masked(harness, screen, part, &[]);
+    }
+
+    /// As [`Shots::take_part`], with the boxes in `masks` painted over in the colour
+    /// 4 px inside the top left corner of the part: a clock or a path cut out.
+    fn take_part_masked(
+        &mut self,
+        harness: &mut Harness<'static, MortiseApp>,
+        screen: &str,
         (min, max): ((f64, f64), (f64, f64)),
+        masks: &[Part],
     ) {
         harness.run_steps(3);
         let options = SnapshotOptions::new().max_failed_pixels(40);
         let name = format!("{screen}-{}", self.theme);
-        let window = harness.render().expect("the window is drawn");
+        let mut window = harness.render().expect("the window is drawn");
         let [x, y] = [min.0, min.1].map(|at| at.round() as u32);
+        let fill = *window.get_pixel(x + 4, y + 12);
+        for (from, to) in masks {
+            for my in from.1.floor() as u32..to.1.ceil() as u32 {
+                for mx in from.0.floor() as u32..to.0.ceil() as u32 {
+                    window.put_pixel(mx, my, fill);
+                }
+            }
+        }
         let [width, height] = [max.0 - min.0, max.1 - min.1].map(|size| size.round() as u32);
         let part = image::imageops::crop_imm(&window, x, y, width, height).to_image();
         self.results.add(egui_kittest::try_image_snapshot_options(
@@ -348,4 +372,247 @@ fn an_app_without_the_actuator() {
         let mut harness = desk.start();
         shots.take(&mut harness, "s6.5a-not-installed");
     }
+}
+
+// --- The runner drawer (S11.1) ---
+
+/// A run of the history: its artisan words, how it ended, its local clock time today
+/// and its output.
+type Seeded<'a> = (&'a [&'a str], Ended, (i8, i8), Vec<String>);
+
+/// shop-api run through the fake artisan, with `words` before the artisan
+/// arguments, and these runs in its history, the latest first.
+fn drawer_desk(theme: Theme, width: f32, words: &str, runs: &[Seeded<'_>]) -> Desk {
+    let mut desk = Desk::new();
+    desk.theme = theme;
+    desk.size.x = width;
+    let root = desk.app("shop-api");
+    desk.knows(&[(&root, "SA")]);
+    let mut settings = desk.saved();
+    let fake = env!("CARGO_BIN_EXE_fake-artisan");
+    settings.apps[0].php.runner = Some(RunnerKind::Custom {
+        line: format!("\"{fake}\"{words}"),
+    });
+    settings.save(&desk.settings_path()).unwrap();
+    // The clock times are local times of today, so the rows read the same anywhere.
+    let history = History::open(&desk.data_dir(), &root);
+    for (args, ended, (hour, minute), output) in runs.iter().rev() {
+        let at = jiff::Zoned::now()
+            .with()
+            .hour(*hour)
+            .minute(*minute)
+            .second(0)
+            .subsec_nanosecond(0)
+            .build()
+            .unwrap();
+        let started_ms = at.timestamp().as_millisecond();
+        let entry = Entry {
+            id: started_ms as u64,
+            args: args.iter().map(|word| word.to_string()).collect(),
+            label: args.join(" "),
+            started_ms,
+            ended: ended.clone(),
+            cut: false,
+        };
+        history.record(entry, output).unwrap();
+    }
+    desk
+}
+
+/// The output of a recording of `fixtures/output`, a line each, with its codes.
+fn recording(name: &str) -> Vec<String> {
+    let path = common::fixture("output").join(format!("{name}.json"));
+    let json: serde_json::Value = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+    let stdout = json["stdout"].as_str().unwrap();
+    stdout.lines().map(str::to_owned).collect()
+}
+
+/// Waits until a label holds `text`: a run needs real time to pass.
+fn wait_for(harness: &mut Harness<'static, MortiseApp>, text: &str) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    while harness.query_by_label_contains(text).is_none() {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "waited 20 s for: {text}"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        harness.run_steps(2);
+    }
+    // The pointer rests where it lights nothing up.
+    harness.hover_at(eframe::egui::pos2(700.0, 20.0));
+    harness.run_steps(3);
+}
+
+/// The box of the first label that holds `text`.
+fn label_bounds(harness: &Harness<'static, MortiseApp>, text: &str) -> Part {
+    let node = harness.query_by_label_contains(text).expect(text);
+    let rect = node.accesskit_node().bounding_box().expect("a drawn label");
+    ((rect.x0, rect.y0), (rect.x1, rect.y1))
+}
+
+/// The drawer, from its handle to the bottom of the window.
+fn drawer_part(harness: &Harness<'static, MortiseApp>, window_h: f64) -> Part {
+    let (min, max) = bounds(harness, Role::Splitter, "Height of the runner drawer");
+    (min, (max.0, window_h))
+}
+
+/// What changes from run to run: the `$` line names the fake artisan of this
+/// machine, and a time depends on how fast it ran. A long output has scrolled the
+/// `$` line out of view.
+fn varying(harness: &Harness<'static, MortiseApp>, times: &[&str]) -> Vec<Part> {
+    let mut masks: Vec<Part> = times
+        .iter()
+        .map(|text| label_bounds(harness, text))
+        .collect();
+    if harness.query_by_label_contains("$ ").is_some() {
+        masks.push(label_bounds(harness, "$ "));
+    }
+    masks
+}
+
+#[test]
+fn runner_drawer() {
+    let failed = || Ended::Failed {
+        code: Some(1),
+        ms: 412,
+    };
+    let done = |ms: u64| Ended::Done { ms };
+    // One set of results for the test: both themes are compared when it ends.
+    let mut shots = Shots::new();
+    for (theme, name) in THEMES {
+        shots.theme = name;
+        let window_h = 800.0;
+
+        // f. Nothing has run yet.
+        let desk = drawer_desk(theme, 1280.0, "", &[]);
+        let mut harness = desk.start();
+        harness.key_press_modifiers(Modifiers::CTRL, Key::Backtick);
+        harness.hover_at(eframe::egui::pos2(700.0, 20.0));
+        harness.run_steps(3);
+        let part = drawer_part(&harness, window_h);
+        shots.take_part(&mut harness, "s11.1f-empty", part);
+
+        // d. The history, with the output of the latest run on the right.
+        let runs: [Seeded<'_>; 5] = [
+            (
+                &["module:migrate", "Blog"],
+                done(186),
+                (14, 5),
+                recording("module-migrate"),
+            ),
+            (
+                &["module:make-controller", "PostController", "Blog"],
+                failed(),
+                (14, 3),
+                recording("module-make-controller-exists"),
+            ),
+            (
+                &["module:make", "Blog"],
+                done(4200),
+                (13, 58),
+                recording("module-make"),
+            ),
+            (
+                &["module:migrate", "NoSuchModule"],
+                failed(),
+                (13, 51),
+                recording("module-failing"),
+            ),
+            (
+                &["module:seed", "Blog"],
+                done(388),
+                (13, 40),
+                recording("module-seed"),
+            ),
+        ];
+        let desk = drawer_desk(theme, 1280.0, "", &runs);
+        let mut harness = desk.start();
+        harness.key_press_modifiers(Modifiers::CTRL, Key::Backtick);
+        harness.hover_at(eframe::egui::pos2(700.0, 20.0));
+        harness.run_steps(3);
+        let part = drawer_part(&harness, window_h);
+        shots.take_part(&mut harness, "s11.1d-history", part);
+
+        // b. Finished: the latest run again.
+        harness.key_press_modifiers(Modifiers::COMMAND | Modifiers::SHIFT, Key::R);
+        wait_for(&mut harness, ": Done in ");
+        let masks = varying(&harness, &[": Done in "]);
+        shots.take_part_masked(&mut harness, "s11.1b-done", part, &masks);
+
+        // e. Collapsed to one line.
+        harness.key_press_modifiers(Modifiers::CTRL, Key::Backtick);
+        harness.run_steps(3);
+        harness.get_by_role_and_label(Role::Button, "Show");
+        let line = ((part.0.0, window_h - 28.0), (part.1.0, window_h));
+        let masks = vec![label_bounds(&harness, ": Done in ")];
+        shots.take_part_masked(&mut harness, "s11.1e-collapsed", line, &masks);
+
+        // c. Failed: the fifth run of the history again, under the run of b.
+        harness.key_press_modifiers(Modifiers::COMMAND | Modifiers::SHIFT, Key::H);
+        harness.run_steps(3);
+        for _ in 0..4 {
+            harness.key_press(Key::ArrowDown);
+            harness.run_steps(2);
+        }
+        harness.key_press(Key::Enter);
+        wait_for(&mut harness, "NoSuchModule: Exit code 1");
+        let time = exit_time(&harness);
+        let masks = varying(&harness, &[&time]);
+        shots.take_part_masked(&mut harness, "s11.1c-failed", part, &masks);
+
+        // a. Running: a migration that holds after its output. The elapsed time is cut out.
+        let desk = drawer_desk(
+            theme,
+            1280.0,
+            " hold",
+            &[(&["module:migrate", "--all"], done(186), (14, 5), Vec::new())],
+        );
+        let mut harness = desk.start();
+        harness.key_press_modifiers(Modifiers::COMMAND | Modifiers::SHIFT, Key::R);
+        wait_for(&mut harness, "Running Migration Shop Module");
+        wait_for(&mut harness, "create_items_table");
+        let masks = varying(&harness, &["Running, "]);
+        let part = drawer_part(&harness, window_h);
+        shots.take_part_masked(&mut harness, "s11.1a-running", part, &masks);
+        harness.key_press_modifiers(Modifiers::COMMAND, Key::Period);
+        harness.run_steps(3);
+        harness
+            .get_by_role_and_label(Role::Button, "Stop command")
+            .click();
+        wait_for(&mut harness, "Stopped after");
+
+        // g. Failed, at the narrowest drawer: the narrowest window, the index a strip.
+        let desk = drawer_desk(
+            theme,
+            mortise_app::theme::size::WINDOW_MIN_W,
+            "",
+            &[(
+                &["module:migrate", "NoSuchModule"],
+                failed(),
+                (14, 5),
+                Vec::new(),
+            )],
+        );
+        let mut harness = desk.start();
+        harness.key_press_modifiers(Modifiers::COMMAND | Modifiers::SHIFT, Key::R);
+        wait_for(&mut harness, "NoSuchModule: Exit code 1");
+        let time = exit_time(&harness);
+        let masks = varying(&harness, &[&time]);
+        let part = drawer_part(&harness, window_h);
+        shots.take_part_masked(&mut harness, "s11.1g-failed-narrow", part, &masks);
+    }
+}
+
+/// The time beside an exit code: `412 ms`, as this run took. A label keeps its text as its value.
+fn exit_time(harness: &Harness<'static, MortiseApp>) -> String {
+    harness
+        .query_all_by_role(Role::Label)
+        .filter_map(|node| node.accesskit_node().value())
+        .find(|label| {
+            label
+                .strip_suffix(" ms")
+                .or_else(|| label.strip_suffix(" s"))
+                .is_some_and(|number| number.parse::<f64>().is_ok())
+        })
+        .expect("the time of the run")
 }
