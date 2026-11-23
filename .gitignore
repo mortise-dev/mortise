@@ -5,3 +5,4 @@ node_modules/
 *.diff.png
 *.old.png
 /dist
+/.claude/worktrees
