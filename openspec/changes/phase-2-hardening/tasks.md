@@ -12,10 +12,10 @@
 
 ## 3. Fixes (16.4, 16.6, 16.7, 16.12 opus, in parallel)
 
-- [ ] 3.1 (16.4) Fix the four layout bugs (D4). Verify each with an assertion or image in the test that renders that screen
-- [ ] 3.2 (16.6) Add recent actions and generators to the empty palette (D5). Verify with the palette test
-- [ ] 3.3 (16.7) Stop every run on close (D6). Verify with a core test against the fake artisan, and a deviation row for Windows
-- [ ] 3.4 (16.12) Fix the cause of the flaky settings test (D7). Verify by running the test many times
+- [x] 3.1 (16.4) Fix the four layout bugs (D4). Verify each with an assertion or image in the test that renders that screen
+- [x] 3.2 (16.6) Add recent actions and generators to the empty palette (D5). Verify with the palette test
+- [x] 3.3 (16.7) Stop every run on close (D6). Verify with a core test against the fake artisan, and a deviation row for Windows
+- [x] 3.4 (16.12) Fix the cause of the flaky settings test (D7). Verify by running the test many times
 
 ## 4. Real PHP (16.3 opus)
 
