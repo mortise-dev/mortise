@@ -46,6 +46,29 @@ Phase 1 (read only) is built. The plan is `docs/plan/phase-1.md`.
   Moving the pin past 1.59 needs Rust 1.100: move the pin and `rust-toolchain.toml` together.
 - Every change must work on macOS, Windows and Linux. Say what was not run on a platform.
 
+## Branches and worktrees
+
+Every task runs in its own git worktree on its own branch. This keeps a commit on the branch it belongs to.
+
+- The main checkout (the repository root) stays on `main`. Do not edit, stage or commit there.
+  Use it only to `git pull` and to add or remove worktrees.
+- Start a task with a new branch in a new worktree, from the latest `origin/main`
+  (or from the branch the task names as its base):
+  ```
+  git fetch origin
+  git worktree add -b <type>/<slug> .claude/worktrees/<slug> origin/main
+  ```
+  A worktree that the harness makes (T3 `workspaceStrategy`, Claude Code `EnterWorktree` or
+  `isolation: "worktree"`) is also correct. Work only inside that folder.
+- One task, one branch, one worktree. Do not run `git checkout <branch>` or `git switch` in a worktree.
+  A new task needs a new worktree.
+- Agents that run at the same time each get their own worktree. Two agents never commit in one worktree.
+- Before each commit, run `git branch --show-current` and `git rev-parse --show-toplevel`.
+  Both must name the task's branch and worktree. If not, stop and move the change; do not commit.
+- Stage files by path. Do not use `git add -A`, `git add .` or `git commit -a`.
+- Never commit to `main`. A change reaches `main` through a pull request.
+- After the pull request merges, remove the worktree (`git worktree remove <path>`) and delete the branch.
+
 ## Commands
 
 ```
