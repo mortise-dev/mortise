@@ -801,15 +801,25 @@ fn a_rule_that_is_off_is_not_checked_and_no_report_means_no_coverage_check() {
 }
 
 #[test]
-fn a_module_that_is_off_gets_no_coverage_warning() {
+fn a_module_that_is_off_gets_no_coverage_warning_and_breaks_no_rule() {
     let app = copy_of("shop-api");
     let statuses = app.path().join("modules_statuses.json");
     let json = std::fs::read_to_string(&statuses).unwrap();
-    std::fs::write(
-        &statuses,
-        json.replace("\"Notifications\": true", "\"Notifications\": false"),
-    )
-    .unwrap();
+    let json = ["Notifications", "Billing", "Shipping"]
+        .iter()
+        .fold(json, |json, name| {
+            json.replace(&format!("\"{name}\": true"), &format!("\"{name}\": false"))
+        });
+    std::fs::write(&statuses, json).unwrap();
     let app = read_app(app.path()).unwrap();
     assert_eq!(app.findings.warnings(), 0);
+
+    // Checkout reads internals of Billing, which is off: no finding, but the link stays.
+    // The circle of Checkout and Shipping does not run with Shipping off.
+    assert_eq!(app.findings.problems(), 0);
+    assert_eq!(app.problem_links().count(), 0);
+    let billing = app.link("Checkout", "Billing").unwrap();
+    assert_eq!((billing.files(), billing.internal_files()), (6, 0));
+    assert!(!app.link("Checkout", "Shipping").unwrap().circular);
+    assert!(app.cycles[0].off);
 }

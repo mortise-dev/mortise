@@ -192,10 +192,12 @@ pub(crate) fn find(subject: &Subject<'_>) -> Findings {
     };
 
     if subject.rules.no_circular_use {
-        // A circle is counted once, on the module with fewer files in it.
+        // A circle is counted once, on the module with fewer files in it. A circle
+        // through a module that is off does not run.
         let found = subject
             .cycles
             .iter()
+            .filter(|cycle| !cycle.off)
             .map(|cycle| Finding {
                 severity: Severity::Problem,
                 check: Check::NoCircularUse,

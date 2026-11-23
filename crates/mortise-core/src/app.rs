@@ -360,6 +360,7 @@ pub fn read_app_cached(
         .zip(&folders)
         .map(|(module, folder)| ModuleSource {
             name: &module.name,
+            on: module.state != ModuleState::Off,
             namespace: &module.namespace,
             files: module
                 .scan
