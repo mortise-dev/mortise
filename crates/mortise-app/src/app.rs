@@ -1627,6 +1627,14 @@ impl MortiseApp {
         let Some(current) = self.current else {
             return;
         };
+        // A generator without a module argument opens under "All modules" too.
+        let takes_module = self.snapshot(current).is_none_or(|app| {
+            self.apps[current]
+                .catalog
+                .in_use(&app.package)
+                .get(generator)
+                .is_none_or(crate::generate_view::takes_module)
+        });
         let open = &mut self.apps[current];
         open.selection = match module {
             Some(name) if generator != MODULE_MAKE => Selection::Module(name),
@@ -1634,7 +1642,7 @@ impl MortiseApp {
         };
         open.tab = Tab::Generate;
         open.findings_open = false;
-        open.generate.open_form(generator);
+        open.generate.open_form(generator, takes_module);
         self.adding = None;
         self.settings_open = None;
         self.reveal_next = true;

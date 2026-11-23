@@ -230,6 +230,9 @@ pub struct GenerateState {
     current: Option<String>,
     /// The generator of the form, by artisan name.
     pub generator: String,
+    /// The generator takes a module argument. One without (an app's own) writes no
+    /// file through a module word, so its form may stay under "All modules".
+    takes_module: bool,
     /// What the form holds. It stays while the module changes.
     pub filled: Filled,
     /// The words the form showed in the last frame it was drawn. Ctrl Enter runs
@@ -253,12 +256,14 @@ pub struct GenerateState {
 
 impl GenerateState {
     /// The form of `generator`, with focus in its name field. Another generator
-    /// starts with an empty form.
-    pub fn open_form(&mut self, generator: &str) {
+    /// starts with an empty form. `takes_module` is false for a generator without a
+    /// module argument.
+    pub fn open_form(&mut self, generator: &str, takes_module: bool) {
         if self.generator != generator {
             self.generator = generator.to_owned();
             self.filled = Filled::default();
         }
+        self.takes_module = takes_module;
         self.view = View::Form;
         self.result = None;
         self.last_shown = None;
@@ -274,7 +279,8 @@ impl GenerateState {
 
     /// Called every frame for the app on screen. Another module drops the result,
     /// which names its module; the form and its values stay (design D5). A form
-    /// needs its scope: a file generator a module, `module:make` "All modules".
+    /// needs its scope: a file generator a module, `module:make` "All modules". A
+    /// generator without a module argument opens under either.
     /// `shown` is false while the tab is not on screen, and then no line counts as shown.
     pub fn follow(&mut self, module: Option<&str>, shown: bool) {
         if self.module.as_ref().map(Option::as_deref) != Some(module) {
@@ -283,7 +289,12 @@ impl GenerateState {
             }
             self.module = Some(module.map(str::to_owned));
         }
-        if self.view == View::Form && module.is_none() != (self.generator == MODULE_MAKE) {
+        let out_of_scope = if self.generator == MODULE_MAKE {
+            module.is_some()
+        } else {
+            module.is_none() && self.takes_module
+        };
+        if self.view == View::Form && out_of_scope {
             self.view = View::Picker;
         }
         if !shown {
@@ -461,7 +472,9 @@ pub struct GenerateInputs<'a> {
 pub fn title(state: &GenerateState, module: Option<&Module>, app: &str) -> String {
     match module {
         Some(module) => strings::generate_in(&module.name),
-        None if state.view == View::Form => strings::new_module_in(app),
+        None if state.view == View::Form && state.generator == MODULE_MAKE => {
+            strings::new_module_in(app)
+        }
         // Not in the spec.
         None => strings::generate_in(app),
     }
@@ -481,6 +494,14 @@ pub fn file_path(root: &Path, printed: &str) -> PathBuf {
 /// The part of a path after the last `/` or `\`.
 fn file_name(path: &str) -> &str {
     path.rsplit(['/', '\\']).next().unwrap_or(path)
+}
+
+/// True when the generator takes a module argument: a form for it needs a module.
+pub fn takes_module(generator: &Generator) -> bool {
+    generator
+        .arguments
+        .iter()
+        .any(|argument| argument.name == "module")
 }
 
 /// The folder names of the app's modules, which place a path of a container.
@@ -823,7 +844,7 @@ fn picker(
         if generator.name == MODULE_MAKE {
             return Some(BoundaryAction::Generate(GenerateAsk::NewModule));
         }
-        state.open_form(&generator.name);
+        state.open_form(&generator.name, takes_module(generator));
         ui.ctx().request_repaint();
         None
     });
