@@ -22,10 +22,10 @@
 ## 5. Screens
 
 - [x] 5.1 Settings get the PHP section (S8.2): the table of apps with runner, command and last test, and the detail with "Run PHP with", working folder and time limit. Text in `strings.rs`. Verify with one screen test in `tests/settings.rs` that edits a runner and saves it
-- [ ] 5.2 The Add panel gets "Run PHP with" (S1.3) with the proposal of `detect`, Test, and the failure of S1.4 c with "Add <name>, read only". Add saves the runner shown. Verify with one screen test in `tests/apps.rs` that a Custom program that does not exist shows the failure and the app is still added
+- [x] 5.2 The Add panel gets "Run PHP with" (S1.3) with the proposal of `detect`, Test, and the failure of S1.4 c with "Add <name>, read only". Add saves the runner shown. Verify with one screen test in `tests/apps.rs` that a Custom program that does not exist shows the failure and the app is still added
 - [x] 5.3 The palette opens Settings on the PHP section. Verify with an assertion in the existing palette test
-- [ ] 5.4 Add the deviation rows: `-T` in the Docker line (D5), Sail disabled on Windows (D6), "Not tested" after a restart (D8). Update README line 7. Verify `grep -n "needs no PHP" README.md` finds no match
-- [ ] 5.5 Add images for S8.2 and the "Run PHP with" part of S1.3, light and dark, with `UPDATE_SNAPSHOTS=1 cargo test -p mortise-app --test images`, and look at each changed or new image
+- [x] 5.4 Add the deviation rows: `-T` in the Docker line (D5), Sail disabled on Windows (D6), "Not tested" after a restart (D8). Update README line 7. Verify `grep -n "needs no PHP" README.md` finds no match
+- [x] 5.5 Add images for S8.2 and the "Run PHP with" part of S1.3, light and dark, with `UPDATE_SNAPSHOTS=1 cargo test -p mortise-app --test images`, and look at each changed or new image
 
 ## 6. Integration
 
