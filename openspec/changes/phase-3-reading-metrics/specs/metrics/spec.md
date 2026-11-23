@@ -39,15 +39,30 @@ Mortise SHALL keep, per route with its method, per job class and per `module` la
 - **WHEN** figures are asked for a span of 24 hours
 - **THEN** they equal the figures worked out from every read, because a kept read holds totals and not differences
 
-### Requirement: A read keeps at most 32,768 numbers
-A read SHALL keep at most 32,768 numbers: 3 and one per bucket bound, for each series of the kept reads. A read over that SHALL be refused as a whole and SHALL add nothing.
+### Requirement: Two reads of one run always give a rate
+Mortise SHALL keep the first read of each run within the last hour, even when the next read comes within the same 15 s. Two reads of one run SHALL always give a rate.
+
+#### Scenario: Two reads within one pace
+- **WHEN** after a gap, "Try again" makes a second read 1 s after the first
+- **THEN** the second read gives a rate over that second
+
+### Requirement: A read keeps at most 32,768 numbers and 4 MiB of labels
+A read SHALL keep at most 32,768 numbers: 3 and one per bucket bound, for each series of the kept reads. It SHALL keep at most 4 MiB (4,194,304 bytes) of labels and subject strings for those series. A series that no read of the last 24 hours holds SHALL NOT count. A read over either SHALL be refused as a whole and SHALL add nothing.
 
 #### Scenario: An answer over the cap
 - **WHEN** an answer holds 11,000 job series, 3 numbers each
 - **THEN** nothing of it is kept, and the Metrics tab reads "The metrics of local have too many series" with "Try again"
 
+#### Scenario: Long labels
+- **WHEN** an answer holds one job whose `laravel_job_name` is 2 MiB long
+- **THEN** nothing of it is kept, and the tab reads as for too many series
+
+#### Scenario: Old series age out
+- **WHEN** an answer was refused because the kept reads hold other series, and the reads that hold them are now older than 24 hours
+- **THEN** the next answer that fits on its own is kept
+
 ### Requirement: A counter that goes down starts a new rate
-Mortise SHALL treat a counter that is lower than at the read before as a reset. That read SHALL add nothing for the series and SHALL be the start of its next rate. Each status of a route SHALL be a series of its own: a reset of one status SHALL NOT hide the growth of another. No rate SHALL be negative.
+Mortise SHALL treat a counter that is lower than at the read before as a reset. That read SHALL add nothing for the series and SHALL be the start of its next rate. Each status of a route SHALL be a series of its own: a reset of one status SHALL NOT hide the growth of another. A counter that a read does not give, or gives as a line it cannot read, SHALL add nothing and SHALL keep its value of the read before. Only counters that both reads give SHALL decide a reset. No rate SHALL be negative.
 
 #### Scenario: The store of the app is cleared
 - **WHEN** a route counts 100, then 3, then 5 requests in three reads 15 s apart
@@ -56,6 +71,10 @@ Mortise SHALL treat a counter that is lower than at the read before as a reset. 
 #### Scenario: A reset of one status
 - **WHEN** a route counts 100 answers of 200 and 100 of 404, then 110 of 200 and 1 of 404
 - **THEN** the second read adds 10 for the route
+
+#### Scenario: A missing `_sum`
+- **WHEN** a route counts 10 requests in 5 s, then 12 requests with no `_sum` line, then 14 requests in 7 s
+- **THEN** the second read adds 2 requests and no time, and the third adds 2 requests and 2 s
 
 ### Requirement: No rate is worked out across a gap or from one read
 Mortise SHALL work out no rate from the first read. It SHALL work out no rate across a gap: two reads more than 45 s apart, such as while the tab was closed or the window hidden. The read after a gap SHALL start again as a first read, and SHALL give no rate while it is the newest read. A series that is missing from that read SHALL add nothing when it returns. A rate SHALL divide by the time between reads that Mortise did cover.
@@ -162,8 +181,12 @@ For a 503 from `prometheus` the Metrics tab SHALL quote the first line of the bo
 - **THEN** the tab says the answer is larger than 16 MB and that Mortise does not read it
 
 ### Requirement: The table shows requests and jobs per minute for each module
-When connected, the Metrics tab SHALL show a table with the columns Module, Requests/min and Jobs/min: one row per module of the app, most requests first, then a row "Not in a module". A figure SHALL be the rate over the reads of the last minute. No figure SHALL have a colour or a limit.
+When connected, the Metrics tab SHALL show a table with the columns Module, Requests/min and Jobs/min: one row per module of the app, most requests first, then a row "Not in a module". A figure SHALL be the rate over the reads of the last minute. No figure SHALL have a colour or a limit. Rates SHALL be shown only while the newest read is at most 45 s old. Else the tab SHALL read "Reading metrics from {environment}" until a new read ends.
 
 #### Scenario: Two reads 15 s apart
 - **WHEN** Billing counts 10 more requests and 2 more jobs in the second read than in the first
 - **THEN** the Billing row reads 40 requests and 8 jobs per minute
+
+#### Scenario: The tab opens again
+- **WHEN** the tab showed rates, closed for five minutes, and opens again
+- **THEN** it reads "Reading metrics from local" and shows no old rate until the next read ends

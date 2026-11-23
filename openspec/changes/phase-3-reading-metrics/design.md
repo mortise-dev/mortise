@@ -77,9 +77,12 @@ A figure over a span is then `newest − oldest read in the span`, divided by th
 `covered`. It needs two reads, not all of them. So thinning loses nothing for a figure:
 
 - Of the last hour, one read per pace (15 s) is kept: a read in the step of the read before takes its
-  place, so the newest read is always kept. At most 241, however fast "Try again" reads.
+  place, so the newest read is always kept. A read that starts a run (D2) is never replaced, so two
+  reads of one run always give a rate. A run starts only after more than 3 paces, which leaves two
+  steps empty before it, so this adds at most one read: at most 242, however fast "Try again" reads.
 - Of the 23 hours before, the first read of each 5 minute step is kept: at most 277.
-- A read older than 24 hours is dropped. The store holds at most 520 reads.
+- A read older than 24 hours is dropped. The store holds at most 519 reads, under the 520 the tests
+  assert.
 - A subject that did not change in the whole kept window and is not in the newest read is dropped,
   and the rows are packed. So a renamed route does not stay for ever.
 
@@ -94,14 +97,21 @@ Several statuses of a route add no row, because statuses add into one subject. E
 own base (D2), so a status costs one more base, not one more row per read. The bound is
 `520 × subjects × (3 + bounds) × 8` bytes.
 
-**The cap.** Bucket bounds come from the answer, so many distinct `le` values times many subjects
+**The caps.** Bucket bounds come from the answer, so many distinct `le` values times many subjects
 could need far more than the body limit (D7) suggests. A read keeps at most `MAX_ROW = 32,768`
-numbers: `3 + bounds` for each series. `Reading::of` checks it before a new series or a new bound
-grows the reading. `push` checks it for the store: every series of the kept reads, plus the new ones
-of the reading. A reading over the cap is refused as a whole: nothing is pushed, and the Metrics tab
-says so (D7). The 60 module app keeps 660 × 17 = 11,220; 600 routes with three statuses and 60 jobs
-keep 1,860 × 17 = 31,620. So the store holds at most 520 × 32,768 × 8 B ≈ 136 MB of totals, plus one
-base per series (256 KB).
+numbers: `3 + bounds` for each series. Label values have no length limit either, so the identity of
+the series has a cap of its own: `MAX_KEY_BYTES = 4 MiB`, counting for each series its labels and the
+strings of its subject. `Reading::of` checks both before a new series or a new bound grows the
+reading. `push` checks both for the store, after it dropped what the new `at` makes too old: every
+series the kept reads still hold, plus the new ones of the reading. So series that age out stop
+counting, and a reading that fits on its own is kept once they have. A reading over a cap is refused
+as a whole: nothing is added, and the Metrics tab says so (D7). The 60 module app keeps 660 × 17 =
+11,220 numbers; 600 routes with three statuses and 60 jobs keep 1,860 × 17 = 31,620.
+
+The worst case the caps allow: 520 × 32,768 × 8 B ≈ 136 MB of totals; one base per series, 256 KB;
+the identity strings, at most 8 MiB, because each subject is held twice (its column and the index)
+and counted at least once; and the hash maps around them, under 1 MB for 10,922 series. About
+145 MB in all.
 
 What milestone 21 reads from the same totals: the request rate (`count`), the 5xx share
 (`errors / count`), the 95% bound (`buckets` and `bounds`), the job rate, the database share
@@ -127,23 +137,33 @@ label set of the answer, `le` aside, sorted by name, so a status, a `url_scheme`
 their own series. Totals stay per subject.
 `MetricsStore::push(at, reading)` applies these rules, in this order:
 
-0. A reading over the cap of D1 is refused as a whole and changes nothing.
+0. `at` not later than the newest kept read: the reading is dropped, unless its `bounds` differ
+   from the kept ones (rule 1). Else what `at` makes too old goes first (D1): old reads, then the
+   series and subjects that no kept read holds. Then a reading over the caps of D1 is refused as a
+   whole and adds nothing. A reading with other `bounds` is counted alone, as rule 1 empties the
+   store.
 1. A reading whose `bounds` differ from the kept ones empties the store first. A reading with no
    request histogram has no `bounds`; it keeps the kept ones and empties nothing. When the store
-   holds no bounds yet, it takes those of the reading and gives every kept row a zero per bucket.
-2. `at` not later than the newest kept read: the reading is dropped.
+   holds no bounds yet, it takes those of the reading and gives every kept row a zero per bucket,
+   and every base an unknown counter per bucket.
+2. A counter is **absent** when the answer has no line for it, or a line that cannot be read, or a
+   value that is negative or not finite. An absent counter adds nothing and keeps its base. Rule 4
+   compares only the counters present in both the read and the base. A series with every counter
+   absent is missing (rule 5).
 3. **First read of a run.** A run starts with the first read, and with a read more than 3 paces (45 s)
    after the one before it. Every older base becomes stale. Every base of the reading is set. Nothing
    is added. `covered` does not grow. One missed read (30 s) is not a gap.
 4. **Otherwise** `covered` grows by the time since the read before, and for each series of the reading:
    - Every counter is at or above its base: its subject's totals grow by the differences.
-   - Any counter is below its base: a **reset**. Nothing is added for this series. The base is set.
-     The next read gives its next rate. Another status of the subject still adds what it grew by.
+   - Any counter is below its base: a **reset**. Nothing is added for this series. The base is set,
+     and an absent counter becomes unknown. The next read gives its next rate. Another status of the
+     subject still adds what it grew by.
    - The base is stale: the series was missing when the run started, so what it did in the gap is not
-     known. Nothing is added. The base is set.
+     known. Nothing is added. The base is set as at a reset.
    - The series has no base (it is new): it counts from zero, so the totals grow by its counters.
 5. A series that is missing from the reading keeps its base, and its subject keeps its totals.
-6. A read in the same pace step as the read before takes its place (D1).
+6. A read in the same pace step as the read before takes its place (D1), unless that read starts a
+   run.
 
 A rate is `Δtotal / Δcovered`. Both only grow, so no rate is negative. Before two reads of one run lie
 in the span, `Δcovered` is zero and there is no rate. When the newest read is the first of its run,
@@ -158,6 +178,12 @@ Why a new series counts from zero: the package creates a series at its first obs
 Why the base of a missing series is kept: if it comes back with a higher value, only the difference
 counts. This matters when a load balancer shows one server per read (risk below). After a gap the base
 is stale, because the difference would hold the gap.
+
+Why an absent counter is not zero: a `_sum` line that cannot be read would read as a reset, and hide
+what `_count` grew by.
+
+Why a read that starts a run is never replaced: "Try again" can read twice within one pace. The second
+read would take the place of the first, and two good reads would give no rate.
 
 Why a base per series: series of several labels add into one subject. A reset of the 404s (100 to 1) would hide the
 growth of the 200s (100 to 110) if the reset rule ran on the sum.
@@ -193,6 +219,7 @@ on `now()`.
 interface thread                         worker thread (runtime/live.rs)
   live.seen()            ───────────────▶ visible
   live.metrics_seen()    ───────────────▶ the tab is open
+  live.metrics_closed()  ───────────────▶ the tab is closed
                                           ask_metrics()            (runtime/actuator.rs)
                                           on_metrics(Result<String, NoMetrics>)
                                             = LiveMetrics::sink(): fold the text, then lock and push
@@ -203,8 +230,11 @@ interface thread                         worker thread (runtime/live.rs)
 - **The request.** The worker loop gets one new branch. `prometheus` is due when all hold: the window
   is visible; `metrics_seen()` was called within `pace.seen`; the last answer is `Answered` and lists
   `prometheus`; the last metrics read ended `pace.metrics` (15 s) ago or more, or there was none.
-  The app calls `metrics_seen()` in each frame that draws the Metrics tab, as it calls `seen()`.
-  Nothing has to be undone when the tab closes.
+  The app calls `metrics_seen()` in each frame that draws the Metrics tab, as it calls `seen()`, and
+  `metrics_closed()` in each frame of the app on screen that does not draw it. `metrics_closed()`
+  forgets when the tab was seen and wakes the worker, so no read starts after the tab closes. A read
+  on its way ends. It takes a lock and wakes the worker only when the tab was open, so a call per
+  frame is cheap.
 - **Order.** `health` or "everything" goes first when both are due. The loop then turns again and
   reads metrics. One request at a time per environment. A metrics read can delay `health` by its own
   length: at most 10 s (`timeout_global` covers the body) plus the fold (D8). It never skips one.
@@ -325,7 +355,7 @@ How it maps to the tab, first match wins (`app/metrics.rs`):
 | No runtime answer yet | "Reading metrics from {environment}" (not in the spec) |
 | The runtime answer is `NoAnswer`, `NotAuthorized` or `Unexpected` | The sentence of the runtime box, "Try again", "Open settings" |
 | `Answered`, and `prometheus` is not listed | S7.2 |
-| No metrics read ended yet | "Reading metrics from {environment}" |
+| No metrics read ended yet, or the newest kept read is older than 45 s (D9) | "Reading metrics from {environment}" |
 | `Err(Off)` | The empty sentence, "Try again" |
 | `Err(Unavailable)` | The 503 sentence with the line, "Try again" |
 | `Err(TooLarge)` | The too large sentence, "Try again" |
@@ -347,7 +377,8 @@ For a generated answer of 600 routes, one status each, and 60 jobs (about 3.3 MB
   (about 170 KB). The workspace forbids `unsafe`, so a test cannot count allocations with its own
   allocator. Task 20.7 measures the peak size of the test process with `/usr/bin/time -l` on macOS,
   with and without the read, and writes both numbers under "Measured".
-- **The store.** The bound of D1: 47 MB for this case with a full window, 136 MB for any answer.
+- **The store.** The bound of D1: 47 MB for this case with a full window, about 145 MB for any
+  answer.
 
 ### D9. The figures of the plain table
 
@@ -382,6 +413,11 @@ pub const LAST_MINUTE: Duration = Duration::from_secs(60);
 - Before two reads of one run exist, and while the newest read is the first of its run, `covered` is
   `None`. Each figure cell shows an en dash, and one
   line under the table reads "A rate needs two reads. The second read comes 15 s after the first."
+- Rates are shown only while the newest kept read is at most a gap old (3 paces, 45 s) by the clock of
+  `LiveMetrics`. Else `LiveMetrics::state()` gives `last: None`, and the tab shows "Reading metrics
+  from {environment}" until a fresh read lands. So a tab opened again after minutes shows no old
+  rates. `state()` asks the clock in each frame, so a test clock is set by the test, not stepped per
+  call.
 - A figure under 10 shows one decimal ("0.5"), else a whole number ("366"). Zero shows "0".
 - The table is the same with a module selected. Routes of one module come in milestone 21.
 - Milestone 21 adds fields to `Rates` and a list of routes. It adds no type beside them.
@@ -487,7 +523,8 @@ impl MetricsStore {
 ```
 
 Constants in `sample.rs`: the window 24 hours, the fine part 1 hour, the step 5 minutes, the gap
-3 paces, the cap `MAX_ROW` 32,768 numbers per read. The store ignores a counter that is negative or not finite. Tests of 20.3 build `Reading`s by
+3 paces, the caps `MAX_ROW` 32,768 numbers and `MAX_KEY_BYTES` 4 MiB per read. A counter that is
+missing, negative or not finite is absent (D2). Tests of 20.3 build `Reading`s by
 hand; they need no text.
 
 **The client (20.5).** `ask_metrics`, `NoMetrics` and `METRICS_BODY_LIMIT` as in D7, and:
@@ -507,6 +544,8 @@ impl LiveRuntime {
     ) -> Self;
     /// Tells the worker that the Metrics tab drew itself. Without this it does not ask for `prometheus`.
     pub fn metrics_seen(&self);
+    /// Tells the worker that the Metrics tab is not drawn: no read of `prometheus` starts after this.
+    pub fn metrics_closed(&self);
 }
 ```
 
@@ -536,7 +575,8 @@ pub enum NotKept {
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct MetricsState {
-    /// What the last read gave. `None` before the first read ends.
+    /// What the last read gave. `None` before the first read ends, and while the newest kept read
+    /// is older than a gap (D9).
     pub last: Option<Result<(), NotKept>>,
     /// Goes up by one when a read ends.
     pub serial: u64,
@@ -571,12 +611,12 @@ The `LiveMetrics` store uses `Pace::default().metrics` as its pace. `lib.rs` re-
 **The app (20.6).**
 
 - `Config` gains `pace: Pace` and `metrics_clock: Option<MetricsClock>`. `main.rs` passes the defaults.
-  A test passes a short pace and a clock that steps 15 s per call, so two reads give the same figures
-  on every run.
+  A test passes a short pace and a clock that it moves by 15 s itself, so two reads give the same
+  figures on every run.
 - `Connected` gains `metrics: LiveMetrics`. `sync_runtime` opens with `open_with_metrics` and
   `metrics.sink()`.
 - `app/metrics.rs` calls `connected.live.metrics_seen()` in each frame that draws the Metrics tab of
-  the app on screen, builds what the tab shows (the table of D7) and keeps the last `Figures` with the
+  the app on screen, and `metrics_closed()` in each frame that does not, builds what the tab shows (the table of D7) and keeps the last `Figures` with the
   `serial` they were worked out for.
 - `metrics/view.rs` draws it and returns `WorkAction::Runtime(RuntimeAction::TryAgain)` or
   `OpenSettings`. S7.1 and S7.2 use `empty_state` with `Icon::Metrics`. "Connect an environment"
@@ -634,7 +674,7 @@ of the text.
 
 - [Thinning differs from section 4 of the plan] → A figure over any span is unchanged (D1). The chart
   of milestone 21 gets a point per 5 minutes beyond the last hour. Milestone 23 updates the plan.
-- [47 MB for a large app with a full window; 136 MB in the worst case the cap allows] →
+- [47 MB for a large app with a full window; about 145 MB in the worst case the caps allow] →
   Stated as the bound. Milestone 23 measures a 24 hour run.
 - [An app with more series than the cap shows no table] → The tab says so and names the cap. Series
   of 24 hours count, so an app whose routes change often can stay over the cap until old series age

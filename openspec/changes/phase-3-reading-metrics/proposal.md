@@ -43,7 +43,8 @@ figures per route, J and K.
 
 - `mortise-core`: new `src/metrics/` (`mod.rs`, `prometheus.rs`, `sample.rs`, `place.rs`, `figures.rs`).
   `runtime/actuator.rs` gains `ask_metrics` beside `fetch()`. `runtime/live.rs` gains one branch in the
-  worker loop, `metrics_seen()` and `open_with_metrics()`. `Pace` gains the field `metrics`.
+  worker loop, `metrics_seen()`, `metrics_closed()` and `open_with_metrics()`. `Pace` gains the field
+  `metrics`.
   `lib.rs` re-exports the new public names. `testing.rs` serves the recorded answers.
 - `mortise-app`: new `src/metrics/` (`mod.rs`, `view.rs`, `strings.rs`) and `src/app/metrics.rs`.
   `app/workspace.rs` drops the S7.4 block. `app/runtime.rs` opens the runtime with a metrics sink.

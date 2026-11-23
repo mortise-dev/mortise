@@ -60,7 +60,7 @@ The client SHALL read at most 16 MiB (16,777,216 bytes) of a `prometheus` answer
 - **THEN** the client reads it as the metrics
 
 ### Requirement: prometheus is asked only while the Metrics tab is open and the window is visible
-The client SHALL ask for `prometheus` every 15 s while the Metrics tab is open, the window is visible, the last full answer lists `prometheus`, and the environment answered. In every other case it SHALL NOT ask for `prometheus`. The first request SHALL leave when the tab opens, unless one left less than 15 s ago.
+The client SHALL ask for `prometheus` every 15 s while the Metrics tab is open, the window is visible, the last full answer lists `prometheus`, and the environment answered. In every other case it SHALL NOT ask for `prometheus`: no request SHALL start after the frame in which the tab closes. The first request SHALL leave when the tab opens, unless one left less than 15 s ago.
 
 #### Scenario: The tab is closed
 - **WHEN** an environment is open for a minute and the Metrics tab was never opened
@@ -68,7 +68,7 @@ The client SHALL ask for `prometheus` every 15 s while the Metrics tab is open, 
 
 #### Scenario: The tab closes
 - **WHEN** the user leaves the Metrics tab
-- **THEN** no further request for `prometheus` leaves Mortise, and `health` is still asked every 15 s
+- **THEN** no further request for `prometheus` leaves Mortise from that frame on, a read already on its way ends, and `health` is still asked every 15 s
 
 #### Scenario: The window is hidden
 - **WHEN** the Metrics tab is open and the window has not drawn itself for longer than the visibility grace
