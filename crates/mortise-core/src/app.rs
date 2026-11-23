@@ -399,9 +399,12 @@ pub fn read_app_cached(
     drop(sources);
 
     let git = git::read(&root);
-    let churn = match git {
-        Git::Repository { .. } => git::churn(&root, &folders),
-        _ => BTreeMap::new(),
+    let (churn, uncommitted) = match git {
+        Git::Repository { .. } => (
+            git::churn(&root, &folders),
+            git::uncommitted(&root, &folders),
+        ),
+        _ => (BTreeMap::new(), None),
     };
 
     let modules: Vec<Module> = found
@@ -423,6 +426,9 @@ pub fn read_app_cached(
             tests: module.scan.tests,
             coverage: coverage_of(folder),
             churn: churn.get(folder).copied(),
+            uncommitted: uncommitted
+                .as_ref()
+                .and_then(|counts| counts.get(folder).copied()),
         })
         .collect();
 

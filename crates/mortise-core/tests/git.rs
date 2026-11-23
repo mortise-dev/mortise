@@ -146,6 +146,30 @@ fn an_app_in_a_subfolder_of_a_repository_is_counted_by_its_own_paths() {
         .find(|module| module.name == "Billing")
         .unwrap();
     assert_eq!(billing.churn.unwrap().commits, 1);
+    // Nothing is uncommitted yet.
+    assert_eq!(users.uncommitted, Some(0));
+
+    // The app is below the top of the repository, so the prefix matters.
+    touch(&root, "Modules/Users/app/Models/User.php");
+    std::fs::write(root.join("Modules/Users/app/Staged.php"), "<?php\n").unwrap();
+    git(
+        &repository,
+        0,
+        &["add", "apps/shop-api/Modules/Users/app/Staged.php"],
+    );
+    std::fs::write(root.join("Modules/Users/app/Loose.php"), "<?php\n").unwrap();
+    std::fs::write(root.join("Modules/Users/app/Cache.log"), "x").unwrap();
+    std::fs::write(repository.join(".git/info/exclude"), "*.log\n").unwrap();
+    let app = read_app(&root).unwrap();
+    let uncommitted = |name: &str| {
+        app.modules
+            .iter()
+            .find(|module| module.name == name)
+            .unwrap()
+            .uncommitted
+    };
+    assert_eq!(uncommitted("Users"), Some(3));
+    assert_eq!(uncommitted("Billing"), Some(0));
 }
 
 #[test]

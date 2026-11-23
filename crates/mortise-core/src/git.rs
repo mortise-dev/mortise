@@ -152,3 +152,44 @@ pub(crate) fn churn(root: &Path, folders: &[String]) -> BTreeMap<String, Churn> 
     }
     churn
 }
+
+/// Counts the files of each folder that git cannot restore: changed, staged,
+/// added, deleted and untracked. Ignored files are left out. `folders` are paths
+/// relative to `root`, with `/`. `None` when git fails.
+pub(crate) fn uncommitted(root: &Path, folders: &[String]) -> Option<BTreeMap<String, u32>> {
+    let mut counts: BTreeMap<String, u32> = folders.iter().map(|f| (f.clone(), 0)).collect();
+    if folders.is_empty() {
+        return Some(counts);
+    }
+    // The paths of the status are relative to the top of the repository.
+    // The prefix is empty at the top and ends with `/` below it.
+    let prefix = git(root, &["rev-parse", "--show-prefix"])?;
+    let prefix = prefix.trim_end_matches(['\n', '\r']);
+
+    let mut args = vec![
+        "status",
+        "--porcelain=v1",
+        "-z",
+        "--untracked-files=all",
+        "--no-renames",
+        "--",
+    ];
+    args.extend(folders.iter().map(String::as_str));
+    let status = git(root, &args)?;
+    for entry in status.split('\0') {
+        // `XY path`: two status letters, a space, the path.
+        let Some(path) = entry.get(3..) else {
+            continue;
+        };
+        let Some(path) = path.strip_prefix(prefix) else {
+            continue;
+        };
+        if let Some(folder) = folders.iter().find(|folder| {
+            path.strip_prefix(folder.as_str())
+                .is_some_and(|rest| rest.starts_with('/'))
+        }) {
+            *counts.entry(folder.clone()).or_default() += 1;
+        }
+    }
+    Some(counts)
+}
