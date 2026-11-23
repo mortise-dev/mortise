@@ -132,10 +132,8 @@ fn migrate_runs_the_line_on_screen_and_the_toast_counts_its_migration() {
             .is_none()
     );
 
-    // Copy puts the line on the clipboard and runs nothing.
-    harness
-        .get_by_role_and_label(Role::Button, "Copy command")
-        .click();
+    // Ctrl Shift C copies the line to the clipboard and runs nothing.
+    harness.key_press_modifiers(Modifiers::COMMAND | Modifiers::SHIFT, Key::C);
     harness.run_steps(3);
     harness.get_by_label("Copied the command.");
     assert_eq!(runs(&mut harness, &desk, &root), 0);

@@ -381,7 +381,11 @@ fn the_question_mark_shows_the_shortcuts_and_they_can_be_searched() {
     harness.run();
     harness.get_by_role_and_label(Role::Heading, "Keyboard");
     harness.get_by_label("Open the command palette");
-    harness.get_by_label("29 of 29 shown.");
+    harness.get_by_label("33 of 33 shown.");
+    // The runner keys, with the drawer key written Ctrl ` and Ctrl J here.
+    for keys in ["Ctrl `", "Ctrl J", "Ctrl .", "Ctrl Shift C"] {
+        harness.get_by_label(keys);
+    }
 
     harness
         .get_by_role_and_label(Role::TextInput, "Find a shortcut")
@@ -391,12 +395,24 @@ fn the_question_mark_shows_the_shortcuts_and_they_can_be_searched() {
         .get_by_role_and_label(Role::TextInput, "Find a shortcut")
         .type_text("palette");
     harness.run();
-    harness.get_by_label("3 of 29 shown.");
+    harness.get_by_label("3 of 33 shown.");
     assert!(
         harness
             .query_by_label("Change the order of the index")
             .is_none()
     );
+
+    // On macOS the keys read Cmd, but the drawer key stays Ctrl `: Cmd ` cycles windows.
+    let mut desk = Desk::new();
+    desk.os = egui::os::OperatingSystem::Mac;
+    let root = desk.app("shop-api");
+    desk.knows(&[(&root, "SA")]);
+    let mut harness = desk.start();
+    harness.key_press(Key::Questionmark);
+    harness.run();
+    for keys in ["Ctrl `", "Cmd J", "Cmd .", "Cmd Shift C"] {
+        harness.get_by_label(keys);
+    }
 }
 
 #[test]
