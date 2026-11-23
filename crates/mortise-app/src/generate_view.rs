@@ -211,6 +211,8 @@ struct FileList {
     listed: Result<GeneratorReport, String>,
     /// The flags of the model form taken out because their file exists (S9.3).
     taken_out: Vec<&'static str>,
+    /// S9.3 took `all` out of the form, for the other six flags.
+    all_taken_out: bool,
 }
 
 impl FileList {
@@ -334,6 +336,7 @@ impl GenerateState {
             return;
         }
         let mut taken_out = Vec::new();
+        let mut all_taken_out = false;
         if let Ok(report) = &listed
             && generator.name == MAKE_MODEL
         {
@@ -354,7 +357,9 @@ impl GenerateState {
                 else {
                     continue;
                 };
-                if flags.remove("all") || MODEL_CALLS.iter().all(|call| flags.contains(*call)) {
+                let all = flags.remove("all");
+                all_taken_out |= all;
+                if all || MODEL_CALLS.iter().all(|call| flags.contains(*call)) {
                     flags.extend(MODEL_CALLS.iter().map(|call| call.to_string()));
                 }
                 if flags.remove(flag) {
@@ -368,7 +373,27 @@ impl GenerateState {
             before: words,
             listed,
             taken_out,
+            all_taken_out,
         });
+    }
+
+    /// Drops a file list that ran in another place than `place`: it lists the files
+    /// of another app. The flags S9.3 took out for it come back into the form.
+    fn drop_files_of_another_place(&mut self, place: &RunPlace) {
+        let Some(list) = self.files.take_if(|list| list.place != *place) else {
+            return;
+        };
+        if list.before.first() != Some(&self.generator) {
+            return;
+        }
+        let flags = &mut self.filled.flags;
+        flags.extend(list.taken_out.iter().map(|flag| flag.to_string()));
+        if list.all_taken_out && MODEL_CALLS.iter().all(|call| flags.contains(*call)) {
+            for call in MODEL_CALLS {
+                flags.remove(call);
+            }
+            flags.insert("all".to_owned());
+        }
     }
 
     /// The files of the list for `words` whose flags S9.3 took out, with the words
@@ -588,9 +613,7 @@ pub fn generate(
         runner: inputs.runner.cloned(),
         folder: inputs.folder.map(Path::to_path_buf),
     };
-    if state.files.as_ref().is_some_and(|list| list.place != place) {
-        state.files = None;
-    }
+    state.drop_files_of_another_place(&place);
     let on_form = state.view == View::Form && !inputs.held;
     let run_key = on_form
         && ui.input_mut(|input| {

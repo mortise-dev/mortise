@@ -1157,7 +1157,8 @@ impl MortiseApp {
 
     /// The end of a dry run of a form (design D5): the file list for its words, or
     /// why it gave none. The exit code does not matter: a kept file exits 1 with a
-    /// whole document.
+    /// whole document. A dry run whose runner or working folder changed meanwhile
+    /// listed the files of another app: its answer changes nothing.
     fn dry_run_read(
         &mut self,
         index: usize,
@@ -1168,6 +1169,10 @@ impl MortiseApp {
         let Some(app) = self.snapshot(index) else {
             return;
         };
+        let php = &self.settings.apps[index].php;
+        if php.runner != place.runner || php.working_folder != place.folder {
+            return;
+        }
         let listed = match &end {
             Ok(end) => end
                 .document::<mortise_core::GeneratorReport>()

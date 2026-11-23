@@ -420,7 +420,7 @@ fn a_dry_run_that_finds_the_factory_keeps_it_in_the_command() {
     assert!(!disabled(&harness, "Create the other 2 files"));
 
     // The list belongs to the runner and the working folder it ran with: another
-    // working folder drops it.
+    // working folder drops it, and the flag it took out comes back.
     harness.key_press_modifiers(Modifiers::COMMAND, Key::K);
     harness.run_steps(3);
     harness
@@ -435,6 +435,8 @@ fn a_dry_run_that_finds_the_factory_keeps_it_in_the_command() {
     harness.run_steps(3);
     assert!(harness.query_by_label("4 files, 2 exist already").is_none());
     harness.get_by_role_and_label(Role::Button, "List files");
+    let policy = harness.get_by_role_and_label(Role::CheckBox, "Policy");
+    assert_eq!(policy.accesskit_node().toggled(), Some(Toggled::True));
 
     // A run that fails before it answers, with no file read: the form says why.
     run(&mut harness);
