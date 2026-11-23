@@ -3,10 +3,12 @@
 mod common;
 
 use common::{Desk, shop_api, wait_until};
-use eframe::egui::{Key, Modifiers, Role};
+use eframe::egui::{Key, Modifiers, Rect, Role, vec2};
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT as _, Queryable as _};
 use mortise_app::app::{MortiseApp, Selection};
+use mortise_app::strings;
+use mortise_app::theme::size;
 use mortise_app::workspace::Tab;
 use mortise_core::{Rules, RulesSource};
 
@@ -326,8 +328,32 @@ fn the_folders_of_the_second_rule_can_be_changed() {
 
 #[test]
 fn the_graph_of_12_modules_gives_each_node_its_full_name() {
-    let desk = Desk::new();
+    let mut desk = Desk::new();
+    desk.size = vec2(1100.0, 700.0);
     let root = common::app_with_modules(&desk, "platform", 12);
+    // The modules use each other in a chain: the graph has as many columns as it can.
+    // Checkout and Shipping use each other, so they share one.
+    for (from, to) in [
+        ("Accounts", "Addresses"),
+        ("Addresses", "Audit"),
+        ("Audit", "Carts"),
+        ("Carts", "Coupons"),
+        ("Coupons", "Inventory"),
+        ("Inventory", "Notifications"),
+        ("Billing", "Catalog"),
+        ("Catalog", "Users"),
+    ] {
+        let dir = root.join("Modules").join(from).join("app/Services");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("Next.php"),
+            format!(
+                "<?php\n\nnamespace Modules\\{from}\\Services;\n\n\
+                 use Modules\\{to}\\Contracts\\Next as Uses;\n\nclass Next implements Uses {{}}\n"
+            ),
+        )
+        .unwrap();
+    }
     desk.knows(&[(&root, "PL")]);
     let mut harness = desk.start();
     harness.key_press(Key::Num2);
@@ -344,20 +370,38 @@ fn the_graph_of_12_modules_gives_each_node_its_full_name() {
         .map(|module| module.name.clone())
         .collect();
     assert_eq!(names.len(), 12);
-    for name in &names {
-        harness.get_by_role_and_label(Role::Button, name);
+    // Each node holds its code stamp, and no node runs into another.
+    let mut nodes: Vec<Rect> = names
+        .iter()
+        .map(|name| harness.get_by_role_and_label(Role::Button, name).rect())
+        .collect();
+    nodes.sort_by(|a, b| a.left().total_cmp(&b.left()));
+    for node in &nodes {
+        assert!(node.width() >= size::STAMP_W + 16.0, "{node:?}");
+    }
+    let mut lefts: Vec<f32> = nodes.iter().map(|node| node.left()).collect();
+    lefts.dedup();
+    assert_eq!(lefts.len(), 11, "{nodes:?}");
+    for (i, a) in nodes.iter().enumerate() {
+        for b in &nodes[i + 1..] {
+            assert!(!a.intersects(*b), "{a:?} {b:?}");
+        }
     }
 
+    // At 1100 by 700 the head of the rules box has no room for its note beside the title.
+    let title = harness
+        .get_by_role_and_label(Role::Heading, "Rules for platform")
+        .rect();
+    let note = harness.get_by_label(strings::RULES_KEPT).rect();
+    assert!(!title.intersects(note), "{title:?} {note:?}");
+
     // And in full in the tooltip.
-    let before = harness.get_all_by_label("Notifications").count();
+    let before = harness.get_all_by_label("Addresses").count();
     harness
-        .get_by_role_and_label(Role::Button, "Notifications")
+        .get_by_role_and_label(Role::Button, "Addresses")
         .hover();
     harness.run_steps(12);
-    assert_eq!(
-        harness.get_all_by_label("Notifications").count(),
-        before + 1
-    );
+    assert_eq!(harness.get_all_by_label("Addresses").count(), before + 1);
 }
 
 #[test]

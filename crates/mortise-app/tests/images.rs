@@ -272,6 +272,27 @@ fn boundary_and_the_public_surface() {
         press(&mut harness, Key::J);
         press(&mut harness, Key::J);
         shots.take(&mut harness, "s5.1-boundary-module");
+
+        // A neighbour whose name does not fit shows its stamp, not a cut name.
+        let mut desk = Desk::new();
+        desk.theme = theme;
+        let root = desk.app("shop-api");
+        let long = root.join("Modules/NotificationPreferencesAndDigests");
+        common::copy_dir(&root.join("Modules/Notifications"), &long);
+        common::rename_in_files(&long, "Notifications", "NotificationPreferencesAndDigests");
+        desk.knows(&[(&root, "SA")]);
+        let mut harness = desk.start();
+        harness
+            .get_by_role_and_label(Role::ListBoxOption, "Checkout")
+            .click();
+        press(&mut harness, Key::Num2);
+        let (used_by, _) = bounds(&harness, Role::Label, "Used by, 3");
+        let (files, _) = bounds(&harness, Role::Heading, "Checkout uses Billing");
+        let part = (
+            (used_by.0 - 33.0, used_by.1 - 17.0),
+            (1264.0, files.1 - 12.0),
+        );
+        shots.take_part(&mut harness, "s5.1-long-neighbour", part);
     }
 }
 

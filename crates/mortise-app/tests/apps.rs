@@ -404,6 +404,15 @@ fn a_folder_on_the_command_line_opens_the_panel_or_the_app() {
     let add = harness.get_by_role_and_label(Role::Button, "Add booking-engine");
     assert!(add.is_focused());
     assert!(window.contains_rect(add.rect()));
+
+    // A name longer than the panel is wide is cut in the label: Cancel stays in the panel.
+    let long = "booking-engine-for-the-regional-warehouses-of-the-northern-and-western-partners";
+    let harness = desk.start_with(Some(desk.app(long)));
+    let label = format!("Add {long}");
+    let add = harness.get_by_role_and_label(Role::Button, &label).rect();
+    let cancel = harness.get_by_role_and_label(Role::Button, "Cancel").rect();
+    assert!(add.right() < cancel.left());
+    assert!(cancel.right() <= window.right(), "{cancel:?}");
 }
 
 #[test]
