@@ -445,6 +445,24 @@ accessible name and a 24 px target (`tests/accessibility.rs`).
   argument, as `words` splits it, and the whole text of another argument. A form uses it for its errors.
 - A `module:make` run whose composer dump-autoload failed and whose files came from the lines keeps
   the reason: the form shows "Read from the output: ..." under its line, beside the alert.
+- The guards of Replace read the runner's own options with the form's words: a Custom line
+  `php artisan --factory` (or `-f`, alone or in a group) counts as a run with `--factory`, so a 13.4
+  model gets no single-file Replace. `replace_words` reads a shortcut as its option.
+- Replace of a model's own file strips the flags of its calls only before `--`: a module named
+  `--factory` after `--` stays a name.
+- `app_relative(root, modules, folders, printed)` takes the folder names of the app's modules. A path
+  of a container is read from the last `/<modules>/<Module>/` whose `<Module>` is one of them, else
+  from the last `/<modules>/`, as for a new module. `/srv/Modules/shop-api/Modules/Billing/...` gives
+  `Modules/Billing/...`.
+- Each left row of a result has its own small "Replace", named "Replace <path>" for a screen reader.
+  The S9.6 alert and its "Replace <file>" stay for the first left file.
+- A generator without a `module` argument (an app's own) opens its form under "All modules" too, so
+  its row in Recent opens. The title then reads "Generate in <app>".
+- A dry run keeps the runner and the working folder it started with. A list from another runner or
+  working folder is dropped, also when it arrives after the change.
+- The Factory box shows "exists" when the dry run keeps the factory; its flag stays on.
+- An app that replaces a package generator with its own code under the same Artisan name gets that
+  code run by "List files" and Replace, as every command runs the app's code (deviation S55).
 
 ## Risks / Trade-offs
 
