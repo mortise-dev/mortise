@@ -1736,10 +1736,12 @@ fn command(
         }));
     }
     // The generator's own file exists: Replace writes it again, after the dialog of S9.6.
-    let replace = files
-        .replace
-        .as_deref()
-        .and_then(|path| Some((path, replace_words(inputs.catalog, &words, path)?)));
+    let replace = files.replace.as_deref().and_then(|path| {
+        Some((
+            path,
+            replace_words(inputs.catalog, &words, path, &app.package)?,
+        ))
+    });
     if let Some((path, replace_args)) = replace {
         let file = file_name(path);
         let label = strings::replace_file(file);
@@ -2348,7 +2350,7 @@ fn result_view(
     let Some(first_left) = left.first() else {
         return (y - 12.0, asked);
     };
-    let words = replace_words(inputs.catalog, &result.args, &first_left.path);
+    let words = replace_words(inputs.catalog, &result.args, &first_left.path, &app.package);
     let name = file_name(&first_left.path);
     if let Some(words) = words {
         let label = strings::replace_file(name);
