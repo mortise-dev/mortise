@@ -368,7 +368,7 @@ fn the_question_mark_shows_the_shortcuts_and_they_can_be_searched() {
     harness.run();
     harness.get_by_role_and_label(Role::Heading, "Keyboard");
     harness.get_by_label("Open the command palette");
-    harness.get_by_label("27 of 27 shown.");
+    harness.get_by_label("29 of 29 shown.");
 
     harness
         .get_by_role_and_label(Role::TextInput, "Find a shortcut")
@@ -378,7 +378,7 @@ fn the_question_mark_shows_the_shortcuts_and_they_can_be_searched() {
         .get_by_role_and_label(Role::TextInput, "Find a shortcut")
         .type_text("palette");
     harness.run();
-    harness.get_by_label("3 of 27 shown.");
+    harness.get_by_label("3 of 29 shown.");
     assert!(
         harness
             .query_by_label("Change the order of the index")

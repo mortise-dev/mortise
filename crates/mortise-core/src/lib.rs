@@ -45,8 +45,9 @@ pub use app::{
     read_app_with,
 };
 pub use catalog::{
-    Action, Ask, Context, OptionSet, Options, Plan, Target, asks_again, plan, refuses,
-    typed_name_matches,
+    Action, Argument, Ask, Catalog, Context, Filled, Generator, GeneratorOption, Group,
+    MODULE_MAKE, NameRule, OptionSet, Options, Plan, Target, asks_again, class_name_ok,
+    module_name_ok, plan, refuses, replace_words, shipped_for, typed_name_matches,
 };
 pub use clover::Coverage;
 pub use code::{ALL_CODE, propose_codes, propose_monogram};
@@ -66,7 +67,8 @@ pub use matcher::fuzzy;
 pub use module::{KindCount, Manifest, Module, ModuleState, Progress, ReadCache};
 #[cfg(feature = "run")]
 pub use output::{
-    FailedMigration, MigrationCount, failed_migration, migration_count, migration_file, prohibited,
+    FailedMigration, FileOutcome, GeneratedFile, MigrationCount, autoload_failed, failed_migration,
+    generated_files, migration_count, migration_file, prohibited,
 };
 pub use rules::{RULES_FILE, Rules, RulesError, RulesSource};
 #[cfg(feature = "run")]

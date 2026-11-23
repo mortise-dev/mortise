@@ -259,3 +259,32 @@ fn the_entry_in_the_title_bar_opens_the_palette_and_a_click_runs_a_row() {
     harness.run_steps(3);
     harness.get_by_role_and_label(Role::Heading, "PHP");
 }
+
+#[test]
+fn a_generator_row_opens_its_form_and_runs_nothing() {
+    let (_desk, mut harness) = shop_api();
+    harness
+        .get_by_role_and_label(Role::ListBoxOption, "Checkout")
+        .click();
+    harness.run_steps(3);
+    open_palette(&mut harness);
+    type_query(&mut harness, "model");
+    harness.get_by_label("Generators");
+    let row = "Generate a model in Checkout";
+    assert!(palette_rows(&harness).iter().any(|label| label == row));
+    harness
+        .get_by_role_and_label(Role::ListBoxOption, row)
+        .click();
+    harness.run_steps(3);
+    assert_eq!(harness.state().tab(), Tab::Generate);
+    assert_eq!(
+        harness.state().selection(),
+        Selection::Module("Checkout".into())
+    );
+    harness.get_by_role_and_label(Role::Heading, "Generate in Checkout");
+    assert!(
+        harness
+            .get_by_role_and_label(Role::TextInput, "Model name")
+            .is_focused()
+    );
+}

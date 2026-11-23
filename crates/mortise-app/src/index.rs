@@ -125,15 +125,23 @@ struct Row<'a> {
     state: RowState,
 }
 
+/// What the index asked for in a frame.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct IndexAsked {
+    /// The order of the list was asked to change.
+    pub toggle_order: bool,
+    /// "New module" in the footer was pressed.
+    pub new_module: bool,
+}
+
 /// Paints the index into `rect`. The rect includes the 1 px joint at its right edge.
-/// Returns true when the order of the list was asked to change.
 pub fn index(
     ui: &mut Ui,
     pal: &Palette,
     rect: Rect,
     app: &AppSnapshot,
     state: IndexState<'_>,
-) -> bool {
+) -> IndexAsked {
     ui.painter().rect_filled(rect, 0, pal.panel);
     // The joint between index and workspace. The selected row is painted over it.
     draw::vline(
@@ -157,6 +165,7 @@ pub fn index(
         name,
     } = state;
     let mut toggle_order = false;
+    let mut new_module = false;
 
     let modules = ordered(app, filter, problems_first);
     // "All modules" carries the problems of the whole app.
@@ -226,6 +235,18 @@ pub fn index(
             let shown = strings::of_modules(modules.len(), app.modules.len());
             draw::label(ui, at, Align2::LEFT_TOP, &shown, ty::SECONDARY, pal.ink_2);
         }
+        // "New module" opens the form of module:make; nothing runs (S3.1, S9.4).
+        let button = draw::Button {
+            label: strings::NEW_MODULE,
+            small: true,
+            ..Default::default()
+        };
+        let foot_mid = (foot_top + 1.0 + rect.bottom()) / 2.0;
+        let button_at = pos2(
+            inner.end - 9.0 - button.width(ui),
+            (foot_mid - button.height() / 2.0).round(),
+        );
+        new_module = button.show(ui, pal, button_at, keyboard).clicked();
         (head_bottom, foot_top)
     };
 
@@ -299,7 +320,10 @@ pub fn index(
                 ui.add_space(LIST_PAD);
             });
     });
-    toggle_order
+    IndexAsked {
+        toggle_order,
+        new_module,
+    }
 }
 
 /// True when the rows of the index have one line.

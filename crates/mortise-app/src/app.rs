@@ -6,8 +6,8 @@ use std::sync::Arc;
 
 use eframe::egui::{self, Event, Key, KeyboardShortcut, Modifiers, Rect, Theme, Ui, pos2, vec2};
 use mortise_core::{
-    Action, Ask, Environment, LiveRuntime, ModuleState, ReadOptions, Rules, RunEnd, RunnerKind,
-    Runs, RuntimeState, Secret, Secrets, Target, ThemeChoice,
+    Action, Ask, Environment, FileOutcome, LiveRuntime, MODULE_MAKE, ModuleState, ReadOptions,
+    Rules, RunEnd, RunnerKind, Runs, RuntimeState, Secret, Secrets, Target, ThemeChoice,
 };
 use mortise_core::{
     AppEntry, AppSnapshot, LiveApp, LiveState, ReadCache, Settings, SettingsError,
@@ -20,6 +20,9 @@ use crate::boundary::{BoundaryAction, BoundaryState};
 use crate::chrome::{self, Chrome};
 use crate::dialog::{Answer, Dialog, Typed};
 use crate::draw::{self, Button, ButtonKind};
+use crate::generate_view::{
+    GenerateAsk, GenerateInputs, GenerateResult, GenerateRun, GenerateState,
+};
 use crate::index::{self, IndexRuntime, IndexState};
 use crate::palette::{self, Command, PaletteAction, PaletteState};
 use crate::rail::{self, RailAction, Tile};
@@ -103,6 +106,52 @@ struct OpenApp {
     /// again: its end gets a toast (design D6). With it, the modules that were on
     /// when it started, for the toast of a fresh (design D7).
     action_run: Option<(Act, usize)>,
+    /// What the Generate tab keeps: the picker, the form and the last result.
+    generate: GenerateState,
+    /// The generator that runs, with the modules the app had when it started.
+    generate_run: Option<Generating>,
+    /// After `module:make`: the module to select once a snapshot has it.
+    select_new: Option<SelectNew>,
+}
+
+/// A generator that runs, and what its end needs.
+struct Generating {
+    run: GenerateRun,
+    /// The modules the app had when it started.
+    before: BTreeSet<String>,
+    /// The line that runs carries `--force`, in the runner's words or in the run's.
+    forced: bool,
+    /// The generator and the module of the form it was started from: its result
+    /// shows only while that form is still on screen.
+    form: Option<(String, Option<String>)>,
+}
+
+/// The module `module:make` created, to select once the app is read with it
+/// (design D6): the first module that was not there before, else a typed name.
+struct SelectNew {
+    before: BTreeSet<String>,
+    names: Vec<String>,
+}
+
+impl SelectNew {
+    fn find(&self, app: &AppSnapshot) -> Option<String> {
+        // ASCII case ignored, and "-" and "_" left out, as the package makes the name studly.
+        let key = |name: &str| {
+            name.chars()
+                .filter(|c| *c != '-' && *c != '_')
+                .map(|c| c.to_ascii_lowercase())
+                .collect::<String>()
+        };
+        app.modules
+            .iter()
+            .find(|module| !self.before.contains(&module.name))
+            .or_else(|| {
+                app.modules
+                    .iter()
+                    .find(|module| self.names.iter().any(|name| key(name) == key(&module.name)))
+            })
+            .map(|module| module.name.clone())
+    }
 }
 
 /// A folder that is read for the add panel.
@@ -839,6 +888,7 @@ impl MortiseApp {
                 | Command::Findings
                 | Command::Finding { .. }
                 | Command::Action { .. }
+                | Command::Generate { .. }
         ) {
             if self.current != Some(scope) {
                 self.select_app(scope);
@@ -896,6 +946,7 @@ impl MortiseApp {
                 }
                 self.open_action(module, action);
             }
+            Command::Generate { module, generator } => self.open_generate(module, &generator),
             Command::App(index) => self.select_app(index),
             Command::AddApp => self.adding = Some(AddPanel::empty()),
             Command::Settings => self.open_settings(Section::Apps),
@@ -1349,6 +1400,234 @@ impl MortiseApp {
         }
     }
 
+    // --- Generate ---
+
+    /// Opens the form of `generator` on the Generate tab: in `module`, or for
+    /// `module:make` with "All modules" selected (design D7). Nothing runs.
+    fn open_generate(&mut self, module: Option<String>, generator: &str) {
+        let Some(current) = self.current else {
+            return;
+        };
+        let open = &mut self.apps[current];
+        open.selection = match module {
+            Some(name) if generator != MODULE_MAKE => Selection::Module(name),
+            _ => Selection::All,
+        };
+        open.tab = Tab::Generate;
+        open.findings_open = false;
+        open.generate.open_form(generator);
+        self.adding = None;
+        self.settings_open = None;
+        self.reveal_next = true;
+    }
+
+    /// What the Generate tab of the app at `index` asked for: a run, or a question
+    /// first. Replace the module and Replace a file show the line they run (D6).
+    fn generate(&mut self, index: usize, ask: GenerateAsk) {
+        let runner = self.settings.apps[index].php.runner.as_ref();
+        let line = |args: &[String]| {
+            runner_view::line_now(runner, args)
+                .unwrap_or_else(|| format!("php artisan {}", args.join(" ")))
+        };
+        let dialog = match &ask {
+            GenerateAsk::NewModule => return,
+            GenerateAsk::Run(run) if run.generator != MODULE_MAKE || !forced(runner, &run.args) => {
+                None
+            }
+            GenerateAsk::Run(run) => {
+                let names = typed_names(&run.args);
+                let names: Vec<&str> = names.iter().map(String::as_str).collect();
+                let app = self.snapshot(index);
+                let existing = app.as_ref().and_then(|app| {
+                    let module = app.modules.iter().find(|module| {
+                        names
+                            .iter()
+                            .any(|name| name.eq_ignore_ascii_case(&module.name))
+                    })?;
+                    Some((app.path_shown(&module.dir), module.files))
+                });
+                let body = strings::replace_module_body(
+                    existing
+                        .as_ref()
+                        .map(|(folder, files)| (folder.as_str(), *files)),
+                );
+                Some(Dialog {
+                    code: Some(line(&run.args)),
+                    ..Dialog::new(
+                        strings::replace_module_title(&names),
+                        body,
+                        strings::REPLACE_MODULE.to_owned(),
+                    )
+                })
+            }
+            GenerateAsk::Replace { file, run } => Some(Dialog {
+                code: Some(line(&run.args)),
+                ..Dialog::new(
+                    strings::replace_file_title(file),
+                    strings::REPLACE_FILE_BODY.to_owned(),
+                    strings::REPLACE_FILE.to_owned(),
+                )
+            }),
+        };
+        let run = match ask {
+            GenerateAsk::Run(run) | GenerateAsk::Replace { run, .. } => run,
+            GenerateAsk::NewModule => return,
+        };
+        let Some(dialog) = dialog else {
+            self.start_generate(index, run);
+            return;
+        };
+        // Something is written over: the red button, and focus starts on Cancel.
+        let dialog = Dialog {
+            danger: true,
+            start_on_cancel: true,
+            ..dialog
+        };
+        self.dialog = Some((dialog, Pending::Generate { index, run }));
+        self.dialog_opened = true;
+    }
+
+    /// Starts a generator and keeps what it was, for its result at its end.
+    fn start_generate(&mut self, index: usize, run: GenerateRun) {
+        if self.apps[index].runs.running().is_some() {
+            return;
+        }
+        let before: BTreeSet<String> = self.snapshot(index).map_or_else(BTreeSet::new, |app| {
+            app.modules
+                .iter()
+                .map(|module| module.name.clone())
+                .collect()
+        });
+        let forced = forced(self.settings.apps[index].php.runner.as_ref(), &run.args);
+        self.start_run(index, run.args.clone());
+        let open = &mut self.apps[index];
+        open.select_new = None;
+        let form = open.generate.form();
+        open.generate_run = open.runs.running().is_some().then_some(Generating {
+            run,
+            before,
+            forced,
+            form,
+        });
+    }
+
+    /// The result and the toast after a generator of the app at `index` ended
+    /// (design D6). The result comes from the output lines, not from the exit code.
+    fn generate_ended(&mut self, index: usize, generating: Generating) {
+        let Generating {
+            run,
+            before,
+            forced,
+            form,
+        } = generating;
+        let Some((end, lines)) = self.apps[index].runs.ended() else {
+            return;
+        };
+        let done = matches!(end, RunEnd::Exited { code: Some(0), .. });
+        let files = mortise_core::generated_files(lines, forced);
+        let autoload_failed = mortise_core::autoload_failed(lines);
+        let label = run.args.join(" ");
+        let in_view = self.runner.shown == Shown::Open
+            && self.current == Some(index)
+            && self.settings_open.is_none()
+            && self.adding.is_none();
+        // The result belongs to the form the run started from (design D6).
+        let attached = form.is_some() && self.apps[index].generate.form() == form;
+        let on_tab = in_view && attached && self.apps[index].tab == Tab::Generate;
+        let failed_toast = |text: String, root: PathBuf| {
+            Toast::failed(text).with_action(strings::SHOW_OUTPUT, ToastAction::ShowOutput(root))
+        };
+        let root = self.settings.apps[index].root.clone();
+        let open = &mut self.apps[index];
+
+        if run.generator == MODULE_MAKE {
+            let names = typed_names(&run.args);
+            // A run that wrote files made a module, whatever its exit code: it is
+            // selected once the app is read with it. When composer dump-autoload
+            // failed, the form keeps its alert on screen instead (design D6).
+            let wrote = files
+                .iter()
+                .any(|file| matches!(file.outcome, FileOutcome::Created | FileOutcome::Replaced));
+            open.live.refresh();
+            if autoload_failed {
+                if attached {
+                    open.generate
+                        .show_result(GenerateResult::new(None, run.args, files, true));
+                }
+            } else if wrote {
+                open.select_new = Some(SelectNew {
+                    before,
+                    names: names.clone(),
+                });
+            }
+            if done && !autoload_failed {
+                open.generate.clear_name();
+                let names: Vec<&str> = names.iter().map(String::as_str).collect();
+                self.toast = Some(Toast::done(strings::created_modules(&names)));
+                return;
+            }
+            // No toast while the drawer shows the failure.
+            if !in_view {
+                let text = match end {
+                    RunEnd::Exited { code, .. } => strings::stopped_with(&label, code),
+                    RunEnd::Stopped { .. } => strings::was_stopped(&label),
+                };
+                self.toast = Some(failed_toast(text, root));
+            }
+            return;
+        }
+
+        // No file read: no result; the drawer says what happened.
+        if files.is_empty() {
+            if !done && !in_view {
+                let text = match end {
+                    RunEnd::Exited { code, .. } => strings::stopped_with(&label, code),
+                    RunEnd::Stopped { .. } => strings::was_stopped(&label),
+                };
+                self.toast = Some(failed_toast(text, root));
+            }
+            return;
+        }
+        let place = run.module.clone().unwrap_or_default();
+        let total = files.len();
+        let written: Vec<&mortise_core::GeneratedFile> = files
+            .iter()
+            .filter(|file| matches!(file.outcome, FileOutcome::Created | FileOutcome::Replaced))
+            .collect();
+        let replaced = written
+            .iter()
+            .all(|file| file.outcome == FileOutcome::Replaced);
+        let toast = if written.len() == total {
+            Some(Toast::done(strings::created_files(total, &place, replaced)))
+        } else if !on_tab {
+            // A failure that is not on screen: the sentence of the result (not in the spec).
+            let name = |outcome| {
+                files
+                    .iter()
+                    .filter(|file| file.outcome == outcome)
+                    .map(|file| file.path.rsplit(['/', '\\']).next().unwrap_or(&file.path))
+                    .collect::<Vec<_>>()
+            };
+            let text = strings::left_alert(
+                written.len(),
+                total,
+                &place,
+                &name(FileOutcome::Left),
+                &name(FileOutcome::Failed),
+            );
+            Some(failed_toast(text, root))
+        } else {
+            None
+        };
+        if let Some(toast) = toast {
+            self.toast = Some(toast);
+        }
+        if attached {
+            open.generate
+                .show_result(GenerateResult::new(run.module, run.args, files, false));
+        }
+    }
+
     // --- Rules ---
 
     /// Changes the rules of the current app. The first change asks before
@@ -1482,8 +1761,14 @@ impl MortiseApp {
                         .filter(|surface| open.boundary.surface_view && surface.is_scanning()),
                     _ => None,
                 };
+                let picker = open.tab == Tab::Generate;
                 if let Some(surface) = scanning {
                     surface.stop();
+                } else if picker
+                    && (open.generate.filter_was_focused() || open.filter.is_empty())
+                    && open.generate.escape()
+                {
+                    // Esc clears the filter of the picker (S9.1).
                 } else if !open.filter.is_empty() {
                     // Esc clears the text first and leaves the field second. egui has
                     // already taken focus from the field for this Esc: give it back.
@@ -1560,6 +1845,10 @@ impl MortiseApp {
             let set = f32::from(self.settings.general.index_width);
             let (_, collapsed) = index_width(self.window_w, self.index_choice, set);
             self.index_choice = Some(!collapsed);
+        }
+        // The new module form, anywhere an app is open (design D7). Nothing runs.
+        if chord(Modifiers::COMMAND, Key::N) && self.app().is_some() {
+            self.open_generate(None, MODULE_MAKE);
         }
         // Filter modules: / when not typing, or the chord for keyboards where / needs Shift.
         if chord(Modifiers::COMMAND, Key::F) || (!typing && chord(Modifiers::NONE, Key::Slash)) {
@@ -1646,6 +1935,12 @@ impl MortiseApp {
             return;
         }
         let open = &mut self.apps[current_app];
+        // G: the Generate tab with the filter of the picker focused (S9.1).
+        if pressed(Key::G) {
+            open.tab = Tab::Generate;
+            open.findings_open = false;
+            open.generate.open_picker(true);
+        }
         // F: the findings list of the app.
         if pressed(Key::F) {
             open.selection = Selection::All;
@@ -1782,18 +2077,24 @@ impl eframe::App for MortiseApp {
         // Lines and the elapsed time show without a callback from the core.
         let mut running = false;
         let mut ended = Vec::new();
+        let mut generated = Vec::new();
         for (index, open) in self.apps.iter_mut().enumerate() {
             let was = open.runs.running().is_some();
             running |= open.runs.poll();
-            if was
-                && open.runs.running().is_none()
-                && let Some((act, modules_on)) = open.action_run.take()
-            {
-                ended.push((index, act, modules_on));
+            if was && open.runs.running().is_none() {
+                if let Some((act, modules_on)) = open.action_run.take() {
+                    ended.push((index, act, modules_on));
+                }
+                if let Some(generating) = open.generate_run.take() {
+                    generated.push((index, generating));
+                }
             }
         }
         for (index, act, modules_on) in ended {
             self.action_ended(index, &act, modules_on);
+        }
+        for (index, generating) in generated {
+            self.generate_ended(index, generating);
         }
         if running {
             ctx.request_repaint_after(std::time::Duration::from_millis(100));
@@ -1869,6 +2170,7 @@ impl eframe::App for MortiseApp {
         let mut add_action = None;
         let mut work_action = None;
         let mut toggle_order = false;
+        let mut new_module = false;
         let problems_first = self
             .current
             .is_some_and(|current| self.settings.apps[current].problems_first);
@@ -1994,7 +2296,9 @@ impl eframe::App for MortiseApp {
                             checked: runtime.checked(),
                         }),
                     };
-                    toggle_order = index::index(ui, pal, index_rect, &app, state);
+                    let index_asked = index::index(ui, pal, index_rect, &app, state);
+                    toggle_order = index_asked.toggle_order;
+                    new_module = index_asked.new_module;
                     // Where the window has room, the user sets the width of the index.
                     if !index_collapsed && window.width() >= 1076.0 {
                         new_index_w = index_edge(ui, index_rect, self.keyboard, pal);
@@ -2025,6 +2329,22 @@ impl eframe::App for MortiseApp {
                         Selection::Module(name) => Target::Module(name.clone()),
                     };
                     open.actions.follow(target, open.tab == Tab::Actions);
+                    // After module:make, the new module once the app is read with it.
+                    if open.select_new.is_some() && open.selection != Selection::All {
+                        open.select_new = None;
+                    }
+                    if let Some(name) = open.select_new.as_ref().and_then(|wait| wait.find(&app)) {
+                        open.selection = Selection::Module(name);
+                        open.tab = Tab::Summary;
+                        open.select_new = None;
+                        self.reveal_next = true;
+                        ctx.request_repaint();
+                    }
+                    let module = match &open.selection {
+                        Selection::Module(name) => Some(name.as_str()),
+                        Selection::All => None,
+                    };
+                    open.generate.follow(module, open.tab == Tab::Generate);
 
                     // The workspace, after the index: Tab goes from the rail to the index
                     // and then to the workspace.
@@ -2050,6 +2370,16 @@ impl eframe::App for MortiseApp {
                             held,
                             keyboard: self.keyboard,
                             mac,
+                        },
+                        generate: &mut open.generate,
+                        generate_inputs: GenerateInputs {
+                            app: entry.display_name(),
+                            runner: entry.php.runner.as_ref(),
+                            busy: open.runs.running(),
+                            held,
+                            keyboard: self.keyboard,
+                            mac,
+                            reduced_motion,
                         },
                     };
                     work_action = workspace::workspace(
@@ -2260,6 +2590,9 @@ impl eframe::App for MortiseApp {
                         self.start_action(index, act)
                     }
                 }
+                (Some(Answer::Confirm), Some((_, Pending::Generate { index, run }))) => {
+                    self.start_generate(index, run)
+                }
                 // "Dry run" checks the option on the panel and runs nothing (deviation S38).
                 (Some(Answer::Left), Some((_, Pending::Action { index, act }))) => {
                     self.check_dry_run(index, &act)
@@ -2299,6 +2632,14 @@ impl eframe::App for MortiseApp {
             Some(BoundaryAction::Act(act)) => {
                 if let Some(current) = self.current {
                     self.act(current, act);
+                }
+            }
+            Some(BoundaryAction::Generate(GenerateAsk::NewModule)) => {
+                self.open_generate(None, MODULE_MAKE)
+            }
+            Some(BoundaryAction::Generate(ask)) => {
+                if let Some(current) = self.current {
+                    self.generate(current, ask);
                 }
             }
             _ => {}
@@ -2362,6 +2703,9 @@ impl eframe::App for MortiseApp {
         if first_run_add {
             self.adding = Some(AddPanel::empty());
         }
+        if new_module {
+            self.open_generate(None, MODULE_MAKE);
+        }
         // An action of the drawer applies to the app it was drawn for, if that app
         // is still at its place on the rail.
         for (index, root, action) in drawer_actions {
@@ -2420,6 +2764,9 @@ fn open_app(ctx: &egui::Context, entry: &AppEntry, data_dir: Option<&Path>) -> O
         runs: AppRuns::open(data_dir, &entry.root),
         actions: ActionsState::default(),
         action_run: None,
+        generate: GenerateState::default(),
+        generate_run: None,
+        select_new: None,
     }
 }
 
@@ -2493,6 +2840,32 @@ fn destructive_words(args: &[String]) -> Option<(Action, Target)> {
     Some((action, target))
 }
 
+/// True when the line that runs `args` carries `--force` before a `--`: in the
+/// words of the runner, such as a Custom line `php artisan --force`, or in the run's.
+fn forced(runner: Option<&RunnerKind>, args: &[String]) -> bool {
+    let words: Vec<&str> = args.iter().map(String::as_str).collect();
+    let line = runner
+        .and_then(|runner| mortise_core::CommandLine::artisan(runner, &words))
+        .map_or_else(|| args.to_vec(), |line| line.args);
+    line.iter()
+        .take_while(|word| *word != "--")
+        .any(|word| word == "--force")
+}
+
+/// The names `module:make` words give: the words that are not options.
+fn typed_names(args: &[String]) -> Vec<String> {
+    let mut names = Vec::new();
+    let mut after_dashes = false;
+    for word in args.iter().skip(1) {
+        if word == "--" {
+            after_dashes = true;
+        } else if after_dashes || !word.starts_with('-') {
+            names.push(word.clone());
+        }
+    }
+    names
+}
+
 /// What a dialog waits to do.
 enum Pending {
     /// Write the rules to a `mortise.json` that does not exist yet, in the app at `root`.
@@ -2505,6 +2878,8 @@ enum Pending {
     Action { index: usize, act: Act },
     /// Run these words again in the app at this place on the rail.
     RunAgain { index: usize, args: Vec<String> },
+    /// Start a generator in the app at this place on the rail.
+    Generate { index: usize, run: GenerateRun },
 }
 
 /// How wide the module index is for a window of this width (section 5.14), and

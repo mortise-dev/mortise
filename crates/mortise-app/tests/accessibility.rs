@@ -97,15 +97,29 @@ fn the_workbench_and_its_tabs() {
     press(&mut harness, Key::Escape);
     press(&mut harness, Key::Num2);
     audit(&harness, "Boundary of all modules");
-    for digit in [Key::Num3, Key::Num4, Key::Num5] {
+    for (digit, screen) in [
+        (Key::Num3, "Generate of all modules"),
+        (Key::Num4, "Actions of all modules"),
+        (Key::Num5, "a tab of a later phase"),
+    ] {
         press(&mut harness, digit);
-        audit(&harness, "a tab of a later phase");
+        audit(&harness, screen);
     }
+    chord(&mut harness, Key::N);
+    audit(&harness, "New module form");
 
     harness
         .get_by_role_and_label(Role::ListBoxOption, "Checkout")
         .click();
     harness.run_steps(3);
+    audit(&harness, "Generator picker");
+    harness
+        .get_by_role_and_label(Role::ListBoxOption, "Model")
+        .click();
+    harness.run_steps(3);
+    audit(&harness, "Model form");
+    // Out of the name field, which the form focused.
+    press(&mut harness, Key::Escape);
     press(&mut harness, Key::Num1);
     audit(&harness, "Summary of a module, with routes");
     press(&mut harness, Key::Num4);

@@ -44,8 +44,8 @@ fn milestone_1() {
         harness.key_press(Key::J);
         harness.key_press(Key::J);
         save(&format!("s3.1-module-custom-{suffix}"), &mut harness);
-        harness.key_press(Key::Num3);
-        save(&format!("s7.4-generate-{suffix}"), &mut harness);
+        harness.key_press(Key::Num5);
+        save(&format!("s7.4-metrics-{suffix}"), &mut harness);
     }
 }
 

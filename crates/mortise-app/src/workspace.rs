@@ -10,6 +10,7 @@ use crate::app::Selection;
 use crate::boundary::{self, BoundaryAction, BoundaryState};
 use crate::draw::{self, Button, ButtonKind, Icon, StampState};
 use crate::findings_view;
+use crate::generate_view::{self, GenerateInputs, GenerateState};
 use crate::strings;
 use crate::summary::{self, SummaryState};
 use crate::surface_view::SurfaceInputs;
@@ -60,13 +61,7 @@ impl Tab {
         match self {
             Tab::Summary => None,
             Tab::Boundary => None,
-            Tab::Generate => Some((
-                Icon::Generate,
-                "Generate is not in this version",
-                "Generate creates modules and files through the package's own commands, with a \
-                 preview before anything is written. It needs PHP and a newer \
-                 nwidart/laravel-modules, and arrives in a later release of Mortise.",
-            )),
+            Tab::Generate => None,
             Tab::Actions => None,
             // The spec gives the text of Generate and says Metrics uses the same block.
             // This one is written to match it.
@@ -101,6 +96,9 @@ pub struct WorkState<'a> {
     /// What the Actions tab keeps, and what it needs.
     pub actions: &'a mut ActionsState,
     pub actions_inputs: ActionsInputs<'a>,
+    /// What the Generate tab keeps, and what it needs.
+    pub generate: &'a mut GenerateState,
+    pub generate_inputs: GenerateInputs<'a>,
 }
 
 /// Returns what was asked for in the workspace, such as a module to select in the index.
@@ -133,7 +131,12 @@ pub fn workspace(
     let findings = *state.findings_open && module.is_none() && *tab == Tab::Summary;
     let findings_title = strings::findings_in(state.name);
     let mut title_x = head.left() + 16.0;
-    let title = if findings {
+    // The Generate tab names what it generates in (S9.1, S9.4).
+    let generate_title = generate_view::title(state.generate, module, state.name);
+    let generating = *tab == Tab::Generate && !findings;
+    let title = if generating {
+        generate_title.as_str()
+    } else if findings {
         // Where the list belongs, then its own name.
         let crumb = format!("{} /", strings::ALL_MODULES);
         let at = pos2(title_x, head.top() + 12.0 + ty::TITLE.line - 3.0);
@@ -182,21 +185,29 @@ pub fn workspace(
             pal,
             &strings::code_is_for(&module.code, &module.name),
         );
-        draw::label(
-            ui,
-            pos2(stamp.right() + 10.0, title_rect.bottom() - 2.0),
-            Align2::LEFT_BOTTOM,
-            &app.path_shown(&module.dir),
-            ty::PATH,
-            pal.ink_2,
-        );
+        if !generating {
+            draw::label(
+                ui,
+                pos2(stamp.right() + 10.0, title_rect.bottom() - 2.0),
+                Align2::LEFT_BOTTOM,
+                &app.path_shown(&module.dir),
+                ty::PATH,
+                pal.ink_2,
+            );
+        }
     }
 
     // The actions of the header come before the tabs in the Tab order, so that the
     // first control after the tab row is the first control of the tab. The Actions
     // tab shows the key that runs instead (S10.1).
     let mut header_action = None;
-    if *tab == Tab::Actions {
+    let run_with = match *tab {
+        Tab::Actions => true,
+        // The picker has no key that runs; a form does (S9.1, S9.2).
+        Tab::Generate => state.generate.shows_form(),
+        _ => false,
+    };
+    if run_with {
         let keys = actions_view::run_keys(state.mac);
         let mid = head.top() + 12.0 + ty::TITLE.line / 2.0;
         let cap = draw::keycap(ui, pal, pos2(head.right() - 16.0, mid), &keys);
@@ -208,7 +219,7 @@ pub fn workspace(
             ty::SECONDARY,
             pal.ink_2,
         );
-    } else if let Some(module) = module {
+    } else if let Some(module) = module.filter(|_| *tab != Tab::Generate) {
         let said = strings::open_module_in_editor(&module.name);
         let open = Button {
             label: "Open in editor",
@@ -368,6 +379,14 @@ pub fn workspace(
         (_, Some((icon, title, text))) => {
             empty_state(ui, pal, body, EmptyMark::Icon(icon), title, &[text], 0.0);
             None
+        }
+        (Tab::Generate, None) => {
+            let WorkState {
+                generate,
+                generate_inputs,
+                ..
+            } = state;
+            generate_view::generate(ui, pal, body, app, module, generate, &generate_inputs)
         }
         (Tab::Actions, None) => {
             let WorkState {
