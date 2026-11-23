@@ -88,6 +88,9 @@ pub struct GenerateRun {
     pub args: Vec<String>,
     /// The files whose flags S9.3 took out of the command: the run leaves them.
     pub taken_out: Vec<TakenOut>,
+    /// The path of the left row of the result on screen that this run replaces. Its
+    /// end updates that row, and the other rows keep their Replace.
+    pub row: Option<String>,
 }
 
 /// A file that S9.3 took out of the command because it exists (design D5). The run
@@ -211,6 +214,8 @@ struct FileList {
     listed: Result<GeneratorReport, String>,
     /// The flags of the model form taken out because their file exists (S9.3).
     taken_out: Vec<&'static str>,
+    /// S9.3 took `all` out of the form, for the other six flags.
+    all_taken_out: bool,
 }
 
 impl FileList {
@@ -334,6 +339,7 @@ impl GenerateState {
             return;
         }
         let mut taken_out = Vec::new();
+        let mut all_taken_out = false;
         if let Ok(report) = &listed
             && generator.name == MAKE_MODEL
         {
@@ -354,7 +360,9 @@ impl GenerateState {
                 else {
                     continue;
                 };
-                if flags.remove("all") || MODEL_CALLS.iter().all(|call| flags.contains(*call)) {
+                let all = flags.remove("all");
+                all_taken_out |= all;
+                if all || MODEL_CALLS.iter().all(|call| flags.contains(*call)) {
                     flags.extend(MODEL_CALLS.iter().map(|call| call.to_string()));
                 }
                 if flags.remove(flag) {
@@ -368,7 +376,27 @@ impl GenerateState {
             before: words,
             listed,
             taken_out,
+            all_taken_out,
         });
+    }
+
+    /// Drops a file list that ran in another place than `place`: it lists the files
+    /// of another app. The flags S9.3 took out for it come back into the form.
+    fn drop_files_of_another_place(&mut self, place: &RunPlace) {
+        let Some(list) = self.files.take_if(|list| list.place != *place) else {
+            return;
+        };
+        if list.before.first() != Some(&self.generator) {
+            return;
+        }
+        let flags = &mut self.filled.flags;
+        flags.extend(list.taken_out.iter().map(|flag| flag.to_string()));
+        if list.all_taken_out && MODEL_CALLS.iter().all(|call| flags.contains(*call)) {
+            for call in MODEL_CALLS {
+                flags.remove(call);
+            }
+            flags.insert("all".to_owned());
+        }
     }
 
     /// The files of the list for `words` whose flags S9.3 took out, with the words
@@ -425,6 +453,29 @@ impl GenerateState {
                 .iter()
                 .all(|file| matches!(file.outcome, FileOutcome::Created | FileOutcome::Replaced));
         self.result = Some(result);
+    }
+
+    /// Takes the end of a Replace of the left row `row` of the result on screen: the
+    /// row gets what the run did to its file, and the other rows stay as they are,
+    /// with their Replace. A run that read no file leaves the row. Returns false when
+    /// the result holds no such row.
+    pub fn replace_row(&mut self, row: &str, files: &[GeneratedFile]) -> bool {
+        let Some(left) = self.result.as_mut().and_then(|result| {
+            result
+                .files
+                .iter_mut()
+                .find(|file| file.path == row && file.outcome == FileOutcome::Left)
+        }) else {
+            return false;
+        };
+        let done = match files {
+            [only] => Some(only),
+            files => files.iter().find(|file| file.path == row),
+        };
+        if let Some(done) = done {
+            left.outcome = done.outcome;
+        }
+        true
     }
 
     /// Esc on the picker clears its filter. Returns true when it did.
@@ -520,6 +571,20 @@ pub fn takes_module(generator: &Generator) -> bool {
         .any(|argument| argument.name == "module")
 }
 
+/// The names `module:make` words give: the words that are not options.
+pub fn typed_names(args: &[String]) -> Vec<String> {
+    let mut names = Vec::new();
+    let mut after_dashes = false;
+    for word in args.iter().skip(1) {
+        if word == "--" {
+            after_dashes = true;
+        } else if after_dashes || !word.starts_with('-') {
+            names.push(word.clone());
+        }
+    }
+    names
+}
+
 /// The folder names of the app's modules, which place a path of a container.
 pub fn module_folders(app: &AppSnapshot) -> Vec<&str> {
     app.modules
@@ -529,30 +594,25 @@ pub fn module_folders(app: &AppSnapshot) -> Vec<&str> {
 }
 
 /// The words that write `path` again, left by a run of `words`, as `replace_words`
-/// gives them. Its guards read the runner's own options with the run's: a Custom
-/// line `php artisan --factory` gives the model its factory, and the package then
-/// passes `--force` to the factory too (design D6).
+/// gives them. The runner's own options, before a `--` in its line, go with every
+/// command: a Custom line `php artisan --policy` gives the model its policy, and
+/// the package then passes `--force` to the policy too (design D6).
 fn replace_for(
     inputs: &GenerateInputs<'_>,
     words: &[String],
     path: &str,
     package: &mortise_core::Version,
 ) -> Option<Vec<String>> {
-    let options = inputs
+    let runner: Vec<String> = inputs
         .runner
         .map(RunnerKind::prefix)
         .unwrap_or_default()
         .into_iter()
         .skip(1)
-        .filter(|word| word.starts_with('-'));
-    let end = words
-        .iter()
-        .position(|word| word == "--")
-        .unwrap_or(words.len());
-    let mut effective = words.to_vec();
-    effective.splice(end..end, options);
-    replace_words(inputs.catalog, &effective, path, package)?;
-    replace_words(inputs.catalog, words, path, package)
+        .take_while(|word| word != "--")
+        .filter(|word| word.starts_with('-'))
+        .collect();
+    replace_words(inputs.catalog, words, &runner, path, package)
 }
 
 /// A path as the output prints it, relative to the folder of `module` when it is
@@ -593,9 +653,7 @@ pub fn generate(
         runner: inputs.runner.cloned(),
         folder: inputs.folder.map(Path::to_path_buf),
     };
-    if state.files.as_ref().is_some_and(|list| list.place != place) {
-        state.files = None;
-    }
+    state.drop_files_of_another_place(&place);
     let on_form = state.view == View::Form && !inputs.held;
     let run_key = on_form
         && ui.input_mut(|input| {
@@ -1908,6 +1966,7 @@ fn command(
             module: name.clone(),
             args: run_args.clone(),
             taken_out: state.taken_out_files(&words, inputs, &app.package),
+            row: None,
         })));
     }
     // A line cut off by the scroll area is not on screen, so Ctrl Enter does not
@@ -1961,6 +2020,7 @@ fn command(
                     module: name,
                     args: run_words(app, replace_args),
                     taken_out: Vec::new(),
+                    row: None,
                 },
             }));
         }
@@ -1986,15 +2046,48 @@ struct FilesShown {
     list: bool,
 }
 
+/// What the run of a dry run's list writes.
+#[derive(Debug, PartialEq, Eq)]
+struct Writes<'a> {
+    /// The generator's own file, which exists: Create is off.
+    own: Option<&'a ReportedFile>,
+    /// How many files the run writes.
+    written: usize,
+}
+
+/// What the run of `generator` writes, from the files of its dry run in write order.
+/// The first file is the generator's own. When it is kept, the run cannot write it,
+/// and Create is off. A later kept file belongs to a generator it calls, such as the
+/// view of `module:make-component` or a model's policy or factory: the run leaves it,
+/// and it does not stop Create. `module:make` has no own file: the package leaves a
+/// module that exists and makes the others. Only the files the run writes count.
+fn writes<'a>(generator: &str, files: &[&'a ReportedFile]) -> Writes<'a> {
+    let own = files
+        .first()
+        .copied()
+        .filter(|file| generator != MODULE_MAKE && file.action == FileAction::Keep);
+    let written = files
+        .iter()
+        .filter(|file| file.action != FileAction::Keep)
+        .count();
+    Writes { own, written }
+}
+
 /// The folder a printed path is shown under, and the rest of it: under the module
 /// folder for a file generator (`Modules/Billing/`), under the folder of its module
 /// for `module:make` (`Modules/Loyalty/`). A path outside both is shown as printed,
 /// under no folder.
-fn placed(app: &AppSnapshot, module: Option<&Module>, printed: &str) -> (String, String) {
+/// `asked` holds the modules `module:make` asks for, which place a path first.
+fn placed(
+    app: &AppSnapshot,
+    module: Option<&Module>,
+    asked: &[&str],
+    printed: &str,
+) -> (String, String) {
     let outside = (String::new(), printed.to_owned());
     let modules_dir = app.path_shown(&app.layout.modules_dir);
-    let Some(relative) = app_relative(&app.root, &modules_dir, &module_folders(app), printed)
-    else {
+    let folders = module_folders(app);
+    let Some(relative) = app_relative(&app.root, &modules_dir, asked, &folders, printed) else {
         return outside;
     };
     if let Some(module) = module {
@@ -2048,6 +2141,12 @@ fn files_this_creates(
         return list_files(ui, pal, min, width, words, list, inputs, ready, shown);
     };
     let new_module = generator.name == MODULE_MAKE;
+    let asked = if new_module {
+        typed_names(words)
+    } else {
+        Vec::new()
+    };
+    let asked: Vec<&str> = asked.iter().map(String::as_str).collect();
     // A `delete` entry is the folder that `module:make --force` deletes, not a file.
     let files: Vec<&ReportedFile> = report
         .files
@@ -2067,22 +2166,13 @@ fn files_this_creates(
     let taken = |file: &ReportedFile| flag_of(file).is_some_and(|flag| taken_out.contains(&flag));
     // The factory keeps its flag: the run leaves its file as it is (S9.3).
     let factory_kept = |file: &ReportedFile| flag_of(file) == Some(FACTORY);
-    let own: Vec<&ReportedFile> = files
-        .iter()
-        .copied()
-        .filter(|file| file.action == FileAction::Keep && !taken(file) && !factory_kept(file))
-        .collect();
-    // The files the run does not write: taken out of the command, or the factory kept.
-    let not_written = files
-        .iter()
-        .filter(|file| taken(file) || factory_kept(file))
-        .count();
+    let Writes { own, written } = writes(&generator.name, &files);
 
     // The rows by root folder, in the order the roots come; in a root, the files at
     // its top first, then by folder.
     let mut roots: Vec<(String, Vec<ListRow>)> = Vec::new();
     for file in &files {
-        let (root, rest) = placed(app, module, &file.path);
+        let (root, rest) = placed(app, module, &asked, &file.path);
         let (folder, name) = match rest.rsplit_once('/') {
             Some((folder, name)) => (format!("{folder}/"), name.to_owned()),
             None => (String::new(), rest),
@@ -2123,7 +2213,7 @@ fn files_this_creates(
     let sentence = |y: f32, text: &str, color: Color32| {
         draw::paragraph(ui, pos2(min.x, y + 6.0), text, HINT, color, width).bottom()
     };
-    let shown = |file: &ReportedFile| placed(app, module, &file.path).1;
+    let shown = |file: &ReportedFile| placed(app, module, &asked, &file.path).1;
     for file in files.iter().filter(|file| taken(file)) {
         let flag = flag_of(file).unwrap_or_default();
         let text = strings::taken_out(&shown(file), strings::model_call_kind(flag));
@@ -2132,7 +2222,7 @@ fn files_this_creates(
     for file in files.iter().filter(|file| factory_kept(file)) {
         y = sentence(y, &strings::factory_kept(&shown(file)), pal.ink_2);
     }
-    for file in &own {
+    if let Some(file) = own {
         let replaceable = replace_for(inputs, words, &file.path, &app.package).is_some();
         let text = strings::own_file_exists(&shown(file), replaceable);
         y = sentence(y, &text, pal.bad);
@@ -2144,18 +2234,18 @@ fn files_this_creates(
         }
     }
 
-    let create = if !own.is_empty() || files.is_empty() {
+    let create = if own.is_some() || files.is_empty() {
         None
-    } else if not_written > 0 {
-        Some(strings::create_other_files(files.len() - not_written))
+    } else if written < files.len() {
+        Some(strings::create_other_files(written))
     } else {
         Some(strings::create_n_files(files.len()))
     };
     FilesShown {
         bottom: y,
         create,
-        blocked: !own.is_empty(),
-        replace: own.first().map(|file| file.path.clone()),
+        blocked: own.is_some(),
+        replace: own.map(|file| file.path.clone()),
         read_shown: None,
         list: false,
     }
@@ -2374,11 +2464,55 @@ fn result_view(
     } else {
         strings::failed_count(total - written)
     };
-    let path_w = width - 14.0 - size::STATE_MARK - 8.0 - 10.0 - 70.0;
-    let rows: Vec<(String, std::sync::Arc<egui::Galley>)> = result
+    // A file the run left has its own Replace, not only the first (S9.6).
+    let replaces: Vec<Option<Vec<String>>> = result
         .files
         .iter()
         .map(|file| {
+            (file.outcome == FileOutcome::Left)
+                .then(|| left_replace(&result, inputs, app, &file.path))
+                .flatten()
+        })
+        .collect();
+    let open = Button {
+        label: strings::OPEN,
+        small: true,
+        ..Default::default()
+    };
+    let replace = Button {
+        label: strings::REPLACE,
+        small: true,
+        ..Default::default()
+    };
+    // The path wraps before the state and the button at the right of its row.
+    let right_w = |file: &GeneratedFile, replaceable: bool| {
+        let word = state_word(file.outcome);
+        let word_w = if word.is_empty() {
+            0.0
+        } else {
+            draw::galley(ui, word, ty::SECONDARY, pal.ink_2).size().x
+        };
+        let ok = matches!(file.outcome, FileOutcome::Created | FileOutcome::Replaced);
+        let button = if ok && openable(app, &file.path) {
+            Some(open.width(ui))
+        } else if replaceable {
+            Some(replace.width(ui))
+        } else {
+            None
+        };
+        match button {
+            Some(button) if word_w > 0.0 => button + 8.0 + word_w,
+            Some(button) => button,
+            None => word_w,
+        }
+    };
+    let rows: Vec<(String, std::sync::Arc<egui::Galley>)> = result
+        .files
+        .iter()
+        .zip(&replaces)
+        .map(|(file, words)| {
+            let right = (right_w(file, words.is_some()) + 12.0).max(70.0);
+            let path_w = width - 14.0 - size::STATE_MARK - 8.0 - 10.0 - right;
             let shown = path_in_module(app, module, &file.path);
             let galley = draw::galley_wrapped(ui, &shown, PATH, pal.ink, path_w);
             (shown, galley)
@@ -2434,8 +2568,13 @@ fn result_view(
             .request_repaint_after(std::time::Duration::from_millis(30));
     }
     let mut asked = None;
-    for (index, ((file, (shown, galley)), row_h)) in
-        result.files.iter().zip(rows).zip(&heights).enumerate()
+    for (index, (((file, (shown, galley)), row_h), words)) in result
+        .files
+        .iter()
+        .zip(rows)
+        .zip(&heights)
+        .zip(replaces)
+        .enumerate()
     {
         let row = Rect::from_min_size(pos2(rect.left() + 1.0, y), vec2(rect.width() - 2.0, *row_h));
         let ok = matches!(file.outcome, FileOutcome::Created | FileOutcome::Replaced);
@@ -2460,12 +2599,7 @@ fn result_view(
             galley,
         );
         let right = row.right() - 9.0;
-        let state_word = match file.outcome {
-            FileOutcome::Created => "",
-            FileOutcome::Replaced => strings::REPLACED,
-            FileOutcome::Left => strings::EXISTS_LEFT,
-            FileOutcome::Failed => strings::NOT_WRITTEN,
-        };
+        let state_word = state_word(file.outcome);
         let said = if state_word.is_empty() {
             shown.clone()
         } else {
@@ -2504,10 +2638,6 @@ fn result_view(
                 pal.ink_2,
             );
         } else {
-            // A file the run left has its own Replace, not only the first (S9.6).
-            let words = (file.outcome == FileOutcome::Left)
-                .then(|| left_replace(&result, inputs, app, &file.path))
-                .flatten();
             let mut word_right = right;
             if let Some(words) = words {
                 let replace_said = strings::replace_file(&shown);
@@ -2630,6 +2760,16 @@ fn result_view(
     (response.rect.bottom(), asked)
 }
 
+/// The word at the right of a row of a result.
+fn state_word(outcome: FileOutcome) -> &'static str {
+    match outcome {
+        FileOutcome::Created => "",
+        FileOutcome::Replaced => strings::REPLACED,
+        FileOutcome::Left => strings::EXISTS_LEFT,
+        FileOutcome::Failed => strings::NOT_WRITTEN,
+    }
+}
+
 /// The words that write a file the run left again. A file S9.3 took out has the
 /// words of the form before its flag went.
 fn left_replace(
@@ -2658,6 +2798,7 @@ fn replace_asked(
             module: result.module.clone(),
             args: run_words(app, words),
             taken_out: Vec::new(),
+            row: Some(path.to_owned()),
         },
     })
 }
@@ -2687,4 +2828,43 @@ fn mark_rect(right: f32, mid: f32) -> Rect {
         ),
         Vec2::splat(size::STATE_MARK),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_the_generator_s_own_file_stops_create() {
+        let file = |path: &str, action| ReportedFile {
+            path: path.to_owned(),
+            exists: action == FileAction::Keep,
+            action,
+            result: None,
+        };
+        // A component whose view exists: the class is written, the view is left.
+        let class = file("app/View/Components/Badge.php", FileAction::Create);
+        let view = file(
+            "resources/views/components/badge.blade.php",
+            FileAction::Keep,
+        );
+        assert_eq!(
+            writes("module:make-component", &[&class, &view]),
+            Writes {
+                own: None,
+                written: 1
+            }
+        );
+        // A model that exists stops Create; its policy that exists does not.
+        let model = file("app/Models/Invoice.php", FileAction::Keep);
+        let policy = file("app/Policies/InvoicePolicy.php", FileAction::Keep);
+        assert_eq!(
+            writes(MAKE_MODEL, &[&model, &policy]),
+            Writes {
+                own: Some(&model),
+                written: 0
+            }
+        );
+        assert_eq!(writes(MODULE_MAKE, &[&model]).own, None);
+    }
 }

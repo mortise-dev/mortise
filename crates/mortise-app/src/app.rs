@@ -23,7 +23,7 @@ use crate::dialog::{Answer, Dialog, Typed};
 use crate::draw::{self, Button, ButtonKind};
 use crate::generate_view::{
     CatalogRead, GenerateAsk, GenerateInputs, GenerateResult, GenerateRun, GenerateState, RunPlace,
-    TakenOut,
+    TakenOut, typed_names,
 };
 use crate::index::{self, IndexRuntime, IndexState};
 use crate::palette::{self, Command, PaletteAction, PaletteState};
@@ -1239,7 +1239,8 @@ impl MortiseApp {
 
     /// The end of a dry run of a form (design D5): the file list for its words, or
     /// why it gave none. The exit code does not matter: a kept file exits 1 with a
-    /// whole document.
+    /// whole document. A dry run whose runner or working folder changed meanwhile
+    /// listed the files of another app: its answer changes nothing.
     fn dry_run_read(
         &mut self,
         index: usize,
@@ -1250,6 +1251,10 @@ impl MortiseApp {
         let Some(app) = self.snapshot(index) else {
             return;
         };
+        let php = &self.settings.apps[index].php;
+        if php.runner != place.runner || php.working_folder != place.folder {
+            return;
+        }
         let listed = match &end {
             Ok(end) => end
                 .document::<mortise_core::GeneratorReport>()
@@ -1967,9 +1972,16 @@ impl MortiseApp {
             .as_deref()
             .map(crate::generate_view::module_folders)
             .unwrap_or_default();
+        // The modules `module:make` asks for place its paths first.
+        let asked = if run.generator == MODULE_MAKE {
+            typed_names(&run.args)
+        } else {
+            Vec::new()
+        };
+        let asked: Vec<&str> = asked.iter().map(String::as_str).collect();
         let (mut files, autoload_failed, fallback) = match answer {
             Some(Ok(report)) => (
-                mortise_core::reported_files(&report, &root, &modules, &folders),
+                mortise_core::reported_files(&report, &root, &modules, &asked, &folders),
                 report.autoload_failed(),
                 None,
             ),
@@ -1985,7 +1997,7 @@ impl MortiseApp {
             .taken_out
             .iter()
             .map(|file| TakenOut {
-                path: mortise_core::app_relative(&root, &modules, &folders, &file.path)
+                path: mortise_core::app_relative(&root, &modules, &asked, &folders, &file.path)
                     .unwrap_or_else(|| file.path.clone()),
                 replace: file.replace.clone(),
             })
@@ -2008,9 +2020,15 @@ impl MortiseApp {
             Toast::failed(text).with_action(strings::SHOW_OUTPUT, ToastAction::ShowOutput(root))
         };
         let open = &mut self.apps[index];
+        // A Replace of a left row of the result: that row changes, the others stay.
+        let row_taken = attached
+            && run
+                .row
+                .as_deref()
+                .is_some_and(|row| open.generate.replace_row(row, &files));
         // A run with `--json` that read no file, such as one that failed at boot: the
         // form keeps its line and says why the answer was not read (design D2).
-        if attached && files.is_empty() && fallback.is_some() {
+        if attached && !row_taken && files.is_empty() && fallback.is_some() {
             let result =
                 GenerateResult::new(run.module.clone(), run.args.clone(), Vec::new(), false);
             open.generate
@@ -2101,7 +2119,7 @@ impl MortiseApp {
         if let Some(toast) = toast {
             self.toast = Some(toast);
         }
-        if attached {
+        if attached && !row_taken {
             let result = GenerateResult::new(run.module, run.args, files, false);
             open.generate
                 .show_result(result.read_from_output(fallback).with_taken_out(taken_out));
@@ -3459,20 +3477,6 @@ fn forced(runner: Option<&RunnerKind>, args: &[String]) -> bool {
     line.iter()
         .take_while(|word| *word != "--")
         .any(|word| word == "--force")
-}
-
-/// The names `module:make` words give: the words that are not options.
-fn typed_names(args: &[String]) -> Vec<String> {
-    let mut names = Vec::new();
-    let mut after_dashes = false;
-    for word in args.iter().skip(1) {
-        if word == "--" {
-            after_dashes = true;
-        } else if after_dashes || !word.starts_with('-') {
-            names.push(word.clone());
-        }
-    }
-    names
 }
 
 /// What a dialog waits to do.

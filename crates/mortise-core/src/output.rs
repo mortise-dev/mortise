@@ -155,6 +155,7 @@ pub fn reported_files(
     report: &GeneratorReport,
     root: &Path,
     modules: &str,
+    names: &[&str],
     folders: &[&str],
 ) -> Vec<GeneratedFile> {
     report
@@ -168,7 +169,7 @@ pub fn reported_files(
                 FileResult::Failed => FileOutcome::Failed,
                 FileResult::Deleted => return None,
             };
-            let path = app_relative(root, modules, folders, &file.path)
+            let path = app_relative(root, modules, names, folders, &file.path)
                 .unwrap_or_else(|| file.path.clone());
             Some(GeneratedFile { path, outcome })
         })
@@ -185,9 +186,17 @@ pub fn reported_files(
 /// then read from a part `/<modules>/<Module>/` on, where `modules` is the modules
 /// folder relative to the app (`Modules`): `Modules/Billing/app/Models/Invoice.php`.
 /// The container's folder may hold that name too (`/srv/Modules/shop-api/Modules/...`),
-/// so the last part whose `<Module>` is one of `folders`, the folder names of the
-/// app's modules, counts. With none of them, as for a new module, the last part does.
-pub fn app_relative(root: &Path, modules: &str, folders: &[&str], printed: &str) -> Option<String> {
+/// so the part counts whose `<Module>` is one of `names`, the modules a run of
+/// `module:make` asks for (the package makes them studly: case, `-` and `_` do not
+/// count). Else the last part whose `<Module>` is one of `folders`, the folder names
+/// of the app's modules, counts, and with none of them, the last part.
+pub fn app_relative(
+    root: &Path,
+    modules: &str,
+    names: &[&str],
+    folders: &[&str],
+    printed: &str,
+) -> Option<String> {
     let printed = printed.replace('\\', "/");
     [Some(root.to_path_buf()), root.canonicalize().ok()]
         .into_iter()
@@ -200,12 +209,13 @@ pub fn app_relative(root: &Path, modules: &str, folders: &[&str], printed: &str)
             let rest = rest.strip_prefix('/')?;
             (!rest.is_empty()).then(|| rest.to_owned())
         })
-        .or_else(|| from_modules(modules, folders, &printed))
+        .or_else(|| from_modules(modules, names, folders, &printed))
 }
 
 /// The part of `printed` from a `/<modules>/<Module>/` on, when a file follows: the
-/// last whose `<Module>` is one of `folders`, else the last.
-fn from_modules(modules: &str, folders: &[&str], printed: &str) -> Option<String> {
+/// last whose `<Module>` is one of `names`, else the last whose `<Module>` is one of
+/// `folders`, else the last.
+fn from_modules(modules: &str, names: &[&str], folders: &[&str], printed: &str) -> Option<String> {
     let modules = modules.trim_matches('/');
     if modules.is_empty() {
         return None;
@@ -220,10 +230,16 @@ fn from_modules(modules: &str, folders: &[&str], printed: &str) -> Option<String
             (!module.is_empty() && !file.is_empty()).then_some((module, rest))
         })
         .collect();
-    found
-        .iter()
-        .rev()
-        .find(|(module, _)| folders.contains(module))
+    let studly = |name: &str| {
+        name.chars()
+            .filter(|c| *c != '-' && *c != '_')
+            .map(|c| c.to_ascii_lowercase())
+            .collect::<String>()
+    };
+    let asked: Vec<String> = names.iter().map(|name| studly(name)).collect();
+    let last = |known: &dyn Fn(&str) -> bool| found.iter().rev().find(|(module, _)| known(module));
+    last(&|module| asked.contains(&studly(module)))
+        .or_else(|| last(&|module| folders.contains(&module)))
         .or(found.last())
         .map(|(_, rest)| (*rest).to_owned())
 }
@@ -450,7 +466,7 @@ mod tests {
         let root = Path::new("/tmp/scratch-app");
         let read = |name: &str| {
             let report: GeneratorReport = crate::package::document(&recording(name)).unwrap();
-            reported_files(&report, root, "Modules", &[])
+            reported_files(&report, root, "Modules", &[], &[])
                 .into_iter()
                 .map(|file| (file.path, file.outcome))
                 .collect::<Vec<_>>()
@@ -482,6 +498,7 @@ mod tests {
                 Path::new("/tmp/other"),
                 "Modules",
                 &[],
+                &[],
                 "/tmp/scratch-app/x.php"
             ),
             None
@@ -489,7 +506,13 @@ mod tests {
         // PHP in a container prints the container's folder: the path is read from
         // the modules folder of the app's layout on.
         let container = |modules: &str, printed: &str| {
-            app_relative(Path::new("/Users/me/shop"), modules, &["Billing"], printed)
+            app_relative(
+                Path::new("/Users/me/shop"),
+                modules,
+                &[],
+                &["Billing"],
+                printed,
+            )
         };
         assert_eq!(
             container(
@@ -513,6 +536,19 @@ mod tests {
             )
             .as_deref(),
             Some("Modules/Billing/app/Models/Invoice.php")
+        );
+        // A new module comes before a known one: `module:make loyalty` placed in a
+        // container folder named after Billing.
+        assert_eq!(
+            app_relative(
+                Path::new("/Users/me/shop"),
+                "Modules",
+                &["loyalty"],
+                &["Billing"],
+                "/srv/Modules/Billing/Modules/Loyalty/module.json"
+            )
+            .as_deref(),
+            Some("Modules/Loyalty/module.json")
         );
     }
 

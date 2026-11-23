@@ -420,7 +420,7 @@ fn a_dry_run_that_finds_the_factory_keeps_it_in_the_command() {
     assert!(!disabled(&harness, "Create the other 2 files"));
 
     // The list belongs to the runner and the working folder it ran with: another
-    // working folder drops it.
+    // working folder drops it, and the flag it took out comes back.
     harness.key_press_modifiers(Modifiers::COMMAND, Key::K);
     harness.run_steps(3);
     harness
@@ -435,6 +435,8 @@ fn a_dry_run_that_finds_the_factory_keeps_it_in_the_command() {
     harness.run_steps(3);
     assert!(harness.query_by_label("4 files, 2 exist already").is_none());
     harness.get_by_role_and_label(Role::Button, "List files");
+    let policy = harness.get_by_role_and_label(Role::CheckBox, "Policy");
+    assert_eq!(policy.accesskit_node().toggled(), Some(Toggled::True));
 
     // A run that fails before it answers, with no file read: the form says why.
     run(&mut harness);
@@ -483,7 +485,10 @@ fn a_policy_that_exists_is_left_and_replace_asks_then_runs_force() {
     assert_eq!(ran(&mut harness, &desk, &root).len(), 1);
     click(&mut harness, Role::Button, "Replace file");
     wait_for(&mut harness, "Replaced 1 file in Billing.");
-    harness.get_by_role_and_label(Role::Heading, "Replaced in Billing");
+    // The row of the policy changes in the result; the other rows stay.
+    harness.get_by_role_and_label(Role::Heading, "Created in Billing");
+    harness.get_by_label("app/Policies/InvoicePolicy.php, replaced");
+    harness.get_by_label("app/Models/Invoice.php");
     assert_eq!(
         ran(&mut harness, &desk, &root)[0],
         ["module:make-policy", "InvoicePolicy", "Billing", "--force"]
