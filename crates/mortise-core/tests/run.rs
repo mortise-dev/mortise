@@ -37,7 +37,7 @@ fn exited_with_the_line_of_stderr() {
 }
 
 #[test]
-fn not_found_and_no_command() {
+fn not_found_no_command_and_no_folder() {
     let missing = RunnerKind::Custom {
         line: "mortise-no-such-php artisan".into(),
     };
@@ -51,6 +51,11 @@ fn not_found_and_no_command() {
     assert_eq!(
         test(&empty, TEST_LIMIT),
         TestOutcome::Failed(Failure::NoCommand)
+    );
+    let gone = Path::new(env!("CARGO_MANIFEST_DIR")).join("no-such-folder");
+    assert_eq!(
+        test_php(&fake(""), &gone, TEST_LIMIT),
+        TestOutcome::Failed(Failure::NoFolder { folder: gone })
     );
 }
 

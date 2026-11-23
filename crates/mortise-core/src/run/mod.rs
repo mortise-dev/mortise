@@ -185,6 +185,9 @@ pub enum TestOutcome {
 pub enum Failure {
     /// The runner gives no program: an empty Custom line.
     NoCommand,
+    /// The working folder is not a folder. Without this check a missing folder
+    /// reads as a missing program on macOS and Linux.
+    NoFolder { folder: PathBuf },
     /// The system found no program by that name.
     NotFound { program: String },
     /// The program did not start for another reason, with the message of the system.
@@ -203,6 +206,11 @@ pub fn test_php(runner: &RunnerKind, folder: &Path, limit: Duration) -> TestOutc
     let Some(line) = CommandLine::artisan(runner, &["--version"]) else {
         return TestOutcome::Failed(Failure::NoCommand);
     };
+    if !folder.is_dir() {
+        return TestOutcome::Failed(Failure::NoFolder {
+            folder: folder.to_owned(),
+        });
+    }
     let captured = match process::capture(&line, folder, limit) {
         Ok(captured) => captured,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
