@@ -1,38 +1,49 @@
-//! Settings (S8.1, S8.3, S8.4): they take the place of the index and the workspace.
+//! Settings (S8.1 to S8.4): they take the place of the index and the workspace.
 //!
 //! There is no Save button. A choice applies at once, and a field applies when it
 //! loses focus.
 
 use eframe::egui::{
-    Align2, Color32, Rect, Role, ScrollArea, Sense, Ui, UiBuilder, Vec2, WidgetInfo, pos2, vec2,
+    Align2, Color32, IdSalt, Rect, Role, ScrollArea, Sense, Ui, UiBuilder, Vec2, WidgetInfo, pos2,
+    vec2,
 };
 use std::collections::BTreeMap;
+use std::path::PathBuf;
 
 use mortise_core::{
-    AppEntry, Credentials, Editor, General, IndexRows, Kept, Motion, Secrets, Settings, ThemeChoice,
+    AppEntry, Credentials, Editor, General, IndexRows, Kept, Motion, PhpSettings, RunnerKind,
+    Secrets, Settings, TestOutcome, ThemeChoice,
 };
 
 use crate::draw::{self, Button, Icon};
 use crate::environment_form::{EnvironmentForm, FormEvent, FormOptions, environment_form};
+use crate::php_settings::{PhpEvent, PhpForm, PhpOptions, PhpTest, php_field, propose};
 use crate::runtime_view::Brief;
 use crate::strings;
 use crate::theme::{Face, Palette, Type, radius, size, ty};
 
-/// The sections of Settings. PHP joins them with the version that runs commands.
+/// The sections of Settings.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Section {
     #[default]
     Apps,
+    Php,
     General,
     Keyboard,
 }
 
 impl Section {
-    pub const ALL: [Section; 3] = [Section::Apps, Section::General, Section::Keyboard];
+    pub const ALL: [Section; 4] = [
+        Section::Apps,
+        Section::Php,
+        Section::General,
+        Section::Keyboard,
+    ];
 
     pub fn label(self) -> &'static str {
         match self {
             Section::Apps => "Apps",
+            Section::Php => strings::PHP,
             Section::General => "General",
             Section::Keyboard => "Keyboard",
         }
@@ -41,6 +52,7 @@ impl Section {
     fn icon(self) -> Icon {
         match self {
             Section::Apps => Icon::App,
+            Section::Php => Icon::Run,
             Section::General => Icon::Settings,
             Section::Keyboard => Icon::List,
         }
@@ -67,6 +79,61 @@ pub struct SettingsState {
     pub add_environment: bool,
     /// The form of that environment, and the app and place it was filled from.
     environment_form: Option<(usize, usize, EnvironmentForm)>,
+    /// The PHP fields of each app shown in the PHP section, by the folder of the app.
+    /// They stay while Settings are open. The test of each app lives with the app.
+    php: BTreeMap<PathBuf, PhpFields>,
+    /// The app whose PHP fields were drawn last, to take in what they hold when
+    /// another app is selected.
+    php_shown: Option<PathBuf>,
+}
+
+/// The fields of the PHP section for one app.
+struct PhpFields {
+    form: PhpForm,
+    /// What detection found, shown while the app has no runner chosen.
+    hint: &'static str,
+    folder: String,
+    minutes: String,
+}
+
+impl PhpFields {
+    /// Takes in what each field holds, as when it loses focus. True when `php` changed.
+    fn commit(&mut self, php: &mut PhpSettings) -> bool {
+        let mut changed = false;
+        if self.form.commit() {
+            php.runner = Some(self.form.runner.clone());
+            changed = true;
+        }
+        changed |= self.commit_folder(php);
+        changed | self.commit_minutes(php)
+    }
+
+    /// Takes in the working folder. Empty is the app folder.
+    fn commit_folder(&mut self, php: &mut PhpSettings) -> bool {
+        let value = self.folder.trim();
+        let value = (!value.is_empty()).then(|| PathBuf::from(value));
+        let changed = value != php.working_folder;
+        php.working_folder = value;
+        self.folder = folder_text(php);
+        changed
+    }
+
+    /// Takes in the time limit: a number of minutes from 1 to 120. Other text gives
+    /// the limit back as it was.
+    fn commit_minutes(&mut self, php: &mut PhpSettings) -> bool {
+        let value = self
+            .minutes
+            .split_whitespace()
+            .next()
+            .and_then(|number| number.parse::<u16>().ok())
+            .filter(|minutes| (1..=120).contains(minutes));
+        let changed = value.is_some_and(|value| value != php.time_limit_minutes);
+        if let Some(value) = value {
+            php.time_limit_minutes = value;
+        }
+        self.minutes = strings::minutes(php.time_limit_minutes);
+        changed
+    }
 }
 
 /// What Settings show about an app besides what they keep.
@@ -79,6 +146,8 @@ pub struct AppInfo<'a> {
     pub app_url: Option<String>,
     /// The last answer of each environment in this run, by its name.
     pub last: &'a mut BTreeMap<String, Brief>,
+    /// The test of how PHP runs that runs, and the last one, in this run.
+    pub php_test: &'a mut PhpTest,
 }
 
 #[derive(Debug, Default)]
@@ -351,6 +420,11 @@ pub fn section(
     );
     draw::announce(ui, title, Role::Heading, label);
 
+    // A test of PHP that ended is the last test of its app, in whichever section is open.
+    for info in infos.iter_mut() {
+        info.php_test.poll();
+    }
+
     let body = Rect::from_min_max(pos2(rect.left(), head.bottom()), rect.max);
     let mut actions = Vec::new();
     ui.scope_builder(UiBuilder::new().max_rect(body), |ui| {
@@ -380,6 +454,7 @@ pub fn section(
                     Section::Apps => {
                         form.apps(ui, top, state, settings, infos, secrets, &mut actions)
                     }
+                    Section::Php => form.php(ui, top, state, settings, infos, &mut actions),
                     Section::Keyboard => form.keyboard(ui, top, state, mac),
                 };
                 ui.allocate_rect(
@@ -1360,6 +1435,375 @@ impl Form<'_> {
         (y + size::CONTROL_SM_H, changed)
     }
 
+    // --- PHP (S8.2) ---
+
+    fn php(
+        &self,
+        ui: &mut Ui,
+        mut y: f32,
+        state: &mut SettingsState,
+        settings: &mut Settings,
+        infos: &mut [AppInfo<'_>],
+        actions: &mut Vec<SettingsAction>,
+    ) -> f32 {
+        let pal = self.pal;
+        if settings.apps.is_empty() {
+            return draw::paragraph(
+                ui,
+                pos2(self.left, y),
+                strings::NO_APPS_BODY,
+                ty::BODY,
+                pal.ink_2,
+                self.width.min(560.0),
+            )
+            .bottom();
+        }
+        state.app = state.app.min(settings.apps.len() - 1);
+
+        // The apps: how each runs PHP and what its last test said.
+        let table = Rect::from_min_size(
+            pos2(self.left, y),
+            vec2(
+                self.width,
+                size::TABLE_HEAD_H + settings.apps.len() as f32 * size::TABLE_ROW_H + 1.0,
+            ),
+        );
+        draw::outlined(ui, table, radius::CONTROL, Color32::TRANSPARENT, pal.line_2);
+        let w = table.width();
+        let last_w = (w * 0.3).min(270.0).round();
+        let runs_w = 100.0;
+        let rest = w - runs_w - last_w;
+        let name_x = table.left() + 14.0;
+        let runs_x = (table.left() + rest / 2.4).round();
+        let command_x = runs_x + runs_w;
+        let last_x = table.right() - last_w;
+        let head_mid = table.top() + size::TABLE_HEAD_H / 2.0;
+        for (x, label) in [
+            (name_x, strings::COL_APP),
+            (runs_x, strings::COL_RUNS_WITH),
+            (command_x, strings::COL_COMMAND),
+            (last_x, strings::COL_LAST_TEST),
+        ] {
+            draw::label(
+                ui,
+                pos2(x, head_mid),
+                Align2::LEFT_CENTER,
+                label,
+                ty::LABEL,
+                pal.ink_2,
+            );
+        }
+        draw::hline(
+            ui,
+            table.left() + 1.0..table.right() - 1.0,
+            table.top() + size::TABLE_HEAD_H - 1.0,
+            pal.line_2,
+        );
+        let cell_code = Type {
+            size: 11.5,
+            ..ty::CODE
+        };
+        let nav = draw::ListNav::over(ui, "settings-php-apps", settings.apps.len(), &mut state.app);
+        for (i, app) in settings.apps.iter().enumerate() {
+            let top = table.top() + size::TABLE_HEAD_H + i as f32 * size::TABLE_ROW_H;
+            let row = Rect::from_min_max(
+                pos2(table.left() + 1.0, top),
+                pos2(table.right() - 1.0, top + size::TABLE_ROW_H),
+            );
+            let selected = i == state.app;
+            let response = ui.interact(row, nav.id(i), nav.sense(i));
+            nav.after(ui, i, &response);
+            response.widget_info(|| {
+                WidgetInfo::selected(Role::Row, true, selected, app.display_name())
+            });
+            if response.clicked() {
+                state.app = i;
+            }
+            if selected {
+                ui.painter().rect_filled(row, 0, pal.well);
+                draw::hline(ui, row.left()..row.right(), row.top() - 1.0, pal.line_2);
+                draw::hline(ui, row.left()..row.right(), row.bottom() - 1.0, pal.line_2);
+                draw::peg(ui, pal, row);
+            } else {
+                if response.hovered() {
+                    ui.painter().rect_filled(row, 0, pal.well);
+                }
+                if i + 1 < settings.apps.len() {
+                    draw::hline(ui, row.left()..row.right(), row.bottom() - 1.0, pal.line);
+                }
+            }
+            let mid = row.center().y;
+            let cell = |ui: &Ui, x: f32, end: f32, text: &str, ty: Type, color: Color32| {
+                let galley = draw::galley_elided(ui, text, ty, color, end - 10.0 - x);
+                draw::paint_galley(ui, pos2(x, mid), Align2::LEFT_CENTER, galley)
+            };
+            let name_type = ty::BODY.with_face(Face::Sans600);
+            cell(ui, name_x, runs_x, app.display_name(), name_type, pal.ink);
+            match &app.php.runner {
+                Some(runner) => {
+                    let kind = strings::RUNNERS[strings::runner_place(runner)];
+                    cell(ui, runs_x, command_x, kind, ty::BODY, pal.ink);
+                    let line = runner.line();
+                    let text = cell(ui, command_x, last_x, &line, cell_code, pal.ink);
+                    draw::announce(ui, text, Role::Cell, &line);
+                }
+                None => {
+                    cell(
+                        ui,
+                        runs_x,
+                        command_x,
+                        strings::NOT_CHOSEN,
+                        ty::BODY,
+                        pal.ink_3,
+                    );
+                }
+            }
+            // The last test of this run: a state mark and what it said.
+            let tested = infos.get(i).and_then(|info| info.php_test.last());
+            let mark = Rect::from_min_size(
+                pos2(last_x, mid - size::STATE_MARK / 2.0),
+                Vec2::splat(size::STATE_MARK),
+            );
+            let (text, color) = match tested.map(|tested| &tested.outcome) {
+                Some(TestOutcome::Answered(answer)) => {
+                    draw::mark_good(ui, mark, pal.good);
+                    (answer.clone(), pal.ink)
+                }
+                Some(TestOutcome::Failed(failure)) => {
+                    let behind = if selected || response.hovered() {
+                        pal.well
+                    } else {
+                        pal.surface
+                    };
+                    draw::mark_bad(ui, mark, pal.bad, behind);
+                    (strings::no_answer(failure), pal.ink)
+                }
+                None => {
+                    let text = cell(
+                        ui,
+                        last_x,
+                        table.right(),
+                        strings::NOT_TESTED,
+                        ty::BODY,
+                        pal.ink_3,
+                    );
+                    draw::announce(ui, text, Role::Cell, strings::NOT_TESTED);
+                    continue;
+                }
+            };
+            let text_rect = cell(
+                ui,
+                mark.right() + 6.0,
+                table.right(),
+                &text,
+                ty::BODY,
+                color,
+            );
+            draw::announce(ui, text_rect, Role::Cell, &text);
+        }
+        y = table.bottom() + 16.0;
+
+        // The selected app: its field, where commands start, and how long they may run.
+        let index = state.app;
+        let heading = settings.apps[index].display_name().to_owned();
+        let heading_rect = draw::paint_text(
+            ui,
+            pos2(self.left, y),
+            Align2::LEFT_TOP,
+            &heading,
+            ty::BODY.with_face(Face::Sans700),
+            pal.ink,
+        );
+        draw::announce(ui, heading_rect, Role::Heading, &heading);
+        y = heading_rect.bottom() + 6.0;
+        // The box of what each choice runs stands at the right where there is room.
+        let side = self.width >= 820.0;
+        let form_w = if side {
+            ((self.width - 24.0) * 0.58).min(560.0).round()
+        } else {
+            self.width.min(560.0)
+        };
+        draw::hline(ui, self.left..self.left + form_w, y, pal.line);
+        y += 9.0;
+        let detail_top = y;
+
+        // Another app is selected: what the fields of the one before hold is taken
+        // in, as when they lose focus. Its fields are not drawn again to lose it.
+        let mut changed = false;
+        let root = settings.apps[index].root.clone();
+        if let Some(before) = state.php_shown.replace(root.clone())
+            && before != root
+            && let Some(fields) = state.php.get_mut(&before)
+            && let Some(app) = settings.apps.iter_mut().find(|app| app.root == before)
+        {
+            changed |= fields.commit(&mut app.php);
+        }
+
+        let entry = &mut settings.apps[index];
+        // An app with no runner shows what detection proposes, and saves it only
+        // when the user changes it or tests it.
+        let fields = state.php.entry(root).or_insert_with(|| {
+            let (runner, hint) = match &entry.php.runner {
+                Some(runner) => (runner.clone(), ""),
+                None => {
+                    let proposal = propose(&entry.root);
+                    (proposal.runner, proposal.hint)
+                }
+            };
+            PhpFields {
+                form: PhpForm::new(runner),
+                hint,
+                folder: folder_text(&entry.php),
+                minutes: strings::minutes(entry.php.time_limit_minutes),
+            }
+        });
+        let mut spare = PhpTest::default();
+        let test = match infos.get_mut(index) {
+            Some(info) => &mut *info.php_test,
+            None => &mut spare,
+        };
+        // The widgets of each app have their own ids, so focus does not pass from
+        // the field of one app to the same field of another.
+        let salt = IdSalt::new(("settings-php", &entry.root));
+        let folder_now = entry.php.folder(&entry.root);
+        let options = PhpOptions {
+            keyboard: self.keyboard,
+            hint: if entry.php.runner.is_none() {
+                fields.hint
+            } else {
+                ""
+            },
+            folder: &folder_now,
+            salt,
+        };
+        let (bottom, events) = php_field(
+            ui,
+            pal,
+            pos2(self.left, y),
+            form_w,
+            &mut fields.form,
+            test,
+            options,
+        );
+        // A change or a test saves the runner, also the one that detection proposed.
+        let runner = Some(fields.form.runner.clone());
+        if !events.is_empty() && entry.php.runner != runner {
+            entry.php.runner = runner;
+            changed = true;
+        }
+        if events.contains(&PhpEvent::Test) {
+            // The working folder may still have focus: what it holds counts.
+            changed |= fields.commit_folder(&mut entry.php);
+            test.start(&fields.form.runner, entry.php.folder(&entry.root), ui.ctx());
+        }
+        y = bottom + 12.0;
+
+        // Where the command starts. Empty is the app folder.
+        y = self.label(ui, y, strings::WORKING_FOLDER, strings::WORKING_FOLDER_HINT);
+        let folder = Rect::from_min_size(pos2(self.left, y), vec2(form_w, size::FIELD_H));
+        let left_folder = ui
+            .push_id(salt, |ui| {
+                draw::text_field(
+                    ui,
+                    pal,
+                    folder,
+                    strings::WORKING_FOLDER,
+                    &mut fields.folder,
+                    true,
+                    self.keyboard,
+                )
+            })
+            .inner
+            .lost_focus();
+        if left_folder {
+            changed |= fields.commit_folder(&mut entry.php);
+        }
+        if fields.folder.is_empty() {
+            draw::paint_text(
+                ui,
+                pos2(folder.left() + 9.0, folder.center().y),
+                Align2::LEFT_CENTER,
+                strings::THE_APP_FOLDER,
+                ty::BODY,
+                pal.ink_3,
+            );
+        }
+        y = folder.bottom() + 12.0;
+
+        // How long a command may run, in minutes: a number from 1 to 120.
+        y = self.label(ui, y, strings::STOP_AFTER, strings::STOP_AFTER_HINT);
+        let limit = Rect::from_min_size(pos2(self.left, y), vec2(160.0, size::FIELD_H));
+        let left_limit = ui
+            .push_id(salt, |ui| {
+                draw::text_field(
+                    ui,
+                    pal,
+                    limit,
+                    strings::STOP_AFTER,
+                    &mut fields.minutes,
+                    false,
+                    self.keyboard,
+                )
+            })
+            .inner
+            .lost_focus();
+        if left_limit {
+            changed |= fields.commit_minutes(&mut entry.php);
+        }
+        y = limit.bottom();
+
+        // What each choice runs: the words before the artisan arguments.
+        let lines = [
+            (strings::RUNNERS[0], RunnerKind::Herd.line()),
+            (strings::RUNNERS[1], RunnerKind::Sail.line()),
+            (
+                strings::RUNNERS[2],
+                RunnerKind::Docker {
+                    service: "<service>".to_owned(),
+                }
+                .line(),
+            ),
+        ];
+        let box_min = if side {
+            pos2(self.left + form_w + 24.0, detail_top)
+        } else {
+            pos2(self.left, y + 20.0)
+        };
+        let box_w = if side {
+            (self.width - form_w - 24.0).min(440.0)
+        } else {
+            form_w
+        };
+        let choices =
+            Rect::from_min_size(box_min, vec2(box_w, 41.0 + 4.0 * size::LIST_LINE_H + 8.0));
+        let mut line_y = draw::box_head(
+            ui,
+            pal,
+            choices,
+            strings::WHAT_EACH_RUNS,
+            strings::WHAT_EACH_RUNS_NOTE,
+        );
+        for (name, words) in &lines {
+            let value = [(words.as_str(), cell_code, pal.ink)];
+            line_y = draw::box_line(ui, pal, choices, line_y, (name, ty::BODY), &value, false);
+        }
+        let custom = [(strings::CUSTOM_RUNS, cell_code, pal.ink_3)];
+        draw::box_line(
+            ui,
+            pal,
+            choices,
+            line_y,
+            (strings::RUNNERS[3], ty::BODY),
+            &custom,
+            true,
+        );
+
+        if changed {
+            actions.push(SettingsAction::Changed { reread: None });
+        }
+        y.max(choices.bottom())
+    }
+
     // --- Keyboard (S8.4) ---
 
     fn keyboard(&self, ui: &mut Ui, mut y: f32, state: &mut SettingsState, mac: bool) -> f32 {
@@ -1509,4 +1953,12 @@ impl Form<'_> {
         )
         .bottom()
     }
+}
+
+/// The text of the working folder field: empty for the app folder.
+fn folder_text(php: &PhpSettings) -> String {
+    php.working_folder
+        .as_ref()
+        .map(|folder| folder.display().to_string())
+        .unwrap_or_default()
 }

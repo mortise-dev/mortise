@@ -1,7 +1,7 @@
 //! Opening a file in the user's editor, at a line.
 
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 
 use serde::{Deserialize, Serialize};
 
@@ -44,6 +44,19 @@ pub struct EditorError {
 /// Words are split at spaces; a part in double quotes is one word. The file and
 /// the line are put in after splitting, so a path with spaces stays one argument.
 pub fn editor_arguments(command: &str, file: &Path, line: u32) -> Vec<String> {
+    let file = file.to_string_lossy();
+    split_words(command)
+        .into_iter()
+        .map(|word| {
+            word.replace("{file}", &file)
+                .replace("{line}", &line.to_string())
+        })
+        .collect()
+}
+
+/// Splits a command into words at spaces and tabs. A part in double quotes is one
+/// word. A backslash is an ordinary letter, so a Windows path needs no escape.
+pub(crate) fn split_words(command: &str) -> Vec<String> {
     let mut words: Vec<String> = Vec::new();
     let mut word = String::new();
     let mut quoted = false;
@@ -69,23 +82,15 @@ pub fn editor_arguments(command: &str, file: &Path, line: u32) -> Vec<String> {
     if started {
         words.push(word);
     }
-    let file = file.to_string_lossy();
     words
-        .into_iter()
-        .map(|word| {
-            word.replace("{file}", &file)
-                .replace("{line}", &line.to_string())
-        })
-        .collect()
 }
 
 /// Starts the editor on a file at a line. Does not wait for it to close.
 pub fn open_in_editor(command: &str, file: &Path, line: u32) -> Result<(), EditorError> {
     let mut words = editor_arguments(command, file, line).into_iter();
     let program = words.next().unwrap_or_default();
-    Command::new(&program)
+    crate::run::process::command(&program)
         .args(words)
-        .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()

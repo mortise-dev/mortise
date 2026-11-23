@@ -15,6 +15,7 @@ pub mod index;
 #[cfg(target_os = "macos")]
 pub mod menu;
 pub mod palette;
+pub mod php_settings;
 pub mod rail;
 pub mod runtime_view;
 pub mod settings_view;

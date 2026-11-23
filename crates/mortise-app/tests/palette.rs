@@ -204,4 +204,13 @@ fn the_entry_in_the_title_bar_opens_the_palette_and_a_click_runs_a_row() {
         harness.state().selection(),
         Selection::Module("Shipping".into())
     );
+
+    // "php" finds Settings on the PHP section.
+    open_palette(&mut harness);
+    type_query(&mut harness, "php");
+    harness
+        .get_by_role_and_label(Role::ListBoxOption, "Settings: PHP")
+        .click();
+    harness.run_steps(3);
+    harness.get_by_role_and_label(Role::Heading, "PHP");
 }

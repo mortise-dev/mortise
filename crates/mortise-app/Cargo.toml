@@ -22,6 +22,7 @@ rfd.workspace = true
 [dev-dependencies]
 mortise-core = { workspace = true, features = ["testing"] }
 egui_kittest.workspace = true
+image.workspace = true
 serde_json.workspace = true
 tempfile.workspace = true
 

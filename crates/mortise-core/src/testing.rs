@@ -1,11 +1,14 @@
-//! A small actuator for tests: it answers on a local port with what it is told to.
+//! Helpers for tests: a small actuator that answers on a local port with what it is
+//! told to, and the fake artisan of the `fake-artisan` binary.
 //!
-//! The bodies are those of the tests of `nwidart/laravel-actuator` 1.0.0.
+//! The bodies of the actuator are those of the tests of `nwidart/laravel-actuator` 1.0.0.
 
 use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
+use std::process::ExitCode;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 /// What the stub answers for one path.
 #[derive(Debug, Clone)]
@@ -231,4 +234,40 @@ fn serve(mut stream: TcpStream, routes: &Mutex<Routes>) {
         reply.body
     );
     let _ = stream.write_all(response.as_bytes());
+}
+
+/// The fake artisan: it reads its first argument only.
+///
+/// `--version` prints the version with the number in green and ends with 0.
+/// `fail` prints the error of a stopped Docker service on stderr and ends with 1.
+/// `wait` sleeps for 60 seconds. `flood` prints 2 MiB of short lines on stderr and
+/// one line of 2 MiB with no newline on stdout, and ends with 0.
+/// Anything else is a command artisan does not know.
+pub fn fake_artisan_main() -> ExitCode {
+    match std::env::args().nth(1).as_deref() {
+        Some("--version") => {
+            println!("Laravel Framework \x1b[32m13.2.0\x1b[39m");
+            ExitCode::SUCCESS
+        }
+        Some("fail") => {
+            eprintln!("service \"app\" is not running");
+            ExitCode::from(1)
+        }
+        Some("flood") => {
+            const SIZE: usize = 2 * 1024 * 1024;
+            let lines = "Laravel Framework 13.2.0\n".repeat(SIZE / 25);
+            // A reader that stops reading would block one of these writes.
+            let _ = std::io::stderr().lock().write_all(lines.as_bytes());
+            let _ = std::io::stdout().lock().write_all(&vec![b'x'; SIZE]);
+            ExitCode::SUCCESS
+        }
+        Some("wait") => {
+            std::thread::sleep(Duration::from_secs(60));
+            ExitCode::SUCCESS
+        }
+        other => {
+            eprintln!("Command \"{}\" is not defined.", other.unwrap_or_default());
+            ExitCode::from(1)
+        }
+    }
 }

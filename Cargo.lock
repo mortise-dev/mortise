@@ -2372,6 +2372,7 @@ version = "0.1.0"
 dependencies = [
  "eframe",
  "egui_kittest",
+ "image",
  "mortise-core",
  "muda",
  "objc2-app-kit 0.3.2",

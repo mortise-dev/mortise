@@ -7,10 +7,11 @@ use eframe::egui::{
     self, Align2, Color32, FontId, Key, KeyboardShortcut, Modifiers, Rect, RichText, Role,
     ScrollArea, Ui, UiBuilder, Vec2, pos2, vec2,
 };
-use mortise_core::{AppSnapshot, ReadError};
+use mortise_core::{AppSnapshot, ReadError, RunnerKind, TestOutcome};
 
 use crate::draw::{self, Button, ButtonKind, Icon};
 use crate::environment_form::{EnvironmentForm, FormEvent, FormOptions, environment_form};
+use crate::php_settings::{PhpEvent, PhpForm, PhpOptions, PhpTest, php_field, propose};
 use crate::strings;
 use crate::theme::{Face, Palette, Type, radius, size, ty};
 
@@ -41,6 +42,12 @@ pub struct AddPanel {
     focus: Option<Focus>,
     /// The runtime connection of the app that was found, when it has the actuator.
     pub runtime: Option<EnvironmentForm>,
+    /// How PHP runs for the app that was found (S1.3). Add saves the runner it shows.
+    pub php: Option<PhpForm>,
+    /// The test of [`AddPanel::php`]. Add gives it to the app, as Settings shows it.
+    pub php_test: PhpTest,
+    /// What detection found in the folder, after the label of [`AddPanel::php`].
+    php_hint: &'static str,
     /// The folder is being read on another thread.
     pub reading: bool,
 }
@@ -61,6 +68,8 @@ pub enum AddAction {
     CopyCommand,
     /// Ask the environment of the runtime section now.
     Test,
+    /// Run `artisan --version` through the runner of "Run PHP with", in the app folder.
+    TestPhp,
 }
 
 impl AddPanel {
@@ -72,6 +81,9 @@ impl AddPanel {
             checked_path: String::new(),
             focus: Some(Focus::Field),
             runtime: None,
+            php: None,
+            php_test: PhpTest::default(),
+            php_hint: "",
             reading: false,
         }
     }
@@ -89,14 +101,14 @@ impl AddPanel {
 
     /// The panel after a folder was chosen. Focus is on the button that adds or opens.
     pub fn checked(path: String, checked: Checked) -> Self {
-        Self {
+        let mut panel = Self {
             checked_path: path.clone(),
             path,
-            runtime: runtime_form(&checked),
-            checked: Some(checked),
-            focus: Some(Focus::Primary),
-            reading: false,
-        }
+            ..Self::empty()
+        };
+        panel.set_checked(checked);
+        panel.focus = Some(Focus::Primary);
+        panel
     }
 
     /// Starts reading the folder in the path field.
@@ -104,6 +116,8 @@ impl AddPanel {
         self.checked_path = self.path.clone();
         self.checked = None;
         self.runtime = None;
+        self.php = None;
+        self.php_test = PhpTest::default();
         self.reading = true;
     }
 
@@ -120,8 +134,28 @@ impl AddPanel {
             _ => Some(Focus::Primary),
         };
         self.runtime = runtime_form(&checked);
+        (self.php, self.php_hint) = match &checked {
+            // The proposal of detection is selected first (S1.3).
+            Checked::Found(app) => {
+                let proposal = propose(&app.root);
+                (Some(PhpForm::new(proposal.runner)), proposal.hint)
+            }
+            _ => (None, ""),
+        };
+        self.php_test = PhpTest::default();
         self.checked = Some(checked);
         self.reading = false;
+    }
+
+    /// True when the last test of "Run PHP with" failed for the runner the field shows,
+    /// in the app folder: the app is then added read only (S1.4 c).
+    fn php_failed(&self) -> bool {
+        let (Some(Checked::Found(app)), Some(form)) = (&self.checked, &self.php) else {
+            return false;
+        };
+        self.php_test
+            .last_of(&RunnerKind::from_line(&form.line), &app.root)
+            .is_some_and(|tested| matches!(tested.outcome, TestOutcome::Failed(_)))
     }
 }
 
@@ -332,6 +366,7 @@ fn add_body(
     if response.changed() && panel.path.trim() != panel.checked_path.trim() {
         panel.checked = None;
         panel.runtime = None;
+        panel.php = None;
         panel.reading = false;
         panel.checked_path.clear();
     }
@@ -406,18 +441,39 @@ fn add_body(
             return (action, bottom);
         }
         Some(Checked::Found(app)) => {
-            primary_label = strings::add_named(&app.name);
+            others = &[strings::CANCEL];
+            y += 16.0;
+            if right_column.width() > 200.0 {
+                right_bottom = found(ui, pal, right_column, app, monogram);
+            }
+            // Run PHP with: what detection proposes, and its Test (S1.3).
+            if let Some(form) = &mut panel.php {
+                let options = PhpOptions {
+                    keyboard,
+                    hint: panel.php_hint,
+                    folder: &app.root,
+                    salt: egui::IdSalt::new("add-php"),
+                };
+                let test = &mut panel.php_test;
+                let (bottom, events) =
+                    php_field(ui, pal, pos2(left, y), column_w, form, test, options);
+                if events.contains(&PhpEvent::Test) {
+                    action = Some(AddAction::TestPhp);
+                }
+                y = bottom + 16.0;
+            }
+            // Read after the field, so that a test that ended in this frame shows.
+            primary_label = if panel.php_failed() {
+                strings::add_read_only(&app.name)
+            } else {
+                strings::add_named(&app.name)
+            };
             primary = Button {
                 label: &primary_label,
                 kind: ButtonKind::Primary,
                 keys: Some(&command_enter),
                 ..Default::default()
             };
-            others = &[strings::CANCEL];
-            y += 16.0;
-            if right_column.width() > 200.0 {
-                right_bottom = found(ui, pal, right_column, app, monogram);
-            }
             // Runtime, optional: the app is added without it when the URL is empty.
             if let Some(form) = &mut panel.runtime {
                 let heading = draw::paint_text(

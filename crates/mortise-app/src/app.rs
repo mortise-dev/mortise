@@ -10,7 +10,8 @@ use mortise_core::{
     propose_monogram, read_app_cached,
 };
 use mortise_core::{
-    Environment, LiveRuntime, ReadOptions, Rules, RuntimeState, Secret, Secrets, ThemeChoice,
+    Environment, LiveRuntime, ReadOptions, Rules, RunnerKind, RuntimeState, Secret, Secrets,
+    ThemeChoice,
 };
 
 use crate::add::{self, AddAction, AddPanel, Checked};
@@ -85,6 +86,9 @@ struct OpenApp {
     runtime: Option<Connected>,
     /// The last answer of each environment in this run, by its name.
     last_answers: BTreeMap<String, Brief>,
+    /// The test of how PHP runs for the app: the one that runs and the last one, in
+    /// this run (design D8). It stays when Settings close.
+    php_test: crate::php_settings::PhpTest,
     /// When the app was opened, to show how far its first read is only when it takes long.
     since: std::time::Instant,
 }
@@ -504,12 +508,19 @@ impl MortiseApp {
         let Some(AddPanel {
             checked: Some(Checked::Found(app)),
             runtime,
+            php,
+            php_test,
             ..
         }) = self.adding.take()
         else {
             return;
         };
         let index = self.settings.add(&app);
+        // Add saves the runner the field shows (design D8), read from its text in
+        // case the field still has focus.
+        if let Some(form) = &php {
+            self.settings.apps[index].php.runner = Some(RunnerKind::from_line(&form.line));
+        }
         // Runtime is optional: without a base URL the app is added without it.
         if let Some(form) = runtime.filter(|form| !form.base_url.trim().is_empty()) {
             let environment = form.environment();
@@ -520,7 +531,10 @@ impl MortiseApp {
             entry.environment = Some(environment.name.clone());
             entry.environments.push(environment);
         }
-        self.apps.push(open_app(ctx, &self.settings.apps[index]));
+        let mut open = open_app(ctx, &self.settings.apps[index]);
+        // The test is kept in memory, as Settings shows it. One that runs still lands.
+        open.php_test = php_test;
+        self.apps.push(open);
         self.settings_open = None;
         self.select_app(index);
         self.save();
@@ -783,7 +797,10 @@ impl MortiseApp {
     fn run(&mut self, command: Command) {
         self.palette = None;
         // A command that goes somewhere leaves Settings.
-        if !matches!(command, Command::Settings | Command::Theme(_)) {
+        if !matches!(
+            command,
+            Command::Settings | Command::PhpSettings | Command::Theme(_)
+        ) {
             self.settings_open = None;
         }
         let scope = self.palette_scope;
@@ -849,6 +866,7 @@ impl MortiseApp {
             Command::App(index) => self.select_app(index),
             Command::AddApp => self.adding = Some(AddPanel::empty()),
             Command::Settings => self.open_settings(Section::Apps),
+            Command::PhpSettings => self.open_settings(Section::Php),
             Command::Theme(theme) => {
                 self.settings.general.theme = theme;
                 self.save();
@@ -1205,7 +1223,7 @@ impl MortiseApp {
                 }
             }
             // What was found is used only while it belongs to the path in the field.
-            AddAction::Add | AddAction::Open(_) | AddAction::Test
+            AddAction::Add | AddAction::Open(_) | AddAction::Test | AddAction::TestPhp
                 if !self.adding.as_ref().is_some_and(AddPanel::is_current) => {}
             AddAction::Add => self.add_found(ctx),
             AddAction::Open(index) => {
@@ -1224,6 +1242,18 @@ impl MortiseApp {
                 {
                     let secret = (!form.secret.is_empty()).then(|| form.secret.clone());
                     form.start_test(secret, ctx);
+                }
+            }
+            // The add panel has no working folder: the test starts in the app folder.
+            AddAction::TestPhp => {
+                if let Some(AddPanel {
+                    checked: Some(Checked::Found(app)),
+                    php: Some(form),
+                    php_test,
+                    ..
+                }) = &mut self.adding
+                {
+                    php_test.start(&form.runner, app.root.clone(), ctx);
                 }
             }
         }
@@ -1356,6 +1386,7 @@ impl eframe::App for MortiseApp {
                         actuator: app.as_ref().is_some_and(|app| app.actuator.is_some()),
                         app_url: app.as_ref().and_then(|app| app.app_url.clone()),
                         last: &mut open.last_answers,
+                        php_test: &mut open.php_test,
                     }
                 })
                 .collect();
@@ -1738,6 +1769,7 @@ fn open_app(ctx: &egui::Context, entry: &AppEntry) -> OpenApp {
         seen: None,
         runtime: None,
         last_answers: BTreeMap::new(),
+        php_test: crate::php_settings::PhpTest::default(),
         since: std::time::Instant::now(),
     }
 }

@@ -340,6 +340,11 @@ fn milestone_6_settings() {
         // S8.1: Apps.
         harness.key_press_modifiers(Modifiers::COMMAND, Key::Comma);
         save(&format!("s8.1-apps-{suffix}"), &mut harness);
+        // S8.2: PHP, with no runner chosen yet.
+        harness
+            .get_by_role_and_label(Role::ListBoxOption, "PHP")
+            .click();
+        save(&format!("s8.2-php-{suffix}"), &mut harness);
         // S8.3: General.
         harness
             .get_by_role_and_label(Role::ListBoxOption, "General")

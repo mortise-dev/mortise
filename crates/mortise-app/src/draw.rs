@@ -707,7 +707,7 @@ impl Button<'_> {
         // A small button is drawn 22 px high; its target is 24 px.
         let response = ui.interact(
             hit_target(rect),
-            ui.scope_id().with(("button", self.label)),
+            ui.scope_id().with(("button", self.label, self.said)),
             sense,
         );
         let said = self.said.unwrap_or(self.label);
@@ -1105,6 +1105,23 @@ pub fn segmented(
     selected: usize,
     keyboard: bool,
 ) -> (Rect, Option<usize>) {
+    segmented_with(ui, pal, min, name, labels, selected, None, keyboard)
+}
+
+/// A segmented control in which one segment can be off: `off` is its place and its
+/// tooltip. An off segment cannot be clicked, and Left and Right pass over it.
+#[expect(clippy::too_many_arguments)]
+pub fn segmented_with(
+    ui: &Ui,
+    pal: &Palette,
+    min: Pos2,
+    name: &str,
+    labels: &[&str],
+    selected: usize,
+    off: Option<(usize, &str)>,
+    keyboard: bool,
+) -> (Rect, Option<usize>) {
+    let is_off = |i: usize| off.is_some_and(|(place, _)| place == i);
     let label_type = Type {
         size: 12.0,
         line: 12.0,
@@ -1126,9 +1143,20 @@ pub fn segmented(
         let id = ui.scope_id().with(("segment", name, i));
         // A segment is drawn 20 px high; its target is as high as the track.
         let target = segment.expand2(vec2(0.0, 3.0));
-        let response = ui.interact(target, id, one_stop(i == selected));
-        response
-            .widget_info(|| WidgetInfo::selected(Role::RadioButton, true, i == selected, *label));
+        let sense = if is_off(i) {
+            Sense::hover()
+        } else {
+            one_stop(i == selected)
+        };
+        let mut response = ui.interact(target, id, sense);
+        response.widget_info(|| {
+            WidgetInfo::selected(Role::RadioButton, !is_off(i), i == selected, *label)
+        });
+        if let Some((place, tip)) = off
+            && place == i
+        {
+            response = tooltip(response, pal, tip);
+        }
         if response.clicked() {
             clicked = Some(i);
         }
@@ -1142,11 +1170,21 @@ pub fn segmented(
                     input.consume_key(Modifiers::NONE, Key::ArrowRight),
                 )
             });
-            let target = match (left, right) {
-                (true, _) if i > 0 => Some(i - 1),
-                (_, true) if i + 1 < labels.len() => Some(i + 1),
+            let step = |from: usize, back: bool| {
+                if back {
+                    from.checked_sub(1)
+                } else {
+                    Some(from + 1).filter(|next| *next < labels.len())
+                }
+            };
+            let mut target = match (left, right) {
+                (true, _) => step(i, true),
+                (_, true) => step(i, false),
                 _ => None,
             };
+            if let Some(over) = target.filter(|place| is_off(*place)) {
+                target = step(over, left);
+            }
             if let Some(target) = target {
                 clicked = Some(target);
                 focus_soon(ui, ui.scope_id().with(("segment", name, target)));
@@ -1154,7 +1192,9 @@ pub fn segmented(
         }
         let color = if i == selected {
             outlined(ui, segment, radius::STAMP, pal.surface, pal.ink);
-            pal.ink
+            if is_off(i) { pal.ink_3 } else { pal.ink }
+        } else if is_off(i) {
+            pal.ink_3
         } else if response.hovered() {
             pal.ink
         } else {

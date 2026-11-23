@@ -5,7 +5,7 @@
 
 use std::collections::BTreeMap;
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 
 use serde::{Deserialize, Serialize};
 
@@ -38,22 +38,8 @@ pub struct Churn {
     pub last_commit: Option<i64>,
 }
 
-/// A `git` command with no input and no console window.
-fn command() -> Command {
-    let mut command = Command::new("git");
-    command.stdin(Stdio::null());
-    // The app has no console on Windows, so each run of git would open a window.
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-        command.creation_flags(CREATE_NO_WINDOW);
-    }
-    command
-}
-
 fn git(root: &Path, args: &[&str]) -> Option<String> {
-    let output = command()
+    let output = crate::run::process::command("git")
         .arg("-C")
         .arg(root)
         // Paths as they are, not quoted and escaped.
@@ -73,7 +59,7 @@ fn git(root: &Path, args: &[&str]) -> Option<String> {
 
 /// Reads the branch and commit of the app in `root`.
 pub(crate) fn read(root: &Path) -> Git {
-    let started = command()
+    let started = crate::run::process::command("git")
         .arg("--version")
         .stdout(Stdio::null())
         .stderr(Stdio::null())

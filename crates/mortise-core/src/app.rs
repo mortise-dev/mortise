@@ -45,9 +45,11 @@ pub struct AppSnapshot {
     pub package: Version,
     /// The version of `nwidart/laravel-actuator`, when the app has it.
     pub actuator: Option<Version>,
-    /// `APP_URL` from `.env`, to propose the base URL of an environment. It is the
-    /// only line Mortise reads from that file.
+    /// `APP_URL` from `.env`, to propose the base URL of an environment.
     pub app_url: Option<String>,
+    /// `APP_ENV` from `.env`. It tells Mortise to ask before a command in production.
+    /// `APP_URL` and `APP_ENV` are the only lines Mortise reads from that file.
+    pub app_env: Option<String>,
     pub layout: Layout,
     /// The modules, sorted by name.
     pub modules: Vec<Module>,
@@ -203,15 +205,19 @@ pub enum ReadError {
     },
 }
 
-/// `APP_URL` from the `.env` file of the app. No other line is looked at.
-fn app_url(root: &Path) -> Option<String> {
-    let env = std::fs::read_to_string(root.join(".env")).ok()?;
-    env_value(&env, "APP_URL")
+/// `APP_URL` and `APP_ENV` from the `.env` file of the app, in one read.
+/// No other line is looked at.
+fn read_env(root: &Path) -> (Option<String>, Option<String>) {
+    match std::fs::read_to_string(root.join(".env")) {
+        Ok(env) => (env_value(&env, "APP_URL"), env_value(&env, "APP_ENV")),
+        Err(_) => (None, None),
+    }
 }
 
-/// The value of one name in the text of a `.env` file.
+/// The value of one name in the text of a `.env` file. As in dotenv, a later line
+/// of the same name replaces an earlier one.
 fn env_value(env: &str, name: &str) -> Option<String> {
-    let value = env.lines().find_map(|line| {
+    let value = env.lines().rev().find_map(|line| {
         let line = line.trim_start();
         let line = line.strip_prefix("export ").unwrap_or(line);
         line.strip_prefix(name)?.trim_start().strip_prefix('=')
@@ -432,6 +438,7 @@ pub fn read_app_cached(
         coverage_limit: options.coverage_limit,
     });
 
+    let (app_url, app_env) = read_env(&root);
     Ok(AppSnapshot {
         name: root
             .file_name()
@@ -440,7 +447,8 @@ pub fn read_app_cached(
         laravel: lock.version(LARAVEL),
         package,
         actuator: lock.version(ACTUATOR),
-        app_url: app_url(&root),
+        app_url,
+        app_env,
         layout,
         modules,
         coverage_report: report_path.map(|path| CoverageReport {
@@ -478,8 +486,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_url_of_the_app_is_read_from_its_line() {
-        let env = "APP_NAME=Shop\nAPP_URLS=no\nAPP_URL=https://shop-api.test\nDB_PASSWORD=secret\n";
+    fn the_url_and_the_environment_of_the_app_are_read_from_their_lines() {
+        let env = "APP_NAME=Shop\nAPP_ENV=production\nAPP_URLS=no\nAPP_URL=https://shop-api.test\nDB_PASSWORD=secret\n";
         assert_eq!(
             env_value(env, "APP_URL").as_deref(),
             Some("https://shop-api.test")
@@ -499,5 +507,10 @@ mod tests {
         assert_eq!(env_value("APP_URL=", "APP_URL"), None);
         assert_eq!(env_value("# APP_URL=http://old.test", "APP_URL"), None);
         assert_eq!(env_value("APP_ENV=local", "APP_URL"), None);
+        assert_eq!(env_value(env, "APP_ENV").as_deref(), Some("production"));
+        assert_eq!(
+            env_value("APP_URL=http://a.test\nAPP_URL=http://b.test", "APP_URL").as_deref(),
+            Some("http://b.test")
+        );
     }
 }
