@@ -16,6 +16,7 @@ use eframe::egui::{Key, Modifiers, Role, Theme};
 use egui_kittest::kittest::{NodeT as _, Queryable as _};
 use egui_kittest::{Harness, SnapshotOptions, SnapshotResults};
 use mortise_app::app::MortiseApp;
+use mortise_core::{CommandLine, RunnerKind};
 
 const THEMES: [(Theme, &str); 2] = [(Theme::Light, "light"), (Theme::Dark, "dark")];
 
@@ -140,11 +141,18 @@ fn run_php_with_in_the_add_panel() {
         let (_, test) = bounds(&harness, Role::Button, "Test how PHP runs");
         // The text of the folder field is inset by 9 px; the column starts at its edge.
         let top_left = (folder.0 - 9.0 - 12.0, folder_end.1 + 8.0);
+        // The line that Test runs is under the field (deviation S35).
+        let herd = CommandLine::artisan(&RunnerKind::Herd, &["--version"]).unwrap();
+        let (_, runs) = bounds(
+            &harness,
+            Role::Label,
+            &format!("Test runs {}", herd.display()),
+        );
         // S1.3: the "Run PHP with" part, with the proposal of a folder that points to no runner.
         shots.take_part(
             &mut harness,
             "s1.3-run-php-with",
-            (top_left, (test.0 + 12.0, field.1 + 12.0)),
+            (top_left, (test.0 + 12.0, field.1.max(runs.1) + 12.0)),
         );
 
         // S1.4 c: a program that is not there. The app can still be added, read only.
