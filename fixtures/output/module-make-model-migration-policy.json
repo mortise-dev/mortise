@@ -1,0 +1,15 @@
+{
+  "command": "php artisan module:make-model PaymentIntent Billing --migration --policy --fillable=order_id,amount,currency,status --no-interaction --ansi",
+  "args": [
+    "module:make-model",
+    "PaymentIntent",
+    "Billing",
+    "--migration",
+    "--policy",
+    "--fillable=order_id,amount,currency,status"
+  ],
+  "made_with": "nwidart/laravel-modules 13.3.0, laravel/framework 13.43.0, PHP 8.4.27, macOS",
+  "exit": 0,
+  "stdout": "  Generating file Modules/Billing/app/Models/PaymentIntent.php \u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m 0.30ms\u001b[39m \u001b[32;1mDONE\u001b[39;22m\n\n  \u001b[37;44m INFO \u001b[39;49m Creating migration...  \n\n  Generating file Modules/Billing/database/migrations/2026_11_23_071900_create_payment_intents_table.php \u001b[90m 0.15ms\u001b[39m \u001b[32;1mDONE\u001b[39;22m\n  Generating file Modules/Billing/app/Policies/PaymentIntentPolicy.php \u001b[90m 0.10ms\u001b[39m \u001b[32;1mDONE\u001b[39;22m\n",
+  "stderr": ""
+}
