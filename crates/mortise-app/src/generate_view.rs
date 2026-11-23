@@ -190,6 +190,9 @@ pub struct GenerateState {
     /// The words the form showed in the last frame it was drawn. Ctrl Enter runs
     /// only these, so a key never runs a line that was not on screen.
     last_shown: Option<Vec<String>>,
+    /// The words of the read ("List files" or the read of the generators) whose line
+    /// was whole on screen in the last frame. Its button starts only these.
+    read_shown: Option<Vec<String>>,
     /// The result of the last run, in place of the line and its buttons.
     pub result: Option<GenerateResult>,
     /// The file list of the last dry run, or why it gave none.
@@ -214,6 +217,7 @@ impl GenerateState {
         self.view = View::Form;
         self.result = None;
         self.last_shown = None;
+        self.read_shown = None;
         self.focus_name = true;
     }
 
@@ -239,6 +243,7 @@ impl GenerateState {
         }
         if !shown {
             self.last_shown = None;
+            self.read_shown = None;
         }
     }
 
@@ -624,11 +629,16 @@ fn picker(
     // On a 13.4 app, the read of its generators under the field.
     let mut y = field.bottom() + 12.0;
     let mut read_asked = false;
+    let mut read_shown = None;
     if let Some(read) = inputs.catalog_read {
-        let (bottom, pressed) = catalog_read(ui, pal, pos2(min.x, y), width, read, inputs);
+        let shown = state.read_shown.as_deref() == Some(&read_catalog_words()[..]);
+        let (bottom, pressed, whole) =
+            catalog_read(ui, pal, pos2(min.x, y), width, read, inputs, shown);
         read_asked = pressed;
+        read_shown = whole.then(read_catalog_words);
         y = bottom + 12.0;
     }
+    state.read_shown = read_shown;
 
     // The groups, in three columns. A heading spans the three.
     let col_w = ((width - 2.0 * GAP) / 3.0).floor();
@@ -701,7 +711,9 @@ fn picker(
 
 /// The read of the app's generators (design D4): a quiet button with what the last
 /// read gave beside it, the line it runs under it, and why a read gave no list.
-/// Returns its bottom and whether the button was pressed.
+/// The button starts the read only when its line was whole on screen in the last
+/// frame (`shown`). Returns its bottom, whether the button was pressed, and whether
+/// the line is whole on screen now.
 fn catalog_read(
     ui: &Ui,
     pal: &Palette,
@@ -709,18 +721,13 @@ fn catalog_read(
     width: f32,
     read: CatalogRead<'_>,
     inputs: &GenerateInputs<'_>,
-) -> (f32, bool) {
+    shown: bool,
+) -> (f32, bool, bool) {
     let label = match read {
         CatalogRead::Read(_) => strings::READ_AGAIN.to_owned(),
         _ => strings::read_generators(inputs.app),
     };
-    let off = if let Some(label) = inputs.busy {
-        Some(strings::is_running(label))
-    } else if line_now(inputs.runner, &[]).is_none() {
-        Some(strings::choose_php(inputs.app))
-    } else {
-        None
-    };
+    let off = read_off(inputs, shown);
     let button = Button {
         label: &label,
         kind: ButtonKind::Ghost,
@@ -760,8 +767,9 @@ fn catalog_read(
         width,
         &line,
     );
+    let whole = ui.clip_rect().contains_rect(code.shrink2(vec2(12.0, 10.0)));
     let CatalogRead::Failed(reason) = read else {
-        return (code.bottom(), pressed);
+        return (code.bottom(), pressed, whole);
     };
     let text = strings::generators_not_read(inputs.app, reason);
     let bottom = draw::paragraph(
@@ -773,7 +781,21 @@ fn catalog_read(
         width,
     )
     .bottom();
-    (bottom, pressed)
+    (bottom, pressed, whole)
+}
+
+/// Why the button of a read is off: a run or read is running, the app has no PHP,
+/// or its line was not whole on screen in the last frame (deviation S37's rule).
+fn read_off(inputs: &GenerateInputs<'_>, shown: bool) -> Option<String> {
+    if let Some(label) = inputs.busy {
+        Some(strings::is_running(label))
+    } else if line_now(inputs.runner, &[]).is_none() {
+        Some(strings::choose_php(inputs.app))
+    } else if !shown {
+        Some(strings::SCROLL_TO_COMMAND.to_owned())
+    } else {
+        None
+    }
 }
 
 /// A time in ms since 1970 as the local clock shows it: `14:05`.
@@ -991,6 +1013,7 @@ fn form(
         let (bottom, result_asked) = result_view(ui, pal, right, col_w, app, module, state, inputs);
         asked = result_asked;
         state.last_shown = None;
+        state.read_shown = None;
         bottom
     } else {
         let (bottom, line_asked) = command(
@@ -1661,6 +1684,8 @@ fn command(
         .0;
     }
 
+    // The dry run's line, when it is whole on screen in this frame.
+    state.read_shown = files.as_mut().and_then(|files| files.read_shown.take());
     let force = new_module && state.filled.flags.contains("force");
     let blocked = files.as_ref().is_some_and(|files| files.blocked);
     // The button and Ctrl Enter run only the line that was whole on screen in the
@@ -1779,6 +1804,8 @@ struct FilesShown {
     blocked: bool,
     /// The path of that file as printed, for "Replace <file>".
     replace: Option<String>,
+    /// The dry run's words when its line is whole on screen now.
+    read_shown: Option<Vec<String>>,
     /// "List files" was pressed.
     list: bool,
 }
@@ -1839,7 +1866,8 @@ fn files_this_creates(
         let report = list.listed.as_ref().ok()?;
         Some((report, &list.taken_out))
     }) else {
-        return list_files(ui, pal, min, width, words, list, inputs, ready);
+        let shown = state.read_shown.as_deref() == Some(&with_dry_run(words.to_vec())[..]);
+        return list_files(ui, pal, min, width, words, list, inputs, ready, shown);
     };
     let new_module = generator.name == MODULE_MAKE;
     // A `delete` entry is the folder that `module:make --force` deletes, not a file.
@@ -1938,13 +1966,15 @@ fn files_this_creates(
         create,
         blocked: !own.is_empty(),
         replace: own.first().map(|file| file.path.clone()),
+        read_shown: None,
         list: false,
     }
 }
 
 /// "List files" with "Reading" beside it while the dry run runs, the line it runs
-/// under it, and why the last dry run of these words gave no list. Returns its
-/// bottom and whether the button was pressed.
+/// under it, and why the last dry run of these words gave no list. The button
+/// starts the dry run only when its line was whole on screen in the last frame
+/// (`shown`). Returns its bottom and whether the button was pressed.
 #[expect(clippy::too_many_arguments)]
 fn list_files(
     ui: &Ui,
@@ -1955,15 +1985,10 @@ fn list_files(
     list: Option<&FileList>,
     inputs: &GenerateInputs<'_>,
     ready: bool,
+    shown: bool,
 ) -> FilesShown {
     let top = field_label(ui, pal, min, strings::FILES_THIS_CREATES, "");
-    let off = if let Some(label) = inputs.busy {
-        Some(strings::is_running(label))
-    } else if line_now(inputs.runner, &[]).is_none() {
-        Some(strings::choose_php(inputs.app))
-    } else {
-        None
-    };
+    let off = read_off(inputs, shown || !ready);
     let button = Button {
         label: strings::LIST_FILES,
         disabled: off.is_some() || !ready,
@@ -1996,6 +2021,7 @@ fn list_files(
         width,
         &line,
     );
+    let whole = ui.clip_rect().contains_rect(code.shrink2(vec2(12.0, 10.0)));
     let mut y = code.bottom() + 6.0;
     if let Some(Err(reason)) = list.map(|list| &list.listed) {
         let text = strings::dry_run_failed(reason);
@@ -2015,6 +2041,7 @@ fn list_files(
         create: None,
         blocked: false,
         replace: None,
+        read_shown: whole.then_some(dry_run),
         list: pressed,
     }
 }

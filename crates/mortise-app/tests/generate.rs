@@ -334,6 +334,11 @@ fn a_13_4_form_lists_its_files_by_a_dry_run_and_reads_the_answer_of_its_run() {
     assert!(harness.query_by_label("Create 3 files").is_none());
     type_into(&mut harness, "Model name", "PaymentIntent");
     harness.get_by_role_and_label(Role::Button, "Create files");
+    // A dry run starts only from a line that was whole on screen (deviation S37).
+    let fillable = "order_id,amount,currency,status";
+    type_into(&mut harness, "Fillable attributes", &fillable.repeat(200));
+    assert!(disabled(&harness, "List files"));
+    type_into(&mut harness, "Fillable attributes", fillable);
 
     // The run carries --json and its result is read from the answer.
     run(&mut harness);
