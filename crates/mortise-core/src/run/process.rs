@@ -804,6 +804,18 @@ mod tests {
             let error = refuse_batch_with_percent(Path::new(program)).unwrap_err();
             assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput, "{program}");
         }
+        // A refusal, from here or from std, is a command that did not start, with its text.
+        let refusal = std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "batch file arguments are invalid",
+        );
+        assert_eq!(
+            not_started(refusal, "herd.bat"),
+            Failure::NotStarted {
+                program: "herd.bat".to_owned(),
+                message: "batch file arguments are invalid".to_owned(),
+            }
+        );
         for program in [r"C:\100%\php.exe", r"C:\herd\herd.bat", "herd.bat"] {
             assert!(
                 refuse_batch_with_percent(Path::new(program)).is_ok(),
