@@ -9,7 +9,7 @@ use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
 use crate::app::AppSnapshot;
-use crate::modules::module::Module;
+use crate::modules::module::{Module, artisan_command};
 use crate::runtime::actuator::{
     Answer, NoMetrics, Route, Secret, Task, ask, ask_metrics, ask_status,
 };
@@ -314,11 +314,24 @@ pub fn routes_by_module(app: &AppSnapshot, routes: &[Route]) -> (Vec<(String, us
     (counts, outside)
 }
 
-/// The scheduled tasks of one module. Only a task whose target is a class name can
-/// be given to a module.
+/// The module a scheduled task belongs to: the module of its class, or the module
+/// that declares the command of `php artisan <name>`. A task with a description, a
+/// closure or a shell command belongs to none.
+///
+/// When the package lists the tasks of each module (P10), its list wins here.
+pub fn module_of_task<'a>(app: &'a AppSnapshot, task: &Task) -> Option<&'a Module> {
+    module_of(app, &task.target).or_else(|| {
+        let name = artisan_command(&task.target)?;
+        app.modules
+            .iter()
+            .find(|module| module.commands.iter().any(|command| command == name))
+    })
+}
+
+/// The scheduled tasks of one module.
 pub fn tasks_of<'a>(app: &AppSnapshot, module: &str, tasks: &'a [Task]) -> Vec<&'a Task> {
     tasks
         .iter()
-        .filter(|task| module_of(app, &task.target).is_some_and(|found| found.name == module))
+        .filter(|task| module_of_task(app, task).is_some_and(|found| found.name == module))
         .collect()
 }

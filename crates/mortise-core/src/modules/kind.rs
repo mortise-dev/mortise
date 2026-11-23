@@ -57,6 +57,8 @@ const DEFAULTS: &[(&str, &str, &str)] = &[
 pub const OTHER: &str = "Other";
 /// The kind of test files.
 pub const TESTS: &str = "Tests";
+/// The kind of the package's command generator folder.
+pub(crate) const COMMANDS: &str = "Commands";
 
 /// Maps a path inside a module to a kind.
 #[derive(Debug, Clone)]
