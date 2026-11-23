@@ -83,14 +83,16 @@ pub(crate) struct Cell {
     pub errors: f64,
     /// `_sum`, in seconds.
     pub sum: f64,
-    /// `_bucket` per finite bound, as the answer gives them. Requests only.
+    /// `_bucket` per finite bound. Requests only. In a [`Reading`], in the order of its bounds; in
+    /// a [`Change`], in the order of the bounds of the store, lowest first.
     pub buckets: Vec<f64>,
 }
 
 /// One answer, folded. This is the interface between the parser and the store.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub(crate) struct Reading {
-    /// The finite bucket bounds of the request histogram, lowest first.
+    /// The finite bucket bounds of the request histogram, in the order the answer gives them.
+    /// `-0` is `0`.
     pub bounds: Vec<f64>,
     /// The counters of each series, by subject and the labels of the series (see [`series_key`]).
     pub series: HashMap<(Subject, String), Cell>,
@@ -214,7 +216,8 @@ impl Reading {
                 }
                 Part::Sum => put(&mut cell.sum, sample.value),
                 Part::Bucket(bound) => {
-                    let bits = if bound == 0.0 { 0.0f64 } else { bound }.to_bits();
+                    let bound = if bound == 0.0 { 0.0 } else { bound };
+                    let bits = bound.to_bits();
                     let at = match bound_at.get(&bits) {
                         Some(&at) => at,
                         None => {
@@ -299,8 +302,15 @@ pub(crate) struct MetricsStore {
     run: u64,
     /// Reads older than the fine part, the first of each step, oldest first.
     coarse: VecDeque<Read>,
-    /// Reads of the fine part, the last of each pace, oldest first. The newest read is the last.
+    /// Reads of the fine part, the last of each pace, oldest first. The newest read is the last,
+    /// until a read after a gap of more than the fine part moves it to `coarse`.
     fine: VecDeque<Read>,
+    /// The time of the newest read and the time covered by then. Kept apart from the queues, as
+    /// thinning can move every read out of the fine part.
+    latest: Option<(Duration, Duration)>,
+    /// The running totals of the newest read, kept apart for the same reason. The next read
+    /// carries on from them.
+    totals: Vec<f64>,
     /// The counters of the series being pushed, kept to save an allocation per series.
     scratch: Vec<f64>,
 }
@@ -316,6 +326,8 @@ impl MetricsStore {
             run: 0,
             coarse: VecDeque::new(),
             fine: VecDeque::new(),
+            latest: None,
+            totals: Vec::new(),
             scratch: Vec::new(),
         }
     }
@@ -324,64 +336,53 @@ impl MetricsStore {
     ///
     /// What `at` makes too old is dropped first. Then a reading that would make the store keep more
     /// than `MAX_ROW` numbers per read or `MAX_KEY_BYTES` bytes, counting every series of the kept
-    /// reads, is refused as a whole and adds nothing.
+    /// reads and every bound of the store and of the reading, is refused as a whole and adds
+    /// nothing.
     pub(crate) fn push(&mut self, at: Duration, reading: Reading) -> Result<(), TooMany> {
-        let Reading { bounds, series } = reading;
-        let renewed = !bounds.is_empty() && !self.bounds.is_empty() && bounds != self.bounds;
-        let width = if bounds.is_empty() {
-            self.bounds.len()
-        } else {
-            bounds.len()
-        };
-        // Other bounds empty the store, so only the reading counts.
-        let (mut kept, mut bytes) = (0, 0);
-        if !renewed {
-            if self.fine.back().is_some_and(|newest| at <= newest.at) {
-                return Ok(());
-            }
-            self.expire(at);
-            (kept, bytes) = self.retained();
+        if self.latest.is_some_and(|(newest, _)| at <= newest) {
+            return Ok(());
         }
+        self.expire(at);
+        let Reading { bounds, series } = reading;
+        // The bounds of the reading that the store does not hold yet.
+        let mut added: Vec<f64> = bounds
+            .iter()
+            .copied()
+            .filter(|&bound| self.bucket(bound).is_none())
+            .collect();
+        added.sort_by(f64::total_cmp);
+        added.dedup();
+        let (mut kept, mut bytes) = self.retained();
         for (subject, labels) in series.keys() {
-            if renewed || !self.holds(subject, labels) {
+            if !self.holds(subject, labels) {
                 kept += 1;
                 bytes += subject.bytes() + labels.len();
             }
         }
-        if over(kept, width, bytes) {
+        if over(kept, self.bounds.len() + added.len(), bytes) {
             return Err(TooMany);
         }
-        if !bounds.is_empty() && bounds != self.bounds {
-            if self.bounds.is_empty() {
-                self.widen(bounds);
-            } else {
-                *self = Self {
-                    bounds,
-                    ..Self::new(self.every)
-                };
-            }
+        if !added.is_empty() {
+            self.widen(&added);
         }
-        let previous = self
-            .fine
-            .back()
-            .map(|previous| (previous.at, previous.covered, previous.starts_run));
-        let first = previous.is_none_or(|(before, ..)| at - before > self.every * GAP_PACES);
-        let covered = match previous {
-            Some((before, covered, _)) if !first => covered + (at - before),
-            Some((_, covered, _)) => covered,
+        // The bucket of the store for each bound of the reading: buckets match by bound, not by
+        // place.
+        let places: Vec<Option<usize>> = bounds.iter().map(|&bound| self.bucket(bound)).collect();
+        let first = self
+            .latest
+            .is_none_or(|(before, _)| at - before > self.every * GAP_PACES);
+        let covered = match self.latest {
+            Some((before, covered)) if !first => covered + (at - before),
+            Some((_, covered)) => covered,
             None => Duration::ZERO,
         };
         // One read per pace in the fine part: a read in the step of the one before takes its place.
         // Totals only grow, so the dropped read is not needed for a figure. A read that starts a
         // run is never replaced: the second read of a run always gives a rate.
-        let replaces = previous
-            .is_some_and(|(before, _, starts)| !starts && self.step(before) == self.step(at));
-        let mut totals = if replaces {
-            self.fine.pop_back().map(|read| read.totals)
-        } else {
-            self.fine.back().map(|read| read.totals.clone())
-        }
-        .unwrap_or_default();
+        let replaces = self
+            .fine
+            .back()
+            .is_some_and(|before| !before.starts_run && self.step(before.at) == self.step(at));
         if first {
             self.run += 1;
         }
@@ -390,14 +391,15 @@ impl MetricsStore {
         let mut counters = std::mem::take(&mut self.scratch);
         // Each series is compared with its own base, then what it grew by adds into its subject.
         for ((subject, labels), cell) in series {
-            if !fill(&cell, self.bounds.len(), &mut counters) {
+            if !fill(&cell, &places, self.bounds.len(), &mut counters) {
                 continue;
             }
             let column = self.column(subject);
             let row = column * width..(column + 1) * width;
-            if totals.len() < row.end {
-                totals.resize(row.end, 0.0);
+            if self.totals.len() < row.end {
+                self.totals.resize(row.end, 0.0);
             }
+            let totals = &mut self.totals[row];
             let bases = &mut self.columns[column].bases;
             match bases.get_mut(&labels) {
                 Some(base) => {
@@ -410,7 +412,7 @@ impl MetricsStore {
                     // read of a run, every base is stale.
                     if base.run == run && !reset {
                         add(
-                            &mut totals[row],
+                            totals,
                             counters
                                 .iter()
                                 .zip(&base.counters)
@@ -431,7 +433,7 @@ impl MetricsStore {
                 None => {
                     // A new series counts from zero, except on the first read of a run.
                     if !first {
-                        add(&mut totals[row], counters.iter().copied().map(or_zero));
+                        add(totals, counters.iter().copied().map(or_zero));
                     }
                     bases.insert(
                         labels,
@@ -445,21 +447,35 @@ impl MetricsStore {
             }
         }
         self.scratch = counters;
+        let mut totals = if replaces {
+            self.fine.pop_back().map(|read| read.totals)
+        } else {
+            None
+        }
+        .unwrap_or_default();
+        totals.clone_from(&self.totals);
         self.fine.push_back(Read {
             at,
             covered,
             starts_run: first,
             totals,
         });
+        self.latest = Some((at, covered));
         Ok(())
     }
 
     /// `true` when a read taken at `now` would not start a run: the newest kept read is at most a
     /// gap older. Before that, its rates are not the rates of now.
     fn fresh(&self, now: Duration) -> bool {
-        self.fine
-            .back()
-            .is_some_and(|newest| now.saturating_sub(newest.at) <= self.every * GAP_PACES)
+        self.latest
+            .is_some_and(|(newest, _)| now.saturating_sub(newest) <= self.every * GAP_PACES)
+    }
+
+    /// The bucket of `bound` in a row, after the fixed numbers.
+    fn bucket(&self, bound: f64) -> Option<usize> {
+        self.bounds
+            .binary_search_by(|kept| kept.total_cmp(&bound))
+            .ok()
     }
 
     /// `true` when a base of the series is kept.
@@ -500,10 +516,10 @@ impl MetricsStore {
             Some(read) => read,
             None => &self.fine[self.fine.partition_point(|read| read.at < from)],
         };
-        let covered = newest.covered - oldest.covered;
-        if covered.is_zero() {
-            return None;
-        }
+        let covered = newest
+            .covered
+            .checked_sub(oldest.covered)
+            .filter(|covered| !covered.is_zero())?;
         let width = self.width();
         let grew = |at: usize| newest.total(at) - oldest.total(at);
         let cells = self
@@ -536,26 +552,55 @@ impl MetricsStore {
             .unwrap_or(at.as_nanos())
     }
 
-    /// Takes the first bounds while none are kept. Every row and base gets a zero bucket per bound,
-    /// so a subject read before them keeps its totals. Jobs and database time come before the first
-    /// request in a quiet app.
-    fn widen(&mut self, bounds: Vec<f64>) {
-        let added = bounds.len();
-        self.bounds = bounds;
-        for read in self.coarse.iter_mut().chain(self.fine.iter_mut()) {
-            read.totals = read
-                .totals
-                .chunks(FIXED)
-                .flat_map(|row| row.iter().copied().chain(std::iter::repeat_n(0.0, added)))
-                .collect();
+    /// Adds bounds the store does not hold, each in its place. Every row gets a zero bucket for
+    /// each, and every base an unknown one, so a subject read before them keeps its totals. Jobs
+    /// and database time come before the first request in a quiet app.
+    fn widen(&mut self, added: &[f64]) {
+        let narrow = self.width();
+        let mut bounds = self.bounds.clone();
+        bounds.extend_from_slice(added);
+        bounds.sort_by(f64::total_cmp);
+        let width = FIXED + bounds.len();
+        // Where each kept bucket goes.
+        let places: Vec<usize> = self
+            .bounds
+            .iter()
+            .map(|bound| bounds.partition_point(|wide| wide.total_cmp(bound).is_lt()))
+            .collect();
+        let spread = |row: &[f64], new: f64, into: &mut Vec<f64>| {
+            let start = into.len();
+            into.extend_from_slice(&row[..FIXED]);
+            into.resize(start + width, new);
+            for (value, place) in row[FIXED..].iter().zip(&places) {
+                into[start + FIXED + place] = *value;
+            }
+        };
+        for totals in self.all_totals() {
+            let mut wide = Vec::with_capacity(totals.len() / narrow * width);
+            for row in totals.chunks(narrow) {
+                spread(row, 0.0, &mut wide);
+            }
+            *totals = wide;
         }
         for base in self
             .columns
             .iter_mut()
             .flat_map(|column| column.bases.values_mut())
         {
-            base.counters.resize(FIXED + added, f64::NAN);
+            let mut wide = Vec::with_capacity(width);
+            spread(&base.counters, f64::NAN, &mut wide);
+            base.counters = wide;
         }
+        self.bounds = bounds;
+    }
+
+    /// The totals of each kept read, and the running totals.
+    fn all_totals(&mut self) -> impl Iterator<Item = &mut Vec<f64>> {
+        self.coarse
+            .iter_mut()
+            .chain(self.fine.iter_mut())
+            .map(|read| &mut read.totals)
+            .chain(std::iter::once(&mut self.totals))
     }
 
     /// The column of a subject. A new subject gets a new column, with no base.
@@ -604,7 +649,7 @@ impl MetricsStore {
     }
 
     /// Drops the series last held by a read before `oldest`, the subjects left with none, and packs
-    /// the rows.
+    /// the rows. With no subject left, the bounds go too.
     ///
     /// Such a subject did not change in the kept window and is not in the newest read.
     /// One that is in an older kept read stays, so it keeps its base (a load balancer can show
@@ -622,8 +667,8 @@ impl MetricsStore {
             return;
         }
         let width = self.width();
-        for read in self.coarse.iter_mut().chain(self.fine.iter_mut()) {
-            let rows = read.totals.len() / width;
+        for totals in self.all_totals() {
+            let rows = totals.len() / width;
             let mut packed = 0;
             for (column, _) in keep
                 .iter()
@@ -632,11 +677,10 @@ impl MetricsStore {
                 .filter(|(_, keep)| **keep)
             {
                 let start = column * width;
-                read.totals
-                    .copy_within(start..start + width, packed * width);
+                totals.copy_within(start..start + width, packed * width);
                 packed += 1;
             }
-            read.totals.truncate(packed * width);
+            totals.truncate(packed * width);
         }
         let mut keep = keep.into_iter();
         self.columns.retain(|_| keep.next() == Some(true));
@@ -646,13 +690,17 @@ impl MetricsStore {
             .enumerate()
             .map(|(column, kept)| (kept.subject.clone(), column))
             .collect();
+        if self.columns.is_empty() {
+            self.bounds.clear();
+        }
     }
 }
 
-/// Writes the counters of `cell` into `into`, one bucket per bound. A counter that is missing,
-/// negative or not finite is absent: NaN. `errors` is absent with `count`.
+/// Writes the counters of `cell` into `into`, one bucket per bound of the store. `places` gives
+/// the bucket of the store for each bound of the reading. A counter that is missing, negative or
+/// not finite is absent: NaN. `errors` is absent with `count`.
 /// `false` when every counter is absent: the store then ignores the series.
-fn fill(cell: &Cell, bounds: usize, into: &mut Vec<f64>) -> bool {
+fn fill(cell: &Cell, places: &[Option<usize>], bounds: usize, into: &mut Vec<f64>) -> bool {
     let known = |value: f64| {
         if value.is_finite() && value >= 0.0 {
             value
@@ -668,14 +716,12 @@ fn fill(cell: &Cell, bounds: usize, into: &mut Vec<f64>) -> bool {
     };
     into.clear();
     into.extend([count, errors, known(cell.sum)]);
-    into.extend(
-        cell.buckets
-            .iter()
-            .copied()
-            .chain(std::iter::repeat(f64::NAN))
-            .take(bounds)
-            .map(known),
-    );
+    into.resize(FIXED + bounds, f64::NAN);
+    for (&value, place) in cell.buckets.iter().zip(places) {
+        if let Some(place) = place {
+            into[FIXED + place] = known(value);
+        }
+    }
     into.iter().any(|value| !value.is_nan())
 }
 
@@ -1002,6 +1048,19 @@ mod tests {
 
         store.push(secs(91), both(25.0, 53.0)).unwrap();
         assert_eq!(grew(&store, PACE, &route("/b")), Some(count(3.0)));
+
+        // A gap longer than the fine part moves every read to the coarse part. The run after it
+        // carries on from the totals and the covered time of the read before.
+        let mut store = MetricsStore::new(PACE);
+        for (at, total) in [(285, 1.0), (300, 3.0), (4_000, 100.0), (4_005, 104.0)] {
+            store
+                .push(secs(at), reading(&[(route("/"), count(total))]))
+                .unwrap();
+        }
+        let change = store.change(secs(3_710)).expect("a change");
+        assert_eq!(change.covered, secs(5));
+        assert_eq!(change.cells, vec![(&route("/"), count(4.0))]);
+        assert_eq!(grew(&store, WINDOW, &route("/")), Some(count(6.0)));
     }
 
     #[test]
@@ -1019,9 +1078,9 @@ mod tests {
     }
 
     #[test]
-    fn the_first_bounds_widen_the_store_and_other_bounds_empty_it() {
-        let request = |buckets: Vec<f64>| Cell {
-            count: buckets[1],
+    fn buckets_match_by_bound_and_new_bounds_widen_the_store() {
+        let request = |count: f64, buckets: Vec<f64>| Cell {
+            count,
             buckets,
             ..Cell::default()
         };
@@ -1041,32 +1100,66 @@ mod tests {
         store
             .push(
                 secs(15),
-                with_bounds(vec![0.1, 1.0], request(vec![1.0, 2.0])),
+                with_bounds(vec![0.1, 1.0], request(2.0, vec![1.0, 2.0])),
             )
             .unwrap();
         store
             .push(
                 secs(30),
-                with_bounds(vec![0.1, 1.0], request(vec![2.0, 4.0])),
+                with_bounds(vec![0.1, 1.0], request(4.0, vec![2.0, 4.0])),
             )
             .unwrap();
-
         store
             .push(secs(45), reading(&[(job.clone(), count(3.0))]))
             .unwrap();
         assert_eq!(store.len(), 4);
-        assert_eq!(store.bounds, [0.1, 1.0]);
         assert_eq!(
             grew(&store, WINDOW, &route("/")),
-            Some(request(vec![2.0, 4.0]))
+            Some(request(4.0, vec![2.0, 4.0]))
         );
         assert_eq!(grew(&store, WINDOW, &job).map(|cell| cell.count), Some(2.0));
 
+        // The same bounds in another order.
         store
-            .push(secs(60), with_bounds(vec![0.5], request(vec![3.0, 3.0])))
+            .push(
+                secs(60),
+                with_bounds(vec![1.0, 0.1], request(5.0, vec![5.0, 3.0])),
+            )
             .unwrap();
-        assert_eq!(store.len(), 1);
-        assert!(store.change(WINDOW).is_none());
+        assert_eq!(
+            grew(&store, PACE, &route("/")),
+            Some(request(1.0, vec![1.0, 1.0]))
+        );
+        // A bucket missing from a read adds nothing and keeps its base.
+        store
+            .push(secs(75), with_bounds(vec![1.0], request(6.0, vec![6.0])))
+            .unwrap();
+        assert_eq!(
+            grew(&store, PACE, &route("/")),
+            Some(request(1.0, vec![0.0, 1.0]))
+        );
+        // A new bound widens the store. Its bucket starts at the next read.
+        store
+            .push(
+                secs(90),
+                with_bounds(vec![0.1, 0.5, 1.0], request(7.0, vec![4.0, 5.0, 7.0])),
+            )
+            .unwrap();
+        assert_eq!(store.bounds, [0.1, 0.5, 1.0]);
+        assert_eq!(
+            grew(&store, WINDOW, &route("/")),
+            Some(request(7.0, vec![4.0, 0.0, 7.0]))
+        );
+        assert_eq!(grew(&store, WINDOW, &job).map(|cell| cell.count), Some(2.0));
+
+        // Once no subject is kept, the bounds go too.
+        store
+            .push(
+                secs(90) + WINDOW + PACE,
+                with_bounds(vec![2.0], request(1.0, vec![1.0])),
+            )
+            .unwrap();
+        assert_eq!(store.bounds, [2.0]);
     }
 
     #[test]
@@ -1099,7 +1192,8 @@ mod tests {
         }
 
         let change = store.change(WINDOW).expect("a change");
-        assert!(change.covered > WINDOW - STEP && change.covered <= WINDOW);
+        // The span starts at a kept read at most a step inside it.
+        assert!(change.covered >= WINDOW - STEP && change.covered <= WINDOW);
         let oldest = 6_999 - change.covered.as_secs() / PACE.as_secs();
         let pushed: f64 = (oldest + 1..7_000).map(stays).sum();
         assert_eq!(change.cells, vec![(&route("/"), count(pushed))]);
