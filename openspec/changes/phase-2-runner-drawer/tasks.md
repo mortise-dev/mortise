@@ -24,8 +24,8 @@
 
 ## 5. Integration
 
-- [ ] 5.1 Run `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings` and `cargo test --workspace` on macOS; all pass
-- [ ] 5.2 Run `openspec validate phase-2-runner-drawer --strict`
+- [x] 5.1 Run `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings` and `cargo test --workspace` on macOS; all pass
+- [x] 5.2 Run `openspec validate phase-2-runner-drawer --strict`
 
 ## Workflow follow-up
 
