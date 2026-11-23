@@ -77,6 +77,9 @@ pub fn plan(action: Action, target: &Target, options: &Options, context: &Contex
 in the order of `OptionSet` (`--pretend`, `--seed`, `--database=<value>`, `--class=<value>`), then
 `--force`. A text option is trimmed; an empty one is left out; each is one word, `--database=<value>`,
 so nothing is split or read by a shell. An option that the action does not take is ignored.
+With `--pretend`, `--seed` is left out: the package seeds after a pretend migrate
+(`MigrateCommand.php:59`), so the dry run would write. The panel turns "Seed afterwards" off
+while "Dry run" is checked.
 
 `OptionSet`, from the drawings of S10.2: Migrate pretend, seed, database; Roll back pretend (database is
 in the command but not drawn); Seed class, database; the "All modules" Migrate pretend, seed; Reset
@@ -109,6 +112,14 @@ it reads `--pretend` (Laravel source as remembered, not read; the safe side eith
 Roll back with `--pretend` outside production does not ask: the dry run changes nothing, and S10.3 offers
 the dry run as the way out of the dialog.
 
+A module name that starts with `-` goes last, after `--` (after `--force` too), so artisan reads it
+as the module argument and not as an option.
+
+Run again asks too: `asks_again(args)` is true for a line with `--force`, a roll back without
+`--pretend`, and reset, refresh, fresh and delete. Run again (the drawer button, Ctrl Shift R,
+Enter in the history) then opens a danger dialog that starts on Cancel, "Run <label> again?",
+and runs the same words only after "Run again".
+
 `stop_asks_first` stays in `run/process.rs`: it is about a running process, not an action.
 
 ### D3. Reading the output (`output.rs`)
@@ -133,7 +144,8 @@ milestone 16 is the guard (plan, section 7).
 ### D4. The Actions tab (`actions_view.rs`)
 
 State, per open app, in memory: the selected action, `Options`, and the module they belong to. A change
-of module or of app resets the options and selects Migrate (S10.1). The left list is 250 px; each row has
+of module or of app resets the options and selects Migrate (S10.1); the app follows the selection
+every frame, on any tab. The left list is 250 px; each row has
 the action's name and a detail on the right:
 
 | Row | Detail (without P4) |
@@ -166,8 +178,9 @@ button that runs. The same holds for "Dry run" in the drawer (D7).
 Run tests: S10.2 e with the placeholder line in dim, the run and copy buttons off with the tooltip "The
 package has no command for the tests of one module yet." (not in the spec). Deviation S39.
 
-Keys, where nothing is typed: J and K move through the actions, Ctrl Enter (Cmd Enter) runs. Tab
-follows the egui order: list, options, buttons.
+Keys, where nothing is typed: J and K move through the actions, Ctrl Enter (Cmd Enter) runs. Ctrl
+Enter runs only the words the panel showed in the last frame it was drawn, so a tab switch and the
+key in one frame run nothing. Tab follows the egui order: list, options, buttons.
 
 ### D5. Dialogs
 
@@ -188,7 +201,8 @@ The panel of Turn off shows the alert of S10.2 a when `users_on` is not empty.
 ### D6. Toasts
 
 `Toast` gets `action: Option<(String, ToastAction)>`; the failed toast of a run uses
-`ToastAction::ShowOutput(app index)`, which selects that app and opens the drawer.
+`ToastAction::ShowOutput(app folder)`, which selects that app and opens the drawer. The folder, not
+the place on the rail, which can change while the toast stays; an app that is gone does nothing.
 
 The app keeps, beside the run it started from the Actions tab, the `Action` and `Target`. When `poll`
 sees the end:
@@ -207,7 +221,8 @@ replaces the sentence of milestone 11 with `x.run` for that label, code and migr
 "Open migration file" (keycap Enter, only when `migration_file` finds it), "Dry run" and "Copy output".
 The module is `failed.module`, else the module name in the run's `args`. "Open migration file" opens
 the file through `open_in_editor` at line 1. "Dry run" selects that module (or "All modules" for
-`--all`), opens the Actions tab on Migrate and checks `pretend`. Both are new `DrawerAction`s handled
+`--all`), opens the Actions tab on Migrate and checks `pretend`, with the `--database` of the
+failed run and seeding off. Both are new `DrawerAction`s handled
 in `app.rs`.
 
 ### D8. Header and palette
