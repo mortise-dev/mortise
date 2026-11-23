@@ -73,9 +73,11 @@ impl Shots {
         let mut window = harness.render().expect("the window is drawn");
         let [x, y] = [min.0, min.1].map(|at| at.round() as u32);
         let fill = *window.get_pixel(x + 4, y + 12);
+        // A long line reaches past the window.
+        let (right, bottom) = (window.width(), window.height());
         for (from, to) in masks {
-            for my in from.1.floor() as u32..to.1.ceil() as u32 {
-                for mx in from.0.floor() as u32..to.0.ceil() as u32 {
+            for my in from.1.floor() as u32..(to.1.ceil() as u32).min(bottom) {
+                for mx in from.0.floor() as u32..(to.0.ceil() as u32).min(right) {
                     window.put_pixel(mx, my, fill);
                 }
             }
@@ -389,9 +391,12 @@ fn drawer_desk(theme: Theme, width: f32, words: &str, runs: &[Seeded<'_>]) -> De
     let root = desk.app("shop-api");
     desk.knows(&[(&root, "SA")]);
     let mut settings = desk.saved();
+    // A copy of the fake artisan in the app folder, so that the $ line reads the
+    // same on every machine. macOS starts a relative program from the folder it runs in.
     let fake = env!("CARGO_BIN_EXE_fake-artisan");
+    std::fs::copy(fake, root.join("fake-artisan")).unwrap();
     settings.apps[0].php.runner = Some(RunnerKind::Custom {
-        line: format!("\"{fake}\"{words}"),
+        line: format!("./fake-artisan{words}"),
     });
     settings.save(&desk.settings_path()).unwrap();
     // The clock times are local times of today, so the rows read the same anywhere.
@@ -456,18 +461,12 @@ fn drawer_part(harness: &Harness<'static, MortiseApp>, window_h: f64) -> Part {
     (min, (max.0, window_h))
 }
 
-/// What changes from run to run: the `$` line names the fake artisan of this
-/// machine, and a time depends on how fast it ran. A long output has scrolled the
-/// `$` line out of view.
+/// What changes from run to run: a time depends on how fast it ran.
 fn varying(harness: &Harness<'static, MortiseApp>, times: &[&str]) -> Vec<Part> {
-    let mut masks: Vec<Part> = times
+    times
         .iter()
         .map(|text| label_bounds(harness, text))
-        .collect();
-    if harness.query_by_label_contains("$ ").is_some() {
-        masks.push(label_bounds(harness, "$ "));
-    }
-    masks
+        .collect()
 }
 
 #[test]
@@ -531,6 +530,7 @@ fn runner_drawer() {
         harness.hover_at(eframe::egui::pos2(700.0, 20.0));
         harness.run_steps(3);
         let part = drawer_part(&harness, window_h);
+        // The line that Run again would run stands above the output of the selected run.
         shots.take_part(&mut harness, "s11.1d-history", part);
 
         // b. Finished: the latest run again.
@@ -568,6 +568,9 @@ fn runner_drawer() {
             &[(&["module:migrate", "--all"], done(186), (14, 5), Vec::new())],
         );
         let mut harness = desk.start();
+        // The first press opens the drawer on the line it runs; the second runs it.
+        harness.key_press_modifiers(Modifiers::COMMAND | Modifiers::SHIFT, Key::R);
+        harness.run_steps(3);
         harness.key_press_modifiers(Modifiers::COMMAND | Modifiers::SHIFT, Key::R);
         wait_for(&mut harness, "Running Migration Shop Module");
         wait_for(&mut harness, "create_items_table");
@@ -594,6 +597,8 @@ fn runner_drawer() {
             )],
         );
         let mut harness = desk.start();
+        harness.key_press_modifiers(Modifiers::COMMAND | Modifiers::SHIFT, Key::R);
+        harness.run_steps(3);
         harness.key_press_modifiers(Modifiers::COMMAND | Modifiers::SHIFT, Key::R);
         wait_for(&mut harness, "NoSuchModule: Exit code 1");
         let time = exit_time(&harness);

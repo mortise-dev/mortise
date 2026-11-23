@@ -61,6 +61,23 @@ fn chord(harness: &mut Harness<'static, MortiseApp>, modifiers: Modifiers, key: 
     harness.run_steps(3);
 }
 
+/// How many runs the history keeps, after a run of the fake would have ended.
+fn kept_after_a_while(
+    harness: &mut Harness<'static, MortiseApp>,
+    desk: &Desk,
+    root: &Path,
+) -> usize {
+    std::thread::sleep(Duration::from_millis(300));
+    harness.run_steps(3);
+    assert!(harness.query_by_label_contains("Running, ").is_none());
+    History::open(&desk.data_dir(), root).entries().len()
+}
+
+/// Cmd Shift R, or Ctrl Shift R: run the last command again.
+fn run_again(harness: &mut Harness<'static, MortiseApp>) {
+    chord(harness, Modifiers::COMMAND | Modifiers::SHIFT, Key::R);
+}
+
 fn toggle_drawer(harness: &mut Harness<'static, MortiseApp>) {
     chord(harness, Modifiers::CTRL, Key::Backtick);
 }
@@ -91,18 +108,21 @@ fn a_run_shows_its_output_and_its_time_and_the_drawer_hides() {
             .is_none()
     );
 
-    // Run the last command again, from the history.
-    chord(&mut harness, Modifiers::COMMAND | Modifiers::SHIFT, Key::R);
-    wait_for(&mut harness, "module:migrate Blog: Done in ");
+    // Run again with the drawer hidden opens it on the history, where the line it
+    // would run shows, and runs nothing. A second press runs it.
+    run_again(&mut harness);
     harness.get_by_role_and_label(Role::Heading, "Runner");
+    let line = "module:migrate --no-interaction --ansi Blog";
+    harness.query_by_label_contains(line).unwrap();
+    assert_eq!(kept_after_a_while(&mut harness, &desk, &root), 1);
+    run_again(&mut harness);
+    wait_for(&mut harness, "module:migrate Blog: Done in ");
     harness
         .query_by_label_contains("Running Migration Blog Module")
         .unwrap();
     // The header shows the label; the $ line shows the line that runs (S36).
     harness.get_by_label("module:migrate Blog");
-    harness
-        .query_by_label_contains("module:migrate --no-interaction --ansi Blog")
-        .unwrap();
+    harness.query_by_label_contains(line).unwrap();
     // The run is kept in the history, with its output.
     let entries = History::open(&desk.data_dir(), &root).entries();
     assert_eq!(entries.len(), 2);
@@ -129,17 +149,36 @@ fn a_run_shows_its_output_and_its_time_and_the_drawer_hides() {
     );
     toggle_drawer(&mut harness);
     harness.get_by_role_and_label(Role::Button, "Hide");
+
+    // Collapsed, Run again opens the drawer on the history and runs nothing.
+    toggle_drawer(&mut harness);
+    run_again(&mut harness);
+    harness.get_by_role_and_label(Role::Button, "Hide");
+    harness
+        .query_by_label_contains(" today in shop-api")
+        .unwrap();
+    assert_eq!(kept_after_a_while(&mut harness, &desk, &root), 2);
 }
 
 #[test]
 fn stop_asks_first_for_a_migration_and_run_again_waits() {
     let (desk, _root) = desk(&fake(" hold"), &[&["module:migrate", "--all"]]);
     let mut harness = desk.start();
-    chord(&mut harness, Modifiers::COMMAND | Modifiers::SHIFT, Key::R);
+    run_again(&mut harness);
+    run_again(&mut harness);
     // The output streams before the command ends.
     wait_for(&mut harness, "Running Migration Shop Module");
     harness.query_by_label_contains("Running, ").unwrap();
     harness.get_by_role_and_label(Role::Button, "Stop");
+
+    // An app that runs a command cannot be removed until it ends.
+    chord(&mut harness, Modifiers::COMMAND, Key::Comma);
+    let remove = harness.get_by_role_and_label(Role::Button, "Remove shop-api from Mortise");
+    assert!(remove.accesskit_node().is_disabled());
+    remove.hover();
+    harness.run_steps(12);
+    harness.get_by_label("module:migrate --all is running");
+    chord(&mut harness, Modifiers::NONE, Key::Escape);
 
     // While it runs, Run again in the history is off and says why.
     chord(&mut harness, Modifiers::COMMAND | Modifiers::SHIFT, Key::H);
@@ -170,7 +209,8 @@ fn stop_asks_first_for_a_migration_and_run_again_waits() {
 fn a_failure_says_its_exit_code_and_one_sentence() {
     let (desk, _root) = desk(&fake(""), &[&["module:migrate", "NoSuchModule"]]);
     let mut harness = desk.start();
-    chord(&mut harness, Modifiers::COMMAND | Modifiers::SHIFT, Key::R);
+    run_again(&mut harness);
+    run_again(&mut harness);
     wait_for(&mut harness, "module:migrate NoSuchModule: Exit code 1");
     harness
         .query_by_label_contains("Application::handleCommand")
@@ -222,7 +262,9 @@ fn a_command_that_does_not_start_offers_the_settings_of_php() {
 
     seed(&desk, &root, &[&["module:make", "Blog"]]);
     let mut harness = desk.start();
-    chord(&mut harness, Modifiers::COMMAND | Modifiers::SHIFT, Key::R);
+    run_again(&mut harness);
+    run_again(&mut harness);
+    harness.get_by_label("$ mortise-no-such-php artisan module:make --no-interaction --ansi Blog");
     harness.get_by_label(
         "The command did not start: \"mortise-no-such-php: command not found\". Choose how PHP \
          runs for shop-api in Settings.",

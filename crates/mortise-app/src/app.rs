@@ -929,13 +929,15 @@ impl MortiseApp {
         }
     }
 
-    /// Runs the command on screen again, unless the app runs one.
-    fn run_again(&mut self, index: usize, args: Option<Vec<String>>) {
-        let open = &self.apps[index];
-        if open.runs.running().is_some() {
+    /// Runs the command on screen again, unless the app runs one. It runs only when
+    /// its exact line is on screen; otherwise the drawer shows that line first.
+    fn run_again(&mut self, index: usize) {
+        let runner = self.settings.apps[index].php.runner.as_ref();
+        let runs = &mut self.apps[index].runs;
+        if runs.running().is_some() {
             return;
         }
-        if let Some(args) = args.or_else(|| open.runs.again(&self.runner)) {
+        if let Some(args) = runs.again(&mut self.runner, runner) {
             self.start_run(index, args);
         }
     }
@@ -944,7 +946,7 @@ impl MortiseApp {
     fn drawer_action(&mut self, ctx: &egui::Context, index: usize, action: DrawerAction) {
         match action {
             DrawerAction::Stop => self.ask_stop(index),
-            DrawerAction::RunAgain(args) => self.run_again(index, Some(args)),
+            DrawerAction::RunAgain => self.run_again(index),
             DrawerAction::CopyOutput => {
                 if let Some(text) = self.apps[index].runs.output_text(&self.runner) {
                     ctx.copy_text(text);
@@ -954,7 +956,12 @@ impl MortiseApp {
             DrawerAction::Hide => self.runner.shown = Shown::Collapsed,
             DrawerAction::Show => self.runner.shown = Shown::Open,
             // Settings open on the PHP section with this app selected.
-            DrawerAction::OpenSettings => self.open_settings(Section::Php),
+            DrawerAction::OpenSettings => {
+                self.open_settings(Section::Php);
+                if let Some(state) = &mut self.settings_open {
+                    state.app = index;
+                }
+            }
         }
     }
 
@@ -1186,7 +1193,7 @@ impl MortiseApp {
                 self.runner.toggle();
             }
             if chord(Modifiers::COMMAND | Modifiers::SHIFT, Key::R) {
-                self.run_again(current, None);
+                self.run_again(current);
             }
             if chord(Modifiers::COMMAND | Modifiers::SHIFT, Key::H) {
                 self.runner.toggle_history();
@@ -1513,6 +1520,7 @@ impl eframe::App for MortiseApp {
                         app_url: app.as_ref().and_then(|app| app.app_url.clone()),
                         last: &mut open.last_answers,
                         php_test: &mut open.php_test,
+                        running: open.runs.running().map(strings::is_running),
                     }
                 })
                 .collect();
@@ -1668,9 +1676,11 @@ impl eframe::App for MortiseApp {
                     // The drawer, after the workspace in the Tab order.
                     let inputs = runner_view::Inputs {
                         app: entry.display_name(),
+                        runner: entry.php.runner.as_ref(),
                         keyboard: self.keyboard,
                         mac,
                     };
+                    // Each action carries its app, as the selection may change later in the frame.
                     drawer_actions = runner_view::drawer(
                         ui,
                         pal,
@@ -1678,7 +1688,10 @@ impl eframe::App for MortiseApp {
                         &mut self.runner,
                         &mut open.runs,
                         &inputs,
-                    );
+                    )
+                    .into_iter()
+                    .map(|action| (current, entry.root.clone(), action))
+                    .collect();
                 }
                 LiveState::Reading => {
                     ui.painter().rect_filled(rest, 0, pal.surface);
@@ -1872,6 +1885,8 @@ impl eframe::App for MortiseApp {
                             .set_options(read_options(&self.settings.apps[index]));
                     }
                 }
+                // An app that runs a command stays: Remove is off until it ends.
+                SettingsAction::RemoveApp(index) if self.apps[index].runs.running().is_some() => {}
                 SettingsAction::RemoveApp(index) => {
                     let name = self.settings.apps[index].display_name().to_owned();
                     let dialog = Dialog::new(
@@ -1889,9 +1904,16 @@ impl eframe::App for MortiseApp {
         if first_run_add {
             self.adding = Some(AddPanel::empty());
         }
-        if let Some(current) = self.current {
-            for action in drawer_actions {
-                self.drawer_action(&ctx, current, action);
+        // An action of the drawer applies to the app it was drawn for, if that app
+        // is still at its place on the rail.
+        for (index, root, action) in drawer_actions {
+            if self
+                .settings
+                .apps
+                .get(index)
+                .is_some_and(|entry| entry.root == root)
+            {
+                self.drawer_action(&ctx, index, action);
             }
         }
         if let Some(action) = add_action {

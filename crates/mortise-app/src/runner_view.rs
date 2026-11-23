@@ -16,7 +16,7 @@ use eframe::egui::{
 };
 use mortise_core::ansi::{self, Span, Style};
 use mortise_core::history::{Ended, Entry, History};
-use mortise_core::{PhpSettings, Run, RunEnd, RunEvent, RunnerKind, Runs, StartError};
+use mortise_core::{CommandLine, PhpSettings, Run, RunEnd, RunEvent, RunnerKind, Runs, StartError};
 
 use crate::draw::{self, Icon, ListNav};
 use crate::strings;
@@ -170,7 +170,8 @@ enum State {
 struct Current {
     label: String,
     args: Vec<String>,
-    /// The `$` line: the line that runs (deviation S36). None when nothing started.
+    /// The `$` line: the line that runs (deviation S36). For a command that did not
+    /// start, the line Run again would run. None when the runner gives no line.
     line: Option<String>,
     output: Output,
     cut: bool,
@@ -178,6 +179,14 @@ struct Current {
     /// Started through Sail or Docker: a stop reaches `docker` only.
     container: bool,
     started_ms: i64,
+    /// The id the run was kept under in the history, once it ended.
+    recorded: Option<u64>,
+}
+
+/// The line that `args` would run through `runner` now, as the drawer shows it.
+fn line_now(runner: Option<&RunnerKind>, args: &[String]) -> Option<String> {
+    let words: Vec<&str> = args.iter().map(String::as_str).collect();
+    CommandLine::artisan(runner?, &words).map(|line| line.display())
 }
 
 /// The runs of one app: the one on screen, and the history kept on disk.
@@ -232,6 +241,7 @@ impl AppRuns {
             Some(RunnerKind::Sail | RunnerKind::Docker { .. })
         );
         let words: Vec<&str> = args.iter().map(String::as_str).collect();
+        let label = words.join(" ");
         let now_ms = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |since| since.as_millis() as i64);
@@ -248,16 +258,18 @@ impl AppRuns {
                     .duration_since(std::time::UNIX_EPOCH)
                     .map_or(now_ms, |since| since.as_millis() as i64),
                 state: State::Running(run),
+                recorded: None,
             },
             Err(error) => Current {
-                label: words.join(" "),
-                line: None,
+                label,
+                line: line_now(php.runner.as_ref(), &args),
                 args,
                 output: Output::default(),
                 cut: false,
                 container,
                 started_ms: now_ms,
                 state: State::NotStarted(error),
+                recorded: None,
             },
         };
         self.current = Some(current);
@@ -324,7 +336,11 @@ impl AppRuns {
             cut: current.cut,
         };
         // A history that cannot be written loses this run only.
-        let _ = history.record(entry, &current.output.lines);
+        if history.record(entry, &current.output.lines).is_ok()
+            && let Some(current) = &mut self.current
+        {
+            current.recorded = Some(id);
+        }
         self.read_history();
     }
 
@@ -363,19 +379,43 @@ impl AppRuns {
         }
     }
 
-    /// The artisan words that Run again starts: of the selected row in the history,
-    /// else of the run on screen, else of the last run kept.
-    pub fn again(&self, view: &RunnerView) -> Option<Vec<String>> {
+    /// What Run again starts: the artisan words of the selected row of the history,
+    /// or of the run on screen. A command runs only when the exact line it runs
+    /// through `runner` is on screen: the `$` line of the run, or the `$` line above
+    /// the output of the selected row. Otherwise the drawer opens where that line
+    /// shows, and nothing runs: on the history with the run selected, or for a
+    /// command that did not start, on its line now.
+    pub fn again(
+        &mut self,
+        view: &mut RunnerView,
+        runner: Option<&RunnerKind>,
+    ) -> Option<Vec<String>> {
+        let open = view.shown == Shown::Open;
+        view.shown = Shown::Open;
         if self.history_shown(view) {
-            return self
-                .entries
-                .get(view.selected)
-                .map(|listed| listed.entry.args.clone());
+            let args = &self.entries.get(view.selected)?.entry.args;
+            let shown = open && line_now(runner, args).is_some();
+            return shown.then(|| args.clone());
         }
-        self.current
-            .as_ref()
-            .map(|current| current.args.clone())
-            .or_else(|| self.entries.first().map(|listed| listed.entry.args.clone()))
+        let current = self.current.as_mut()?;
+        let now = line_now(runner, &current.args);
+        if open && now.is_some() && now == current.line {
+            return Some(current.args.clone());
+        }
+        match current.recorded {
+            Some(id) => {
+                view.history_open = true;
+                view.selected = self
+                    .entries
+                    .iter()
+                    .position(|listed| listed.entry.id == id)
+                    .unwrap_or(0);
+            }
+            // Nothing ran: the line it shows is the line Run again runs.
+            None if matches!(current.state, State::NotStarted(_)) => current.line = now,
+            None => {}
+        }
+        None
     }
 
     /// The output on screen as plain text, a line each.
@@ -439,8 +479,9 @@ impl Output {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DrawerAction {
     Stop,
-    /// Start these artisan words again, through the current runner of the app.
-    RunAgain(Vec<String>),
+    /// Run the selected or shown command again, through the current runner of the
+    /// app, when its line is on screen (see [`AppRuns::again`]).
+    RunAgain,
     CopyOutput,
     ToggleHistory,
     Hide,
@@ -453,6 +494,8 @@ pub enum DrawerAction {
 pub struct Inputs<'a> {
     /// The display name of the app.
     pub app: &'a str,
+    /// How PHP runs for the app now: History shows the line Run again would run.
+    pub runner: Option<&'a RunnerKind>,
     /// True while the keyboard is in use: focus rings are drawn.
     pub keyboard: bool,
     pub mac: bool,
@@ -910,7 +953,7 @@ fn open(
     let run_again = |keys: Option<&str>| BarButton {
         keys: keys.map(str::to_owned),
         off: busy.clone(),
-        ..BarButton::new(strings::RUN_AGAIN, DrawerAction::RunAgain(Vec::new()))
+        ..BarButton::new(strings::RUN_AGAIN, DrawerAction::RunAgain)
     };
     let history_button = |pressed: bool| BarButton {
         pressed,
@@ -973,28 +1016,10 @@ fn open(
         inputs.keyboard,
         &mut clicked,
     );
-    for action in clicked {
-        match action {
-            DrawerAction::RunAgain(_) => {
-                if let Some(args) = runs.again(view) {
-                    actions.push(DrawerAction::RunAgain(args));
-                }
-            }
-            other => actions.push(other),
-        }
-    }
+    actions.extend(clicked);
 
     if history {
-        history_body(
-            ui,
-            pal,
-            body,
-            view,
-            runs,
-            busy.is_some(),
-            inputs.keyboard,
-            actions,
-        );
+        history_body(ui, pal, body, view, runs, busy.is_some(), inputs, actions);
         return;
     }
     let Some(current) = &runs.current else {
@@ -1017,7 +1042,22 @@ fn open(
         State::NotStarted(error) => {
             let text = strings::did_not_start(error, inputs.app);
             let width = body.width().min(sentence_width());
-            let rect = draw::paragraph(ui, body.min, &text, SENTENCE, pal.code_fg, width);
+            // The line that Run again starts, when the runner gives one.
+            let mut top = body.min;
+            if let Some(line) = &current.line {
+                let first = format!("$ {line}");
+                let at = pos2(top.x, top.y + ty::RUNNER.line / 2.0);
+                let rect = draw::label(
+                    ui,
+                    at,
+                    Align2::LEFT_CENTER,
+                    &first,
+                    ty::RUNNER,
+                    pal.code_dim,
+                );
+                top.y = rect.top() + ty::RUNNER.line + 4.0;
+            }
+            let rect = draw::paragraph(ui, top, &text, SENTENCE, pal.code_fg, width);
             let button = BarButton {
                 said: Some(strings::open_php_settings(inputs.app)),
                 bright: true,
@@ -1211,9 +1251,10 @@ fn history_body(
     view: &mut RunnerView,
     runs: &mut AppRuns,
     busy: bool,
-    keyboard: bool,
+    inputs: &Inputs<'_>,
     actions: &mut Vec<DrawerAction>,
 ) {
+    let keyboard = inputs.keyboard;
     let list_w = HISTORY_LIST_W.min((body.width() - 14.0) / 2.0).floor();
     let list = Rect::from_min_size(body.min, vec2(list_w, body.height()));
     let output_rect = Rect::from_min_max(pos2(list.right() + 14.0, body.top()), body.max);
@@ -1227,9 +1268,8 @@ fn history_body(
         if nav.has_focus(ui)
             && !busy
             && ui.input_mut(|input| input.consume_key(Modifiers::NONE, Key::Enter))
-            && let Some(listed) = entries.get(view.selected)
         {
-            actions.push(DrawerAction::RunAgain(listed.entry.args.clone()));
+            actions.push(DrawerAction::RunAgain);
         }
         ui.spacing_mut().item_spacing = Vec2::ZERO;
         ScrollArea::vertical()
@@ -1262,15 +1302,20 @@ fn history_body(
                 }
             });
     });
+    // The line that Enter and Run again start, above the output of the selected run.
     let selected = view.selected;
-    let id = runs.entries.get(selected).map(|listed| listed.entry.id);
-    if let (Some(id), Some(output)) = (id, runs.selected_output(selected)) {
+    let Some(listed) = runs.entries.get(selected) else {
+        return;
+    };
+    let id = listed.entry.id;
+    let first = line_now(inputs.runner, &listed.entry.args).map(|line| format!("$ {line}"));
+    if let Some(output) = runs.selected_output(selected) {
         output_rows(
             ui,
             pal,
             output_rect,
             ("runner-history-output", id),
-            None,
+            first.as_deref(),
             output,
             &[],
             false,
