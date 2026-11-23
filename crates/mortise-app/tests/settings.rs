@@ -7,7 +7,7 @@ use eframe::egui::{self, Key, Modifiers, Role, Theme};
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT as _, Queryable as _};
 use mortise_app::app::{MortiseApp, Selection};
-use mortise_core::{Editor, IndexRows, RunnerKind, ThemeChoice};
+use mortise_core::{CommandLine, Editor, IndexRows, RunnerKind, ThemeChoice};
 
 fn open_settings(harness: &mut Harness<'static, MortiseApp>) {
     harness.key_press_modifiers(Modifiers::COMMAND, Key::Comma);
@@ -223,7 +223,11 @@ fn type_command(harness: &mut Harness<'static, MortiseApp>, line: &str) {
 
 #[test]
 fn the_kind_of_runner_follows_the_command_and_is_kept() {
-    let (desk, mut harness) = shop_api();
+    let desk = Desk::new();
+    let shop = desk.app("shop-api");
+    let crm = desk.app("crm");
+    desk.knows(&[(&shop, "SA"), (&crm, "CR")]);
+    let mut harness = desk.start();
     open_php(&mut harness);
     harness.get_by_role_and_label(Role::Heading, "PHP");
     // Nothing is chosen yet: the field shows the proposal and nothing is saved.
@@ -249,6 +253,19 @@ fn the_kind_of_runner_follows_the_command_and_is_kept() {
     harness.run();
     assert_eq!(desk.saved().apps[0].php.runner, docker("web"));
     harness.get_by_label("docker compose exec -T web php artisan");
+
+    // Another app is selected while the field still has focus: the edit is kept,
+    // and the field of the other app shows its own command.
+    type_command(&mut harness, "docker compose exec -T worker php artisan");
+    harness.get_by_role_and_label(Role::Row, "crm").click();
+    harness.run();
+    assert_eq!(desk.saved().apps[0].php.runner, docker("worker"));
+    assert_eq!(
+        harness
+            .get_by_role_and_label(Role::TextInput, "Run PHP with")
+            .value(),
+        Some(RunnerKind::Herd.line())
+    );
 }
 
 #[test]
@@ -259,10 +276,25 @@ fn test_says_why_php_did_not_answer() {
         .get_by_role_and_label(Role::RadioButton, "Custom")
         .click();
     harness.run();
-    type_command(&mut harness, "mortise-no-such-php artisan");
+    let typed = "mortise-no-such-php artisan";
+    type_command(&mut harness, typed);
+    // The exact line that Test runs is on screen before it runs.
+    let runs = CommandLine::artisan(&RunnerKind::from_line(typed), &["--version"]).unwrap();
+    harness.get_by_label(&format!("Test runs {}", runs.display()));
+
+    // Settings close while the test runs. It goes on, and its result is there on return.
     harness
         .get_by_role_and_label(Role::Button, "Test how PHP runs")
         .click();
+    harness.step();
+    harness.key_press(Key::Escape);
+    harness.run();
+    assert!(
+        harness
+            .query_by_role_and_label(Role::Heading, "Settings")
+            .is_none()
+    );
+    open_php(&mut harness);
     let failed = "mortise-no-such-php did not answer: \"mortise-no-such-php: command not found\".";
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
     while harness.query_by_label_contains(failed).is_none() {
@@ -273,6 +305,14 @@ fn test_says_why_php_did_not_answer() {
         std::thread::sleep(std::time::Duration::from_millis(20));
         harness.run_steps(2);
     }
+    harness.get_by_label("No answer: mortise-no-such-php: command not found");
+
+    // The result is not shown under a runner it did not test. The table keeps it.
+    harness
+        .get_by_role_and_label(Role::RadioButton, "Docker")
+        .click();
+    harness.run();
+    assert!(harness.query_by_label_contains(failed).is_none());
     harness.get_by_label("No answer: mortise-no-such-php: command not found");
 }
 

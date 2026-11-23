@@ -7,11 +7,11 @@ use eframe::egui::{
     self, Align2, Color32, FontId, Key, KeyboardShortcut, Modifiers, Rect, RichText, Role,
     ScrollArea, Ui, UiBuilder, Vec2, pos2, vec2,
 };
-use mortise_core::{AppSnapshot, ReadError, TestOutcome};
+use mortise_core::{AppSnapshot, ReadError, RunnerKind, TestOutcome};
 
 use crate::draw::{self, Button, ButtonKind, Icon};
 use crate::environment_form::{EnvironmentForm, FormEvent, FormOptions, environment_form};
-use crate::php_settings::{PhpEvent, PhpForm, PhpOptions, php_field, propose};
+use crate::php_settings::{PhpEvent, PhpForm, PhpOptions, PhpTest, php_field, propose};
 use crate::strings;
 use crate::theme::{Face, Palette, Type, radius, size, ty};
 
@@ -44,6 +44,8 @@ pub struct AddPanel {
     pub runtime: Option<EnvironmentForm>,
     /// How PHP runs for the app that was found (S1.3). Add saves the runner it shows.
     pub php: Option<PhpForm>,
+    /// The test of [`AddPanel::php`]. Add gives it to the app, as Settings shows it.
+    pub php_test: PhpTest,
     /// What detection found in the folder, after the label of [`AddPanel::php`].
     php_hint: &'static str,
     /// The folder is being read on another thread.
@@ -80,6 +82,7 @@ impl AddPanel {
             focus: Some(Focus::Field),
             runtime: None,
             php: None,
+            php_test: PhpTest::default(),
             php_hint: "",
             reading: false,
         }
@@ -114,6 +117,7 @@ impl AddPanel {
         self.checked = None;
         self.runtime = None;
         self.php = None;
+        self.php_test = PhpTest::default();
         self.reading = true;
     }
 
@@ -138,15 +142,19 @@ impl AddPanel {
             }
             _ => (None, ""),
         };
+        self.php_test = PhpTest::default();
         self.checked = Some(checked);
         self.reading = false;
     }
 
-    /// True when the last test of "Run PHP with" failed: the app is then added read only (S1.4 c).
+    /// True when the last test of "Run PHP with" failed for the runner the field shows,
+    /// in the app folder: the app is then added read only (S1.4 c).
     fn php_failed(&self) -> bool {
-        self.php
-            .as_ref()
-            .and_then(PhpForm::last)
+        let (Some(Checked::Found(app)), Some(form)) = (&self.checked, &self.php) else {
+            return false;
+        };
+        self.php_test
+            .last_of(&RunnerKind::from_line(&form.line), &app.root)
             .is_some_and(|tested| matches!(tested.outcome, TestOutcome::Failed(_)))
     }
 }
@@ -443,9 +451,12 @@ fn add_body(
                 let options = PhpOptions {
                     keyboard,
                     hint: panel.php_hint,
-                    salt: "",
+                    folder: &app.root,
+                    salt: egui::IdSalt::new("add-php"),
                 };
-                let (bottom, events) = php_field(ui, pal, pos2(left, y), column_w, form, options);
+                let test = &mut panel.php_test;
+                let (bottom, events) =
+                    php_field(ui, pal, pos2(left, y), column_w, form, test, options);
                 if events.contains(&PhpEvent::Test) {
                     action = Some(AddAction::TestPhp);
                 }

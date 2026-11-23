@@ -4,7 +4,8 @@
 //! loses focus.
 
 use eframe::egui::{
-    Align2, Color32, Rect, Role, ScrollArea, Sense, Ui, UiBuilder, Vec2, WidgetInfo, pos2, vec2,
+    Align2, Color32, IdSalt, Rect, Role, ScrollArea, Sense, Ui, UiBuilder, Vec2, WidgetInfo, pos2,
+    vec2,
 };
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -16,7 +17,7 @@ use mortise_core::{
 
 use crate::draw::{self, Button, Icon};
 use crate::environment_form::{EnvironmentForm, FormEvent, FormOptions, environment_form};
-use crate::php_settings::{PhpEvent, PhpForm, PhpOptions, Tested, php_field, propose};
+use crate::php_settings::{PhpEvent, PhpForm, PhpOptions, PhpTest, php_field, propose};
 use crate::runtime_view::Brief;
 use crate::strings;
 use crate::theme::{Face, Palette, Type, radius, size, ty};
@@ -79,8 +80,11 @@ pub struct SettingsState {
     /// The form of that environment, and the app and place it was filled from.
     environment_form: Option<(usize, usize, EnvironmentForm)>,
     /// The PHP fields of each app shown in the PHP section, by the folder of the app.
-    /// They stay while Settings are open, so a test that runs is not lost.
+    /// They stay while Settings are open. The test of each app lives with the app.
     php: BTreeMap<PathBuf, PhpFields>,
+    /// The app whose PHP fields were drawn last, to take in what they hold when
+    /// another app is selected.
+    php_shown: Option<PathBuf>,
 }
 
 /// The fields of the PHP section for one app.
@@ -90,6 +94,46 @@ struct PhpFields {
     hint: &'static str,
     folder: String,
     minutes: String,
+}
+
+impl PhpFields {
+    /// Takes in what each field holds, as when it loses focus. True when `php` changed.
+    fn commit(&mut self, php: &mut PhpSettings) -> bool {
+        let mut changed = false;
+        if self.form.commit() {
+            php.runner = Some(self.form.runner.clone());
+            changed = true;
+        }
+        changed |= self.commit_folder(php);
+        changed | self.commit_minutes(php)
+    }
+
+    /// Takes in the working folder. Empty is the app folder.
+    fn commit_folder(&mut self, php: &mut PhpSettings) -> bool {
+        let value = self.folder.trim();
+        let value = (!value.is_empty()).then(|| PathBuf::from(value));
+        let changed = value != php.working_folder;
+        php.working_folder = value;
+        self.folder = folder_text(php);
+        changed
+    }
+
+    /// Takes in the time limit: a number of minutes from 1 to 120. Other text gives
+    /// the limit back as it was.
+    fn commit_minutes(&mut self, php: &mut PhpSettings) -> bool {
+        let value = self
+            .minutes
+            .split_whitespace()
+            .next()
+            .and_then(|number| number.parse::<u16>().ok())
+            .filter(|minutes| (1..=120).contains(minutes));
+        let changed = value.is_some_and(|value| value != php.time_limit_minutes);
+        if let Some(value) = value {
+            php.time_limit_minutes = value;
+        }
+        self.minutes = strings::minutes(php.time_limit_minutes);
+        changed
+    }
 }
 
 /// What Settings show about an app besides what they keep.
@@ -102,8 +146,8 @@ pub struct AppInfo<'a> {
     pub app_url: Option<String>,
     /// The last answer of each environment in this run, by its name.
     pub last: &'a mut BTreeMap<String, Brief>,
-    /// The last test of how PHP runs, in this run.
-    pub php_test: &'a mut Option<Tested>,
+    /// The test of how PHP runs that runs, and the last one, in this run.
+    pub php_test: &'a mut PhpTest,
 }
 
 #[derive(Debug, Default)]
@@ -377,15 +421,8 @@ pub fn section(
     draw::announce(ui, title, Role::Heading, label);
 
     // A test of PHP that ended is the last test of its app, in whichever section is open.
-    for (app, info) in settings.apps.iter().zip(infos.iter_mut()) {
-        if let Some(fields) = state.php.get_mut(&app.root) {
-            fields.form.poll();
-            if let Some(last) = fields.form.last()
-                && info.php_test.as_ref() != Some(last)
-            {
-                *info.php_test = Some(last.clone());
-            }
-        }
+    for info in infos.iter_mut() {
+        info.php_test.poll();
     }
 
     let body = Rect::from_min_max(pos2(rect.left(), head.bottom()), rect.max);
@@ -1522,7 +1559,7 @@ impl Form<'_> {
                 }
             }
             // The last test of this run: a state mark and what it said.
-            let tested = infos.get(i).and_then(|info| info.php_test.as_ref());
+            let tested = infos.get(i).and_then(|info| info.php_test.last());
             let mark = Rect::from_min_size(
                 pos2(last_x, mid - size::STATE_MARK / 2.0),
                 Vec2::splat(size::STATE_MARK),
@@ -1590,11 +1627,22 @@ impl Form<'_> {
         y += 9.0;
         let detail_top = y;
 
+        // Another app is selected: what the fields of the one before hold is taken
+        // in, as when they lose focus. Its fields are not drawn again to lose it.
+        let mut changed = false;
+        let root = settings.apps[index].root.clone();
+        if let Some(before) = state.php_shown.replace(root.clone())
+            && before != root
+            && let Some(fields) = state.php.get_mut(&before)
+            && let Some(app) = settings.apps.iter_mut().find(|app| app.root == before)
+        {
+            changed |= fields.commit(&mut app.php);
+        }
+
         let entry = &mut settings.apps[index];
-        let last = infos.get(index).and_then(|info| info.php_test.clone());
         // An app with no runner shows what detection proposes, and saves it only
         // when the user changes it or tests it.
-        let fields = state.php.entry(entry.root.clone()).or_insert_with(|| {
+        let fields = state.php.entry(root).or_insert_with(|| {
             let (runner, hint) = match &entry.php.runner {
                 Some(runner) => (runner.clone(), ""),
                 None => {
@@ -1603,13 +1651,21 @@ impl Form<'_> {
                 }
             };
             PhpFields {
-                form: PhpForm::new(runner).with_last(last),
+                form: PhpForm::new(runner),
                 hint,
                 folder: folder_text(&entry.php),
                 minutes: strings::minutes(entry.php.time_limit_minutes),
             }
         });
-        let mut changed = false;
+        let mut spare = PhpTest::default();
+        let test = match infos.get_mut(index) {
+            Some(info) => &mut *info.php_test,
+            None => &mut spare,
+        };
+        // The widgets of each app have their own ids, so focus does not pass from
+        // the field of one app to the same field of another.
+        let salt = IdSalt::new(("settings-php", &entry.root));
+        let folder_now = entry.php.folder(&entry.root);
         let options = PhpOptions {
             keyboard: self.keyboard,
             hint: if entry.php.runner.is_none() {
@@ -1617,7 +1673,8 @@ impl Form<'_> {
             } else {
                 ""
             },
-            salt: "",
+            folder: &folder_now,
+            salt,
         };
         let (bottom, events) = php_field(
             ui,
@@ -1625,45 +1682,41 @@ impl Form<'_> {
             pos2(self.left, y),
             form_w,
             &mut fields.form,
+            test,
             options,
         );
-        let mut test = false;
-        for event in &events {
-            let runner = Some(fields.form.runner.clone());
-            if entry.php.runner != runner {
-                entry.php.runner = runner;
-                changed = true;
-            }
-            test |= *event == PhpEvent::Test;
+        // A change or a test saves the runner, also the one that detection proposed.
+        let runner = Some(fields.form.runner.clone());
+        if !events.is_empty() && entry.php.runner != runner {
+            entry.php.runner = runner;
+            changed = true;
         }
-        if test {
-            fields
-                .form
-                .start_test(entry.php.folder(&entry.root), ui.ctx());
+        if events.contains(&PhpEvent::Test) {
+            // The working folder may still have focus: what it holds counts.
+            changed |= fields.commit_folder(&mut entry.php);
+            test.start(&fields.form.runner, entry.php.folder(&entry.root), ui.ctx());
         }
         y = bottom + 12.0;
 
         // Where the command starts. Empty is the app folder.
         y = self.label(ui, y, strings::WORKING_FOLDER, strings::WORKING_FOLDER_HINT);
         let folder = Rect::from_min_size(pos2(self.left, y), vec2(form_w, size::FIELD_H));
-        if draw::text_field(
-            ui,
-            pal,
-            folder,
-            strings::WORKING_FOLDER,
-            &mut fields.folder,
-            true,
-            self.keyboard,
-        )
-        .lost_focus()
-        {
-            let value = fields.folder.trim();
-            let value = (!value.is_empty()).then(|| PathBuf::from(value));
-            if value != entry.php.working_folder {
-                entry.php.working_folder = value;
-                changed = true;
-            }
-            fields.folder = folder_text(&entry.php);
+        let left_folder = ui
+            .push_id(salt, |ui| {
+                draw::text_field(
+                    ui,
+                    pal,
+                    folder,
+                    strings::WORKING_FOLDER,
+                    &mut fields.folder,
+                    true,
+                    self.keyboard,
+                )
+            })
+            .inner
+            .lost_focus();
+        if left_folder {
+            changed |= fields.commit_folder(&mut entry.php);
         }
         if fields.folder.is_empty() {
             draw::paint_text(
@@ -1680,28 +1733,22 @@ impl Form<'_> {
         // How long a command may run, in minutes: a number from 1 to 120.
         y = self.label(ui, y, strings::STOP_AFTER, strings::STOP_AFTER_HINT);
         let limit = Rect::from_min_size(pos2(self.left, y), vec2(160.0, size::FIELD_H));
-        if draw::text_field(
-            ui,
-            pal,
-            limit,
-            strings::STOP_AFTER,
-            &mut fields.minutes,
-            false,
-            self.keyboard,
-        )
-        .lost_focus()
-        {
-            let value = fields
-                .minutes
-                .split_whitespace()
-                .next()
-                .and_then(|number| number.parse::<u16>().ok())
-                .filter(|minutes| (1..=120).contains(minutes));
-            if let Some(value) = value.filter(|value| *value != entry.php.time_limit_minutes) {
-                entry.php.time_limit_minutes = value;
-                changed = true;
-            }
-            fields.minutes = strings::minutes(entry.php.time_limit_minutes);
+        let left_limit = ui
+            .push_id(salt, |ui| {
+                draw::text_field(
+                    ui,
+                    pal,
+                    limit,
+                    strings::STOP_AFTER,
+                    &mut fields.minutes,
+                    false,
+                    self.keyboard,
+                )
+            })
+            .inner
+            .lost_focus();
+        if left_limit {
+            changed |= fields.commit_minutes(&mut entry.php);
         }
         y = limit.bottom();
 

@@ -248,17 +248,26 @@ fn an_app_whose_php_does_not_answer_is_added_read_only() {
         harness.run_steps(2);
     }
 
-    // The app can still be added, and it keeps the runner the field shows.
+    harness.get_by_role_and_label(Role::Button, "Add booking-engine, read only");
+
+    // The result belongs to the runner it tested: with another the app is not read only.
     harness
-        .get_by_role_and_label(Role::Button, "Add booking-engine, read only")
+        .get_by_role_and_label(Role::RadioButton, "Docker")
+        .click();
+    harness.run();
+    assert!(harness.query_by_label_contains(failed).is_none());
+
+    // The app is added with the runner the field shows.
+    harness
+        .get_by_role_and_label(Role::Button, "Add booking-engine")
         .click();
     wait_until(&mut harness, "the new app is read", |app| {
         app.app().is_some()
     });
     assert_eq!(
         desk.saved().apps[0].php.runner,
-        Some(RunnerKind::Custom {
-            line: "mortise-no-such-php artisan".to_owned()
+        Some(RunnerKind::Docker {
+            service: "app".to_owned()
         })
     );
     // Settings shows the test of the add panel as the last test of the app.

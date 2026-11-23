@@ -86,8 +86,9 @@ struct OpenApp {
     runtime: Option<Connected>,
     /// The last answer of each environment in this run, by its name.
     last_answers: BTreeMap<String, Brief>,
-    /// The last test of how PHP runs for the app, in this run (design D8).
-    php_test: Option<crate::php_settings::Tested>,
+    /// The test of how PHP runs for the app: the one that runs and the last one, in
+    /// this run (design D8). It stays when Settings close.
+    php_test: crate::php_settings::PhpTest,
     /// When the app was opened, to show how far its first read is only when it takes long.
     since: std::time::Instant,
 }
@@ -508,6 +509,7 @@ impl MortiseApp {
             checked: Some(Checked::Found(app)),
             runtime,
             php,
+            php_test,
             ..
         }) = self.adding.take()
         else {
@@ -530,8 +532,8 @@ impl MortiseApp {
             entry.environments.push(environment);
         }
         let mut open = open_app(ctx, &self.settings.apps[index]);
-        // The last test is kept in memory, as Settings shows it.
-        open.php_test = php.as_ref().and_then(|form| form.last().cloned());
+        // The test is kept in memory, as Settings shows it. One that runs still lands.
+        open.php_test = php_test;
         self.apps.push(open);
         self.settings_open = None;
         self.select_app(index);
@@ -1247,10 +1249,11 @@ impl MortiseApp {
                 if let Some(AddPanel {
                     checked: Some(Checked::Found(app)),
                     php: Some(form),
+                    php_test,
                     ..
                 }) = &mut self.adding
                 {
-                    form.start_test(app.root.clone(), ctx);
+                    php_test.start(&form.runner, app.root.clone(), ctx);
                 }
             }
         }
@@ -1766,7 +1769,7 @@ fn open_app(ctx: &egui::Context, entry: &AppEntry) -> OpenApp {
         seen: None,
         runtime: None,
         last_answers: BTreeMap::new(),
-        php_test: None,
+        php_test: crate::php_settings::PhpTest::default(),
         since: std::time::Instant::now(),
     }
 }

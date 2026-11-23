@@ -1517,6 +1517,9 @@ pub const RUNNERS: [&str; 4] = ["Herd", "Sail", "Docker", "Custom"];
 /// Not in the spec: the name a screen reader says for the Test of PHP. The label is
 /// "Test", as for an environment, and the add panel shows both.
 pub const TEST_PHP: &str = "Test how PHP runs";
+/// Not in the spec: the words before the line that Test runs, under the field.
+/// A command runs only after its exact line is on screen.
+pub const TEST_RUNS: &str = "Test runs";
 /// Not in the spec: the tooltip of Sail on Windows (design D6).
 pub const SAIL_NOT_ON_WINDOWS: &str = "Sail runs in WSL, not on Windows itself";
 pub const ANSWERED: &str = "Answered";
@@ -1606,6 +1609,12 @@ pub fn php_reason(failure: &mortise_core::Failure) -> String {
         Failure::NoCommand => "no command entered".to_owned(),
         Failure::NoFolder { .. } => "the working folder does not exist".to_owned(),
     }
+}
+
+/// `Test runs herd php artisan --version --no-interaction --ansi`, as a screen
+/// reader says it. Not in the spec.
+pub fn test_runs(line: &str) -> String {
+    format!("{TEST_RUNS} {line}")
 }
 
 /// `x.nophp`, under the field of the add panel and of Settings.
