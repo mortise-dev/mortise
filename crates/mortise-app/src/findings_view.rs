@@ -7,9 +7,9 @@ use eframe::egui::{
 };
 use mortise_core::{Action, AppSnapshot, Check, Detail, Finding, Severity};
 
-use crate::draw::{self, StampState};
 use crate::strings;
-use crate::theme::{Face, Palette, Type, radius, size, ty};
+use crate::ui::draw::{self, StampState};
+use crate::ui::theme::{Face, Palette, Type, radius, size, ty};
 use crate::workspace::WorkAction;
 
 /// Where Enter on a finding lands.

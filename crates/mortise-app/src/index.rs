@@ -6,10 +6,10 @@ use eframe::egui::{
 };
 use mortise_core::{ALL_CODE, AppSnapshot, FindingState, IndexRows, Module, ModuleState};
 
-use crate::draw::{self, Icon, StampState};
 use crate::runtime_view::Brief;
 use crate::strings;
-use crate::theme::{Face, Palette, Type, radius, size, stroke, ty};
+use crate::ui::draw::{self, Icon, StampState};
+use crate::ui::theme::{Face, Palette, Type, radius, size, stroke, ty};
 
 /// Above this many modules a row has one line.
 const TWO_LINE_LIMIT: usize = 20;

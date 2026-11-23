@@ -9,11 +9,11 @@ use eframe::egui::{
 };
 use mortise_core::{AppSnapshot, ReadError, RunnerKind, TestOutcome};
 
-use crate::draw::{self, Button, ButtonKind, Icon};
 use crate::environment_form::{EnvironmentForm, FormEvent, FormOptions, environment_form};
 use crate::php_settings::{PhpEvent, PhpForm, PhpOptions, PhpTest, php_field, propose};
 use crate::strings;
-use crate::theme::{Face, Palette, Type, radius, size, ty};
+use crate::ui::draw::{self, Button, ButtonKind, Icon};
+use crate::ui::theme::{Face, Palette, Type, radius, size, ty};
 
 /// What checking a folder gave.
 pub enum Checked {

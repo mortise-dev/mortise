@@ -10,9 +10,9 @@ use mortise_core::{
     module_of,
 };
 
-use crate::draw::{self, Button, ButtonKind, RuntimeMark, StampState};
 use crate::strings;
-use crate::theme::{Face, Palette, Type, radius, size, ty};
+use crate::ui::draw::{self, Button, ButtonKind, RuntimeMark, StampState};
+use crate::ui::theme::{Face, Palette, Type, radius, size, ty};
 
 /// What the interface knows about the runtime of the app on screen.
 pub struct RuntimeView<'a> {

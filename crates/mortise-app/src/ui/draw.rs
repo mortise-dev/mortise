@@ -13,7 +13,7 @@ use eframe::egui::{
 
 use mortise_core::Severity;
 
-use crate::theme::{Face, Palette, Type, radius, size, stroke, ty};
+use crate::ui::theme::{Face, Palette, Type, radius, size, stroke, ty};
 
 // ---------------------------------------------------------------------------
 // Text
@@ -880,7 +880,7 @@ pub fn box_head_extra(ui: &Ui, width: f32, title: &str, note: &str) -> f32 {
         .map_or(0.0, |below| below.size().y + 2.0)
 }
 
-const BOX_TITLE: Type = ty::BODY.with_face(crate::theme::Face::Sans700);
+const BOX_TITLE: Type = ty::BODY.with_face(crate::ui::theme::Face::Sans700);
 
 /// The note of a box head, wrapped to the box, when it does not fit beside the title.
 fn note_below(ui: &Ui, width: f32, title: &str, note: &str, color: Color32) -> Option<Arc<Galley>> {
@@ -946,7 +946,7 @@ pub fn box_line(
 /// cent, and a 6 px track with an ink fill. Returns its bottom edge.
 pub fn progress(ui: &Ui, pal: &Palette, min: Pos2, width: f32, label: &str, share: f32) -> f32 {
     let share = share.clamp(0.0, 1.0);
-    crate::draw::label(ui, min, Align2::LEFT_TOP, label, ty::SECONDARY, pal.ink);
+    crate::ui::draw::label(ui, min, Align2::LEFT_TOP, label, ty::SECONDARY, pal.ink);
     let percent = format!("{}%", (share * 100.0).round() as u32);
     let percent_type = Type {
         size: 11.0,

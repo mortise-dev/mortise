@@ -11,10 +11,10 @@ use mortise_core::{
     AppSnapshot, Link, Module, ModuleState, Reference, Rules, RulesSource, columns,
 };
 
-use crate::draw::{self, Button, ButtonKind, StampState};
 use crate::strings;
 use crate::surface_view::{self, ModuleSurface, Place, SurfaceInputs};
-use crate::theme::{Face, Palette, Type, radius, size, stroke, ty};
+use crate::ui::draw::{self, Button, ButtonKind, StampState};
+use crate::ui::theme::{Face, Palette, Type, radius, size, stroke, ty};
 use crate::workspace::WorkAction;
 
 /// Above this many modules the graph of the whole app gives way to a table of links.

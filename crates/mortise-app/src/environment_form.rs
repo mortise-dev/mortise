@@ -8,10 +8,10 @@ use std::sync::mpsc::{Receiver, channel};
 use eframe::egui::{self, Align2, Pos2, Rect, Ui, Vec2, pos2, vec2};
 use mortise_core::{Answer, Credentials, Environment, Secret, ask};
 
-use crate::draw::{self, Button, Icon};
 use crate::runtime_view::Brief;
 use crate::strings;
-use crate::theme::{Palette, radius, size, ty};
+use crate::ui::draw::{self, Button, Icon};
+use crate::ui::theme::{Palette, radius, size, ty};
 
 /// A test of the connection: one request for everything, on a worker thread.
 pub enum Test {

@@ -10,9 +10,9 @@ use mortise_core::{
     ThemeChoice, fuzzy, history,
 };
 
-use crate::draw::{self, Icon, StampState};
 use crate::strings;
-use crate::theme::{Face, Palette as Colors, Type, radius, size, ty};
+use crate::ui::draw::{self, Icon, StampState};
+use crate::ui::theme::{Face, Palette as Colors, Type, radius, size, ty};
 
 /// At most this many rows of a group are shown.
 const GROUP_LIMIT: usize = 4;

@@ -8,9 +8,9 @@ use eframe::egui::{
     pos2, vec2,
 };
 
-use crate::draw;
 use crate::strings;
-use crate::theme::{Face, Palette, Type, radius, size, stroke, ty};
+use crate::ui::draw;
+use crate::ui::theme::{Face, Palette, Type, radius, size, stroke, ty};
 
 pub struct Tile<'a> {
     /// The app folder. Two apps can have the same name, never the same folder.

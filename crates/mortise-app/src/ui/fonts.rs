@@ -8,20 +8,22 @@ use std::sync::Arc;
 
 use eframe::egui::{Context, FontData, FontDefinitions, FontFamily};
 
-use crate::theme::Face;
+use crate::ui::theme::Face;
 
 fn bytes(face: Face) -> &'static [u8] {
     match face {
-        Face::Sans400 => include_bytes!("../../../assets/fonts/asap/Asap-Regular.ttf"),
-        Face::Sans500 => include_bytes!("../../../assets/fonts/asap/Asap-Medium.ttf"),
-        Face::Sans600 => include_bytes!("../../../assets/fonts/asap/Asap-SemiBold.ttf"),
-        Face::Sans700 => include_bytes!("../../../assets/fonts/asap/Asap-Bold.ttf"),
+        Face::Sans400 => include_bytes!("../../../../assets/fonts/asap/Asap-Regular.ttf"),
+        Face::Sans500 => include_bytes!("../../../../assets/fonts/asap/Asap-Medium.ttf"),
+        Face::Sans600 => include_bytes!("../../../../assets/fonts/asap/Asap-SemiBold.ttf"),
+        Face::Sans700 => include_bytes!("../../../../assets/fonts/asap/Asap-Bold.ttf"),
         Face::Mono400 => {
-            include_bytes!("../../../assets/fonts/inconsolata/Inconsolata-Regular.ttf")
+            include_bytes!("../../../../assets/fonts/inconsolata/Inconsolata-Regular.ttf")
         }
-        Face::Mono500 => include_bytes!("../../../assets/fonts/inconsolata/Inconsolata-Medium.ttf"),
+        Face::Mono500 => {
+            include_bytes!("../../../../assets/fonts/inconsolata/Inconsolata-Medium.ttf")
+        }
         Face::Mono600 => {
-            include_bytes!("../../../assets/fonts/inconsolata/Inconsolata-SemiBold.ttf")
+            include_bytes!("../../../../assets/fonts/inconsolata/Inconsolata-SemiBold.ttf")
         }
     }
 }

@@ -321,7 +321,7 @@ mod tests {
 
     /// The JSON block of `docs/spec/tokens.html`.
     fn spec_tokens() -> serde_json::Value {
-        let page = include_str!("../../../docs/spec/tokens.html");
+        let page = include_str!("../../../../docs/spec/tokens.html");
         let open = "<pre class=\"json\" id=\"tokens-json\">";
         let start = page.find(open).expect("the JSON block") + open.len();
         let end = start

@@ -20,11 +20,11 @@ use mortise_core::{
     with_json,
 };
 
-use crate::draw::alert_box;
-use crate::draw::{self, Button, ButtonKind, Icon};
 use crate::runner_view::line_now;
 use crate::strings;
-use crate::theme::{Face, Palette, Type, radius, size, ty};
+use crate::ui::draw::alert_box;
+use crate::ui::draw::{self, Button, ButtonKind, Icon};
+use crate::ui::theme::{Face, Palette, Type, radius, size, ty};
 use crate::workspace::WorkAction;
 
 const MAKE_MODEL: &str = "module:make-model";

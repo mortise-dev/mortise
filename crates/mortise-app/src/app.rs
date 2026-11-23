@@ -19,9 +19,6 @@ use crate::actions_view::{self, Act, ActionsInputs, ActionsState};
 use crate::add::{self, AddAction, AddPanel, Checked};
 use crate::boundary::BoundaryState;
 use crate::chrome::{self, Chrome};
-use crate::dialog::{Answer, Dialog, Typed};
-use crate::draw::EmptyMark;
-use crate::draw::{self, Button, ButtonKind};
 use crate::generate_view::{
     CatalogRead, GenerateAsk, GenerateInputs, GenerateResult, GenerateRun, GenerateState, RunPlace,
     TakenOut, typed_names,
@@ -35,8 +32,11 @@ use crate::settings_view::{self, AppInfo, Section, SettingsAction, SettingsState
 use crate::strings;
 use crate::summary::{Sort, SummaryState};
 use crate::surface_view::SurfaceInputs;
-use crate::theme::{self, radius, size};
-use crate::toast::{Toast, ToastAction};
+use crate::ui::dialog::{Answer, Dialog, Typed};
+use crate::ui::draw::EmptyMark;
+use crate::ui::draw::{self, Button, ButtonKind};
+use crate::ui::theme::{self, radius, size};
+use crate::ui::toast::{Toast, ToastAction};
 use crate::workspace::{self, Tab, WorkAction, WorkState};
 
 /// How the app is started.
@@ -345,7 +345,7 @@ pub struct MortiseApp {
 impl MortiseApp {
     /// Sets up fonts and style, loads the settings and starts reading the apps.
     pub fn new(cc: &eframe::CreationContext<'_>, config: Config) -> Self {
-        crate::fonts::install(&cc.egui_ctx);
+        crate::ui::fonts::install(&cc.egui_ctx);
         style(&cc.egui_ctx);
 
         let mut toast = None;

@@ -13,9 +13,9 @@ use mortise_core::{
     CommandLine, Detected, RunnerKind, TEST_LIMIT, TestOutcome, detect, herd_config_dir,
 };
 
-use crate::draw::{self, Button};
 use crate::strings;
-use crate::theme::{Palette, Type, size, ty};
+use crate::ui::draw::{self, Button};
+use crate::ui::theme::{Palette, Type, size, ty};
 
 /// A test that ended, and the runner and folder it tested. Mortise keeps the last
 /// one of each app in memory only (design D8).

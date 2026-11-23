@@ -4,9 +4,9 @@
 use eframe::egui::{self, Align2, Event, Key, Rect, Role, Sense, Shadow, Ui, vec2};
 use mortise_core::Severity;
 
-use crate::draw::alert_box;
-use crate::draw::{self, Button, ButtonKind};
-use crate::theme::{Palette, Type, radius, size, ty};
+use crate::ui::draw::alert_box;
+use crate::ui::draw::{self, Button, ButtonKind};
+use crate::ui::theme::{Palette, Type, radius, size, ty};
 
 /// What a dialog asks.
 #[derive(Debug, Clone)]

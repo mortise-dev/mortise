@@ -7,9 +7,9 @@ use eframe::egui::{
     vec2,
 };
 
-use crate::draw::{self, Icon};
 use crate::strings;
-use crate::theme::{Palette, radius, size, ty};
+use crate::ui::draw::{self, Icon};
+use crate::ui::theme::{Palette, radius, size, ty};
 
 /// Who draws the frame of the window.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

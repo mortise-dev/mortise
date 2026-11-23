@@ -21,9 +21,9 @@ use mortise_core::{
     Runs, StartError, Stream,
 };
 
-use crate::draw::{self, Icon, ListNav};
 use crate::strings;
-use crate::theme::{Face, Palette, Type, radius, size, stroke, ty};
+use crate::ui::draw::{self, Icon, ListNav};
+use crate::ui::theme::{Face, Palette, Type, radius, size, stroke, ty};
 
 /// The top edge of the drawer that sets its height (C15).
 const HANDLE_H: f32 = 7.0;

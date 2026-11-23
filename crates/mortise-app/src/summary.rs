@@ -11,10 +11,10 @@ use mortise_core::{
     tasks_of,
 };
 
-use crate::draw::{self, StampState};
 use crate::runtime_view::{self, Brief, RuntimeAction, RuntimeView};
 use crate::strings;
-use crate::theme::{Face, Palette, Type, radius, size, ty};
+use crate::ui::draw::{self, StampState};
+use crate::ui::theme::{Face, Palette, Type, radius, size, ty};
 use crate::workspace::WorkAction;
 
 /// A column of the "By module" table.

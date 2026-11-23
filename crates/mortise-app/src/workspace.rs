@@ -5,14 +5,14 @@ use mortise_core::{Action, AppSnapshot, Rules};
 
 use crate::actions_view::{self, ActionsInputs, ActionsState};
 use crate::boundary::{self, BoundaryState};
-use crate::draw::{self, Button, ButtonKind, EmptyMark, Icon, StampState, empty_state};
 use crate::findings_view;
 use crate::generate_view::{self, GenerateInputs, GenerateState};
 use crate::index::Selection;
 use crate::strings;
 use crate::summary::{self, SummaryState};
 use crate::surface_view::SurfaceInputs;
-use crate::theme::{Face, Palette, size, ty};
+use crate::ui::draw::{self, Button, ButtonKind, EmptyMark, Icon, StampState, empty_state};
+use crate::ui::theme::{Face, Palette, size, ty};
 
 /// What a tab asks the app to do. Every tab returns it, not only Boundary.
 #[derive(Debug, Clone, PartialEq, Eq)]

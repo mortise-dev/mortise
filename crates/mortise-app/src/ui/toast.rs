@@ -7,9 +7,9 @@ use eframe::egui::{
     Align2, Color32, Rect, Role, Sense, Shadow, Ui, UiBuilder, Vec2, WidgetInfo, pos2, vec2,
 };
 
-use crate::draw::{self, Button, Icon};
 use crate::strings;
-use crate::theme::{Palette, radius, size, ty};
+use crate::ui::draw::{self, Button, Icon};
+use crate::ui::theme::{Palette, radius, size, ty};
 
 const SLIDE_IN: f64 = 0.120;
 const DWELL: f64 = 4.0;

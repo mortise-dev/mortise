@@ -10,10 +10,11 @@ use eframe::egui::{Key, Role, Theme};
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT as _, Queryable as _};
 use mortise_app::app::MortiseApp;
+use mortise_app::findings_view;
 use mortise_app::index::Selection;
+use mortise_app::ui::{fonts, theme};
 use mortise_app::workspace::Tab;
 use mortise_app::workspace::WorkAction;
-use mortise_app::{findings_view, fonts, theme};
 use mortise_core::{
     Action, PackageData, ReadCache, ReadOptions, Target, document, read_app_cached,
 };

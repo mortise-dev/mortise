@@ -1090,7 +1090,7 @@ fn runner_drawer() {
         // g. Failed, at the narrowest drawer: the narrowest window, the index a strip.
         let desk = drawer_desk(
             theme,
-            mortise_app::theme::size::WINDOW_MIN_W,
+            mortise_app::ui::theme::size::WINDOW_MIN_W,
             "",
             &[(
                 &["module:migrate", "Shipping"],
