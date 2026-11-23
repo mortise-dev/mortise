@@ -159,8 +159,42 @@ fn run_php_with_in_the_add_panel() {
             lock.replace("laravel-actuator", "laravel-other"),
         )
         .unwrap();
-        desk.picks.borrow_mut().push_back(root);
+        // S1.4 a: a folder that is no Laravel app. S1.4 b: an app without the package.
+        // Each is chosen first, then the panel is read again for the next folder.
+        // The root of the disk has no artisan file, and its path is the same on every run.
+        let notes = std::path::PathBuf::from("/");
+        let bare = desk.app("bare-app");
+        std::fs::write(
+            bare.join("composer.lock"),
+            r#"{"packages": [{"name": "laravel/framework", "version": "v13.2.0"}]}"#,
+        )
+        .unwrap();
+        desk.picks.borrow_mut().push_back(notes);
+        desk.picks.borrow_mut().push_back(bare);
+        desk.picks.borrow_mut().push_back(root.clone());
         let mut harness = desk.start();
+        chord(&mut harness, Key::O);
+        let (folder, folder_end) = bounds(&harness, Role::TextInput, "App folder");
+        let (_, cancel) = bounds(&harness, Role::Button, "Cancel");
+        let top_left = (folder.0 - 9.0 - 12.0, folder_end.1 + 8.0);
+        let message = harness
+            .get_by_label_contains("No Laravel app in")
+            .accesskit_node()
+            .bounding_box()
+            .expect("a drawn message");
+        let right = message.x1.max(folder_end.0) + 12.0;
+        shots.take_part(
+            &mut harness,
+            "s1.4a-not-laravel",
+            (top_left, (right, cancel.1 + 12.0)),
+        );
+        chord(&mut harness, Key::O);
+        let (_, check) = bounds(&harness, Role::Button, "Check again");
+        shots.take_part(
+            &mut harness,
+            "s1.4b-package-missing",
+            (top_left, (right, check.1 + 12.0)),
+        );
         chord(&mut harness, Key::O);
         let (folder, folder_end) = bounds(&harness, Role::TextInput, "App folder");
         let (_, field) = bounds(&harness, Role::TextInput, "Run PHP with");
@@ -272,6 +306,27 @@ fn boundary_and_the_public_surface() {
         press(&mut harness, Key::J);
         press(&mut harness, Key::J);
         shots.take(&mut harness, "s5.1-boundary-module");
+
+        // A neighbour whose name does not fit shows its stamp, not a cut name.
+        let mut desk = Desk::new();
+        desk.theme = theme;
+        let root = desk.app("shop-api");
+        let long = root.join("Modules/NotificationPreferencesAndDigests");
+        common::copy_dir(&root.join("Modules/Notifications"), &long);
+        common::rename_in_files(&long, "Notifications", "NotificationPreferencesAndDigests");
+        desk.knows(&[(&root, "SA")]);
+        let mut harness = desk.start();
+        harness
+            .get_by_role_and_label(Role::ListBoxOption, "Checkout")
+            .click();
+        press(&mut harness, Key::Num2);
+        let (used_by, _) = bounds(&harness, Role::Label, "Used by, 3");
+        let (files, _) = bounds(&harness, Role::Heading, "Checkout uses Billing");
+        let part = (
+            (used_by.0 - 33.0, used_by.1 - 17.0),
+            (1264.0, files.1 - 12.0),
+        );
+        shots.take_part(&mut harness, "s5.1-long-neighbour", part);
     }
 }
 
@@ -299,14 +354,44 @@ fn palette_and_settings() {
     let mut shots = Shots::new();
     for (theme, name) in THEMES {
         shots.theme = name;
-        let (_desk, mut harness) = shop_api(theme);
-        // S12.1: the palette, empty and with a query.
+        let mut desk = Desk::new();
+        desk.theme = theme;
+        let root = desk.app("shop-api");
+        desk.knows(&[(&root, "SA")]);
+        // S12.2 a: a migrate 2 minutes ago and a model before it, in "Recent".
+        common::ran(
+            &desk,
+            &root,
+            &[
+                ("module:make-model Invoice Billing", 5),
+                ("module:migrate Checkout", 2),
+            ],
+        );
+        let mut harness = desk.start();
+        // S12.1: the palette, empty with Checkout opened last, then with a query on
+        // "All modules". Keys, not clicks, so that no pointer shows.
         chord(&mut harness, Key::K);
-        shots.take(&mut harness, "s12.1-palette");
+        harness
+            .get_by_role_and_label(Role::TextInput, "Search or run a command")
+            .type_text("checkout");
+        press(&mut harness, Key::Enter);
+        chord(&mut harness, Key::K);
+        shots.take(&mut harness, "s12.2a-palette-empty");
+        press(&mut harness, Key::Escape);
+        for key in [Key::K; 3] {
+            press(&mut harness, key);
+        }
+        chord(&mut harness, Key::K);
         harness
             .get_by_role_and_label(Role::TextInput, "Search or run a command")
             .type_text("check");
         shots.take(&mut harness, "s12.1-palette-query");
+        // S12.2 b: a query that finds nothing.
+        harness.key_press_modifiers(Modifiers::COMMAND, Key::A);
+        harness
+            .get_by_role_and_label(Role::TextInput, "Search or run a command")
+            .type_text("zzq");
+        shots.take(&mut harness, "s12.2b-palette-none");
         press(&mut harness, Key::Escape);
         // S8.3 and S8.4: General and Keyboard. Apps shows the folder, which is a
         // temporary one here.

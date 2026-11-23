@@ -179,14 +179,15 @@ pub fn surface(
     const ROW: f32 = size::TABLE_ROW_H;
     let verdict = (!add_text.trim().is_empty()).then(|| proposal.check(add_text));
     let foot_h = 44.0 + if verdict.is_some() { 18.0 } else { 0.0 };
-    let table_top = place.area.top() + 41.0 - 6.0;
-    let height = 41.0 - 6.0 + size::TABLE_HEAD_H + rows.len() as f32 * ROW + foot_h;
+    let title = strings::proposed_surface_of(&proposal.module);
+    let note = strings::found_proposed(proposal.found(), proposal.proposed());
+    let head = 41.0 - 6.0 + draw::box_head_extra(ui, place.width, &title, &note);
+    let table_top = place.area.top() + head;
+    let height = head + size::TABLE_HEAD_H + rows.len() as f32 * ROW + foot_h;
     let rect = Rect::from_min_size(
         pos2(place.left, place.area.top()),
         vec2(place.width, height),
     );
-    let title = strings::proposed_surface_of(&proposal.module);
-    let note = strings::found_proposed(proposal.found(), proposal.proposed());
     draw::box_head(ui, pal, rect, &title, &note);
 
     // The columns: the entry, why it is here, who uses it today.
@@ -558,11 +559,15 @@ fn scanning(
             false,
         ),
     ];
+    let title = strings::scanning(scan.module());
+    let head = draw::box_head_extra(ui, width, &title, strings::NOTHING_IS_WRITTEN);
     let rect = Rect::from_min_size(
         pos2(left, y),
-        vec2(width, 41.0 + lines.len() as f32 * size::LIST_LINE_H + 2.0),
+        vec2(
+            width,
+            41.0 + head + lines.len() as f32 * size::LIST_LINE_H + 2.0,
+        ),
     );
-    let title = strings::scanning(scan.module());
     let mut line_y = draw::box_head(ui, pal, rect, &title, strings::NOTHING_IS_WRITTEN) - 4.0;
     for (i, (name, value, done)) in lines.iter().enumerate() {
         let mid = line_y + size::LIST_LINE_H / 2.0;

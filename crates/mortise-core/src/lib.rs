@@ -79,8 +79,9 @@ pub use run::history;
 pub use run::history::OUTPUT_LIMIT;
 #[cfg(feature = "run")]
 pub use run::{
-    CommandLine, Detected, Failure, Run, RunEnd, RunEvent, Runs, StartError, Stream, TEST_LIMIT,
-    TestOutcome, detect, herd_config_dir, stop_asks_first, test_php,
+    CommandLine, Detected, Failure, Ran, RecentRun, Run, RunEnd, RunEvent, Runs, STOP_WAIT,
+    StartError, Stream, TEST_LIMIT, TestOutcome, detect, herd_config_dir, recent_runs,
+    stop_asks_first, test_php,
 };
 pub use run::{PhpSettings, RunnerKind};
 #[cfg(feature = "actuator")]

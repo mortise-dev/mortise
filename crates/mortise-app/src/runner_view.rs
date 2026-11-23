@@ -7,7 +7,7 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use eframe::egui::text::LayoutJob;
 use eframe::egui::{
@@ -240,6 +240,14 @@ impl AppRuns {
         self.shown_output = None;
     }
 
+    /// The runs kept in the history, the latest first, as read at the last record.
+    pub fn history(&self) -> Vec<Entry> {
+        self.entries
+            .iter()
+            .map(|listed| listed.entry.clone())
+            .collect()
+    }
+
     /// Starts `args` through the runner of `php`, for at most its time limit. A start
     /// that fails is shown as such.
     pub fn start(&mut self, runs: &Runs, app: &Path, php: &PhpSettings, args: Vec<String>) {
@@ -289,14 +297,38 @@ impl AppRuns {
     /// Takes in what the run sent. A run that ended is kept in the history.
     /// Returns true while it runs.
     pub fn poll(&mut self) -> bool {
+        match &self.current {
+            Some(Current {
+                state: State::Running(run),
+                ..
+            }) => {
+                let events = run.events();
+                self.take(events)
+            }
+            _ => false,
+        }
+    }
+
+    /// Waits until the run ended or `deadline` passed, as [`AppRuns::poll`] takes
+    /// in what it sent. A run that ended is kept in the history.
+    pub fn wait(&mut self, deadline: Instant) {
+        if let Some(Current {
+            state: State::Running(run),
+            ..
+        }) = &self.current
+        {
+            let events = run.wait(deadline);
+            self.take(events);
+        }
+    }
+
+    /// Takes in `events` of the run that runs. Returns true while it runs.
+    fn take(&mut self, events: Vec<RunEvent>) -> bool {
         let Some(current) = &mut self.current else {
             return false;
         };
-        let State::Running(run) = &current.state else {
-            return false;
-        };
         let mut ended = None;
-        for event in run.events() {
+        for event in events {
             match event {
                 RunEvent::Line { text, .. } => current.output.push(text),
                 RunEvent::Cut => current.cut = true,
@@ -1310,12 +1342,19 @@ fn style_color(style: Style, pal: &Palette) -> Color32 {
     }
 }
 
+/// The text as drawn. The bundled mono font has no U+21C2, which Laravel prints
+/// in `--pretend` and `module:lang` output, so it is drawn as U+2193. Copied
+/// text and the history keep the real character.
+fn drawable(text: &str) -> String {
+    text.replace('\u{21c2}', "\u{2193}")
+}
+
 /// One line of output in its styles, on one line however long.
 fn line_galley(ui: &Ui, spans: &[Span], pal: &Palette) -> Arc<Galley> {
     let mut job = LayoutJob::default();
     for span in spans {
         job.append(
-            &span.text,
+            &drawable(&span.text),
             0.0,
             ty::RUNNER.format(style_color(span.style, pal)),
         );
@@ -1530,6 +1569,12 @@ fn result_of(ended: &Ended) -> (Mark, String) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_harpoon_is_drawn_as_an_arrow() {
+        assert_eq!(drawable("\u{21c2} create table"), "\u{2193} create table");
+        assert_eq!(drawable("plain"), "plain");
+    }
 
     #[test]
     fn a_dry_run_keeps_the_module_and_the_database_of_the_failed_run() {

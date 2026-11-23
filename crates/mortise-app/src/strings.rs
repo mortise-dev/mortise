@@ -394,6 +394,12 @@ pub fn ago(now: i64, then: i64) -> String {
     }
 }
 
+/// The age of a recent action in the palette, in seconds since 1970: `ran 2 minutes ago`
+/// (S12.2 a). The other units, such as `ran 8 s ago`, are not in the spec.
+pub fn ran_ago(now: i64, then: i64) -> String {
+    format!("ran {}", ago(now, then))
+}
+
 /// `14 commits in 30 days, last 2 days ago`
 pub fn churn(commits: u32, last: Option<i64>, now: i64) -> String {
     let count = match commits {
@@ -2112,7 +2118,7 @@ pub fn dry_run_of(label: &str) -> String {
 /// The header of the Actions tab: `Run with` and the keys.
 pub const RUN_WITH: &str = "Run with";
 pub const COMMAND: &str = "Command";
-pub const DRY_RUN_OPTION: &str = "Dry run: print the SQL, change nothing";
+pub const DRY_RUN_OPTION: &str = "Dry run: print the SQL, run none of it";
 pub const SEED_AFTERWARDS: &str = "Seed afterwards";
 pub const DATABASE_CONNECTION: &str = "Database connection";
 pub const SEEDER_CLASS: &str = "Seeder class";

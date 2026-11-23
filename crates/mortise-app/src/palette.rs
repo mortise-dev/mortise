@@ -6,8 +6,8 @@ use eframe::egui::{
     WidgetInfo, pos2, vec2,
 };
 use mortise_core::{
-    Action, AppSnapshot, Catalog, Detail, FindingState, MODULE_MAKE, ModuleState, Target,
-    ThemeChoice, fuzzy,
+    Action, AppSnapshot, Catalog, Detail, FindingState, MODULE_MAKE, ModuleState, Ran, Target,
+    ThemeChoice, fuzzy, history,
 };
 
 use crate::draw::{self, Icon, StampState};
@@ -16,6 +16,8 @@ use crate::theme::{Face, Palette as Colors, Type, radius, size, ty};
 
 /// At most this many rows of a group are shown.
 const GROUP_LIMIT: usize = 4;
+/// At most this many actions and generators that ran are in "Recent".
+const RECENT_RUNS: usize = 3;
 /// The list scrolls after this many rows.
 const VISIBLE_ROWS: f32 = 12.0;
 
@@ -76,8 +78,10 @@ pub struct Entry {
     pub code: Option<String>,
     /// A finding state after the label: its word, and whether it is a problem.
     pub state: Option<(String, bool)>,
-    /// What Enter does, in a word, or the shortcut of the command.
+    /// What Enter does, in a word, the shortcut of the command, or when it ran.
     pub hint: String,
+    /// The hint is a shortcut, drawn as keys.
+    pub keys: bool,
     /// The artisan words of an action, after the label, in dim mono.
     pub detail: Option<String>,
     pub command: Command,
@@ -91,6 +95,10 @@ pub struct Source<'a> {
     pub apps: &'a [(String, usize)],
     /// The modules opened last in the app in scope, the latest first.
     pub recent: &'a [String],
+    /// The runs of the app in scope, the latest first.
+    pub history: &'a [history::Entry],
+    /// Now, in seconds since 1970, for the age of a run.
+    pub now: i64,
     /// The module selected in the index of the app in scope. `None` is "All modules".
     pub selected: Option<&'a str>,
     pub mac: bool,
@@ -117,6 +125,7 @@ pub fn entries(query: &str, source: &Source<'_>) -> Vec<Entry> {
         code: None,
         state: None,
         hint: hint.to_owned(),
+        keys: hint.contains(' ') || hint.len() == 1,
         detail: None,
         command,
     };
@@ -146,7 +155,39 @@ pub fn entries(query: &str, source: &Source<'_>) -> Vec<Entry> {
         };
 
         if query.is_empty() {
-            let recent = source.recent.iter().filter_map(|name| module_entry(name));
+            // The recent module, the actions and generators that ran last, then the
+            // other recent modules (S12.2 a). A row of a run opens its panel or its form.
+            let mut modules = source.recent.iter().filter_map(|name| module_entry(name));
+            let runs =
+                mortise_core::recent_runs(source.history, Catalog::v13_3(), app, RECENT_RUNS);
+            let runs = runs.into_iter().map(|run| {
+                let age = strings::ran_ago(source.now, run.started_ms.div_euclid(1000));
+                let mut row = match run.ran {
+                    Ran::Action { action, module } => {
+                        let label = strings::action_label(action, module.as_deref());
+                        let detail = action_words(action, module.as_deref());
+                        let mut row = entry(label, &age, Command::Action { module, action });
+                        row.detail = detail;
+                        row
+                    }
+                    Ran::Generator { name, module } => {
+                        let label = match &module {
+                            Some(module) => strings::generate_row(&name, module),
+                            None => strings::generator_label(&name),
+                        };
+                        let command = Command::Generate {
+                            module,
+                            generator: name.clone(),
+                        };
+                        let mut row = entry(label, strings::FORM, command);
+                        row.detail = Some(name);
+                        row
+                    }
+                };
+                row.keys = false;
+                row
+            });
+            let recent = modules.next().into_iter().chain(runs).chain(modules);
             add(
                 "Recent",
                 recent
@@ -650,13 +691,15 @@ fn palette_row(
     };
 
     let mid = row.center().y;
-    // What Enter does on the current row; elsewhere the place or the shortcut.
+    // The hint, with Enter after it on the current row. Keys are drawn as keycaps
+    // on the other rows.
     let mut right = row.right() - 14.0;
     if current {
         right = draw::keycap(ui, pal, pos2(right, mid), "Enter").left() - 6.0;
     }
-    let chord = entry.hint.contains(' ') || entry.hint.len() == 1;
-    let hint = if current && !chord {
+    let chord = entry.keys;
+    // A current row with no hint of its own says what Enter does.
+    let hint = if current && entry.hint.is_empty() {
         "Open"
     } else {
         entry.hint.as_str()
@@ -677,58 +720,68 @@ fn palette_row(
         };
     }
 
+    // The stamp and the state keep their size. The label, then the detail, take
+    // the room left before the hint, with a gap; past it they end in an ellipsis.
+    let end = right - 12.0;
+    let state = entry.state.as_ref().map(|(word, problem)| {
+        let color: Color32 = if *problem { pal.bad } else { pal.ink_2 };
+        let face = if *problem {
+            Face::Sans600
+        } else {
+            Face::Sans400
+        };
+        let mark = if *problem {
+            size::STATE_MARK + 5.0
+        } else {
+            0.0
+        };
+        let text = draw::galley(
+            ui,
+            word,
+            Type {
+                face,
+                ..ty::SECONDARY
+            },
+            color,
+        );
+        (12.0 + mark + text.size().x, *problem, color, text)
+    });
+    let state_w = state.as_ref().map_or(0.0, |(width, ..)| *width);
+    let stamp_w = entry.code.as_ref().map_or(0.0, |_| 7.0 + size::STAMP_W);
+
     let label_type = if entry.code.is_some() {
         ty::BODY.with_face(Face::Sans600)
     } else {
         ty::BODY
     };
+    let left = row.left() + 14.0;
     let label = draw::galley_elided(
         ui,
         &entry.label,
         label_type,
         pal.ink,
-        right - 12.0 - (row.left() + 14.0),
+        (end - left - stamp_w - state_w).max(0.0),
     );
-    let mut x =
-        draw::paint_galley(ui, pos2(row.left() + 14.0, mid), Align2::LEFT_CENTER, label).right();
+    let mut x = draw::paint_galley(ui, pos2(left, mid), Align2::LEFT_CENTER, label).right();
     if let Some(code) = &entry.code {
         let stamp_min = pos2(x + 7.0, (mid - size::STAMP_H / 2.0).round());
         x = draw::stamp(ui, pal, stamp_min, code, StampState::default()).right();
     }
-    if let Some(detail) = &entry.detail {
-        draw::paint_text(
-            ui,
-            pos2(x + 12.0, mid),
-            Align2::LEFT_CENTER,
-            detail,
-            ty::CODE,
-            pal.ink_3,
-        );
+    let room = end - state_w - (x + 12.0);
+    if let Some(detail) = &entry.detail
+        && room > 0.0
+    {
+        let detail = draw::galley_elided(ui, detail, ty::CODE, pal.ink_3, room);
+        x = draw::paint_galley(ui, pos2(x + 12.0, mid), Align2::LEFT_CENTER, detail).right();
     }
-    if let Some((word, problem)) = &entry.state {
-        let color: Color32 = if *problem { pal.bad } else { pal.ink_2 };
+    if let Some((_, problem, color, text)) = state {
         let mut at = x + 12.0;
-        if *problem {
+        if problem {
             let mark = Rect::from_min_size(pos2(at, mid - 6.0), Vec2::splat(size::STATE_MARK));
             draw::mark_bad(ui, mark, color, behind);
             at = mark.right() + 5.0;
         }
-        let state_type = Type {
-            face: if *problem {
-                Face::Sans600
-            } else {
-                Face::Sans400
-            },
-            ..ty::SECONDARY
-        };
-        draw::paint_text(
-            ui,
-            pos2(at, mid),
-            Align2::LEFT_CENTER,
-            word,
-            state_type,
-            color,
-        );
+        draw::paint_galley(ui, pos2(at, mid), Align2::LEFT_CENTER, text);
     }
     response.clicked()
 }
@@ -750,6 +803,8 @@ mod tests {
             scope: None,
             apps: &[],
             recent: &[],
+            history: &[],
+            now: 0,
             selected: None,
             mac: false,
         };
@@ -772,6 +827,8 @@ mod tests {
             scope: None,
             apps: &apps,
             recent: &[],
+            history: &[],
+            now: 0,
             selected: None,
             mac: true,
         };
@@ -799,6 +856,8 @@ mod tests {
             scope: None,
             apps: &[],
             recent: &[],
+            history: &[],
+            now: 0,
             selected: None,
             mac: false,
         };

@@ -185,6 +185,12 @@ pub enum SettingsAction {
 /// Windows and Linux, and where it works.
 const SHORTCUTS: &[(&str, &str, &str)] = &[
     ("Open the command palette", "Ctrl K", "Anywhere"),
+    // The drawer key is Ctrl on macOS too: Cmd ` cycles windows there (S7, Q9).
+    (
+        "Show or hide the runner drawer",
+        "Ctrl `  or Ctrl J",
+        "Anywhere",
+    ),
     ("Collapse or open the module index", "Ctrl B", "Anywhere"),
     (
         "Select app 1 to 9 on the rail",
@@ -199,6 +205,7 @@ const SHORTCUTS: &[(&str, &str, &str)] = &[
         "Ctrl R",
         "Anywhere",
     ),
+    ("Stop the running command", "Ctrl .", "Anywhere"),
     ("Close the topmost thing", "Esc", "Anywhere"),
     (
         "Move focus to the next or previous region",
@@ -243,6 +250,8 @@ const SHORTCUTS: &[(&str, &str, &str)] = &[
         "Left  Right",
         "Workspace",
     ),
+    ("Run the generator or the action", "Ctrl Enter", "Workspace"),
+    ("Copy the command", "Ctrl Shift C", "Workspace"),
     (
         "Switch between Links and Public surface",
         "P",
@@ -264,6 +273,13 @@ const SHORTCUTS: &[(&str, &str, &str)] = &[
         "Command palette",
     ),
     ("Search in the next app", "Tab", "Command palette"),
+    (
+        "Run the last command again",
+        "Ctrl Shift R",
+        "Runner drawer",
+    ),
+    ("Show the history", "Ctrl Shift H", "Runner drawer"),
+    ("Copy the output", "Ctrl Shift O", "Runner drawer"),
     ("Press the focused button, cancel", "Enter  Esc", "Dialog"),
 ];
 
@@ -1787,8 +1803,16 @@ impl Form<'_> {
         } else {
             form_w
         };
-        let choices =
-            Rect::from_min_size(box_min, vec2(box_w, 41.0 + 4.0 * size::LIST_LINE_H + 8.0));
+        let head = draw::box_head_extra(
+            ui,
+            box_w,
+            strings::WHAT_EACH_RUNS,
+            strings::WHAT_EACH_RUNS_NOTE,
+        );
+        let choices = Rect::from_min_size(
+            box_min,
+            vec2(box_w, 41.0 + head + 4.0 * size::LIST_LINE_H + 8.0),
+        );
         let mut line_y = draw::box_head(
             ui,
             pal,
@@ -1858,8 +1882,11 @@ impl Form<'_> {
         // On macOS the keys are written as they are pressed there.
         let keys_shown = |keys: &str| {
             if mac {
+                // The drawer key stays Ctrl `, and its second key is Cmd J.
                 keys.replace("Ctrl Alt", "Cmd Option")
+                    .replace("Ctrl `", "\u{0}")
                     .replace("Ctrl", "Cmd")
+                    .replace('\u{0}', "Ctrl `")
             } else {
                 keys.to_owned()
             }

@@ -117,7 +117,7 @@ def act_detail(title, text, body, command, buttons):
 def d_migrate():
     return act_detail('Migrate Checkout', 'Runs the migrations of Checkout that have not run yet.',
         box('Waiting', '1 migration', '<div class="kv"><span class="mono">2026_11_20_091200_add_tracking_code_to_checkouts_table</span><span></span></div>')
-        + '<div>%s%s</div>' % (chk('Dry run: print the SQL, change nothing', '--pretend'), chk('Seed afterwards', '--seed'))
+        + '<div>%s%s</div>' % (chk('Dry run: print the SQL, run none of it', '--pretend'), chk('Seed afterwards', '--seed'))
         + field('Database connection', '--database, empty for the default', inp('<span class="ph">default</span>', '', '', 'max-width:260px')),
         ['php', 'artisan', 'module:migrate', 'Checkout'], btn(t('b.migrate'), 'pri', 'migrate', 'Ctrl Enter') + btn(t('b.copycmd')))
 def d_off():
@@ -130,7 +130,7 @@ def d_on():
 def d_rollback():
     return act_detail('Roll back Checkout', 'Runs the down method of the last migration batch of Checkout.',
         box('Last batch', '1 migration', '<div class="kv"><span class="mono">2026_11_18_101500_add_coupon_code_to_orders_table</span><span></span></div>')
-        + '<div>%s</div>' % chk('Dry run: print the SQL, change nothing', '--pretend')
+        + '<div>%s</div>' % chk('Dry run: print the SQL, run none of it', '--pretend')
         + '<div class="hint2">Destructive. Mortise asks before it runs. The command has no option to choose how many batches.</div>',
         ['php', 'artisan', 'module:migrate-rollback', 'Checkout'], btn(t('b.rollback'), 'danger', None, 'Ctrl Enter') + btn(t('b.dry')) + btn(t('b.copycmd')))
 def d_seed():
@@ -148,7 +148,7 @@ def lost(rows):
     return '<div class="box flush"><h5><span>What is lost</span>%s</h5>%s</div>' % (S('bad', 'cannot be undone'), ''.join('<div class="lrow"><span>%s</span><span class="dim">%s</span></div>' % r for r in rows))
 def d_reset(prod=False):
     body = (lost([('Every table and column created by the 9 migrations of Checkout that ran', 'with all rows'), ('<span class="mono">checkouts</span>, <span class="mono">carts</span>, <span class="mono">cart_items</span>, <span class="mono">orders</span>, <span class="mono">order_items</span> and 2 more', '7 tables')])
-            + '<div>%s</div>' % chk('Dry run: print the SQL, change nothing', '--pretend')
+            + '<div>%s</div>' % chk('Dry run: print the SQL, run none of it', '--pretend')
             + field('Database connection', '--database, empty for the default', inp('<span class="ph">default</span>', '', '', 'max-width:260px')))
     if prod: body = alert(t('d.prod'), 'warn') + body
     return act_detail('Reset the migrations of Checkout', 'Rolls back every migration of Checkout that has run, newest first.', body,
@@ -196,7 +196,7 @@ def actions_all():
     ALLROWS[:] = rows
     d = act_detail('Migrate all modules', 'Runs the waiting migrations of every module that is on, in the package\'s order.',
                    box('Waiting', '1 migration in 1 module', kv('<span>%s <span class="mono">2026_11_20_091200_add_tracking_code_to_checkouts_table</span></span>' % stamp('CHK'), ''))
-                   + '<div>%s%s</div>' % (chk('Dry run: print the SQL, change nothing', '--pretend'), chk('Seed afterwards', '--seed')),
+                   + '<div>%s%s</div>' % (chk('Dry run: print the SQL, run none of it', '--pretend'), chk('Seed afterwards', '--seed')),
                    ['php', 'artisan', 'module:migrate', '--all'], btn('Migrate (1)', 'pri', 'migrate', 'Ctrl Enter') + btn(t('b.copycmd')))
     return panel('<div class="cols" style="grid-template-columns:250px minmax(0,1fr)">%s%s</div>' % (act_list(0, rows, None, None, '1 action, closed'), d), 'surface', '14px 16px')
 

@@ -262,8 +262,10 @@ struct Recording {
 /// `wait` sleeps for 60 seconds. `flood` prints 2 MiB of short lines on stderr and
 /// one line of 2 MiB with no newline on stdout, and ends with 0.
 /// `ask` asks for a name and ends with 1 when its input ends.
+/// `ticks` prints a line every 50 ms for 60 seconds, and ends when a write fails.
 /// `orphan` starts a copy of itself with `wait` on the same pipes, prints its pid
-/// and ends with 0. `orphan-wait` does the same, then sleeps for 60 seconds.
+/// and ends with 0. `orphan-ticks` does the same with a child that ignores SIGTERM
+/// and runs `ticks`. `orphan-wait` is `orphan`, then sleeps for 60 seconds.
 /// `orphan-quiet` is `orphan-wait` with a child that ignores SIGTERM and has
 /// closed its pipes, so only a kill of the group ends it.
 /// Any other words replay the recording in `fixtures/output` whose `args` they are,
@@ -348,6 +350,18 @@ fn fake_case(words: &[String]) -> ExitCode {
             std::thread::sleep(Duration::from_secs(60));
             ExitCode::SUCCESS
         }
+        Some("ticks") => {
+            let deadline = std::time::Instant::now() + Duration::from_secs(60);
+            while std::time::Instant::now() < deadline {
+                let mut out = std::io::stdout().lock();
+                if writeln!(out, "tick").and_then(|()| out.flush()).is_err() {
+                    break;
+                }
+                drop(out);
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            ExitCode::SUCCESS
+        }
         Some("ask") => {
             println!("Name of the new module?");
             let _ = std::io::stdout().flush();
@@ -360,7 +374,7 @@ fn fake_case(words: &[String]) -> ExitCode {
                 }
             }
         }
-        Some(case @ ("orphan" | "orphan-wait" | "orphan-quiet")) => {
+        Some(case @ ("orphan" | "orphan-ticks" | "orphan-wait" | "orphan-quiet")) => {
             let quiet = case == "orphan-quiet";
             let child = std::env::current_exe().and_then(|itself| {
                 let mut child = std::process::Command::new(itself);
@@ -370,6 +384,8 @@ fn fake_case(words: &[String]) -> ExitCode {
                         .args(["ignore-term", "wait"])
                         .stdout(std::process::Stdio::null())
                         .stderr(std::process::Stdio::null());
+                } else if case == "orphan-ticks" {
+                    child.args(["ignore-term", "ticks"]);
                 } else {
                     child.arg("wait");
                 }
@@ -380,7 +396,7 @@ fn fake_case(words: &[String]) -> ExitCode {
                 return ExitCode::from(2);
             };
             println!("{}", child.id());
-            if case != "orphan" {
+            if case == "orphan-wait" || quiet {
                 std::thread::sleep(Duration::from_secs(60));
             }
             ExitCode::SUCCESS

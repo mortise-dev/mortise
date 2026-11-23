@@ -14,6 +14,15 @@ fn open_settings(harness: &mut Harness<'static, MortiseApp>) {
     harness.run();
 }
 
+/// Waits until the app on screen is read again with a new coverage limit. The read
+/// runs on the worker thread and repaints when it ends, so `Harness::run` alone
+/// fails when the read ends during its steps.
+fn wait_for_limit(harness: &mut Harness<'static, MortiseApp>, limit: u8) {
+    wait_until(harness, &format!("the limit is {limit}"), |app| {
+        app.app().is_some_and(|app| app.coverage_limit == limit)
+    });
+}
+
 #[test]
 fn settings_take_the_place_of_the_workbench_and_esc_returns() {
     let (_desk, mut harness) = shop_api();
@@ -111,9 +120,7 @@ fn the_fields_of_an_app_apply_when_they_lose_focus() {
     harness
         .get_by_role_and_label(Role::TextInput, "Name")
         .focus();
-    wait_until(&mut harness, "the limit is 30", |app| {
-        app.app().is_some_and(|app| app.coverage_limit == 30)
-    });
+    wait_for_limit(&mut harness, 30);
     assert_eq!(harness.state().app().unwrap().findings.warnings(), 0);
     assert_eq!(desk.saved().apps[0].coverage_limit, 30);
 
@@ -166,7 +173,7 @@ fn the_fields_of_an_app_apply_when_they_lose_focus() {
         .type_text("25");
     harness.run();
     harness.key_press(Key::Escape);
-    harness.run();
+    wait_for_limit(&mut harness, 25);
     assert_eq!(desk.saved().apps[0].coverage_limit, 25);
     harness.get_by_role_and_label(Role::Heading, "Settings");
     harness.key_press(Key::Escape);
@@ -191,7 +198,7 @@ fn the_fields_of_an_app_apply_when_they_lose_focus() {
     harness
         .get_by_role_and_label(Role::Button, "Back to shop-api")
         .click();
-    harness.run();
+    wait_for_limit(&mut harness, 35);
     assert_eq!(desk.saved().apps[0].coverage_limit, 35);
     assert!(
         harness
@@ -287,14 +294,20 @@ fn test_says_why_php_did_not_answer() {
         .get_by_role_and_label(Role::Button, "Test how PHP runs")
         .click();
     harness.step();
+    // The test ends on its own thread and repaints then, in any of the frames below.
+    // They step: `Harness::run` fails on a repaint that comes during its steps.
     harness.key_press(Key::Escape);
-    harness.run();
+    harness.run_steps(2);
     assert!(
         harness
             .query_by_role_and_label(Role::Heading, "Settings")
             .is_none()
     );
-    open_php(&mut harness);
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::Comma);
+    harness.run_steps(2);
+    harness
+        .get_by_role_and_label(Role::ListBoxOption, "PHP")
+        .click();
     let failed = "mortise-no-such-php did not answer: \"mortise-no-such-php: command not found\".";
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
     while harness.query_by_label_contains(failed).is_none() {
@@ -338,7 +351,7 @@ fn removing_an_app_asks_first_and_leaves_its_folder() {
     harness
         .get_by_role_and_label(Role::Button, "Remove shop-api from Mortise")
         .click();
-    harness.run();
+    wait_for_limit(&mut harness, 35);
     assert_eq!(desk.saved().apps[0].coverage_limit, 35);
     harness.get_by_role_and_label(Role::Heading, "Remove shop-api from Mortise?");
     harness.get_by_label_contains("The folder and its files stay as they are.");
@@ -368,7 +381,19 @@ fn the_question_mark_shows_the_shortcuts_and_they_can_be_searched() {
     harness.run();
     harness.get_by_role_and_label(Role::Heading, "Keyboard");
     harness.get_by_label("Open the command palette");
-    harness.get_by_label("29 of 29 shown.");
+    harness.get_by_label("36 of 36 shown.");
+    // The runner keys, with the drawer key written Ctrl ` and Ctrl J here.
+    for keys in [
+        "Ctrl `",
+        "Ctrl J",
+        "Ctrl .",
+        "Ctrl Shift C",
+        "Ctrl Shift R",
+        "Ctrl Shift H",
+        "Ctrl Shift O",
+    ] {
+        harness.get_by_label(keys);
+    }
 
     harness
         .get_by_role_and_label(Role::TextInput, "Find a shortcut")
@@ -378,12 +403,32 @@ fn the_question_mark_shows_the_shortcuts_and_they_can_be_searched() {
         .get_by_role_and_label(Role::TextInput, "Find a shortcut")
         .type_text("palette");
     harness.run();
-    harness.get_by_label("3 of 29 shown.");
+    harness.get_by_label("3 of 36 shown.");
     assert!(
         harness
             .query_by_label("Change the order of the index")
             .is_none()
     );
+
+    // On macOS the keys read Cmd, but the drawer key stays Ctrl `: Cmd ` cycles windows.
+    let mut desk = Desk::new();
+    desk.os = egui::os::OperatingSystem::Mac;
+    let root = desk.app("shop-api");
+    desk.knows(&[(&root, "SA")]);
+    let mut harness = desk.start();
+    harness.key_press(Key::Questionmark);
+    harness.run();
+    for keys in [
+        "Ctrl `",
+        "Cmd J",
+        "Cmd .",
+        "Cmd Shift C",
+        "Cmd Shift R",
+        "Cmd Shift H",
+        "Cmd Shift O",
+    ] {
+        harness.get_by_label(keys);
+    }
 }
 
 #[test]

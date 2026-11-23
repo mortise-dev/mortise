@@ -4,9 +4,10 @@ A desktop companion for developers who build Laravel apps with
 [`nwidart/laravel-modules`](https://github.com/nWidart/laravel-modules).
 
 Mortise opens the folder of an app, lists its modules, and shows what is in each one.
-To read an app, Mortise uses no PHP and changes nothing in it. It runs a command in the app
-only when you start it, with the exact command on screen first, through the PHP you chose for
-the app: Herd, Sail, Docker or a command of your own.
+To read an app, Mortise uses no PHP and changes nothing in it. It runs a package command in the
+app only when you start it, with the exact command on screen first, through the PHP you chose
+for the app: Herd, Sail, Docker or a command of your own. Sail is off on Windows, where it runs
+in WSL only; a Custom command is the way there.
 
 When the app also has [`nwidart/laravel-actuator`](https://github.com/nWidart/laravel-actuator)
 and is running, Mortise can ask it for its runtime status, its routes and its scheduled tasks.
@@ -14,8 +15,9 @@ This is optional. Mortise asks for `health`, `info`, `mappings` and `scheduledta
 for `env`. A token or a password goes to the credential store of the operating system and is
 never written to a file.
 
-Status: phase 1 (read only) is built. The plan is in `docs/plan/phase-1.md`. Where the
-build differs from the specification is in `docs/deviations.md`.
+Status: phase 1 (read only) and phase 2 (running the package's commands) are built. The plans are
+`docs/plan/phase-1.md` and `docs/plan/phase-2.md`. Where the build differs from the specification is in
+`docs/deviations.md`.
 
 ## What it does
 
@@ -25,8 +27,26 @@ build differs from the specification is in `docs/deviations.md`.
 - Lists findings: what breaks a rule or a check, each where it lives.
 - Scans a module and proposes its public surface. The scan writes nothing.
 - With `nwidart/laravel-actuator`: runtime status, routes by module, scheduled tasks.
+- Runs the package's commands, each one only when you start it:
+  - The runner drawer shows the output as written, with Stop and a time limit. Mortise keeps
+    the last 50 runs of each app in its own data folder, not in the app.
+  - The Actions tab turns a module on or off, migrates, rolls back, seeds and checks
+    translations. Reset, refresh, drop all tables and delete module sit in a closed group,
+    and each asks first. When the app reports the environment `production`, they do not run:
+    Mortise only copies the command.
+  - The Generate tab offers the 42 generators of `nwidart/laravel-modules` 13.3, New module
+    among them. It shows the command, and after the run the files the command wrote. Replace
+    runs a generator again over a file or a module that exists, after a question.
+  - The palette lists actions and generators, and your recent runs.
+- Closing Mortise stops every run and waits up to 5 seconds for each to end. On Windows, the
+  PHP child of a launcher such as `herd.bat` that already exited goes on (`docs/deviations.md`, S53).
+
+Not yet: the file lists before a run, the migration state (counts, tables) and Run tests wait
+for data from the package. Until then the Actions and Generate tabs say so where they leave
+something out.
 
 The only file Mortise writes in an app is `mortise.json`, and it asks before it creates it.
+The package's commands write the other files. Mortise never writes them.
 
 ## Install
 
@@ -49,7 +69,8 @@ cargo run -p mortise-app -- /path/to/laravel-app
 Rust 1.99 is needed; `rust-toolchain.toml` selects it.
 
 Mortise keeps its settings in `settings.json` in the config folder of the platform.
-`MORTISE_CONFIG_DIR` names another folder. `MORTISE_SECRETS=memory` keeps secrets out of
+`MORTISE_CONFIG_DIR` names another folder. The history of runs lives in the data folder;
+`MORTISE_DATA_DIR` names another one. `MORTISE_SECRETS=memory` keeps secrets out of
 the credential store, for work on Mortise itself.
 
 ## Test
@@ -62,8 +83,9 @@ cargo test --workspace
 |---|---|
 | `crates/mortise-core/tests` | Reading an app, git, the file watcher, the actuator client against a local stub, the public surface scan |
 | `crates/mortise-app/tests` | The interface, run headless and asked by role and name, as a screen reader would |
-| `crates/mortise-app/tests/images.rs` | Eighteen screens in both themes against the images in `tests/snapshots`. macOS only |
+| `crates/mortise-app/tests/images.rs` | The screens in both themes against the images in `tests/snapshots`. macOS only |
 | `crates/mortise-app/tests/accessibility.rs` | Every control has a name and a target of 24 by 24 px |
+| `crates/mortise-core/tests/real_php.rs` | The package's commands in a real Laravel app. Ignored by default; a CI job that is not required runs them (see `AGENTS.md`) |
 
 After a change that is meant to be seen, make the images again and look at what changed:
 

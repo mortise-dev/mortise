@@ -109,7 +109,7 @@ fn migrate_runs_the_line_on_screen_and_the_toast_counts_its_migration() {
         .query_by_label_contains("--ansi Checkout --seed")
         .unwrap();
     // A dry run cannot seed: the package seeds after a pretend migrate.
-    let dry_run = "Dry run: print the SQL, change nothing";
+    let dry_run = "Dry run: print the SQL, run none of it";
     harness
         .get_by_role_and_label(Role::CheckBox, dry_run)
         .click();
@@ -132,10 +132,8 @@ fn migrate_runs_the_line_on_screen_and_the_toast_counts_its_migration() {
             .is_none()
     );
 
-    // Copy puts the line on the clipboard and runs nothing.
-    harness
-        .get_by_role_and_label(Role::Button, "Copy command")
-        .click();
+    // Ctrl Shift C copies the line to the clipboard and runs nothing.
+    harness.key_press_modifiers(Modifiers::COMMAND | Modifiers::SHIFT, Key::C);
     harness.run_steps(3);
     harness.get_by_label("Copied the command.");
     assert_eq!(runs(&mut harness, &desk, &root), 0);
@@ -207,7 +205,7 @@ fn roll_back_asks_and_its_dry_run_only_checks_the_option() {
 
     // A roll back that was confirmed asks again before Run again runs it.
     harness
-        .get_by_role_and_label(Role::CheckBox, "Dry run: print the SQL, change nothing")
+        .get_by_role_and_label(Role::CheckBox, "Dry run: print the SQL, run none of it")
         .click();
     harness.run_steps(3);
     run(&mut harness);

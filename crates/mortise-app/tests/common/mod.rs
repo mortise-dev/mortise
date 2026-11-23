@@ -329,6 +329,26 @@ pub fn wait_until(
     harness.run_steps(3);
 }
 
+/// Keeps runs in the history of the app in `root`: their words and how many minutes
+/// ago each started, the oldest first. Returns the time it took as now, in ms.
+pub fn ran(desk: &Desk, root: &Path, runs: &[(&str, i64)]) -> i64 {
+    let now_ms = jiff::Timestamp::now().as_millisecond();
+    let history = mortise_core::history::History::open(&desk.data_dir(), root);
+    for (words, minutes) in runs {
+        let started_ms = now_ms - minutes * 60_000;
+        let entry = mortise_core::history::Entry {
+            id: started_ms as u64,
+            args: words.split(' ').map(str::to_owned).collect(),
+            label: (*words).to_owned(),
+            started_ms,
+            ended: mortise_core::history::Ended::Done { ms: 400 },
+            cut: false,
+        };
+        history.record(entry, &[]).unwrap();
+    }
+    now_ms
+}
+
 pub fn turn_off(root: &Path, module: &str) {
     let statuses = root.join("modules_statuses.json");
     let json = std::fs::read_to_string(&statuses).unwrap();

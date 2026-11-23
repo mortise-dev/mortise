@@ -212,6 +212,14 @@ pub fn actions(
         && ui.input_mut(|input| {
             input.consume_shortcut(&KeyboardShortcut::new(Modifiers::COMMAND, Key::Enter))
         });
+    // Ctrl Shift C copies the line on screen (S7), as the Generate form does.
+    let copy_key = !inputs.held
+        && ui.input_mut(|input| {
+            input.consume_shortcut(&KeyboardShortcut::new(
+                Modifiers::COMMAND | Modifiers::SHIFT,
+                Key::C,
+            ))
+        });
 
     let mut asked = None;
     let salt = module.map_or("all", |module| module.name.as_str());
@@ -240,6 +248,7 @@ pub fn actions(
                     state,
                     inputs,
                     run_key,
+                    copy_key,
                 );
                 asked = panel_asked;
                 // Tell the scroll area how high the content is.
@@ -534,6 +543,7 @@ fn panel(
     state: &mut ActionsState,
     inputs: &ActionsInputs<'_>,
     run_key: bool,
+    copy_key: bool,
 ) -> (f32, Option<BoundaryAction>) {
     let action = state.action;
     let destructive = action.is_destructive();
@@ -738,7 +748,7 @@ fn panel(
     let response = copy.show(ui, pal, pos2(x, y), inputs.keyboard);
     let bottom = response.rect.bottom();
     match line {
-        Some(line) if response.clicked() => {
+        Some(line) if response.clicked() || copy_key => {
             asked = Some(BoundaryAction::Copy {
                 text: line,
                 said: strings::COPIED_COMMAND,

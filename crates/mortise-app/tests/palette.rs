@@ -3,12 +3,13 @@
 mod common;
 
 use common::{Desk, shop_api, wait_until};
-use eframe::egui::{Key, Modifiers, Role};
+use eframe::egui::{Key, Modifiers, Role, Shape};
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT as _, Queryable as _};
 use mortise_app::app::{MortiseApp, Selection};
 use mortise_app::palette;
 use mortise_app::workspace::Tab;
+use mortise_core::history::History;
 
 /// The rows of the palette. Rows of the rail and the index are behind it.
 fn palette_rows(harness: &Harness<'static, MortiseApp>) -> Vec<String> {
@@ -36,11 +37,25 @@ fn type_query(harness: &mut Harness<'static, MortiseApp>, text: &str) {
 }
 
 #[test]
-fn an_empty_query_shows_places_and_apps() {
+fn an_empty_query_shows_places_apps_and_what_ran() {
     let desk = Desk::new();
     let shop = desk.app("shop-api");
     let crm = desk.app("crm");
+    // A module with a long name, for a long row.
+    let long = shop.join("Modules/CustomerNotifications");
+    common::copy_dir(&shop.join("Modules/Notifications"), &long);
+    common::rename_in_files(&long, "Notifications", "CustomerNotifications");
     desk.knows(&[(&shop, "SA"), (&crm, "CR")]);
+    // A migrate 2 minutes ago, a refresh and a model before it, in the history of shop-api.
+    let now_ms = common::ran(
+        &desk,
+        &shop,
+        &[
+            ("module:make-model Invoice Billing", 5),
+            ("module:migrate-refresh CustomerNotifications", 3),
+            ("module:migrate Checkout", 2),
+        ],
+    );
     let mut harness = desk.start();
     harness.key_press(Key::J);
     harness.run();
@@ -52,6 +67,9 @@ fn an_empty_query_shows_places_and_apps() {
         palette_rows(&harness),
         [
             "Billing",
+            "Migrate Checkout",
+            "Refresh migrations CustomerNotifications",
+            "Generate a model in Billing",
             "All modules",
             "Findings in shop-api",
             "Settings",
@@ -60,6 +78,61 @@ fn an_empty_query_shows_places_and_apps() {
         ]
     );
     harness.get_by_label("Up and Down to move, Enter to run, Tab to switch app");
+    let app = harness.state().app().expect("the app is read");
+    let history = History::open(&desk.data_dir(), &shop);
+    let entries = history.entries();
+    let source = palette::Source {
+        scope: Some((0, &app)),
+        apps: &[("shop-api".to_owned(), 0)],
+        recent: &[],
+        history: &entries,
+        now: now_ms / 1000,
+        selected: None,
+        mac: false,
+    };
+    let found = palette::entries("", &source);
+    assert_eq!(
+        [&found[0].hint, &found[2].hint],
+        ["ran 2 minutes ago", "Form"]
+    );
+    assert_eq!(found[0].detail.as_deref(), Some("module:migrate Checkout"));
+    assert_eq!(found[2].detail.as_deref(), Some("module:make-model"));
+
+    // Where a text is painted.
+    let painted = |harness: &Harness<'static, MortiseApp>, text: &str| {
+        harness
+            .output()
+            .shapes
+            .iter()
+            .find_map(|clipped| match &clipped.shape {
+                Shape::Text(shape) if shape.galley.text() == text => {
+                    Some(shape.visual_bounding_rect())
+                }
+                _ => None,
+            })
+    };
+    // The long detail of the current refresh row ends before its age.
+    harness.key_press(Key::ArrowDown);
+    harness.run_steps(2);
+    harness.key_press(Key::ArrowDown);
+    harness.run_steps(2);
+    let detail = painted(&harness, "module:migrate-refresh CustomerNotifications").unwrap();
+    let age = painted(&harness, "ran 3 minutes ago").unwrap();
+    assert!(detail.right() < age.left(), "{detail:?} runs into {age:?}");
+
+    // The current row keeps its age, and Enter on it opens its panel and runs nothing.
+    harness.key_press(Key::ArrowUp);
+    harness.run_steps(2);
+    assert!(painted(&harness, "ran 2 minutes ago").is_some());
+    harness.key_press(Key::Enter);
+    harness.run_steps(3);
+    assert_eq!(harness.state().tab(), Tab::Actions);
+    assert_eq!(
+        harness.state().selection(),
+        Selection::Module("Checkout".into())
+    );
+    harness.get_by_role_and_label(Role::Heading, "Migrate Checkout");
+    assert_eq!(history.entries().len(), 3);
 }
 
 #[test]
@@ -75,6 +148,8 @@ fn a_query_finds_modules_and_findings_and_enter_opens_the_first() {
         scope: Some((0, &app)),
         apps: &[("shop-api".to_owned(), 0)],
         recent: &[],
+        history: &[],
+        now: 0,
         selected: None,
         mac: false,
     };

@@ -2529,10 +2529,17 @@ impl eframe::App for MortiseApp {
                 .apps
                 .get(scope)
                 .map_or(&[][..], |open| open.recent.as_slice());
+            let history = self
+                .apps
+                .get(scope)
+                .map(|open| open.runs.history())
+                .unwrap_or_default();
             let source = palette::Source {
                 scope: snapshot.as_deref().map(|app| (scope, app)),
                 apps: &names,
                 recent,
+                history: &history,
+                now: jiff::Timestamp::now().as_second(),
                 selected: self.apps.get(scope).and_then(|open| match &open.selection {
                     Selection::Module(name) => Some(name.as_str()),
                     Selection::All => None,
@@ -2723,6 +2730,20 @@ impl eframe::App for MortiseApp {
         }
         #[cfg(target_os = "macos")]
         self.menu_actions(&ctx, menu_chosen);
+    }
+
+    /// Closing Mortise stops the run of each app, as Stop does, and waits for the
+    /// ends, so no command goes on after the window (design D6 of phase-2-hardening).
+    /// No dialog asks. eframe calls this on every way out, Cmd Q on macOS too, and
+    /// the process ends only after it returns.
+    fn on_exit(&mut self) {
+        for open in &self.apps {
+            open.runs.stop();
+        }
+        let deadline = std::time::Instant::now() + mortise_core::STOP_WAIT;
+        for open in &mut self.apps {
+            open.runs.wait(deadline);
+        }
     }
 
     fn clear_color(&self, visuals: &egui::Visuals) -> [f32; 4] {

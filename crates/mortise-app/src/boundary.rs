@@ -479,7 +479,7 @@ impl View<'_> {
         )
     }
 
-    /// The stamp, the name and a second line of a node.
+    /// The stamp, the name and a second line of a node. The second line may be empty.
     fn node_text(
         &self,
         ui: &Ui,
@@ -491,36 +491,39 @@ impl View<'_> {
     ) {
         let pal = self.pal;
         let mid = rect.center().y;
-        let (text_x, text_w) = self.node_stamp(ui, rect, module, selected);
-        let name = draw::galley_elided(ui, &module.name, NODE_NAME, pal.ink, text_w);
-        if second.is_empty() {
-            draw::paint_galley(ui, pos2(text_x, mid), Align2::LEFT_CENTER, name);
-        } else {
-            draw::paint_galley(ui, pos2(text_x, mid - 15.0), Align2::LEFT_TOP, name);
-            let second_type = Type {
-                size: 11.0,
-                line: 14.0,
-                ..ty::CODE
-            };
-            let second = draw::galley_elided(ui, second, second_type, color, text_w);
-            draw::paint_galley(ui, pos2(text_x, mid + 1.0), Align2::LEFT_TOP, second);
-        }
-    }
-
-    /// The stamp of a node. Returns where the text right of it starts, and its width.
-    fn node_stamp(&self, ui: &Ui, rect: Rect, module: &Module, selected: bool) -> (f32, f32) {
-        let mid = rect.center().y;
-        let off = module.state == ModuleState::Off;
         let x = rect.left() + if selected { 14.0 } else { 8.0 };
+        let off = module.state == ModuleState::Off;
         let stamp = draw::stamp(
             ui,
-            self.pal,
+            pal,
             pos2(x, (mid - size::STAMP_H / 2.0).round()),
             &module.code,
             StampState { selected, off },
         );
         let text_x = stamp.right() + 8.0;
-        (text_x, (rect.right() - 8.0 - text_x).max(0.0))
+        let text_w = (rect.right() - 8.0 - text_x).max(0.0);
+        // The stamp always, the name only when all of it fits: a cut name reads as
+        // another module (docs/deviations.md, S31). The full name is the accessible
+        // name of the node.
+        let name = draw::galley_elided(ui, &module.name, NODE_NAME, pal.ink, text_w);
+        let name = (!name.elided).then_some(name);
+        let second_type = Type {
+            size: 11.0,
+            line: 14.0,
+            ..ty::CODE
+        };
+        let second = (!second.is_empty())
+            .then(|| draw::galley_elided(ui, second, second_type, color, text_w));
+        match (name, second) {
+            (Some(name), Some(second)) => {
+                draw::paint_galley(ui, pos2(text_x, mid - 15.0), Align2::LEFT_TOP, name);
+                draw::paint_galley(ui, pos2(text_x, mid + 1.0), Align2::LEFT_TOP, second);
+            }
+            (Some(one), None) | (None, Some(one)) => {
+                draw::paint_galley(ui, pos2(text_x, mid), Align2::LEFT_CENTER, one);
+            }
+            (None, None) => {}
+        }
     }
 
     /// The files of a link, or of both directions when two modules use each other.
@@ -578,12 +581,6 @@ impl View<'_> {
         let footer = draw::galley_wrapped(ui, &footer_text, ty::SECONDARY, pal.ink_2, footer_w);
         let footer_h = (footer.size().y + 20.0).max(46.0);
 
-        let height = 35.0
-            + sections.len() as f32 * (section_head + size::TABLE_HEAD_H)
-            + rows as f32 * size::TABLE_ROW_H
-            + footer_h;
-        let panel = Rect::from_min_size(pos2(self.left, y), vec2(self.width, height));
-
         // Head: what the link is, and how much of it breaks a rule.
         let (title, note, bad) = match (circle, sections.as_slice()) {
             (Some(cycle), [out, back]) => {
@@ -619,7 +616,14 @@ impl View<'_> {
                 }
             }
         };
-        let mut row_y = draw::box_head(ui, pal, panel, &title, if bad { "" } else { &note }) - 6.0;
+        let head_note = if bad { "" } else { note.as_str() };
+        let height = 35.0
+            + draw::box_head_extra(ui, self.width, &title, head_note)
+            + sections.len() as f32 * (section_head + size::TABLE_HEAD_H)
+            + rows as f32 * size::TABLE_ROW_H
+            + footer_h;
+        let panel = Rect::from_min_size(pos2(self.left, y), vec2(self.width, height));
+        let mut row_y = draw::box_head(ui, pal, panel, &title, head_note) - 6.0;
         if bad {
             let mid = panel.top() + 18.0;
             let text = draw::label(
@@ -887,7 +891,7 @@ impl View<'_> {
     /// The graph of the whole app: modules in columns, a module left of what it uses.
     fn app_graph(
         &self,
-        ui: &Ui,
+        ui: &mut Ui,
         min: Pos2,
         width: f32,
         state: &mut BoundaryState,
@@ -903,11 +907,15 @@ impl View<'_> {
             .collect();
         let layout = columns(&names, &self.app.links);
         let tallest = layout.iter().map(Vec::len).max().unwrap_or(1) as f32;
+        // A node is never narrower than its stamp. When the columns need more room than
+        // the graph has, the nodes and links scroll sideways (docs/deviations.md, S31).
+        let cols = layout.len() as f32;
         let (node_w, node_h, row_gap) = (
-            132.0_f32.min((width - 44.0) / layout.len() as f32 - 24.0),
+            ((width - 44.0) / cols - 24.0).clamp(size::STAMP_W + 16.0, 132.0),
             30.0,
             46.0,
         );
+        let inner_w = width.max(44.0 + cols * (node_w + 24.0) - 24.0);
         let area_h = tallest * node_h + (tallest - 1.0) * row_gap;
         let rect = Rect::from_min_size(min, vec2(width, 52.0 + area_h + 20.0 + 44.0));
         draw::outlined(ui, rect, radius::CONTROL, Color32::TRANSPARENT, pal.line_2);
@@ -954,95 +962,122 @@ impl View<'_> {
             state.problems_only = clicked == 1;
         }
 
-        // Place the nodes.
+        // Place the nodes, `dx` to the right of where they are without scrolling.
         let area_top = rect.top() + 52.0;
-        let step = (width - 44.0 - node_w) / (layout.len() as f32 - 1.0).max(1.0);
-        let mut nodes: Vec<Node<'_>> = Vec::new();
-        for (c, column) in layout.iter().enumerate() {
-            let height = column.len() as f32 * node_h + (column.len() as f32 - 1.0) * row_gap;
-            let top = area_top + ((area_h - height) / 2.0).round();
-            for (r, name) in column.iter().enumerate() {
-                let Some(module) = self.app.module(name) else {
+        let step = (inner_w - 44.0 - node_w) / (cols - 1.0).max(1.0);
+        let mut body = |ui: &Ui, dx: f32| {
+            let mut nodes: Vec<Node<'_>> = Vec::new();
+            let mut focused = None;
+            for (c, column) in layout.iter().enumerate() {
+                let height = column.len() as f32 * node_h + (column.len() as f32 - 1.0) * row_gap;
+                let top = area_top + ((area_h - height) / 2.0).round();
+                for (r, name) in column.iter().enumerate() {
+                    let Some(module) = self.app.module(name) else {
+                        continue;
+                    };
+                    let node_min = pos2(
+                        (rect.left() + 22.0 + c as f32 * step + dx).round(),
+                        top + r as f32 * (node_h + row_gap),
+                    );
+                    nodes.push(Node {
+                        rect: Rect::from_min_size(node_min, vec2(node_w, node_h)),
+                        module,
+                    });
+                }
+            }
+            let place = |name: &str| {
+                nodes
+                    .iter()
+                    .find(|node| node.module.name == name)
+                    .map(|node| node.rect)
+            };
+
+            // Links: lines of straight pieces, with an arrow at the module that is used.
+            for link in &self.app.links {
+                let problem = link.is_problem(rules);
+                if state.problems_only && !problem {
+                    continue;
+                }
+                let (Some(from), Some(to)) = (place(&link.from), place(&link.to)) else {
                     continue;
                 };
-                let node_min = pos2(
-                    (rect.left() + 22.0 + c as f32 * step).round(),
-                    top + r as f32 * (node_h + row_gap),
-                );
-                nodes.push(Node {
-                    rect: Rect::from_min_size(node_min, vec2(node_w, node_h)),
-                    module,
-                });
-            }
-        }
-        let place = |name: &str| {
-            nodes
-                .iter()
-                .find(|node| node.module.name == name)
-                .map(|node| node.rect)
-        };
-
-        // Links: lines of straight pieces, with an arrow at the module that is used.
-        for link in &self.app.links {
-            let problem = link.is_problem(rules);
-            if state.problems_only && !problem {
-                continue;
-            }
-            let (Some(from), Some(to)) = (place(&link.from), place(&link.to)) else {
-                continue;
-            };
-            if (from.left() - to.left()).abs() < 1.0 {
-                // Two modules of a circle, in one column: one line down, one line up.
-                let down = from.top() < to.top();
-                let x = from.center().x + if down { 22.0 } else { -22.0 };
-                let (start, end) = if down {
-                    (from.bottom(), to.top())
+                if (from.left() - to.left()).abs() < 1.0 {
+                    // Two modules of a circle, in one column: one line down, one line up.
+                    let down = from.top() < to.top();
+                    let x = from.center().x + if down { 22.0 } else { -22.0 };
+                    let (start, end) = if down {
+                        (from.bottom(), to.top())
+                    } else {
+                        (from.top(), to.bottom())
+                    };
+                    straight(ui, pal, pos2(x, start), pos2(x, end), problem);
                 } else {
-                    (from.top(), to.bottom())
-                };
-                straight(ui, pal, pos2(x, start), pos2(x, end), problem);
-            } else {
-                // The line runs level from the module that uses, and turns in the gap
-                // before the column of the module that is used. Lines to one module
-                // from different rows turn at slightly different places.
-                let lane = ((from.center().y - area_top) / (node_h + row_gap)).round() * 6.0;
-                let bend = to.left() - 16.0 - lane.clamp(0.0, 30.0);
-                connector_at(
-                    ui,
-                    pal,
-                    pos2(from.right(), from.center().y),
-                    pos2(to.left(), to.center().y),
-                    bend,
-                    problem,
-                );
+                    // The line runs level from the module that uses, and turns in the gap
+                    // before the column of the module that is used. Lines to one module
+                    // from different rows turn at slightly different places.
+                    let lane = ((from.center().y - area_top) / (node_h + row_gap)).round() * 6.0;
+                    let bend = to.left() - 16.0 - lane.clamp(0.0, 30.0);
+                    connector_at(
+                        ui,
+                        pal,
+                        pos2(from.right(), from.center().y),
+                        pos2(to.left(), to.center().y),
+                        bend,
+                        problem,
+                    );
+                }
             }
-        }
 
-        for node in &nodes {
-            let response = ui.interact(
-                node.rect,
-                ui.scope_id().with(("graph-node", &node.module.name)),
-                Sense::click(),
+            for node in &nodes {
+                let response = ui.interact(
+                    node.rect,
+                    ui.scope_id().with(("graph-node", &node.module.name)),
+                    Sense::click(),
+                );
+                response.widget_info(|| WidgetInfo::labeled(Role::Button, true, &node.module.name));
+                // A node that Tab reaches is scrolled into view.
+                if response.gained_focus() {
+                    response.scroll_to_me(None);
+                    focused = Some(node.rect);
+                }
+                let fill = if response.hovered() {
+                    pal.well
+                } else {
+                    pal.surface
+                };
+                draw::outlined(ui, node.rect, 0, fill, pal.line_2);
+                // The tooltip gives the full name.
+                self.node_text(ui, node.rect, node.module, "", pal.ink_2, false);
+                if response.clicked() {
+                    *action = Some(BoundaryAction::Select(node.module.name.clone()));
+                }
+                draw::tooltip(response, pal, &node.module.name);
+            }
+            focused
+        };
+        if inner_w > width {
+            let band = Rect::from_min_max(
+                pos2(rect.left() + 1.0, area_top - 8.0),
+                pos2(rect.right() - 1.0, area_top + area_h + 20.0),
             );
-            response.widget_info(|| WidgetInfo::labeled(Role::Button, true, &node.module.name));
-            let fill = if response.hovered() {
-                pal.well
-            } else {
-                pal.surface
-            };
-            draw::outlined(ui, node.rect, 0, fill, pal.line_2);
-            // The stamp always, the name only when all of it fits: a cut name reads as
-            // another module (docs/deviations.md, S31). The tooltip gives the full name.
-            let (text_x, text_w) = self.node_stamp(ui, node.rect, node.module, false);
-            let name = draw::galley_elided(ui, &node.module.name, NODE_NAME, pal.ink, text_w);
-            if !name.elided {
-                let pos = pos2(text_x, node.rect.center().y);
-                draw::paint_galley(ui, pos, Align2::LEFT_CENTER, name);
+            let focused = ui.scope_builder(UiBuilder::new().max_rect(band), |ui| {
+                ScrollArea::horizontal()
+                    .id_salt("app-graph")
+                    .auto_shrink(false)
+                    .show(ui, |ui| {
+                        let origin = ui.cursor().min;
+                        let focused = body(ui, origin.x - band.left());
+                        ui.allocate_space(vec2(inner_w - 2.0, band.height()));
+                        focused
+                    })
+                    .inner
+            });
+            // The graph's scroll area takes the request of both axes: ask the page too.
+            if let Some(node) = focused.inner {
+                ui.scroll_to_rect(node, None);
             }
-            if response.clicked() {
-                *action = Some(BoundaryAction::Select(node.module.name.clone()));
-            }
-            draw::tooltip(response, pal, &node.module.name);
+        } else {
+            body(ui, 0.0);
         }
 
         let caption_type = Type {
@@ -1225,6 +1260,16 @@ impl View<'_> {
 
         let indent = size::CHECKBOX + 8.0;
         let hint_w = width - 26.0 - indent;
+        // The labels of the rules wrap at the right edge of the box, as the hints do.
+        let label_w = hint_w;
+        let labels: f32 = [
+            strings::RULE_NO_CIRCULAR,
+            strings::RULE_PUBLIC_SURFACE,
+            strings::RULE_FAIL_CI,
+        ]
+        .iter()
+        .map(|label| draw::checkbox_extra(ui, label_w, label))
+        .sum();
         let accepted = strings::accepted_for(0, self.app.modules.len());
         let hint = draw::galley_wrapped(ui, &accepted, ty::SECONDARY, pal.ink_2, hint_w);
         let ci_hint = draw::galley_wrapped(
@@ -1234,7 +1279,10 @@ impl View<'_> {
             pal.ink_2,
             hint_w,
         );
+        let title = strings::rules_for(self.name);
         let height = 41.0
+            + draw::box_head_extra(ui, width, &title, strings::RULES_KEPT)
+            + labels
             + 24.0
             + 4.0
             + 24.0
@@ -1246,49 +1294,49 @@ impl View<'_> {
             + ci_hint.size().y
             + 12.0;
         let rect = Rect::from_min_size(min, vec2(width, height));
-        let mut y = draw::box_head(
-            ui,
-            pal,
-            rect,
-            &strings::rules_for(self.name),
-            strings::RULES_KEPT,
-        );
+        let mut y = draw::box_head(ui, pal, rect, &title, strings::RULES_KEPT);
         let x = rect.left() + 13.0;
 
-        if draw::checkbox(
+        let rule = |ui: &Ui, y: f32, label: &str, checked: bool, disabled: bool| {
+            draw::checkbox_in(
+                ui,
+                pal,
+                pos2(x, y),
+                label_w,
+                label,
+                checked,
+                disabled,
+                self.keyboard,
+            )
+        };
+        let row = rule(
             ui,
-            pal,
-            pos2(x, y),
+            y,
             strings::RULE_NO_CIRCULAR,
             rules.no_circular_use,
             false,
-            self.keyboard,
-        )
-        .clicked()
-        {
+        );
+        if row.clicked() {
             *action = Some(BoundaryAction::SetRules(Rules {
                 no_circular_use: !rules.no_circular_use,
                 ..rules.clone()
             }));
         }
-        y += 24.0 + 4.0;
-        if draw::checkbox(
+        y = row.rect.bottom() + 4.0;
+        let row = rule(
             ui,
-            pal,
-            pos2(x, y),
+            y,
             strings::RULE_PUBLIC_SURFACE,
             rules.public_surface_only,
             false,
-            self.keyboard,
-        )
-        .clicked()
-        {
+        );
+        if row.clicked() {
             *action = Some(BoundaryAction::SetRules(Rules {
                 public_surface_only: !rules.public_surface_only,
                 ..rules.clone()
             }));
         }
-        y += 24.0;
+        y = row.rect.bottom();
         let hint_rect = draw::paint_galley(ui, pos2(x + indent, y), Align2::LEFT_TOP, hint);
         draw::announce(ui, hint_rect, Role::Label, &accepted);
         y = hint_rect.bottom() + 6.0;
@@ -1320,16 +1368,9 @@ impl View<'_> {
         }
         y = field.bottom() + 8.0;
 
-        draw::checkbox(
-            ui,
-            pal,
-            pos2(x, y),
-            strings::RULE_FAIL_CI,
-            false,
-            true,
-            self.keyboard,
-        );
-        y += 24.0;
+        y = rule(ui, y, strings::RULE_FAIL_CI, false, true)
+            .rect
+            .bottom();
         let ci_rect = draw::paint_galley(ui, pos2(x + indent, y), Align2::LEFT_TOP, ci_hint);
         draw::announce(ui, ci_rect, Role::Label, strings::RULE_FAIL_CI_HINT);
         rect.bottom()

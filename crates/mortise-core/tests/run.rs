@@ -6,8 +6,8 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 
 use mortise_core::{
-    Failure, PhpSettings, Run, RunEnd, RunEvent, RunnerKind, Runs, StartError, TEST_LIMIT,
-    TestOutcome, test_php,
+    Failure, PhpSettings, Run, RunEnd, RunEvent, RunnerKind, Runs, STOP_WAIT, StartError,
+    TEST_LIMIT, TestOutcome, test_php,
 };
 
 /// A Custom runner whose first artisan argument is `case`, or `--version` with no case.
@@ -173,12 +173,44 @@ fn a_run_streams_its_lines_and_stops() {
     first_line(&run);
     run.stop();
     run.stop();
-    let (_, end) = until_end(&run, Duration::from_secs(5));
+    let end = stopped_within_the_wait(&run);
     assert!(
         matches!(end, RunEnd::Stopped { limit: None, .. }),
         "{end:?}"
     );
     run.stop();
+
+    // The program ended and left a child that writes and ignores SIGTERM: a stop
+    // while its lines are read ends the run as stopped, on Unix with the child.
+    let run = start("", &["orphan-ticks"], TEST_LIMIT);
+    let child = loop {
+        let line = first_line(&run);
+        if line.parse::<u32>().is_ok() {
+            break line;
+        }
+    };
+    std::thread::sleep(Duration::from_millis(500));
+    run.stop();
+    let end = stopped_within_the_wait(&run);
+    assert!(
+        matches!(end, RunEnd::Stopped { limit: None, .. }),
+        "{end:?}"
+    );
+    #[cfg(unix)]
+    gone(&child);
+    #[cfg(not(unix))]
+    let _ = child;
+}
+
+/// The end of `run`, which a wait of [`STOP_WAIT`] after its stop must give.
+fn stopped_within_the_wait(run: &Run) -> RunEnd {
+    let asked = Instant::now();
+    let events = run.wait(asked + STOP_WAIT);
+    assert!(asked.elapsed() < STOP_WAIT, "{events:?}");
+    match events.last() {
+        Some(RunEvent::Ended(end)) => *end,
+        last => panic!("no end, the last event is {last:?}"),
+    }
 }
 
 #[cfg(unix)]
@@ -189,7 +221,7 @@ fn a_stop_kills_a_program_that_ignores_sigterm() {
     first_line(&run);
     let asked = Instant::now();
     run.stop();
-    let (_, end) = until_end(&run, Duration::from_secs(6));
+    let end = stopped_within_the_wait(&run);
     assert!(matches!(end, RunEnd::Stopped { .. }), "{end:?}");
     assert!(asked.elapsed() >= Duration::from_millis(2500));
 }

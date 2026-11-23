@@ -393,8 +393,10 @@ fn add_body(
     let command_enter = format!("{} Enter", strings::command_key(mac));
 
     // What is under the field depends on what the folder gave.
-    let (primary, others): (Button<'_>, &[&str]);
+    let (mut primary, others): (Button<'_>, &[&str]);
     let primary_label;
+    // The app name in the label of the primary button, and how the label is made.
+    let mut named: Option<(&str, Label)> = None;
     let mut primary_action = AddAction::Add;
     match &panel.checked {
         None if panel.reading => {
@@ -463,11 +465,13 @@ fn add_body(
                 y = bottom + 16.0;
             }
             // Read after the field, so that a test that ended in this frame shows.
-            primary_label = if panel.php_failed() {
-                strings::add_read_only(&app.name)
+            let make: Label = if panel.php_failed() {
+                strings::add_read_only
             } else {
-                strings::add_named(&app.name)
+                strings::add_named
             };
+            primary_label = make(&app.name);
+            named = Some((&app.name, make));
             primary = Button {
                 label: &primary_label,
                 kind: ButtonKind::Primary,
@@ -515,6 +519,7 @@ fn add_body(
             );
             y = text.bottom() + 12.0;
             primary_label = strings::open_named(name);
+            named = Some((name, strings::open_named));
             primary = Button {
                 label: &primary_label,
                 kind: ButtonKind::Primary,
@@ -589,7 +594,30 @@ fn add_body(
         }
     }
 
-    // The buttons: the one that adds or opens, then the quiet ones.
+    // The buttons: the one that adds or opens, then the quiet ones. A long app name is
+    // cut in the label so that every button stays in the panel; the full label stays
+    // the accessible name.
+    let others_w: f32 = others
+        .iter()
+        .map(|label| {
+            let button = Button {
+                label,
+                ..Default::default()
+            };
+            button.width(ui) + 8.0
+        })
+        .sum();
+    let room = column_w - others_w;
+    let short_label;
+    if let Some((name, make)) = named
+        && primary.width(ui) > room
+    {
+        short_label = shortened(name, make, |label| {
+            Button { label, ..primary }.width(ui) <= room
+        });
+        primary.said = Some(primary.label);
+        primary.label = &short_label;
+    }
     let response = primary.show(ui, pal, pos2(left, y), keyboard);
     if panel.focus == Some(Focus::Primary) {
         response.request_focus();
@@ -620,6 +648,17 @@ fn add_body(
     (action, (y + primary.height()).max(right_bottom))
 }
 
+/// Makes the label of a button from an app name.
+type Label = fn(&str) -> String;
+
+/// The label `make` gives for the longest start of `name`, with "…" after it, that `fits`.
+fn shortened(name: &str, make: Label, fits: impl Fn(&str) -> bool) -> String {
+    let cut = |end: usize| make(&format!("{}…", &name[..end]));
+    let ends: Vec<usize> = name.char_indices().map(|(at, _)| at).skip(1).collect();
+    let fitting = ends.partition_point(|&end| fits(&cut(end)));
+    cut(fitting.checked_sub(1).map_or(0, |last| ends[last]))
+}
+
 /// The two boxes at the right once a folder is read: what was found, and how the
 /// app will be shown on the rail.
 fn found(ui: &Ui, pal: &Palette, column: Rect, app: &AppSnapshot, monogram: &str) -> f32 {
@@ -632,7 +671,16 @@ fn found(ui: &Ui, pal: &Palette, column: Rect, app: &AppSnapshot, monogram: &str
 
     let found = Rect::from_min_size(
         column.min,
-        vec2(column.width(), 41.0 + 6.0 * size::LIST_LINE_H + 8.0),
+        vec2(
+            column.width(),
+            41.0 + draw::box_head_extra(
+                ui,
+                column.width(),
+                strings::FOUND_TITLE,
+                strings::FOUND_NOTE,
+            ) + 6.0 * size::LIST_LINE_H
+                + 8.0,
+        ),
     );
     let mut y = draw::box_head(ui, pal, found, strings::FOUND_TITLE, strings::FOUND_NOTE);
 
@@ -730,7 +778,17 @@ fn found(ui: &Ui, pal: &Palette, column: Rect, app: &AppSnapshot, monogram: &str
 
     let shown = Rect::from_min_size(
         pos2(column.left(), found.bottom() + 12.0),
-        vec2(column.width(), 41.0 + size::LIST_LINE_H + 34.0 + 8.0),
+        vec2(
+            column.width(),
+            41.0 + draw::box_head_extra(
+                ui,
+                column.width(),
+                strings::SHOWN_TITLE,
+                strings::SHOWN_NOTE,
+            ) + size::LIST_LINE_H
+                + 34.0
+                + 8.0,
+        ),
     );
     let y = draw::box_head(ui, pal, shown, strings::SHOWN_TITLE, strings::SHOWN_NOTE);
     let name = [(app.name.as_str(), body.0, body.1)];
