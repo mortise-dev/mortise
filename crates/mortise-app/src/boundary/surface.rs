@@ -12,7 +12,7 @@ use eframe::egui::{
 use mortise_core::{AppSnapshot, Module, Proposal, SurfaceEntry, SurfaceKind, SurfaceScan};
 
 use crate::app::workspace::WorkAction;
-use crate::strings;
+use crate::boundary::strings;
 use crate::ui::draw::{self, Button, ButtonKind, Icon};
 use crate::ui::draw::{EmptyMark, empty_state};
 use crate::ui::theme::{Palette, Type, radius, size, ty};
@@ -114,7 +114,7 @@ pub fn surface(
     let pal = place.pal;
     let typing = ui.ctx().text_edit_focused();
     let run = KeyboardShortcut::new(Modifiers::COMMAND, Key::Enter);
-    let run_keys = format!("{} Enter", strings::command_key(place.mac));
+    let run_keys = format!("{} Enter", crate::strings::command_key(place.mac));
 
     if state.is_scanning() {
         state.advance(inputs);
@@ -438,7 +438,7 @@ fn rows(proposal: &Proposal, inputs: &SurfaceInputs<'_>) -> Vec<Row> {
     let routes_title = if proposal.routes_read {
         strings::routes_group(inputs.environment)
     } else {
-        strings::ROUTES.to_owned()
+        crate::strings::ROUTES.to_owned()
     };
     let groups = [
         (SurfaceKind::Contract, strings::CONTRACTS.to_owned(), None),
@@ -528,14 +528,14 @@ fn scanning(
     } else {
         read as f32 / total as f32
     };
-    let label = strings::reading_files(read, total);
+    let label = crate::strings::reading_files(read, total);
     y = draw::progress(ui, pal, pos2(left, y), width, &label, share) + 12.0;
 
     // What was found so far. What is known in full carries the check.
     let counts = scan.counts();
     let routes = match &inputs.routes {
         Some(routes) => (
-            strings::routes_read_from(routes.len(), inputs.environment),
+            crate::strings::routes_read_from(routes.len(), inputs.environment),
             true,
         ),
         None => (strings::NOT_READ.to_owned(), false),
@@ -552,7 +552,7 @@ fn scanning(
             false,
         ),
         (strings::EVENTS, strings::events(counts.events), false),
-        (strings::ROUTES, routes.0, routes.1),
+        (crate::strings::ROUTES, routes.0, routes.1),
         (
             strings::CONSOLE_COMMANDS,
             strings::commands(counts.commands),
