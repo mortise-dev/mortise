@@ -13,8 +13,6 @@ mod editor;
 mod environment;
 mod findings;
 mod links;
-#[cfg(feature = "watch")]
-mod live;
 mod matcher;
 mod modules;
 #[cfg(feature = "run")]
@@ -36,6 +34,8 @@ pub mod testing;
 pub use actuator::{
     Answer, Component, Info, Route, Runtime, Secret, Status, Task, ask, ask_status,
 };
+#[cfg(feature = "watch")]
+pub use app::live::{LiveApp, LiveState};
 pub use app::{
     AppSnapshot, CoverageReport, ReadError, ReadOptions, read_app, read_app_cached, read_app_env,
     read_app_with,
@@ -54,8 +54,6 @@ pub use findings::{
     Todo,
 };
 pub use links::{Cycle, Link, Reference, columns};
-#[cfg(feature = "watch")]
-pub use live::{LiveApp, LiveState};
 pub use matcher::fuzzy;
 pub use modules::clover::Coverage;
 pub use modules::code::{ALL_CODE, propose_codes, propose_monogram};

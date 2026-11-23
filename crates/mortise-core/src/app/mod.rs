@@ -18,6 +18,9 @@ use crate::modules::module::{Module, ModuleState, ReadCache, find_modules};
 use crate::package::PackageData;
 use crate::rules::{Rules, RulesSource};
 
+#[cfg(feature = "watch")]
+pub(crate) mod live;
+
 const LARAVEL: &str = "laravel/framework";
 const PACKAGE: &str = "nwidart/laravel-modules";
 const ACTUATOR: &str = "nwidart/laravel-actuator";
