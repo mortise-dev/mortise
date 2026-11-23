@@ -14,6 +14,15 @@ fn open_settings(harness: &mut Harness<'static, MortiseApp>) {
     harness.run();
 }
 
+/// Waits until the app on screen is read again with a new coverage limit. The read
+/// runs on the worker thread and repaints when it ends, so `Harness::run` alone
+/// fails when the read ends during its steps.
+fn wait_for_limit(harness: &mut Harness<'static, MortiseApp>, limit: u8) {
+    wait_until(harness, &format!("the limit is {limit}"), |app| {
+        app.app().is_some_and(|app| app.coverage_limit == limit)
+    });
+}
+
 #[test]
 fn settings_take_the_place_of_the_workbench_and_esc_returns() {
     let (_desk, mut harness) = shop_api();
@@ -111,9 +120,7 @@ fn the_fields_of_an_app_apply_when_they_lose_focus() {
     harness
         .get_by_role_and_label(Role::TextInput, "Name")
         .focus();
-    wait_until(&mut harness, "the limit is 30", |app| {
-        app.app().is_some_and(|app| app.coverage_limit == 30)
-    });
+    wait_for_limit(&mut harness, 30);
     assert_eq!(harness.state().app().unwrap().findings.warnings(), 0);
     assert_eq!(desk.saved().apps[0].coverage_limit, 30);
 
@@ -166,7 +173,7 @@ fn the_fields_of_an_app_apply_when_they_lose_focus() {
         .type_text("25");
     harness.run();
     harness.key_press(Key::Escape);
-    harness.run();
+    wait_for_limit(&mut harness, 25);
     assert_eq!(desk.saved().apps[0].coverage_limit, 25);
     harness.get_by_role_and_label(Role::Heading, "Settings");
     harness.key_press(Key::Escape);
@@ -191,7 +198,7 @@ fn the_fields_of_an_app_apply_when_they_lose_focus() {
     harness
         .get_by_role_and_label(Role::Button, "Back to shop-api")
         .click();
-    harness.run();
+    wait_for_limit(&mut harness, 35);
     assert_eq!(desk.saved().apps[0].coverage_limit, 35);
     assert!(
         harness
@@ -338,7 +345,7 @@ fn removing_an_app_asks_first_and_leaves_its_folder() {
     harness
         .get_by_role_and_label(Role::Button, "Remove shop-api from Mortise")
         .click();
-    harness.run();
+    wait_for_limit(&mut harness, 35);
     assert_eq!(desk.saved().apps[0].coverage_limit, 35);
     harness.get_by_role_and_label(Role::Heading, "Remove shop-api from Mortise?");
     harness.get_by_label_contains("The folder and its files stay as they are.");
