@@ -999,6 +999,12 @@ pub fn module_alert(
     }
 }
 
+/// Not in the spec: the line in the Summary of a module that is in a circle another
+/// module carries.
+pub fn part_of_circle_counted_on(module: &str) -> String {
+    format!("Part of a circle counted on {module}")
+}
+
 fn capitalised(text: &str) -> String {
     let mut letters = text.chars();
     let first: String = letters

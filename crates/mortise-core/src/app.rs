@@ -131,6 +131,22 @@ impl AppSnapshot {
             .filter(|link| link.is_problem(&self.rules))
     }
 
+    /// The modules that carry a circle `name` is in without carrying it, by name. Empty
+    /// while "No circular use" is off, because then no circle is a finding.
+    pub fn circles_counted_elsewhere<'a>(&'a self, name: &str) -> Vec<&'a str> {
+        let mut carriers: Vec<&str> = Vec::new();
+        if self.rules.no_circular_use {
+            for cycle in &self.cycles {
+                let member = cycle.modules.iter().any(|module| module == name);
+                if member && cycle.carrier != name && !carriers.contains(&cycle.carrier.as_str()) {
+                    carriers.push(&cycle.carrier);
+                }
+            }
+        }
+        carriers.sort_unstable();
+        carriers
+    }
+
     /// The module with this name.
     pub fn module(&self, name: &str) -> Option<&Module> {
         self.modules.iter().find(|module| module.name == name)

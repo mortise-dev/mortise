@@ -609,8 +609,9 @@ fn the_rules_of_mortise_json_decide_what_is_a_problem() {
     // Models is public now, and a circle is allowed: nothing breaks a rule.
     assert_eq!(app.problem_links().count(), 0);
     assert_eq!(app.link("Checkout", "Billing").unwrap().internal_files(), 0);
-    // The circle is still known.
+    // The circle is still known, but no module is told it is counted elsewhere.
     assert_eq!(app.cycles.len(), 1);
+    assert!(app.circles_counted_elsewhere("Shipping").is_empty());
 }
 
 #[test]
@@ -675,6 +676,9 @@ fn finds_what_breaks_a_rule_or_a_check() {
     assert_eq!(findings.state_of("Billing"), FindingState::Good);
     // Shipping is in the circle, but the circle is counted on Checkout.
     assert_eq!(findings.state_of("Shipping"), FindingState::Good);
+    assert_eq!(app.circles_counted_elsewhere("Shipping"), ["Checkout"]);
+    assert!(app.circles_counted_elsewhere("Checkout").is_empty());
+    assert!(app.circles_counted_elsewhere("Billing").is_empty());
 
     // Two rules and four checks ran. Three of the six found nothing.
     assert_eq!(findings.rules_and_checks(), (2, 4));

@@ -485,6 +485,11 @@ fn one_module(
         let at = pos2(left, top);
         top = alert_box(ui, pal, at, inner, severity, &bold, &rest, None, paint).0 + 12.0;
     }
+    // A circle is counted once. The other members say where.
+    for carrier in app.circles_counted_elsewhere(&module.name) {
+        let text = strings::part_of_circle_counted_on(carrier);
+        top = note_alert(ui, pal, pos2(left, top), inner, &text, paint) + 12.0;
+    }
     let two = inner >= 720.0;
     let column_w = if two {
         ((inner - 14.0) / 2.0).floor()
