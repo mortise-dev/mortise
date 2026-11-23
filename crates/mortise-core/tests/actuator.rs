@@ -1,14 +1,17 @@
 //! The actuator client, against a stub that answers as `nwidart/laravel-actuator` 1.0.0 does.
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use mortise_core::testing::{Reply, StubActuator};
 use mortise_core::{
-    Answer, Credentials, Environment, LiveRuntime, Pace, Runtime, RuntimeState, Status, ask,
-    ask_status, module_of, read_app, routes_by_module, routes_of, tasks_of,
+    Answer, Credentials, Environment, LiveRuntime, METRICS_BODY_LIMIT, NoMetrics, Pace, Runtime,
+    RuntimeState, Status, ask, ask_metrics, ask_status, module_of, read_app, routes_by_module,
+    routes_of, tasks_of,
 };
+
+const BUSY: &str = include_str!("../../../fixtures/actuator/prometheus-busy.txt");
 
 fn local(stub: &StubActuator) -> Environment {
     Environment {
@@ -444,6 +447,7 @@ fn a_live_environment_asks_health_often_and_the_rest_seldom() {
         status: Duration::from_millis(60),
         everything: Duration::from_secs(3600),
         seen: Duration::from_secs(3600),
+        metrics: Duration::from_secs(3600),
     };
     let runtime = LiveRuntime::open_with(local(&stub), None, pace, move || {
         counter.fetch_add(1, Ordering::Relaxed);
@@ -491,6 +495,7 @@ fn a_live_environment_stops_asking_when_the_window_is_not_seen() {
         status: Duration::from_millis(40),
         everything: Duration::from_secs(3600),
         seen: Duration::from_millis(200),
+        metrics: Duration::from_secs(3600),
     };
     let runtime = LiveRuntime::open_with(local(&stub), None, pace, || {});
     wait_for(&runtime, "the first answer", |state| state.answer.is_some());
@@ -515,6 +520,7 @@ fn a_live_environment_that_gave_no_answer_asks_for_everything_when_it_can() {
         status: Duration::from_millis(40),
         everything: Duration::from_secs(3600),
         seen: Duration::from_secs(3600),
+        metrics: Duration::from_secs(3600),
     };
     let runtime = LiveRuntime::open_with(local(&stub), None, pace, || {});
     wait_for(&runtime, "404", |state| {
@@ -542,6 +548,159 @@ fn a_live_environment_that_gave_no_answer_asks_for_everything_when_it_can() {
         unreachable!()
     };
     assert_eq!(up.routes.as_ref().map(Vec::len), Some(5));
+}
+
+#[test]
+fn prometheus_is_read_as_text_within_the_limit() {
+    let stub = StubActuator::recorded();
+    // Laravel answers an error as JSON only when it is asked for JSON.
+    stub.require_header("Accept", "application/json");
+    let url = format!("{}/actuator/prometheus", stub.base_url);
+    let metrics = |reply: Reply| {
+        stub.set("/actuator/prometheus", reply);
+        ask_metrics(&local(&stub), &None)
+    };
+
+    assert_eq!(metrics(Reply::ok(BUSY)), Ok(BUSY.to_owned()));
+    assert_eq!(metrics(Reply::ok("")), Err(NoMetrics::Off));
+    assert_eq!(
+        metrics(Reply::status(
+            503,
+            include_str!("../../../fixtures/actuator/prometheus-503.txt")
+        )),
+        Err(NoMetrics::Unavailable {
+            url: url.clone(),
+            line: "The metrics store cannot be read.".into()
+        })
+    );
+    // Of a whole page, the first line is kept, at most 200 characters of it.
+    let Err(NoMetrics::Unavailable { line, .. }) = metrics(Reply::status(
+        503,
+        &format!("{}\n<p>Back soon</p>", "é".repeat(300)),
+    )) else {
+        panic!("expected a 503 answer")
+    };
+    assert_eq!(line, "é".repeat(200));
+    assert_eq!(
+        metrics(Reply::status(401, r#"{"message":"Unauthenticated."}"#)),
+        Err(NoMetrics::NotAuthorized {
+            url: url.clone(),
+            status: 401
+        })
+    );
+    assert_eq!(
+        metrics(Reply::redirect("/login")),
+        Err(NoMetrics::Unexpected {
+            url: url.clone(),
+            status: 302,
+            location: Some(format!("{}/login", stub.base_url))
+        })
+    );
+
+    let limit = usize::try_from(METRICS_BODY_LIMIT).unwrap();
+    let full = "x".repeat(limit);
+    assert_eq!(metrics(Reply::ok(&full)).map(|text| text.len()), Ok(limit));
+    assert_eq!(
+        metrics(Reply::ok(&format!("{full}x"))),
+        Err(NoMetrics::TooLarge {
+            url,
+            limit: METRICS_BODY_LIMIT
+        })
+    );
+}
+
+/// Calls `see` every 10 ms until `done` holds, for at most 10 s.
+fn keep_seeing(what: &str, see: impl Fn(), done: impl Fn() -> bool) {
+    let start = Instant::now();
+    while !done() {
+        assert!(
+            start.elapsed() < Duration::from_secs(10),
+            "timed out waiting for {what}"
+        );
+        see();
+        std::thread::sleep(Duration::from_millis(10));
+    }
+}
+
+#[test]
+fn prometheus_is_asked_only_while_the_metrics_tab_is_seen() {
+    let stub = StubActuator::recorded();
+    let pace = Pace {
+        status: Duration::from_millis(40),
+        everything: Duration::from_secs(3600),
+        seen: Duration::from_millis(200),
+        metrics: Duration::from_millis(40),
+    };
+    let reads = Arc::new(Mutex::new(Vec::new()));
+    let sink = Arc::clone(&reads);
+    let runtime = LiveRuntime::open_with_metrics(
+        local(&stub),
+        None,
+        pace,
+        || {},
+        move |read: Result<String, NoMetrics>| {
+            sink.lock().unwrap().push(read.map(|text| text.len()));
+        },
+    );
+    let health = || count(&stub, "/actuator/health");
+    let prometheus = || count(&stub, "/actuator/prometheus");
+    let seen = || runtime.seen();
+    let both = || {
+        runtime.seen();
+        runtime.metrics_seen();
+    };
+    // Waits until the last `seen()` or `metrics_seen()` is older than `pace.seen` and no request
+    // started before then is on its way, still calling `see`.
+    let for_a_while = |see: &dyn Fn()| {
+        let start = Instant::now();
+        keep_seeing("a pause", see, || {
+            start.elapsed() > Duration::from_millis(400)
+        });
+    };
+
+    // The window is seen, the tab is not: health again and again, prometheus never.
+    keep_seeing("health", seen, || health() >= 4);
+    assert_eq!(prometheus(), 0);
+
+    // The tab is seen: prometheus again and again, as the text of the app.
+    keep_seeing("prometheus", both, || prometheus() >= 3);
+    assert!(
+        reads
+            .lock()
+            .unwrap()
+            .iter()
+            .all(|read| *read == Ok(BUSY.len()))
+    );
+    assert!(matches!(
+        runtime.state().answer.as_deref(),
+        Some(Answer::Answered(_))
+    ));
+
+    // The tab closes: prometheus stops, health goes on.
+    for_a_while(&seen);
+    let (asked, checks) = (prometheus(), health());
+    keep_seeing("health after the tab closed", seen, || {
+        health() >= checks + 3
+    });
+    assert_eq!(prometheus(), asked);
+
+    // The window is hidden: nothing is asked.
+    for_a_while(&|| {});
+    let quiet = stub.asked().len();
+    std::thread::sleep(Duration::from_millis(300));
+    assert_eq!(stub.asked().len(), quiet);
+
+    // The app stops listing prometheus: with the tab seen, it is not asked.
+    stub.expose(&["health", "info", "mappings", "scheduledtasks", "env"]);
+    runtime.refresh();
+    keep_seeing("everything again", both, || {
+        count(&stub, "/actuator/mappings") == 2
+    });
+    let checks = health();
+    keep_seeing("health without prometheus", both, || health() >= checks + 3);
+    assert_eq!(prometheus(), asked);
+
+    assert!(!stub.asked().iter().any(|path| path.contains("env")));
 }
 
 #[test]

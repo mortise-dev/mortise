@@ -2,13 +2,17 @@
 //!
 //! `health` is asked every 15 s while the window is visible. Everything else is asked
 //! when the environment is opened, every 5 minutes, and when the user reads the app again.
+//! `prometheus` is asked every 15 s only while the Metrics tab is open and the window is visible,
+//! after `health` when both are due. One request is on its way at a time.
 
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
 use crate::app::AppSnapshot;
 use crate::modules::module::Module;
-use crate::runtime::actuator::{Answer, Route, Secret, Task, ask, ask_status};
+use crate::runtime::actuator::{
+    Answer, NoMetrics, Route, Secret, Task, ask, ask_metrics, ask_status,
+};
 use crate::runtime::environment::Environment;
 
 /// How often things are asked.
@@ -19,7 +23,10 @@ pub struct Pace {
     /// Between two requests for everything.
     pub everything: Duration,
     /// The window counts as visible this long after the interface last drew itself.
+    /// The Metrics tab counts as open as long after it last drew itself.
     pub seen: Duration,
+    /// Between two requests for `prometheus`.
+    pub metrics: Duration,
 }
 
 impl Default for Pace {
@@ -28,6 +35,7 @@ impl Default for Pace {
             status: Duration::from_secs(15),
             everything: Duration::from_secs(5 * 60),
             seen: Duration::from_secs(3),
+            metrics: Duration::from_secs(15),
         }
     }
 }
@@ -49,6 +57,8 @@ struct Shared {
     refresh: bool,
     /// When the interface last drew itself.
     seen: Instant,
+    /// When the Metrics tab last drew itself. `None` until it does.
+    metrics_seen: Option<Instant>,
     stop: bool,
 }
 
@@ -75,6 +85,18 @@ impl LiveRuntime {
         pace: Pace,
         on_change: impl Fn() + Send + 'static,
     ) -> Self {
+        Self::open_with_metrics(environment, secret, pace, on_change, |_| {})
+    }
+
+    /// As [`LiveRuntime::open_with`], and hands every answer of `prometheus` to `on_metrics`,
+    /// on the worker thread, before `on_change` is called.
+    pub fn open_with_metrics(
+        environment: Environment,
+        secret: Secret,
+        pace: Pace,
+        on_change: impl Fn() + Send + 'static,
+        mut on_metrics: impl FnMut(Result<String, NoMetrics>) + Send + 'static,
+    ) -> Self {
         let shared = Arc::new((
             Mutex::new(Shared {
                 state: RuntimeState {
@@ -83,6 +105,7 @@ impl LiveRuntime {
                 },
                 refresh: true,
                 seen: Instant::now(),
+                metrics_seen: None,
                 stop: false,
             }),
             Condvar::new(),
@@ -90,7 +113,16 @@ impl LiveRuntime {
         let worker = Arc::clone(&shared);
         std::thread::Builder::new()
             .name("mortise-runtime".to_owned())
-            .spawn(move || run(&worker, &environment, &secret, pace, &on_change))
+            .spawn(move || {
+                run(
+                    &worker,
+                    &environment,
+                    &secret,
+                    pace,
+                    &on_change,
+                    &mut on_metrics,
+                );
+            })
             .expect("a thread can be started");
         Self { shared }
     }
@@ -110,6 +142,13 @@ impl LiveRuntime {
     /// Without this the worker stops asking.
     pub fn seen(&self) {
         self.lock().seen = Instant::now();
+        self.shared.1.notify_all();
+    }
+
+    /// Tells the worker that the Metrics tab drew itself. Without this it does not ask for
+    /// `prometheus`.
+    pub fn metrics_seen(&self) {
+        self.lock().metrics_seen = Some(Instant::now());
         self.shared.1.notify_all();
     }
 
@@ -134,12 +173,16 @@ fn run(
     secret: &Secret,
     pace: Pace,
     on_change: &dyn Fn(),
+    on_metrics: &mut dyn FnMut(Result<String, NoMetrics>),
 ) {
     let (lock, wake) = shared;
     let mut last_status: Option<Instant> = None;
     let mut last_everything: Option<Instant> = None;
+    // When the last read of `prometheus` ended.
+    let mut last_metrics: Option<Instant> = None;
     loop {
         // Wait until something is due.
+        let mut metrics = false;
         let (everything, earlier) = {
             let mut shared = lock.lock().expect("the runtime state is never poisoned");
             loop {
@@ -152,6 +195,8 @@ fn run(
                     last.is_none_or(|last| last.elapsed() >= every)
                 };
                 if shared.refresh {
+                    // Metrics are read again too, right after.
+                    last_metrics = None;
                     break;
                 }
                 if visible && due(last_status, pace.status) {
@@ -159,6 +204,18 @@ fn run(
                     if !answered || due(last_everything, pace.everything) {
                         shared.refresh = true;
                     }
+                    break;
+                }
+                // `prometheus` comes after `health`, while the Metrics tab is open and the
+                // last answer lists it.
+                let tab = visible
+                    && shared
+                        .metrics_seen
+                        .is_some_and(|seen| seen.elapsed() < pace.seen)
+                    && matches!(shared.state.answer.as_deref(),
+                        Some(Answer::Answered(runtime)) if runtime.exposes("prometheus"));
+                if tab && due(last_metrics, pace.metrics) {
+                    metrics = true;
                     break;
                 }
                 // Sleep until the next request is due, or until the window is seen again.
@@ -169,15 +226,31 @@ fn run(
                 } else {
                     Duration::from_secs(3600)
                 };
+                // Or until metrics are due.
+                let nap = match last_metrics {
+                    Some(last) if tab => nap.min(pace.metrics.saturating_sub(last.elapsed())),
+                    _ => nap,
+                };
                 shared = wake
                     .wait_timeout(shared, nap.max(Duration::from_millis(5)))
                     .expect("the runtime state is never poisoned")
                     .0;
             }
-            let everything = std::mem::take(&mut shared.refresh);
-            shared.state.asking = true;
-            (everything, shared.state.answer.clone())
+            if metrics {
+                (false, None)
+            } else {
+                let everything = std::mem::take(&mut shared.refresh);
+                shared.state.asking = true;
+                (everything, shared.state.answer.clone())
+            }
         };
+        if metrics {
+            // A read of metrics leaves the state of the runtime as it is.
+            on_metrics(ask_metrics(environment, secret));
+            last_metrics = Some(Instant::now());
+            on_change();
+            continue;
+        }
         on_change();
 
         let answer = match earlier.as_deref() {

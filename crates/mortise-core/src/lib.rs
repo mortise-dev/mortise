@@ -86,7 +86,8 @@ pub use run::{
 pub use run::{PhpSettings, RunnerKind};
 #[cfg(feature = "actuator")]
 pub use runtime::actuator::{
-    Answer, Component, Info, Route, Runtime, Secret, Status, Task, ask, ask_status,
+    Answer, Component, Info, METRICS_BODY_LIMIT, NoMetrics, Route, Runtime, Secret, Status, Task,
+    ask, ask_metrics, ask_status,
 };
 pub use runtime::environment::{Credentials, Environment};
 #[cfg(feature = "actuator")]

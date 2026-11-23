@@ -1,10 +1,12 @@
 //! The runtime status of a running app, read through `nwidart/laravel-actuator`.
 //!
 //! The client asks for the actuator base path, `health`, `info`, `mappings`, `scheduledtasks` and
-//! `prometheus` only. It never asks for `env` and follows no redirect. The rule allows
-//! `prometheus`; this client does not ask for it yet. What the app answers is called Runtime; it is
-//! not mixed with Findings, which Mortise works out from files.
+//! `prometheus` only. It never asks for `env` and follows no redirect. It asks for `prometheus`
+//! only while the Metrics tab is open and the window is visible, and reads that answer as text.
+//! What the app answers is called Runtime; it is not mixed with Findings, which Mortise works out
+//! from files.
 
+use std::io::Read;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
@@ -140,10 +142,45 @@ pub enum Answer {
 /// The secret that goes with [`Credentials`]: a token, a password or a header value.
 pub type Secret = Option<String>;
 
+/// The most text Mortise reads from one `prometheus` answer, after decompression.
+pub const METRICS_BODY_LIMIT: u64 = 16 * 1024 * 1024;
+
+/// Why a read of `prometheus` gave no metrics.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum NoMetrics {
+    /// 200 with an empty body: metrics are off in the app.
+    Off,
+    /// 503: the first line of the body as the app wrote it, at most 200 characters.
+    Unavailable {
+        url: String,
+        line: String,
+    },
+    /// The body is longer than the limit.
+    TooLarge {
+        url: String,
+        limit: u64,
+    },
+    NoAnswer {
+        url: String,
+        message: String,
+    },
+    NotAuthorized {
+        url: String,
+        status: u16,
+    },
+    Unexpected {
+        url: String,
+        status: u16,
+        location: Option<String>,
+    },
+}
+
 /// A response of the app: its status, its body and the `Location` header.
 struct Reply {
     status: u16,
     body: String,
+    /// The body was longer than the limit of the request. `body` is then empty.
+    too_large: bool,
     location: Option<String>,
 }
 
@@ -179,7 +216,9 @@ impl<'a> Client<'a> {
         }
     }
 
-    fn get(&self, url: &str) -> Result<Reply, ureq::Error> {
+    /// Asks for `url`. With a limit, the body is read up to that many decoded bytes, and a read
+    /// of the body that fails, such as a timeout, is a failed request.
+    fn get(&self, url: &str, limit: Option<u64>) -> Result<Reply, ureq::Error> {
         // Laravel answers errors as JSON only when it is asked for JSON.
         let mut request = self.agent.get(url).header("Accept", "application/json");
         let secret = self.secret.as_deref().unwrap_or_default();
@@ -201,10 +240,33 @@ impl<'a> Client<'a> {
             .get("location")
             .and_then(|value| value.to_str().ok())
             .map(|location| resolve(url, location));
-        let body = response.body_mut().read_to_string().unwrap_or_default();
+        let (body, too_large) = match limit {
+            None => (
+                response.body_mut().read_to_string().unwrap_or_default(),
+                false,
+            ),
+            Some(limit) => {
+                // The reader of `with_config()` has no limit of its own and decodes gzip, so
+                // this one counts decoded bytes. One byte past the limit says the body is longer.
+                let mut bytes = Vec::new();
+                response
+                    .body_mut()
+                    .with_config()
+                    .reader()
+                    .take(limit.saturating_add(1))
+                    .read_to_end(&mut bytes)
+                    .map_err(ureq::Error::from)?;
+                if bytes.len() as u64 > limit {
+                    (String::new(), true)
+                } else {
+                    (String::from_utf8_lossy(&bytes).into_owned(), false)
+                }
+            }
+        };
         Ok(Reply {
             status,
             body,
+            too_large,
             location,
         })
     }
@@ -212,7 +274,7 @@ impl<'a> Client<'a> {
     /// The JSON an endpoint answers, or the answer that says why there is none.
     fn fetch(&self, endpoint: &str) -> Result<Value, Answer> {
         let url = self.environment.url(endpoint);
-        let reply = match self.get(&url) {
+        let reply = match self.get(&url, None) {
             Ok(reply) => reply,
             Err(error) => {
                 return Err(Answer::NoAnswer {
@@ -226,6 +288,46 @@ impl<'a> Client<'a> {
             200 | 503 => Ok(serde_json::from_str(&reply.body).unwrap_or(Value::Null)),
             status @ (401 | 403) => Err(Answer::NotAuthorized { url, status }),
             status => Err(Answer::Unexpected {
+                url,
+                status,
+                location: reply.location.filter(|_| (300..400).contains(&status)),
+            }),
+        }
+    }
+
+    /// The text of `prometheus`, or why there is none.
+    fn metrics(&self) -> Result<String, NoMetrics> {
+        let url = self.environment.url("prometheus");
+        let reply = match self.get(&url, Some(METRICS_BODY_LIMIT)) {
+            Ok(reply) => reply,
+            Err(error) => {
+                return Err(NoMetrics::NoAnswer {
+                    url,
+                    message: reason(&error),
+                });
+            }
+        };
+        match reply.status {
+            200 | 503 if reply.too_large => Err(NoMetrics::TooLarge {
+                url,
+                limit: METRICS_BODY_LIMIT,
+            }),
+            200 if reply.body.trim().is_empty() => Err(NoMetrics::Off),
+            200 => Ok(reply.body),
+            // A 503 of maintenance mode can be a whole page: only its first line is kept.
+            503 => Err(NoMetrics::Unavailable {
+                url,
+                line: reply
+                    .body
+                    .lines()
+                    .next()
+                    .unwrap_or_default()
+                    .chars()
+                    .take(200)
+                    .collect(),
+            }),
+            status @ (401 | 403) => Err(NoMetrics::NotAuthorized { url, status }),
+            status => Err(NoMetrics::Unexpected {
                 url,
                 status,
                 location: reply.location.filter(|_| (300..400).contains(&status)),
@@ -379,6 +481,14 @@ pub fn ask_status(environment: &Environment, secret: &Secret, earlier: &Runtime)
         })),
         Err(answer) => answer,
     }
+}
+
+/// Asks an environment for `prometheus`. `Ok` is the text of a 200 that is not empty.
+///
+/// The request carries `Accept: application/json` and the credentials, as every request does.
+/// This waits for the app, for at most 10 s: call it from a worker thread.
+pub fn ask_metrics(environment: &Environment, secret: &Secret) -> Result<String, NoMetrics> {
+    Client::new(environment, secret).metrics()
 }
 
 /// A JSON value as the app wrote it, without quotes around a string.
