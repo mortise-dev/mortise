@@ -32,7 +32,7 @@
 
 ## 7. Linux look (16.11 sonnet, only when the screen is unlocked)
 
-- [ ] 7.1 Look at the phase 2 screens on the thinkcentre, or record Linux as looked at only through CI. Record Windows as not run
+- [x] 7.1 Look at the phase 2 screens on the thinkcentre, or record Linux as looked at only through CI. Record Windows as not run. Result: the session was locked (`hyprctl locked` true), nothing was typed; Linux is looked at only through CI, Windows is not run
 
 ## 8. Integration
 
