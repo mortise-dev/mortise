@@ -167,10 +167,11 @@ pub fn workspace(
     let findings = *state.findings_open && module.is_none() && *tab == Tab::Summary;
     let findings_title = crate::strings::findings_in(state.name);
     let mut title_x = head.left() + 16.0;
-    // The Generate tab names what it generates in (S9.1, S9.4).
-    let generate_title = generate_view::title(state.generate, module, state.name);
-    let generating = *tab == Tab::Generate && !findings;
-    let title = if generating {
+    // The new module form names the app it creates a module in (S9.4).
+    let generate_title = (*tab == Tab::Generate && !findings)
+        .then(|| generate_view::title(state.generate, module, state.name))
+        .flatten();
+    let title = if let Some(generate_title) = &generate_title {
         generate_title.as_str()
     } else if findings {
         // Where the list belongs, then its own name.
@@ -221,16 +222,14 @@ pub fn workspace(
             pal,
             &strings::code_is_for(&module.code, &module.name),
         );
-        if !generating {
-            draw::label(
-                ui,
-                pos2(stamp.right() + 10.0, title_rect.bottom() - 2.0),
-                Align2::LEFT_BOTTOM,
-                &app.path_shown(&module.dir),
-                ty::PATH,
-                pal.ink_2,
-            );
-        }
+        draw::label(
+            ui,
+            pos2(stamp.right() + 10.0, title_rect.bottom() - 2.0),
+            Align2::LEFT_BOTTOM,
+            &app.path_shown(&module.dir),
+            ty::PATH,
+            pal.ink_2,
+        );
     }
 
     // The actions of the header come before the tabs in the Tab order, so that the

@@ -360,7 +360,7 @@ fn a_generator_row_opens_its_form_and_runs_nothing() {
         harness.state().selection(),
         Selection::Module("Checkout".into())
     );
-    harness.get_by_role_and_label(Role::Heading, "Generate in Checkout");
+    harness.get_by_role_and_label(Role::Heading, "Checkout");
     assert!(
         harness
             .get_by_role_and_label(Role::TextInput, "Model name")
@@ -393,6 +393,6 @@ fn a_recent_generator_without_a_module_argument_opens_under_all_modules() {
         .click();
     harness.run_steps(3);
     assert_eq!(harness.state().selection(), Selection::All);
-    harness.get_by_role_and_label(Role::Heading, "Generate in shop-api");
+    harness.get_by_role_and_label(Role::Heading, "All modules");
     harness.get_by_role_and_label(Role::TextInput, "app:make-widget name");
 }

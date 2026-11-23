@@ -1,10 +1,5 @@
 //! Interface text of the Generate tab (section 10 of the specification).
 
-/// The title of the Generate tab of a module: `Generate in Billing`.
-pub fn generate_in(module: &str) -> String {
-    format!("Generate in {module}")
-}
-
 /// The title of the new module form: `New module in shop-api`.
 pub fn new_module_in(app: &str) -> String {
     format!("New module in {app}")

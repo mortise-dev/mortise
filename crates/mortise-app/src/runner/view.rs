@@ -559,21 +559,35 @@ impl AppRuns {
     }
 }
 
-/// Lines as written, with their codes, and their spans.
+/// Lines as written, with their codes, and the rows that show them. A line that
+/// holds JSON shows as one row per line of its indented form.
 #[derive(Debug, Default)]
 struct Output {
     lines: Vec<String>,
-    spans: Vec<Vec<Span>>,
+    rows: Vec<Vec<Span>>,
 }
 
 impl Output {
     fn of(lines: Vec<String>) -> Self {
-        let spans = lines.iter().map(|line| ansi::spans(line)).collect();
-        Self { lines, spans }
+        let mut output = Self::default();
+        for line in lines {
+            output.push(line);
+        }
+        output
     }
 
     fn push(&mut self, line: String) {
-        self.spans.push(ansi::spans(&line));
+        let spans = ansi::spans(&line);
+        let plain: String = spans.iter().map(|span| span.text.as_str()).collect();
+        match ansi::json_lines(&plain) {
+            Some(json) => self.rows.extend(json.into_iter().map(|text| {
+                vec![Span {
+                    style: Style::Text,
+                    text,
+                }]
+            })),
+            None => self.rows.push(spans),
+        }
         self.lines.push(line);
     }
 }
@@ -1256,8 +1270,9 @@ fn current_body(
         10.0 + 1.0 + 8.0 + galley.size().y + 4.0 + BAR_H
     });
     let first = current.line.as_ref().map(|line| format!("$ {line}"));
-    let rows = usize::from(first.is_some()) + current.output.lines.len() + notes.len();
-    let rows_h = rows as f32 * ty::RUNNER.line;
+    let rows = usize::from(first.is_some()) + current.output.rows.len() + notes.len();
+    // Room under the rows for the horizontal scroll bar, so it covers no line.
+    let rows_h = rows as f32 * ty::RUNNER.line + ui.spacing().scroll.allocated_width();
     let room = (body.height() - block_h).max(ty::RUNNER.line);
     let output_rect = Rect::from_min_size(body.min, vec2(body.width(), rows_h.min(room)));
     output_rows(
@@ -1427,7 +1442,7 @@ fn output_rows(
     stick: bool,
 ) {
     let skip = usize::from(first.is_some());
-    let rows = skip + output.lines.len() + notes.len();
+    let rows = skip + output.rows.len() + notes.len();
     let dim = |text: &str| {
         vec![Span {
             style: Style::Dim,
@@ -1445,11 +1460,11 @@ fn output_rows(
                     let (spans, plain) = if row < skip {
                         let line = first.unwrap_or_default();
                         (dim(line), line.to_owned())
-                    } else if row - skip < output.lines.len() {
-                        let at = row - skip;
-                        (output.spans[at].clone(), ansi::plain(&output.lines[at]))
+                    } else if let Some(spans) = output.rows.get(row - skip) {
+                        let plain = spans.iter().map(|span| span.text.as_str()).collect();
+                        (spans.clone(), plain)
                     } else {
-                        let note = &notes[row - skip - output.lines.len()];
+                        let note = &notes[row - skip - output.rows.len()];
                         (dim(note), note.clone())
                     };
                     let galley = line_galley(ui, &spans, pal);
