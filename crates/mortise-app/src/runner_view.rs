@@ -538,10 +538,14 @@ fn status_width(ui: &Ui, status: &Status) -> f32 {
     let text = draw::galley(ui, &status.text, STATUS, Color32::PLACEHOLDER)
         .size()
         .x;
+    // The time keeps the room of "999 ms", so the status does not move as times differ.
     let time = status.time.as_ref().map_or(0.0, |time| {
-        8.0 + draw::galley(ui, time, BAR_MONO, Color32::PLACEHOLDER)
-            .size()
-            .x
+        let width = |text: &str| {
+            draw::galley(ui, text, BAR_MONO, Color32::PLACEHOLDER)
+                .size()
+                .x
+        };
+        8.0 + width(time).max(width("999 ms"))
     });
     (size::STATE_MARK + 5.0 + text + time).ceil()
 }
