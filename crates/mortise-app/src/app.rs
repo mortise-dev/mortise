@@ -1660,6 +1660,15 @@ impl MortiseApp {
                 return;
             }
             GenerateAsk::ListFiles { words } => {
+                // Only a generator the package ships honours `--dry-run`: an app's
+                // own may declare it and write anyway.
+                let generator = words.first().map_or("", String::as_str);
+                let ships = self
+                    .snapshot(index)
+                    .is_some_and(|app| mortise_core::generator_gives_data(&app.package, generator));
+                if !ships {
+                    return;
+                }
                 let args = mortise_core::with_dry_run(words.clone());
                 let words = words.clone();
                 self.start_read(index, args, ReadFor::DryRun { words });

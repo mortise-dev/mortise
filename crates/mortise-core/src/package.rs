@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
-use crate::catalog::Target;
+use crate::catalog::{Catalog, Target};
 use crate::composer::Version;
 use crate::module::Module;
 use crate::php;
@@ -32,6 +32,24 @@ pub fn gives_data(version: &Version) -> bool {
         (Ok(major), Ok(minor)) => (major, minor) >= (13, 4),
         _ => false,
     }
+}
+
+/// True when the package ships the generator named `generator`: it is in the
+/// catalog of 13.4.0 ([`Catalog::v13_4`]), `module:make` among them.
+///
+/// The package gives `--dry-run` and `--json` their meaning only for the options it
+/// adds itself (`PlansGeneratorRun::addGeneratorRunOptions`). An app's own generator
+/// may declare an option of that name and write its files anyway.
+pub(crate) fn ships(generator: &str) -> bool {
+    Catalog::v13_4().get(generator).is_some()
+}
+
+/// True when Mortise lists the files of `generator` by a dry run and reads the
+/// result of its run from its answer (design D5, D6): the package gives data
+/// ([`gives_data`]) and ships the generator ([`ships`]). An app's own generator
+/// runs as before 13.4.
+pub fn generator_gives_data(version: &Version, generator: &str) -> bool {
+    gives_data(version) && ships(generator)
 }
 
 /// Why a run gave no document.
@@ -414,6 +432,18 @@ mod tests {
         for (version, gives) in cases {
             assert_eq!(gives_data(&version), gives, "{}", version.raw);
         }
+
+        // Only a generator the package ships gets the dry run and the answer: an
+        // app's own may declare `--dry-run` and write anyway.
+        let v13_4 = version("13.4.0", None);
+        assert!(generator_gives_data(&v13_4, "module:make"));
+        assert!(generator_gives_data(&v13_4, "module:make-health-indicator"));
+        assert!(!generator_gives_data(&v13_4, "app:make-widget"));
+        assert!(!generator_gives_data(&v13_4, "module:make-widget"));
+        assert!(!generator_gives_data(
+            &version("13.3.0", None),
+            "module:make-model"
+        ));
     }
 
     #[test]

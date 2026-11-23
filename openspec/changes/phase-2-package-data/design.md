@@ -422,6 +422,10 @@ accessible name and a 24 px target (`tests/accessibility.rs`).
   answer was "<reason>"." under it; the drawer shows the failure.
 - `created_tables` resolves the class through the file's `use`: `Schema` under another name and its
   full name count, and the table may be the named argument `table`.
+- `package::generator_gives_data(version, generator)` gates "List files" and `--json`: the package
+  gives data and ships the generator (a name of `Catalog::v13_4`, `module:make` among them). The
+  package honours `--dry-run` only when it adds the option itself, so an app's own generator runs as
+  before 13.4: no dry run, no `--json`, its result read from the output.
 
 ## Risks / Trade-offs
 

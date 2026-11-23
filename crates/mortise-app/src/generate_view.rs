@@ -16,7 +16,8 @@ use eframe::egui::{
 use mortise_core::{
     AppSnapshot, Catalog, FileAction, FileOutcome, Filled, GeneratedFile, Generator,
     GeneratorReport, Group, MODULE_MAKE, Module, NameRule, ReportedFile, RunnerKind, Severity,
-    app_relative, gives_data, model_flag_of, replace_words, shipped_mark, with_dry_run, with_json,
+    app_relative, generator_gives_data, model_flag_of, replace_words, shipped_mark, with_dry_run,
+    with_json,
 };
 
 use crate::boundary::BoundaryAction;
@@ -1585,9 +1586,11 @@ fn run_keys(mac: bool) -> String {
 }
 
 /// The words a run carries: on a 13.4 app with `--json`, once, so that its result
-/// is read from its answer (design D6).
+/// is read from its answer (design D6). An app's own generator runs without it: it
+/// may give `--json` a meaning of its own.
 fn run_words(app: &AppSnapshot, words: Vec<String>) -> Vec<String> {
-    if gives_data(&app.package) {
+    let generator = words.first().map_or("", String::as_str);
+    if generator_gives_data(&app.package, generator) {
         with_json(words)
     } else {
         words
@@ -1635,7 +1638,9 @@ fn command(
     let ready = names_ok(generator, &state.filled);
     let mut y = code.bottom() + 8.0;
     let mut files = None;
-    if gives_data(&app.package) {
+    // A generator the package ships lists its files by a dry run (design D5). An
+    // app's own may declare `--dry-run` and write anyway: its files come after the run.
+    if generator_gives_data(&app.package, &generator.name) {
         let at = pos2(min.x, y + 4.0);
         let shown = files_this_creates(
             ui, pal, at, width, app, module, generator, &words, state, inputs, ready,
@@ -1643,7 +1648,7 @@ fn command(
         y = shown.bottom;
         files = Some(shown);
     } else {
-        // Without the dry run (P2) the files are listed after the run (deviation S44).
+        // Without the dry run (P2) the files are listed after the run (deviations S44, S55).
         y = draw::paragraph(
             ui,
             pos2(min.x, y),
