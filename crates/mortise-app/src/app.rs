@@ -6,8 +6,9 @@ use std::sync::Arc;
 
 use eframe::egui::{self, Event, Key, KeyboardShortcut, Modifiers, Rect, Theme, Ui, pos2, vec2};
 use mortise_core::{
-    Action, Ask, Environment, FileOutcome, LiveRuntime, MODULE_MAKE, ModuleState, ReadOptions,
-    Rules, RunEnd, RunnerKind, Runs, RuntimeState, Secret, Secrets, Target, ThemeChoice,
+    Action, Ask, Environment, FileOutcome, LiveRuntime, MODULE_MAKE, ModuleState, PackageData,
+    ReadOptions, Rules, RunEnd, RunnerKind, Runs, RuntimeState, Secret, Secrets, Target,
+    ThemeChoice,
 };
 use mortise_core::{
     AppEntry, AppSnapshot, LiveApp, LiveState, ReadCache, Settings, SettingsError,
@@ -112,6 +113,9 @@ struct OpenApp {
     generate_run: Option<Generating>,
     /// After `module:make`: the module to select once a snapshot has it.
     select_new: Option<SelectNew>,
+    /// The data the package gave in this session (P4, P8). It goes into every read
+    /// of the app, so the snapshot holds it (design D7).
+    package: PackageData,
 }
 
 /// A generator that runs, and what its end needs.
@@ -957,6 +961,18 @@ impl MortiseApp {
                 self.save();
             }
         }
+    }
+
+    /// Changes the package data of the app at `index` and reads the app again, so
+    /// that its snapshot holds the new data (design D7).
+    #[allow(dead_code)] // The reads of P4 and P8 call it.
+    fn set_package(&mut self, index: usize, change: impl FnOnce(&mut PackageData)) {
+        let (Some(open), Some(entry)) = (self.apps.get_mut(index), self.settings.apps.get(index))
+        else {
+            return;
+        };
+        change(&mut open.package);
+        open.live.set_options(read_options(entry, &open.package));
     }
 
     // --- Runs ---
@@ -2686,9 +2702,9 @@ impl eframe::App for MortiseApp {
                 SettingsAction::Changed { reread } => {
                     self.save();
                     if let Some(index) = reread {
-                        self.apps[index]
-                            .live
-                            .set_options(read_options(&self.settings.apps[index]));
+                        let open = &self.apps[index];
+                        open.live
+                            .set_options(read_options(&self.settings.apps[index], &open.package));
                     }
                 }
                 // An app that runs a command stays: Remove is off until it ends.
@@ -2763,7 +2779,7 @@ fn open_app(ctx: &egui::Context, entry: &AppEntry, data_dir: Option<&Path>) -> O
         live: LiveApp::open(
             entry.root.clone(),
             entry.codes.clone(),
-            read_options(entry),
+            read_options(entry, &PackageData::default()),
             move || {
                 ctx.request_repaint();
             },
@@ -2788,6 +2804,7 @@ fn open_app(ctx: &egui::Context, entry: &AppEntry, data_dir: Option<&Path>) -> O
         generate: GenerateState::default(),
         generate_run: None,
         select_new: None,
+        package: PackageData::default(),
     }
 }
 
@@ -2977,11 +2994,11 @@ fn index_edge(
 }
 
 /// What the user set for an app, as the reader takes it.
-fn read_options(entry: &AppEntry) -> ReadOptions {
+fn read_options(entry: &AppEntry, package: &PackageData) -> ReadOptions {
     ReadOptions {
         coverage_limit: entry.coverage_limit,
         coverage_report: entry.coverage_report.as_ref().map(PathBuf::from),
-        ..ReadOptions::default()
+        package: package.clone(),
     }
 }
 
