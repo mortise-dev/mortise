@@ -9,9 +9,9 @@ use eframe::egui::{
 };
 use mortise_core::{AppSnapshot, ReadError, RunnerKind, TestOutcome};
 
+use crate::apps::strings;
 use crate::runner::php_settings::{PhpEvent, PhpForm, PhpOptions, PhpTest, php_field, propose};
 use crate::runtime::environment_form::{EnvironmentForm, FormEvent, FormOptions, environment_form};
-use crate::strings;
 use crate::ui::draw::{self, Button, ButtonKind, Icon};
 use crate::ui::theme::{Face, Palette, Type, radius, size, ty};
 
@@ -201,11 +201,11 @@ pub fn add_panel(
         ui,
         pos2(head.left() + 16.0, head.top() + 12.0),
         Align2::LEFT_TOP,
-        strings::ADD_APP,
+        crate::strings::ADD_APP,
         ty::TITLE,
         pal.ink,
     );
-    draw::announce(ui, title, Role::Heading, strings::ADD_APP);
+    draw::announce(ui, title, Role::Heading, crate::strings::ADD_APP);
     let back = Button {
         label: strings::BACK,
         kind: ButtonKind::Ghost,
@@ -390,7 +390,7 @@ fn add_body(
         pos2((left + column_w + 45.0).min(rect.right() - 16.0), top),
         pos2(rect.right() - 16.0, rect.bottom()),
     );
-    let command_enter = format!("{} Enter", strings::command_key(mac));
+    let command_enter = format!("{} Enter", crate::strings::command_key(mac));
 
     // What is under the field depends on what the folder gave.
     let (mut primary, others): (Button<'_>, &[&str]);
@@ -404,7 +404,7 @@ fn add_body(
             // moment, so that quick work does not flash.
             if let Some((read, total)) = progress {
                 let share = read as f32 / total as f32;
-                let label = strings::reading_files(read, total);
+                let label = crate::strings::reading_files(read, total);
                 let bar = draw::progress(ui, pal, pos2(left, y + 12.0), column_w, &label, share);
                 return (action, bar);
             }
@@ -443,7 +443,7 @@ fn add_body(
             return (action, bottom);
         }
         Some(Checked::Found(app)) => {
-            others = &[strings::CANCEL];
+            others = &[crate::strings::CANCEL];
             y += 16.0;
             if right_column.width() > 200.0 {
                 right_bottom = found(ui, pal, right_column, app, monogram);
@@ -526,14 +526,14 @@ fn add_body(
                 ..Default::default()
             };
             primary_action = AddAction::Open(*index);
-            others = &[strings::CANCEL];
+            others = &[crate::strings::CANCEL];
         }
         Some(Checked::Failed(error)) => {
             // The sentence at the field: what is wrong, then what to do.
             y += 4.0;
             let mark = Rect::from_min_size(pos2(left, y + 2.0), Vec2::splat(size::STATE_MARK));
             draw::mark_bad(ui, mark, pal.bad, pal.surface);
-            let sentence = strings::read_error(error);
+            let sentence = crate::strings::read_error(error);
             let sentence_type = Type {
                 line: 16.0,
                 ..ty::SECONDARY
@@ -563,7 +563,7 @@ fn add_body(
                 );
                 y = block.bottom() + 10.0;
                 let copy = Button {
-                    label: strings::COPY_COMMAND,
+                    label: crate::strings::COPY_COMMAND,
                     ..Default::default()
                 };
                 if copy.show(ui, pal, pos2(left, y), keyboard).clicked() {
@@ -582,14 +582,14 @@ fn add_body(
             }
             // The add button is disabled until the folder changes.
             primary = Button {
-                label: strings::ADD_APP,
+                label: crate::strings::ADD_APP,
                 kind: ButtonKind::Primary,
                 disabled: true,
                 ..Default::default()
             };
             others = match error {
-                ReadError::NotLaravel { .. } => &[strings::CANCEL],
-                _ => &[strings::CANCEL, strings::CHECK_AGAIN],
+                ReadError::NotLaravel { .. } => &[crate::strings::CANCEL],
+                _ => &[crate::strings::CANCEL, strings::CHECK_AGAIN],
             };
         }
     }
@@ -637,7 +637,7 @@ fn add_body(
             ..Default::default()
         };
         if button.show(ui, pal, pos2(x, y), keyboard).clicked() {
-            action = Some(if *label == strings::CANCEL {
+            action = Some(if *label == crate::strings::CANCEL {
                 AddAction::Back
             } else {
                 AddAction::Check
@@ -756,7 +756,7 @@ fn found(ui: &Ui, pal: &Palette, column: Rect, app: &AppSnapshot, monogram: &str
         pal,
         found,
         y,
-        (strings::COVERAGE_REPORT, ty::BODY),
+        (crate::strings::COVERAGE_REPORT, ty::BODY),
         &report,
         false,
     );
@@ -774,7 +774,15 @@ fn found(ui: &Ui, pal: &Palette, column: Rect, app: &AppSnapshot, monogram: &str
         .into_iter()
         .filter(|(text, ..)| !text.is_empty())
         .collect();
-    draw::box_line(ui, pal, found, y, (strings::GIT, ty::BODY), &git, true);
+    draw::box_line(
+        ui,
+        pal,
+        found,
+        y,
+        (crate::strings::GIT, ty::BODY),
+        &git,
+        true,
+    );
 
     let shown = Rect::from_min_size(
         pos2(column.left(), found.bottom() + 12.0),
@@ -792,13 +800,21 @@ fn found(ui: &Ui, pal: &Palette, column: Rect, app: &AppSnapshot, monogram: &str
     );
     let y = draw::box_head(ui, pal, shown, strings::SHOWN_TITLE, strings::SHOWN_NOTE);
     let name = [(app.name.as_str(), body.0, body.1)];
-    let y = draw::box_line(ui, pal, shown, y, (strings::NAME, ty::BODY), &name, false);
+    let y = draw::box_line(
+        ui,
+        pal,
+        shown,
+        y,
+        (crate::strings::NAME, ty::BODY),
+        &name,
+        false,
+    );
     let mid = y + 17.0;
     draw::label(
         ui,
         pos2(shown.left() + 13.0, mid),
         Align2::LEFT_CENTER,
-        strings::MONOGRAM,
+        crate::strings::MONOGRAM,
         ty::BODY,
         pal.ink,
     );

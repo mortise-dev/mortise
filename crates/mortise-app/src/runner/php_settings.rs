@@ -13,7 +13,7 @@ use mortise_core::{
     CommandLine, Detected, RunnerKind, TEST_LIMIT, TestOutcome, detect, herd_config_dir,
 };
 
-use crate::strings;
+use crate::runner::strings;
 use crate::ui::draw::{self, Button};
 use crate::ui::theme::{Palette, Type, size, ty};
 
@@ -155,7 +155,7 @@ impl PhpForm {
         changed
     }
 
-    /// Picks the kind at `place` of [`strings::RUNNERS`] and writes its words into the field.
+    /// Picks the kind at `place` of [`crate::strings::RUNNERS`] and writes its words into the field.
     fn pick(&mut self, place: usize) {
         self.runner = match place {
             0 => RunnerKind::Herd,
@@ -225,13 +225,13 @@ fn paint(
 
     // Sail is a bash script: on Windows it runs in WSL only (design D6).
     let off = cfg!(windows).then_some((1, strings::SAIL_NOT_ON_WINDOWS));
-    let place = strings::runner_place(&form.runner);
+    let place = crate::strings::runner_place(&form.runner);
     let (track, clicked) = draw::segmented_with(
         ui,
         pal,
         pos2(left, y),
         name,
-        &strings::RUNNERS,
+        &crate::strings::RUNNERS,
         place,
         off,
         keyboard,
@@ -244,7 +244,7 @@ fn paint(
 
     test.poll();
     let button = Button {
-        label: strings::TEST,
+        label: crate::strings::TEST,
         said: Some(strings::TEST_PHP),
         disabled: test.running(),
         ..Default::default()

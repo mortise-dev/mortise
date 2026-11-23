@@ -8,7 +8,7 @@ use eframe::egui::{
 use mortise_core::{Action, AppSnapshot, Check, Detail, Finding, Severity};
 
 use crate::app::workspace::WorkAction;
-use crate::strings;
+use crate::findings::strings;
 use crate::ui::draw::{self, StampState};
 use crate::ui::theme::{Face, Palette, Type, radius, size, ty};
 
@@ -19,25 +19,25 @@ fn opens(finding: &Finding, app: &AppSnapshot) -> (&'static str, Option<WorkActi
         (Detail::CircularUse { .. }, Some(module)) => {
             let other = app.circle_neighbour(&module).map(str::to_owned);
             (
-                strings::BOUNDARY,
+                crate::strings::BOUNDARY,
                 other.map(|other| WorkAction::ShowLink { module, other }),
             )
         }
         (Detail::ReadsInternals { of, .. }, Some(module)) => (
-            strings::BOUNDARY,
+            crate::strings::BOUNDARY,
             Some(WorkAction::ShowLink {
                 module,
                 other: of.clone(),
             }),
         ),
         (Detail::MissingTranslations { .. }, Some(module)) => (
-            strings::ACTIONS,
+            crate::strings::ACTIONS,
             Some(WorkAction::OpenModuleAction {
                 module,
                 action: Action::CheckTranslations,
             }),
         ),
-        (_, Some(module)) => (strings::SUMMARY, Some(WorkAction::Select(module))),
+        (_, Some(module)) => (crate::strings::SUMMARY, Some(WorkAction::Select(module))),
         // A finding of the app itself lives on this list.
         (_, None) => ("", None),
     }
@@ -144,7 +144,7 @@ fn list(
                 Severity::Warning => Group::Warnings,
             },
             module: finding.module.as_deref(),
-            sentence: strings::finding(finding, app, name),
+            sentence: crate::strings::finding(finding, app, name),
             check: strings::check_name(finding.check, app),
             place,
             opens,
@@ -155,8 +155,8 @@ fn list(
         group: Group::Todo,
         module: Some(&todo.module),
         sentence: strings::migrations_waiting(&todo.module, todo.waiting),
-        check: strings::MIGRATIONS.to_owned(),
-        place: strings::ACTIONS,
+        check: crate::strings::MIGRATIONS.to_owned(),
+        place: crate::strings::ACTIONS,
         opens: Some(WorkAction::OpenModuleAction {
             module: todo.module.clone(),
             action: Action::Migrate,
@@ -182,7 +182,7 @@ fn list(
 
     let head_mid = rect.top() + size::TABLE_HEAD_H / 2.0;
     for (x, align, label) in [
-        (module_x, Align2::LEFT_CENTER, strings::COL_MODULE),
+        (module_x, Align2::LEFT_CENTER, crate::strings::COL_MODULE),
         (text_x, Align2::LEFT_CENTER, strings::COL_FINDING),
         (check_x, Align2::LEFT_CENTER, strings::COL_CHECK),
         (right, Align2::RIGHT_CENTER, strings::COL_ENTER_OPENS),

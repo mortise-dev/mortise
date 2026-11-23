@@ -10,7 +10,7 @@ use mortise_core::{
     ThemeChoice, fuzzy, history,
 };
 
-use crate::strings;
+use crate::palette::strings;
 use crate::ui::draw::{self, Icon, StampState};
 use crate::ui::theme::{Face, Palette as Colors, Type, radius, size, ty};
 
@@ -110,7 +110,7 @@ pub struct Source<'a> {
 /// apps, Mortise's commands. A group with no match is left out.
 pub fn entries(query: &str, source: &Source<'_>) -> Vec<Entry> {
     let query = query.trim();
-    let command = strings::command_key(source.mac);
+    let command = crate::strings::command_key(source.mac);
     let option = if source.mac { "Option" } else { "Alt" };
     let mut entries = Vec::new();
     // The best matches of a group, at most four, in the order of their score.
@@ -141,8 +141,8 @@ pub fn entries(query: &str, source: &Source<'_>) -> Vec<Entry> {
         let module_entry = |name: &str| {
             let module = app.module(name)?;
             let state = match (module.state, app.findings.state_of(name)) {
-                (ModuleState::Off, _) => Some((strings::OFF.to_owned(), false)),
-                (_, FindingState::Problems(n)) => Some((strings::problems(n), true)),
+                (ModuleState::Off, _) => Some((crate::strings::OFF.to_owned(), false)),
+                (_, FindingState::Problems(n)) => Some((crate::strings::problems(n), true)),
                 _ => None,
             };
             Some(Entry {
@@ -174,7 +174,7 @@ pub fn entries(query: &str, source: &Source<'_>) -> Vec<Entry> {
                     Ran::Generator { name, module } => {
                         let label = match &module {
                             Some(module) => strings::generate_row(&name, module),
-                            None => strings::generator_label(&name),
+                            None => crate::strings::generator_label(&name),
                         };
                         let command = Command::Generate {
                             module,
@@ -197,11 +197,15 @@ pub fn entries(query: &str, source: &Source<'_>) -> Vec<Entry> {
                     .collect(),
             );
 
-            let mut findings = entry(strings::findings_in(app_name), "F", Command::Findings);
+            let mut findings = entry(
+                crate::strings::findings_in(app_name),
+                "F",
+                Command::Findings,
+            );
             findings.state = match (app.findings.problems(), app.findings.warnings()) {
                 (0, 0) => None,
-                (0, warnings) => Some((strings::warnings(warnings), false)),
-                (problems, _) => Some((strings::problems(problems), true)),
+                (0, warnings) => Some((crate::strings::warnings(warnings), false)),
+                (problems, _) => Some((crate::strings::problems(problems), true)),
             };
             let settings = entry(
                 "Settings".to_owned(),
@@ -209,8 +213,8 @@ pub fn entries(query: &str, source: &Source<'_>) -> Vec<Entry> {
                 Command::Settings,
             );
             let all = entry(
-                strings::ALL_MODULES.to_owned(),
-                strings::SUMMARY,
+                crate::strings::ALL_MODULES.to_owned(),
+                crate::strings::SUMMARY,
                 Command::AllModules,
             );
             add("Go to", vec![(0, all), (1, findings), (2, settings)]);
@@ -283,7 +287,7 @@ pub fn entries(query: &str, source: &Source<'_>) -> Vec<Entry> {
                     return Some((0, entry));
                 }
                 // An action named by the query comes before one that only has the module.
-                let own = strings::action_button(action);
+                let own = crate::strings::action_button(action);
                 let score = match fuzzy(query, own) {
                     Some(score) => score,
                     None => {
@@ -318,13 +322,13 @@ pub fn entries(query: &str, source: &Source<'_>) -> Vec<Entry> {
                 let module = finding.module.clone()?;
                 // A translation warning opens Check translations of its module.
                 if let Detail::MissingTranslations { .. } = finding.detail {
-                    let label = strings::finding(finding, app, app_name);
+                    let label = crate::strings::finding(finding, app, app_name);
                     let score = fuzzy(query, &label)?;
                     let command = Command::Action {
                         module: Some(module),
                         action: Action::CheckTranslations,
                     };
-                    return Some((score, entry(label, strings::ACTIONS, command)));
+                    return Some((score, entry(label, crate::strings::ACTIONS, command)));
                 }
                 let (label, other) = match &finding.detail {
                     Detail::CircularUse { files } => {
@@ -332,43 +336,43 @@ pub fn entries(query: &str, source: &Source<'_>) -> Vec<Entry> {
                             files.iter().map(|(name, _)| name.clone()).collect();
                         let other = app.circle_neighbour(&module).map(str::to_owned);
                         let label = match names.as_slice() {
-                            [a, b] => strings::use_each_other(a, b),
-                            names => strings::use_each_other_in_a_circle(names),
+                            [a, b] => crate::strings::use_each_other(a, b),
+                            names => crate::strings::use_each_other_in_a_circle(names),
                         };
                         (label, other)
                     }
                     Detail::ReadsInternals { of, files, .. } => (
                         format!(
                             "{} in {module} read {of} internals",
-                            strings::files(*files as u64)
+                            crate::strings::files(*files as u64)
                         ),
                         Some(of.clone()),
                     ),
-                    _ => (strings::finding(finding, app, app_name), None),
+                    _ => (crate::strings::finding(finding, app, app_name), None),
                 };
                 let score = fuzzy(query, &label)?;
                 let place = if other.is_some() {
-                    strings::BOUNDARY
+                    crate::strings::BOUNDARY
                 } else {
-                    strings::SUMMARY
+                    crate::strings::SUMMARY
                 };
                 Some((
                     score,
                     entry(label, place, Command::Finding { module, other }),
                 ))
             });
-            add(strings::FINDINGS, findings.collect());
+            add(crate::strings::FINDINGS, findings.collect());
 
             // The public surface of a module. Opening the view does not start the scan.
             let surfaces = app.modules.iter().filter_map(|module| {
                 let label = strings::scan_the_surface_of(&module.name);
                 let score = fuzzy(query, &format!("{label} {}", module.code))?;
                 let command = Command::Surface(module.name.clone());
-                let mut entry = entry(label, strings::BOUNDARY, command);
+                let mut entry = entry(label, crate::strings::BOUNDARY, command);
                 entry.code = Some(module.code.clone());
                 Some((score, entry))
             });
-            add(strings::PUBLIC_SURFACE, surfaces.collect());
+            add(crate::strings::PUBLIC_SURFACE, surfaces.collect());
         }
     }
 
@@ -391,12 +395,12 @@ pub fn entries(query: &str, source: &Source<'_>) -> Vec<Entry> {
                 String::new()
             };
             let mut entry = entry(name.clone(), &hint, Command::App(index));
-            entry.state = (*problems > 0).then(|| (strings::problems(*problems), true));
+            entry.state = (*problems > 0).then(|| (crate::strings::problems(*problems), true));
             Some((score, entry))
         });
     let mut apps: Vec<(u32, Entry)> = apps.collect();
     let add_app = entry(
-        strings::ADD_APP.to_owned(),
+        crate::strings::ADD_APP.to_owned(),
         &format!("{command} O"),
         Command::AddApp,
     );
@@ -410,10 +414,14 @@ pub fn entries(query: &str, source: &Source<'_>) -> Vec<Entry> {
         let commands = [
             ("Settings", format!("{command} ,"), Command::Settings),
             (strings::SETTINGS_PHP, String::new(), Command::PhpSettings),
-            (strings::ADD_APP, format!("{command} O"), Command::AddApp),
+            (
+                crate::strings::ADD_APP,
+                format!("{command} O"),
+                Command::AddApp,
+            ),
             (
                 strings::SHOW_OR_HIDE_RUNNER,
-                strings::TOGGLE_RUNNER_KEYS.to_owned(),
+                crate::strings::TOGGLE_RUNNER_KEYS.to_owned(),
                 Command::Runner,
             ),
             (
@@ -508,7 +516,7 @@ fn generator_entries(
         .into_iter()
         .flat_map(|(_, generators)| generators)
         .filter_map(|generator| {
-            let label = strings::generator_label(&generator.name);
+            let label = crate::strings::generator_label(&generator.name);
             let score = fuzzy(&rest, &format!("{label} {}", generator.name))?;
             let new_module = generator.name == MODULE_MAKE;
             let (label, module) = match (&module, new_module) {
@@ -620,7 +628,7 @@ pub fn palette(
                 .align(Align2::LEFT_CENTER)
                 .hint_text(hint);
             let response = ui.put(text_rect, edit);
-            response.widget_info(|| WidgetInfo::labeled(Role::TextInput, true, strings::SEARCH));
+            response.widget_info(|| WidgetInfo::labeled(Role::TextInput, true, crate::strings::SEARCH));
             // The palette holds focus: Tab, Enter and the arrows do not leave the field.
             response.request_focus();
 

@@ -7,7 +7,7 @@ use eframe::egui::{
     vec2,
 };
 
-use crate::strings;
+use crate::app::strings;
 use crate::ui::draw::{self, Icon};
 use crate::ui::theme::{Palette, radius, size, ty};
 
@@ -141,7 +141,7 @@ pub fn title_bar(
         ui.scope_id().with("palette-entry"),
         Sense::click(),
     );
-    entry.widget_info(|| WidgetInfo::labeled(Role::Button, true, strings::SEARCH));
+    entry.widget_info(|| WidgetInfo::labeled(Role::Button, true, crate::strings::SEARCH));
     let fill = if entry.hovered() { pal.well } else { pal.panel };
     draw::outlined(ui, find, radius::CONTROL, fill, pal.ink_2);
     let glass = Rect::from_min_size(pos2(find.left() + 8.0, mid - 6.5), vec2(13.0, 13.0));
@@ -153,13 +153,13 @@ pub fn title_bar(
         if narrow {
             strings::SEARCH_SHORT
         } else {
-            strings::SEARCH
+            crate::strings::SEARCH
         },
         ty::SECONDARY,
         pal.ink_2,
     );
     let mac = ui.ctx().os() == eframe::egui::os::OperatingSystem::Mac;
-    let keys = format!("{} K", strings::command_key(mac));
+    let keys = format!("{} K", crate::strings::command_key(mac));
     draw::keycap(ui, pal, pos2(find.right() - 8.0, mid), &keys);
 
     // Right: the current app.

@@ -4,6 +4,7 @@ pub mod chrome;
 #[cfg(target_os = "macos")]
 pub mod menu;
 pub mod rail;
+pub mod strings;
 pub mod workspace;
 
 mod actions;
@@ -42,7 +43,6 @@ use crate::runtime::view::{Brief, RuntimeView};
 use crate::settings::view::{
     self as settings_view, AppInfo, Section, SettingsAction, SettingsState,
 };
-use crate::strings;
 use crate::summary::view::{Sort, SummaryState};
 use crate::ui::dialog::{Answer, Dialog};
 use crate::ui::draw::EmptyMark;
@@ -648,13 +648,14 @@ impl eframe::App for MortiseApp {
                     };
                     AppInfo {
                         versions: app.as_ref().map_or(String::new(), |app| {
-                            strings::versions(app.laravel.as_ref(), &app.package)
+                            crate::strings::versions(app.laravel.as_ref(), &app.package)
                         }),
                         actuator: app.as_ref().is_some_and(|app| app.actuator.is_some()),
                         app_url: app.as_ref().and_then(|app| app.app_url.clone()),
                         last: &mut open.last_answers,
                         php_test: &mut open.php_test,
-                        running: busy(&open.runs, open.reading.as_ref()).map(strings::is_running),
+                        running: busy(&open.runs, open.reading.as_ref())
+                            .map(crate::strings::is_running),
                     }
                 })
                 .collect();
@@ -908,7 +909,7 @@ impl eframe::App for MortiseApp {
                     // The first read of a large app: say how far it is.
                     let (read, total) = open.live.progress();
                     if open.since.elapsed() >= SHOW_PROGRESS_AFTER && total > 0 {
-                        let label = strings::reading_files(read, total);
+                        let label = crate::strings::reading_files(read, total);
                         let share = read as f32 / total as f32;
                         let at = rest.min + vec2(16.0, 14.0);
                         draw::progress(
@@ -925,7 +926,7 @@ impl eframe::App for MortiseApp {
                 LiveState::Failed(error) => {
                     ui.painter().rect_filled(rest, 0, pal.surface);
                     let title = strings::cannot_read_title(shown_name);
-                    let text = strings::read_error(&error);
+                    let text = crate::strings::read_error(&error);
                     draw::empty_state(ui, pal, rest, EmptyMark::None, &title, &[&text], 0.0);
                 }
             }
@@ -938,10 +939,10 @@ impl eframe::App for MortiseApp {
                 rest,
                 EmptyMark::Brand,
                 strings::NO_APPS_TITLE,
-                &[strings::NO_APPS_BODY],
+                &[crate::strings::NO_APPS_BODY],
                 size::CONTROL_H,
             );
-            let keys = format!("{} O", strings::command_key(mac));
+            let keys = format!("{} O", crate::strings::command_key(mac));
             let button = Button {
                 label: strings::ADD_APP_FOLDER,
                 kind: ButtonKind::Primary,
@@ -1316,7 +1317,7 @@ fn surface_inputs<'a>(
         .map(|task| {
             let schedule = match (&task.expression, task.interval_ms) {
                 (Some(expression), _) => expression.clone(),
-                (None, Some(interval)) => strings::every(interval),
+                (None, Some(interval)) => crate::strings::every(interval),
                 (None, None) => String::new(),
             };
             (task.target.clone(), schedule)

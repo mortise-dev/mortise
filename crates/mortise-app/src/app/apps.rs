@@ -11,9 +11,9 @@ use mortise_core::{
 
 use super::{MortiseApp, Reading, open_app};
 use crate::actions::view::ActionsState;
+use crate::apps::strings;
 use crate::apps::view::{AddAction, AddPanel, Checked};
 use crate::index::view::Selection;
-use crate::strings;
 use crate::ui::toast::Toast;
 
 impl MortiseApp {
@@ -82,7 +82,7 @@ impl MortiseApp {
 
     /// Opens the add panel on a folder that was chosen or dropped.
     pub(super) fn open_folder(&mut self, ctx: &egui::Context, folder: &Path) {
-        let path = strings::tilde(folder);
+        let path = crate::strings::tilde(folder);
         self.adding = Some(match self.check(ctx, folder) {
             Some(checked) => AddPanel::checked(path, checked),
             None => AddPanel::reading(path),
@@ -304,7 +304,7 @@ impl MortiseApp {
             }
             AddAction::CopyCommand => {
                 ctx.copy_text(strings::REQUIRE_PACKAGE.to_owned());
-                self.toast = Some(Toast::done(strings::COPIED_COMMAND));
+                self.toast = Some(Toast::done(crate::strings::COPIED_COMMAND));
             }
             AddAction::Test => {
                 if let Some(form) = self

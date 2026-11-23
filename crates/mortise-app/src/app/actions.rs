@@ -3,11 +3,11 @@
 use mortise_core::{Action, Ask, LangReport, ModuleState, RunEnd, Target, TestReport};
 
 use super::{MortiseApp, Pending, words_target};
+use crate::actions::strings;
 use crate::actions::view::{self as actions_view, Act, ActionsState};
 use crate::app::workspace::Tab;
 use crate::index::view::Selection;
 use crate::runner::view::{self as runner_view, Shown};
-use crate::strings;
 use crate::ui::dialog::{Dialog, Typed};
 use crate::ui::toast::{Toast, ToastAction};
 
@@ -76,12 +76,12 @@ impl MortiseApp {
                     })
                     .unwrap_or_default();
                 let confirm = match last_batch.len() {
-                    0 => strings::action_button(Action::RollBack).to_owned(),
+                    0 => crate::strings::action_button(Action::RollBack).to_owned(),
                     n => strings::roll_back_counted(n),
                 };
                 Dialog {
                     danger: true,
-                    left: Some(strings::DRY_RUN.to_owned()),
+                    left: Some(crate::strings::DRY_RUN.to_owned()),
                     code: (!last_batch.is_empty()).then(|| bounded(&last_batch, "\n")),
                     ..Dialog::new(strings::roll_back_title(&object), body, confirm)
                 }
@@ -123,7 +123,7 @@ impl MortiseApp {
             Target::All => "",
         };
         let title = strings::destructive_question(act.action, module, app_name);
-        let confirm = strings::action_button(act.action).to_owned();
+        let confirm = crate::strings::action_button(act.action).to_owned();
         let typed = ask.name_to_type(app_name, &act.target).map(|name| Typed {
             name: name.to_owned(),
             text: String::new(),
@@ -141,7 +141,7 @@ impl MortiseApp {
         let code = (!tables.is_empty()).then(|| bounded(tables, ", "));
         let dialog = match act.action {
             Action::ResetMigrations => Dialog {
-                left: Some(strings::DRY_RUN.to_owned()),
+                left: Some(crate::strings::DRY_RUN.to_owned()),
                 code,
                 lines: vec![match tables.len() {
                     0 => strings::nothing_outside(module),
@@ -346,8 +346,8 @@ impl MortiseApp {
             return;
         }
         let text = match end {
-            RunEnd::Exited { code, .. } => strings::stopped_with(&label, code),
-            RunEnd::Stopped { .. } => strings::was_stopped(&label),
+            RunEnd::Exited { code, .. } => crate::strings::stopped_with(&label, code),
+            RunEnd::Stopped { .. } => crate::strings::was_stopped(&label),
         };
         self.failed_toast(index, text);
     }
@@ -364,8 +364,8 @@ impl MortiseApp {
     /// The toast of a failed run of the app at `index`, with "Show output".
     fn failed_toast(&mut self, index: usize, text: String) {
         let root = self.settings.apps[index].root.clone();
-        let toast =
-            Toast::failed(text).with_action(strings::SHOW_OUTPUT, ToastAction::ShowOutput(root));
+        let toast = Toast::failed(text)
+            .with_action(crate::strings::SHOW_OUTPUT, ToastAction::ShowOutput(root));
         self.toast = Some(toast);
     }
 
@@ -409,7 +409,7 @@ impl MortiseApp {
         }
         let Some(report) = self.apps[index].runs.ended().map(|over| {
             mortise_core::whole_document::<LangReport>(over.stdout, over.stdout_cut)
-                .map_err(|error| strings::no_run_document(&error, over.end))
+                .map_err(|error| crate::strings::no_run_document(&error, over.end))
         }) else {
             return;
         };
@@ -440,7 +440,7 @@ fn tests_toast(report: &TestReport, target: &Target) -> Option<String> {
         }
         Target::All => match report.modules.iter().filter(|module| module.ran).count() {
             0 => return None,
-            n => strings::modules(n),
+            n => crate::strings::modules(n),
         },
     };
     if report

@@ -4,12 +4,12 @@ use eframe::egui::{Align2, Color32, Key, Modifiers, Rect, Role, Ui, WidgetInfo, 
 use mortise_core::{Action, AppSnapshot, Rules};
 
 use crate::actions::view::{self as actions_view, ActionsInputs, ActionsState};
+use crate::app::strings;
 use crate::boundary::surface::SurfaceInputs;
 use crate::boundary::view::{self as boundary, BoundaryState};
 use crate::findings::view as findings_view;
 use crate::generate::view::{self as generate_view, GenerateInputs, GenerateState};
 use crate::index::view::Selection;
-use crate::strings;
 use crate::summary::view::{self as summary, SummaryState};
 use crate::ui::draw::{self, Button, ButtonKind, EmptyMark, Icon, StampState, empty_state};
 use crate::ui::theme::{Face, Palette, size, ty};
@@ -165,7 +165,7 @@ pub fn workspace(
 
     // The Findings list takes the place of the Summary of "All modules" until Esc.
     let findings = *state.findings_open && module.is_none() && *tab == Tab::Summary;
-    let findings_title = strings::findings_in(state.name);
+    let findings_title = crate::strings::findings_in(state.name);
     let mut title_x = head.left() + 16.0;
     // The Generate tab names what it generates in (S9.1, S9.4).
     let generate_title = generate_view::title(state.generate, module, state.name);
@@ -174,7 +174,7 @@ pub fn workspace(
         generate_title.as_str()
     } else if findings {
         // Where the list belongs, then its own name.
-        let crumb = format!("{} /", strings::ALL_MODULES);
+        let crumb = format!("{} /", crate::strings::ALL_MODULES);
         let at = pos2(title_x, head.top() + 12.0 + ty::TITLE.line - 3.0);
         let crumb_rect = draw::label(
             ui,
@@ -198,7 +198,7 @@ pub fn workspace(
         }
         findings_title.as_str()
     } else {
-        module.map_or(strings::ALL_MODULES, |module| module.name.as_str())
+        module.map_or(crate::strings::ALL_MODULES, |module| module.name.as_str())
     };
     let title_rect = draw::paint_text(
         ui,
@@ -264,7 +264,7 @@ pub fn workspace(
             ..Default::default()
         };
         let tests = Button {
-            label: strings::action_button(Action::RunTests),
+            label: crate::strings::action_button(Action::RunTests),
             small: true,
             icon: Some(Icon::Test),
             ..Default::default()
@@ -275,8 +275,8 @@ pub fn workspace(
             .migrations_for("")
             .and_then(|migrations| migrations.get(&module.name));
         let migrate_label = match read {
-            Some(state) => strings::migrate_counted(state.waiting.len()),
-            None => strings::action_button(Action::Migrate).to_owned(),
+            Some(state) => crate::strings::migrate_counted(state.waiting.len()),
+            None => crate::strings::action_button(Action::Migrate).to_owned(),
         };
         let migrate = Button {
             label: &migrate_label,

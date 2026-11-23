@@ -18,7 +18,7 @@ use mortise_core::{
 use crate::runner::php_settings::{PhpEvent, PhpForm, PhpOptions, PhpTest, php_field, propose};
 use crate::runtime::environment_form::{EnvironmentForm, FormEvent, FormOptions, environment_form};
 use crate::runtime::view::Brief;
-use crate::strings;
+use crate::settings::strings;
 use crate::ui::draw::{self, Button, Icon};
 use crate::ui::theme::{Face, Palette, Type, radius, size, ty};
 
@@ -43,7 +43,7 @@ impl Section {
     pub fn label(self) -> &'static str {
         match self {
             Section::Apps => "Apps",
-            Section::Php => strings::PHP,
+            Section::Php => crate::strings::PHP,
             Section::General => "General",
             Section::Keyboard => "Keyboard",
         }
@@ -131,7 +131,7 @@ impl PhpFields {
         if let Some(value) = value {
             php.time_limit_minutes = value;
         }
-        self.minutes = strings::minutes(php.time_limit_minutes);
+        self.minutes = crate::strings::minutes(php.time_limit_minutes);
         changed
     }
 }
@@ -741,7 +741,7 @@ impl Form<'_> {
             return draw::paragraph(
                 ui,
                 pos2(self.left, y),
-                strings::NO_APPS_BODY,
+                crate::strings::NO_APPS_BODY,
                 ty::BODY,
                 pal.ink_2,
                 self.width.min(560.0),
@@ -838,7 +838,7 @@ impl Form<'_> {
                 folder_x - 12.0 - (tile.right() + 8.0),
             );
             draw::paint_galley(ui, pos2(tile.right() + 8.0, mid), Align2::LEFT_CENTER, name);
-            let folder = strings::tilde(&app.root);
+            let folder = crate::strings::tilde(&app.root);
             let folder = draw::galley_elided(
                 ui,
                 &folder,
@@ -865,7 +865,7 @@ impl Form<'_> {
             }
             // How many environments the app has.
             let count = match app.environments.len() {
-                0 => strings::NONE.to_owned(),
+                0 => crate::strings::NONE.to_owned(),
                 n => n.to_string(),
             };
             let color = if app.environments.is_empty() {
@@ -931,12 +931,12 @@ impl Form<'_> {
         let entry = &mut settings.apps[index];
 
         // Name and monogram, side by side.
-        let after = self.label(ui, y, strings::NAME, "");
+        let after = self.label(ui, y, crate::strings::NAME, "");
         draw::label(
             ui,
             pos2(self.left + form_w - 96.0, y),
             Align2::LEFT_TOP,
-            strings::MONOGRAM,
+            crate::strings::MONOGRAM,
             ty::LABEL,
             pal.ink,
         );
@@ -948,7 +948,7 @@ impl Form<'_> {
             ui,
             pal,
             name,
-            strings::NAME,
+            crate::strings::NAME,
             &mut state.fields.name,
             false,
             self.keyboard,
@@ -971,7 +971,7 @@ impl Form<'_> {
             ui,
             pal,
             monogram,
-            strings::MONOGRAM,
+            crate::strings::MONOGRAM,
             &mut state.fields.monogram,
             false,
             self.keyboard,
@@ -1005,13 +1005,13 @@ impl Form<'_> {
             ui,
             pos2(folder.left() + 9.0, folder.center().y),
             Align2::LEFT_CENTER,
-            &strings::tilde(&entry.root),
+            &crate::strings::tilde(&entry.root),
             ty::CODE,
             pal.ink_2,
         );
         y = folder.bottom() + 12.0;
 
-        let after = self.label(ui, y, strings::COVERAGE_REPORT, "clover.xml");
+        let after = self.label(ui, y, crate::strings::COVERAGE_REPORT, "clover.xml");
         draw::label(
             ui,
             pos2(self.left + form_w - 96.0, y),
@@ -1028,7 +1028,7 @@ impl Form<'_> {
             ui,
             pal,
             report,
-            strings::COVERAGE_REPORT,
+            crate::strings::COVERAGE_REPORT,
             &mut state.fields.report,
             true,
             self.keyboard,
@@ -1155,7 +1155,7 @@ impl Form<'_> {
             let text = draw::paragraph(
                 ui,
                 pos2(self.left, line + 9.0),
-                &strings::actuator_not_installed(entry.display_name()),
+                &crate::strings::actuator_not_installed(entry.display_name()),
                 ty::BODY,
                 pal.ink_2,
                 self.width.min(560.0),
@@ -1163,7 +1163,7 @@ impl Form<'_> {
             return (text.bottom(), false);
         }
         let add = Button {
-            label: strings::ADD_ENVIRONMENT,
+            label: crate::strings::ADD_ENVIRONMENT,
             icon: Some(Icon::Plus),
             ..Default::default()
         };
@@ -1198,7 +1198,7 @@ impl Form<'_> {
             let text = draw::paragraph(
                 ui,
                 pos2(self.left, y),
-                &strings::no_environment(entry.display_name()),
+                &crate::strings::no_environment(entry.display_name()),
                 ty::BODY,
                 pal.ink_2,
                 self.width.min(560.0),
@@ -1227,12 +1227,12 @@ impl Form<'_> {
         let head_mid = table.top() + size::TABLE_HEAD_H / 2.0;
         let mut heads = vec![
             (name_x, strings::COL_ENVIRONMENT),
-            (url_x, strings::BASE_URL),
+            (url_x, crate::strings::BASE_URL),
             (answer_x, strings::COL_LAST_ANSWER),
         ];
         if wide {
             heads.push((path_x, strings::COL_PATH));
-            heads.push((credentials_x, strings::CREDENTIALS));
+            heads.push((credentials_x, crate::strings::CREDENTIALS));
         }
         for (x, label) in heads {
             draw::label(
@@ -1325,7 +1325,8 @@ impl Form<'_> {
                     draw::icon(ui, lock, Icon::Lock, pal.ink_2);
                     x = lock.right() + 5.0;
                 }
-                let text = strings::credentials_saved(strings::CREDENTIAL_KINDS[kind], saved);
+                let text =
+                    strings::credentials_saved(crate::strings::CREDENTIAL_KINDS[kind], saved);
                 let text_rect = cell(ui, x, answer_x, &text, ty::BODY, pal.ink);
                 draw::announce(ui, text_rect, Role::Cell, &text);
             }
@@ -1480,7 +1481,7 @@ impl Form<'_> {
             return draw::paragraph(
                 ui,
                 pos2(self.left, y),
-                strings::NO_APPS_BODY,
+                crate::strings::NO_APPS_BODY,
                 ty::BODY,
                 pal.ink_2,
                 self.width.min(560.0),
@@ -1570,7 +1571,7 @@ impl Form<'_> {
             cell(ui, name_x, runs_x, app.display_name(), name_type, pal.ink);
             match &app.php.runner {
                 Some(runner) => {
-                    let kind = strings::RUNNERS[strings::runner_place(runner)];
+                    let kind = crate::strings::RUNNERS[crate::strings::runner_place(runner)];
                     cell(ui, runs_x, command_x, kind, ty::BODY, pal.ink);
                     let line = runner.line();
                     let text = cell(ui, command_x, last_x, &line, cell_code, pal.ink);
@@ -1683,7 +1684,7 @@ impl Form<'_> {
                 form: PhpForm::new(runner),
                 hint,
                 folder: folder_text(&entry.php),
-                minutes: strings::minutes(entry.php.time_limit_minutes),
+                minutes: crate::strings::minutes(entry.php.time_limit_minutes),
             }
         });
         let mut spare = PhpTest::default();
@@ -1783,10 +1784,10 @@ impl Form<'_> {
 
         // What each choice runs: the words before the artisan arguments.
         let lines = [
-            (strings::RUNNERS[0], RunnerKind::Herd.line()),
-            (strings::RUNNERS[1], RunnerKind::Sail.line()),
+            (crate::strings::RUNNERS[0], RunnerKind::Herd.line()),
+            (crate::strings::RUNNERS[1], RunnerKind::Sail.line()),
             (
-                strings::RUNNERS[2],
+                crate::strings::RUNNERS[2],
                 RunnerKind::Docker {
                     service: "<service>".to_owned(),
                 }
@@ -1830,7 +1831,7 @@ impl Form<'_> {
             pal,
             choices,
             line_y,
-            (strings::RUNNERS[3], ty::BODY),
+            (crate::strings::RUNNERS[3], ty::BODY),
             &custom,
             true,
         );

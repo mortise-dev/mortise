@@ -12,8 +12,8 @@ use mortise_core::{
 };
 
 use crate::app::workspace::WorkAction;
+use crate::boundary::strings;
 use crate::boundary::surface::{self as surface_view, ModuleSurface, Place, SurfaceInputs};
-use crate::strings;
 use crate::ui::draw::{self, Button, ButtonKind, StampState};
 use crate::ui::theme::{Face, Palette, Type, radius, size, stroke, ty};
 
@@ -193,7 +193,7 @@ impl View<'_> {
     /// that does the same. Returns its bottom edge.
     fn views(&self, ui: &Ui, y: f32, surface_view: &mut bool, scanned: Option<u64>) -> f32 {
         let pal = self.pal;
-        let labels = [strings::LINKS, strings::PUBLIC_SURFACE];
+        let labels = [strings::LINKS, crate::strings::PUBLIC_SURFACE];
         let selected = usize::from(*surface_view);
         let (track, clicked) = draw::segmented(
             ui,
@@ -365,7 +365,7 @@ impl View<'_> {
             ui,
             centre,
             module,
-            &strings::files(module.files),
+            &crate::strings::files(module.files),
             pal.ink_2,
             false,
         );
@@ -430,7 +430,7 @@ impl View<'_> {
                     ui,
                     *slot,
                     neighbour,
-                    &strings::refs_state(link, rules),
+                    &crate::strings::refs_state(link, rules),
                     color,
                     selected,
                 );
@@ -566,28 +566,28 @@ impl View<'_> {
                     (module, other)
                 };
                 (
-                    strings::use_each_other(first, second),
+                    crate::strings::use_each_other(first, second),
                     strings::circular_files(out.files() + back.files()),
                     rules.no_circular_use,
                 )
             }
             (Some(_), _) => (
-                strings::a_uses_b(&first_link.from, &first_link.to),
+                crate::strings::a_uses_b(&first_link.from, &first_link.to),
                 strings::circular_files(first_link.files()),
                 rules.no_circular_use,
             ),
             (None, _) => {
                 let title = if titled {
-                    strings::use_each_other(module, other)
+                    crate::strings::use_each_other(module, other)
                 } else {
-                    strings::a_uses_b(&first_link.from, &first_link.to)
+                    crate::strings::a_uses_b(&first_link.from, &first_link.to)
                 };
                 let internal: usize = sections.iter().map(|link| link.internal_files()).sum();
                 let files: usize = sections.iter().map(|link| link.files()).sum();
                 if rules.public_surface_only && internal > 0 {
                     (title, strings::files_read_internals(internal, files), true)
                 } else {
-                    (title, strings::files(files as u64), false)
+                    (title, crate::strings::files(files as u64), false)
                 }
             }
         };
@@ -640,7 +640,7 @@ impl View<'_> {
                     ui,
                     pos2(panel.left() + 13.0, mid),
                     Align2::LEFT_CENTER,
-                    &strings::a_uses_b(&link.from, &link.to),
+                    &crate::strings::a_uses_b(&link.from, &link.to),
                     ty::BODY.with_face(Face::Sans600),
                     pal.ink,
                 );
@@ -648,7 +648,7 @@ impl View<'_> {
                     ui,
                     pos2(panel.right() - 13.0, mid),
                     Align2::RIGHT_CENTER,
-                    &strings::files(link.files() as u64),
+                    &crate::strings::files(link.files() as u64),
                     ty::SECONDARY,
                     pal.ink_2,
                 );
@@ -832,7 +832,7 @@ impl View<'_> {
         action: &mut Option<WorkAction>,
     ) -> f32 {
         if self.app.modules.is_empty() {
-            return self.paragraph(ui, y, &strings::no_modules(self.app, self.name));
+            return self.paragraph(ui, y, &crate::strings::no_modules(self.app, self.name));
         }
         let two = self.width >= 720.0;
         let graph_w = if two {
@@ -1090,8 +1090,8 @@ impl View<'_> {
                     .unwrap_or_default()
                     .to_owned();
                 let text = match cycle.modules.as_slice() {
-                    [a, b] => strings::use_each_other(a, b),
-                    modules => strings::use_each_other_in_a_circle(modules),
+                    [a, b] => crate::strings::use_each_other(a, b),
+                    modules => crate::strings::use_each_other_in_a_circle(modules),
                 };
                 rows.push((text, files, cycle.carrier.clone(), other));
             }
@@ -1127,7 +1127,7 @@ impl View<'_> {
                 ui,
                 pos2(rect.right() - 13.0, mid),
                 Align2::RIGHT_CENTER,
-                strings::GOOD,
+                crate::strings::GOOD,
                 ty::LABEL,
                 pal.good,
             );
@@ -1142,7 +1142,7 @@ impl View<'_> {
             );
             return rect.bottom();
         }
-        let count = strings::problems(rows.len());
+        let count = crate::strings::problems(rows.len());
         let text = draw::label(
             ui,
             pos2(rect.right() - 13.0, mid),
@@ -1176,7 +1176,7 @@ impl View<'_> {
                     other: other.clone(),
                 });
             }
-            let files_text = strings::files(*files as u64);
+            let files_text = crate::strings::files(*files as u64);
             let files_type = Type {
                 size: 11.5,
                 ..ty::CODE
@@ -1232,8 +1232,8 @@ impl View<'_> {
         // The labels of the rules wrap at the right edge of the box, as the hints do.
         let label_w = hint_w;
         let labels: f32 = [
-            strings::RULE_NO_CIRCULAR,
-            strings::RULE_PUBLIC_SURFACE,
+            crate::strings::RULE_NO_CIRCULAR,
+            crate::strings::RULE_PUBLIC_SURFACE,
             strings::RULE_FAIL_CI,
         ]
         .iter()
@@ -1281,7 +1281,7 @@ impl View<'_> {
         let row = rule(
             ui,
             y,
-            strings::RULE_NO_CIRCULAR,
+            crate::strings::RULE_NO_CIRCULAR,
             rules.no_circular_use,
             false,
         );
@@ -1295,7 +1295,7 @@ impl View<'_> {
         let row = rule(
             ui,
             y,
-            strings::RULE_PUBLIC_SURFACE,
+            crate::strings::RULE_PUBLIC_SURFACE,
             rules.public_surface_only,
             false,
         );
@@ -1444,9 +1444,9 @@ impl View<'_> {
         let head_mid = table.top() + size::TABLE_HEAD_H / 2.0;
         for (x, align, label) in [
             (from_x, Align2::LEFT_CENTER, strings::COL_FROM),
-            (uses_x, Align2::LEFT_CENTER, strings::COL_USES),
+            (uses_x, Align2::LEFT_CENTER, crate::strings::COL_USES),
             (refs_right, Align2::RIGHT_CENTER, strings::COL_REFS),
-            (files_right, Align2::RIGHT_CENTER, strings::COL_FILES),
+            (files_right, Align2::RIGHT_CENTER, crate::strings::COL_FILES),
             (state_x, Align2::LEFT_CENTER, strings::COL_STATE),
         ] {
             draw::label(ui, pos2(x, head_mid), align, label, ty::LABEL, pal.ink_2);
@@ -1465,7 +1465,7 @@ impl View<'_> {
                 pos2(table.left() + 1.0, row_top),
                 pos2(table.right() - 1.0, row_top + size::TABLE_ROW_H),
             );
-            let name = strings::a_uses_b(&link.from, &link.to);
+            let name = crate::strings::a_uses_b(&link.from, &link.to);
             let response = ui.interact(row, nav.id(i), nav.sense(i));
             nav.after(ui, i, &response);
             response.widget_info(|| WidgetInfo::labeled(Role::Row, true, &name));
@@ -1522,7 +1522,7 @@ impl View<'_> {
             } else if rules.public_surface_only && internal > 0 {
                 (strings::n_files_read_internals(internal), pal.bad, true)
             } else {
-                (strings::GOOD.to_owned(), pal.good, false)
+                (crate::strings::GOOD.to_owned(), pal.good, false)
             };
             let mark = Rect::from_min_size(pos2(state_x, mid - 6.0), Vec2::splat(size::STATE_MARK));
             if bad {

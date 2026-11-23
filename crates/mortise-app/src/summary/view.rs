@@ -13,7 +13,7 @@ use mortise_core::{
 
 use crate::app::workspace::WorkAction;
 use crate::runtime::view::{self as runtime_view, Brief, RuntimeAction, RuntimeView};
-use crate::strings;
+use crate::summary::strings;
 use crate::ui::draw::{self, StampState};
 use crate::ui::theme::{Face, Palette, Type, radius, size, ty};
 
@@ -46,12 +46,12 @@ impl Column {
 
     fn label(self) -> &'static str {
         match self {
-            Column::Module => strings::COL_MODULE,
-            Column::Files => strings::COL_FILES,
+            Column::Module => crate::strings::COL_MODULE,
+            Column::Files => crate::strings::COL_FILES,
             Column::Lines => strings::COL_LINES,
             Column::Tests => strings::COL_TESTS,
             Column::Coverage => strings::COL_COVERAGE,
-            Column::Uses => strings::COL_USES,
+            Column::Uses => crate::strings::COL_USES,
             Column::UsedBy => strings::COL_USED_BY,
             Column::Commits => strings::COL_COMMITS,
             Column::Findings => strings::COL_FINDINGS,
@@ -265,7 +265,7 @@ fn all_modules(
         },
         Stat {
             key: strings::LINES_OF_PHP,
-            value: strings::count(app.lines()),
+            value: crate::strings::count(app.lines()),
             known: true,
             tooltip: None,
             findings: None,
@@ -280,7 +280,7 @@ fn all_modules(
             findings: None,
         },
         Stat {
-            key: strings::FINDINGS,
+            key: crate::strings::FINDINGS,
             value: String::new(),
             known: true,
             tooltip: None,
@@ -315,7 +315,7 @@ fn all_modules(
     let sentence = if !app.layout.uses_file_activator() {
         Some(strings::state_not_in_a_file(app, shared.name))
     } else if app.modules.is_empty() {
-        Some(strings::no_modules(app, shared.name))
+        Some(crate::strings::no_modules(app, shared.name))
     } else {
         None
     };
@@ -363,7 +363,7 @@ fn all_modules(
                 low: low(name),
             })
             .collect();
-        let note = strings::tests(app.tests());
+        let note = crate::strings::tests(app.tests());
         let title = strings::COVERAGE_BY_MODULE;
         let at = pos2(left, y);
         y = bar_box(ui, pal, at, column_w, title, &note, &bars, None, paint) + 12.0;
@@ -383,12 +383,15 @@ fn all_modules(
                     .map(|(name, count)| Bar {
                         label: name,
                         share: *count as f32 / most,
-                        value: strings::count(*count as u64),
+                        value: crate::strings::count(*count as u64),
                         low: false,
                     })
                     .collect();
-                let note = strings::routes_read_from(routes.len(), &environment);
-                let footer = Some((strings::NOT_IN_A_MODULE, strings::count(outside as u64)));
+                let note = crate::strings::routes_read_from(routes.len(), &environment);
+                let footer = Some((
+                    strings::NOT_IN_A_MODULE,
+                    crate::strings::count(outside as u64),
+                ));
                 let title = strings::ROUTES_BY_MODULE;
                 bar_box(ui, pal, at, column_w, title, &note, &bars, footer, paint)
             }
@@ -432,7 +435,7 @@ fn all_modules(
             }
             None => {
                 let text = strings::endpoint_not_exposed("scheduledtasks", &environment);
-                let title = strings::SCHEDULED_TASKS;
+                let title = crate::strings::SCHEDULED_TASKS;
                 runtime_view::message_box(ui, pal, at, inner, title, &text, paint)
             }
         } + 12.0;
@@ -513,11 +516,11 @@ fn one_module(
         .map(|kind| Bar {
             label: &kind.kind,
             share: kind.files as f32 / most,
-            value: strings::count(u64::from(kind.files)),
+            value: crate::strings::count(u64::from(kind.files)),
             low: false,
         })
         .collect();
-    let note = strings::files_and_lines(module.files, module.lines);
+    let note = crate::strings::files_and_lines(module.files, module.lines);
     let kinds_bottom = bar_box(
         ui,
         pal,
@@ -544,14 +547,14 @@ fn one_module(
     };
     let mut lines: Vec<(&str, String, Color32, StateMark)> = Vec::new();
     let (word, color, mark) = match module.state {
-        ModuleState::On => (strings::ON, pal.good, StateMark::Good),
-        ModuleState::Off => (strings::OFF, pal.off, StateMark::Off),
+        ModuleState::On => (crate::strings::ON, pal.good, StateMark::Good),
+        ModuleState::Off => (crate::strings::OFF, pal.off, StateMark::Off),
         ModuleState::Unknown => (strings::STATE_UNKNOWN, pal.ink_2, StateMark::None),
     };
     lines.push((strings::MODULE_STATE, word.to_owned(), color, mark));
     lines.push((
         strings::COL_TESTS,
-        strings::count(u64::from(module.tests)),
+        crate::strings::count(u64::from(module.tests)),
         pal.ink,
         StateMark::None,
     ));
@@ -566,7 +569,7 @@ fn one_module(
                 .count()
         };
         let value = strings::routes_of_module(routes.len(), with("api"), with("web"));
-        lines.push((strings::ROUTES, value, pal.ink, StateMark::None));
+        lines.push((crate::strings::ROUTES, value, pal.ink, StateMark::None));
     }
     // Which migrations ran comes from a read of the migration state (design D7).
     // Until then: how many files there are.
@@ -577,8 +580,8 @@ fn one_module(
         .and_then(|migrations| migrations.get(&module.name));
     let waiting = state.map_or(0, |state| state.waiting.len());
     let migrations = match state {
-        Some(state) => strings::ran(state.ran.len()),
-        None => strings::files(u64::from(
+        Some(state) => crate::strings::ran(state.ran.len()),
+        None => crate::strings::files(u64::from(
             module
                 .kinds
                 .iter()
@@ -590,17 +593,22 @@ fn one_module(
     let mut ran_before = None;
     if waiting > 0 {
         ran_before = Some((lines.len(), migrations));
-        let value = strings::waiting(waiting);
-        lines.push((strings::MIGRATIONS, value, pal.warn, StateMark::Warn));
+        let value = crate::strings::waiting(waiting);
+        lines.push((crate::strings::MIGRATIONS, value, pal.warn, StateMark::Warn));
     } else {
-        lines.push((strings::MIGRATIONS, migrations, pal.ink, StateMark::None));
+        lines.push((
+            crate::strings::MIGRATIONS,
+            migrations,
+            pal.ink,
+            StateMark::None,
+        ));
     }
     let churn = match (&app.git, module.churn) {
         (Git::Repository { .. }, Some(churn)) => {
             strings::churn(churn.commits, churn.last_commit, now)
         }
-        (Git::NoGit, _) => strings::GIT_NOT_FOUND.to_owned(),
-        _ => strings::NOT_A_REPOSITORY.to_owned(),
+        (Git::NoGit, _) => crate::strings::GIT_NOT_FOUND.to_owned(),
+        _ => crate::strings::NOT_A_REPOSITORY.to_owned(),
     };
     lines.push((strings::GIT_CHURN, churn, pal.ink, StateMark::None));
 
@@ -692,7 +700,7 @@ fn one_module(
         bottom = runtime_view::tasks_box(ui, pal, at, inner, &note, &tasks, None, now, paint);
     }
     if let Some(routes) = routes.filter(|routes| !routes.is_empty()) {
-        let note = strings::routes_read_from(routes.len(), environment);
+        let note = crate::strings::routes_read_from(routes.len(), environment);
         let at = pos2(left, bottom + 12.0);
         bottom = runtime_view::routes_box(ui, pal, at, inner, &note, &routes, paint);
     }
@@ -740,21 +748,21 @@ fn state_words(pal: &Palette, problems: usize, warnings: usize) -> Vec<StateWord
     let mut words = Vec::new();
     if problems > 0 {
         words.push(StateWord {
-            text: strings::problems(problems),
+            text: crate::strings::problems(problems),
             color: pal.bad,
             mark: FindingState::Problems(problems),
         });
     }
     if warnings > 0 {
         words.push(StateWord {
-            text: strings::warnings(warnings),
+            text: crate::strings::warnings(warnings),
             color: pal.warn,
             mark: FindingState::Warning,
         });
     }
     if problems + warnings == 0 {
         words.push(StateWord {
-            text: strings::GOOD.to_owned(),
+            text: crate::strings::GOOD.to_owned(),
             color: pal.good,
             mark: FindingState::Good,
         });
@@ -826,7 +834,7 @@ fn stats(
             ui,
             pos2(x + 12.0, strip.top() + 9.0),
             Align2::LEFT_TOP,
-            strings::RUNTIME,
+            crate::strings::RUNTIME,
             ty::SECONDARY,
             pal.ink_2,
         );
@@ -840,12 +848,12 @@ fn stats(
         };
         let at = pos2(mark.right() + 5.0, mid);
         let word = draw::paint_text(ui, at, Align2::LEFT_CENTER, brief.word, word_type, color);
-        let on = strings::on_environment(environment);
+        let on = crate::strings::on_environment(environment);
         let room = strip.right() - 8.0 - (word.right() + 8.0);
         let on = draw::galley_elided(ui, &on, ty::SECONDARY, pal.ink_2, room);
         let on = draw::paint_galley(ui, pos2(word.right() + 8.0, mid), Align2::LEFT_CENTER, on);
         // Read aloud as one thing: "Up on local".
-        let said = strings::runtime_tooltip(brief.word, environment, None);
+        let said = crate::strings::runtime_tooltip(brief.word, environment, None);
         draw::announce(ui, mark.union(word).union(on), Role::Label, &said);
     }
     for (i, cell) in cells.iter().enumerate() {
@@ -1224,9 +1232,9 @@ fn by_module(
         for (column, from, to) in &edges[1..] {
             let (text, color) = match column {
                 Column::Module => continue,
-                Column::Files => (strings::count(module.files), pal.ink),
-                Column::Lines => (strings::count(module.lines), pal.ink),
-                Column::Tests => (strings::count(u64::from(module.tests)), pal.ink),
+                Column::Files => (crate::strings::count(module.files), pal.ink),
+                Column::Lines => (crate::strings::count(module.lines), pal.ink),
+                Column::Tests => (crate::strings::count(u64::from(module.tests)), pal.ink),
                 Column::Coverage => percent(module).map_or(unknown.clone(), |percent| {
                     (strings::percent(percent), pal.ink)
                 }),
@@ -1234,7 +1242,7 @@ fn by_module(
                 Column::UsedBy => (app.used_by(&module.name).count().to_string(), pal.ink),
                 Column::Commits => match (&app.git, commits(module)) {
                     (Git::Repository { .. }, Some(commits)) => {
-                        (strings::count(u64::from(commits)), pal.ink)
+                        (crate::strings::count(u64::from(commits)), pal.ink)
                     }
                     _ => unknown.clone(),
                 },
@@ -1242,8 +1250,10 @@ fn by_module(
                     // The finding state: a mark and a word, at the left of its column.
                     let (word, color, kind) =
                         match (module.state, app.findings.state_of(&module.name)) {
-                            (ModuleState::Off, _) => (strings::OFF.to_owned(), pal.off, 3),
-                            (_, FindingState::Problems(n)) => (strings::problems(n), pal.bad, 0),
+                            (ModuleState::Off, _) => (crate::strings::OFF.to_owned(), pal.off, 3),
+                            (_, FindingState::Problems(n)) => {
+                                (crate::strings::problems(n), pal.bad, 0)
+                            }
                             (_, FindingState::Warning) => {
                                 let low = app
                                     .findings
@@ -1256,7 +1266,9 @@ fn by_module(
                                 };
                                 (word.to_owned(), pal.warn, 1)
                             }
-                            (_, FindingState::Good) => (strings::GOOD.to_owned(), pal.good, 2),
+                            (_, FindingState::Good) => {
+                                (crate::strings::GOOD.to_owned(), pal.good, 2)
+                            }
                         };
                     let mark =
                         Rect::from_min_size(pos2(*from, mid - 6.0), Vec2::splat(size::STATE_MARK));
@@ -1453,7 +1465,7 @@ fn dependencies(
     let mut lines: Vec<DependencyLine<'_>> = uses
         .iter()
         .map(|link| {
-            let name = strings::a_uses_b(strings::USES, &link.to).replacen(" uses ", " ", 1);
+            let name = crate::strings::a_uses_b(strings::USES, &link.to).replacen(" uses ", " ", 1);
             let stamp = app.module(&link.to).map(|used| {
                 let state = StampState {
                     selected: false,
@@ -1462,7 +1474,7 @@ fn dependencies(
                 (used.code.as_str(), state)
             });
             let problem = link.is_problem(&app.rules);
-            let value = strings::refs_state(link, &app.rules);
+            let value = crate::strings::refs_state(link, &app.rules);
             DependencyLine::new(ui, pal, room, name, stamp, value, problem)
         })
         .collect();

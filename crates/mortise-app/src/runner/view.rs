@@ -21,7 +21,7 @@ use mortise_core::{
     Runs, StartError, Stream,
 };
 
-use crate::strings;
+use crate::runner::strings;
 use crate::ui::draw::{self, Icon, ListNav};
 use crate::ui::theme::{Face, Palette, Type, radius, size, stroke, ty};
 
@@ -973,8 +973,9 @@ fn collapsed(
     ui.painter().rect_filled(rect, 0, pal.code_bg);
     draw::hline(ui, rect.left()..rect.right(), rect.top(), pal.line_2);
     let mid = rect.center().y + 0.5;
-    let show =
-        vec![BarButton::new(strings::SHOW, DrawerAction::Show).keys(strings::TOGGLE_RUNNER_KEYS)];
+    let show = vec![
+        BarButton::new(strings::SHOW, DrawerAction::Show).keys(crate::strings::TOGGLE_RUNNER_KEYS),
+    ];
     let show_x = rect.right() - PAD_X - buttons_width(ui, &show);
     let current = runs.current.as_ref();
     let status = current.and_then(|current| status_of(current, pal));
@@ -1081,9 +1082,10 @@ fn open(
         pos2(right, rect.bottom() - PAD_BOTTOM),
     );
     let roomy = rect.width() >= ROOMY_W;
-    let busy = inputs.busy.map(strings::is_running);
-    let hide =
-        || BarButton::new(strings::HIDE, DrawerAction::Hide).keys(strings::TOGGLE_RUNNER_KEYS);
+    let busy = inputs.busy.map(crate::strings::is_running);
+    let hide = || {
+        BarButton::new(strings::HIDE, DrawerAction::Hide).keys(crate::strings::TOGGLE_RUNNER_KEYS)
+    };
     let run_again = |keys: Option<&str>| BarButton {
         keys: keys.map(str::to_owned),
         off: busy.clone(),
@@ -1195,7 +1197,7 @@ fn open(
             let button = BarButton {
                 said: Some(strings::open_php_settings(inputs.app)),
                 bright: true,
-                ..BarButton::new(strings::OPEN_SETTINGS, DrawerAction::OpenSettings)
+                ..BarButton::new(crate::strings::OPEN_SETTINGS, DrawerAction::OpenSettings)
             };
             let mid = rect.bottom() + 8.0 + BAR_H / 2.0;
             let x = body.left() - 4.0;
@@ -1245,7 +1247,7 @@ fn current_body(
         let text = match &current.failed {
             _ if current.prohibited => strings::PROHIBITED.to_owned(),
             Some(at) => strings::failed_at(&current.label, code, &at.migration),
-            None => strings::stopped_with(&current.label, code),
+            None => crate::strings::stopped_with(&current.label, code),
         };
         let galley = draw::galley_wrapped(ui, &text, SENTENCE, pal.code_fg, width);
         (text, galley)
@@ -1339,7 +1341,7 @@ fn migration_steps(
         said: Some(strings::dry_run_of(&current.label)),
         bright: true,
         flag: Some("--pretend"),
-        ..BarButton::new(strings::DRY_RUN, dry_run(&current.args, failed))
+        ..BarButton::new(crate::strings::DRY_RUN, dry_run(&current.args, failed))
     });
     steps
 }

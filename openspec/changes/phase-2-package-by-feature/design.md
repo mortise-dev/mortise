@@ -473,3 +473,34 @@ measures them again.
 3. Step S1 places 604 names, not 561. The check is the same: the count over all `strings.rs` files equals
    the count before the split, no name is defined twice, every "not in the spec" mark is kept.
 4. The images check covers 140 files, not 122.
+
+## What the build did differently from the plan
+
+The sections above are the plan. The build differed from it as follows.
+
+- **No re-exports in a feature `mod.rs`.** Section 3.3 said each `mod.rs` of `mortise-app` re-exports the names
+  that `app/` uses. In both crates, a folder's `mod.rs` declares its files and re-exports nothing, so each
+  item has one path (`crate::generate::view::GenerateState`, `crate::modules::module::Module`). The core's
+  `lib.rs` still re-exports every public name at the crate root. Some imports in `mortise-app` keep the old
+  module names as aliases (`use crate::generate::view::{self as generate_view, ...}`), so the method bodies
+  did not change.
+- **`ships()` and `generator_gives_data()` moved to `generate/catalog.rs`** (see "Measured again on main").
+- **The output test helper.** `recording()`, a test helper used by the tests of both halves of `output.rs`,
+  stays in one copy in `actions/output.rs`. Its test module is `pub(crate)`, and `generate/output.rs` imports it.
+- **The CI feature check builds the library and the binaries only** (`--lib --bins`). The tests depend on
+  `mortise-core` itself with its default features, so `--all-targets` turned every feature on in every case.
+  The first Sol review of PR 1 found it. The job also sets `RUSTFLAGS=-D warnings`. With it, one unused import
+  in `run/process.rs` without the `run` feature showed up and was gated. The commits of PR 1 before that fix
+  fail the job under `-D warnings`; nothing else in them does.
+- **Gating all of `run/process.rs`** stays out, as section 5 says. The second Sol review of PR 1 asked for it.
+- **`app/mod.rs` is 1,542 lines**, a little over "about 1,500". `set_rules` and `save_rules` stay in it,
+  because no wiring file covers rules, and so do the helpers that several wiring files use.
+- **`AppCatalog`, `Generating` and `SelectNew`** live in `app/generate.rs` and are `pub(super)`. Their fields
+  stay private. `catalog_read` and `dry_run_read` live there too, because they write those fields.
+- **Strings.** 604 names were placed, not 561 (PR #19 added text). `src/strings.rs` keeps 96 shared names,
+  and twelve feature files hold the rest. Five private helpers of `src/strings.rs` became `pub(crate)`
+  because feature text calls them: `list_of`, `capitalised`, `generator_noun`, `with_article`,
+  `missing_translations`.
+- **One test was flaky under load**: `delete_asks_for_the_name_and_selects_all_modules_when_it_ends`
+  (`crates/mortise-app/tests/actions.rs`) ran out of its 10 s wait twice in local full runs while other
+  builds ran, and passed on each re-run.

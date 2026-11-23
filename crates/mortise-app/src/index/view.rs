@@ -6,8 +6,8 @@ use eframe::egui::{
 };
 use mortise_core::{ALL_CODE, AppSnapshot, FindingState, IndexRows, Module, ModuleState};
 
+use crate::index::strings;
 use crate::runtime::view::Brief;
-use crate::strings;
 use crate::ui::draw::{self, Icon, StampState};
 use crate::ui::theme::{Face, Palette, Type, radius, size, stroke, ty};
 
@@ -183,7 +183,7 @@ pub fn index(
     let all = Row {
         selection: Selection::All,
         code: ALL_CODE,
-        name: strings::ALL_MODULES,
+        name: crate::strings::ALL_MODULES,
         meta: strings::files_covered(
             app.files(),
             app.coverage().and_then(|coverage| coverage.percent()),
@@ -194,7 +194,7 @@ pub fn index(
         // The strip: stamps and marks only, and the key that opens the index again.
         let foot_top = rect.bottom() - STRIP_FOOT_H;
         draw::hline(ui, inner.clone(), foot_top, pal.line);
-        let keys = format!("{} B", strings::command_key(mac));
+        let keys = format!("{} B", crate::strings::command_key(mac));
         let cap_w = draw::keycap_width(ui, &keys);
         let cap_right = ((inner.start + inner.end) / 2.0 + cap_w / 2.0).round();
         draw::keycap(ui, pal, pos2(cap_right, foot_top + 16.0), &keys);
@@ -243,7 +243,7 @@ pub fn index(
         }
         // "New module" opens the form of module:make; nothing runs (S3.1, S9.4).
         let button = draw::Button {
-            label: strings::NEW_MODULE,
+            label: crate::strings::NEW_MODULE,
             small: true,
             ..Default::default()
         };
@@ -434,7 +434,7 @@ fn head(
     let on_text = if app.layout.uses_file_activator() {
         strings::of_on(app.modules_on(), app.modules.len())
     } else {
-        strings::modules(app.modules.len())
+        crate::strings::modules(app.modules.len())
     };
     let on = draw::label(
         ui,
@@ -451,7 +451,7 @@ fn head(
         ui,
         pos2(left, rect.top() + 12.0 + 20.0 + 1.0),
         Align2::LEFT_TOP,
-        &strings::versions(app.laravel.as_ref(), &app.package),
+        &crate::strings::versions(app.laravel.as_ref(), &app.package),
         ty::SECONDARY,
         pal.ink_2,
     );
@@ -475,7 +475,7 @@ fn head(
         };
         let at = pos2(mark.right() + 5.0, mid);
         let word = draw::paint_text(ui, at, Align2::LEFT_CENTER, brief.word, word_type, color);
-        let on = strings::on_environment(environment);
+        let on = crate::strings::on_environment(environment);
         let on = draw::galley_elided(
             ui,
             &on,
@@ -485,12 +485,12 @@ fn head(
         );
         let on = draw::paint_galley(ui, pos2(word.right() + 6.0, mid), Align2::LEFT_CENTER, on);
         // One thing to read aloud, and to point at for when it was checked.
-        let said = strings::runtime_tooltip(brief.word, environment, None);
+        let said = crate::strings::runtime_tooltip(brief.word, environment, None);
         let line = draw::announce(ui, mark.union(word).union(on), Role::Label, &said);
         draw::tooltip(
             line,
             pal,
-            &strings::runtime_tooltip(brief.word, environment, checked),
+            &crate::strings::runtime_tooltip(brief.word, environment, checked),
         );
     }
 
@@ -623,7 +623,7 @@ fn index_row(ui: &Ui, pal: &Palette, rect: Rect, row: &Row<'_>, look: RowLook) -
         rect.right() - 1.0 - 12.0
     };
     let (word, color) = match row.state {
-        RowState::Off => (strings::OFF.to_owned(), pal.off),
+        RowState::Off => (crate::strings::OFF.to_owned(), pal.off),
         RowState::Finding(FindingState::Problems(n)) => (n.to_string(), pal.bad),
         RowState::Finding(FindingState::Warning) => (String::new(), pal.warn),
         RowState::Finding(FindingState::Good) => (String::new(), pal.good),

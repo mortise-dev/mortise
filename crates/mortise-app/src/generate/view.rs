@@ -21,8 +21,8 @@ use mortise_core::{
 };
 
 use crate::app::workspace::WorkAction;
+use crate::generate::strings;
 use crate::runner::view::line_now;
-use crate::strings;
 use crate::ui::draw::alert_box;
 use crate::ui::draw::{self, Button, ButtonKind, Icon};
 use crate::ui::theme::{Face, Palette, Type, radius, size, ty};
@@ -772,7 +772,7 @@ fn listed<'a>(
         }
         generators.retain(|generator| {
             query.is_empty()
-                || strings::generator_label(&generator.name)
+                || crate::strings::generator_label(&generator.name)
                     .to_lowercase()
                     .contains(&query)
                 || generator.name.to_lowercase().contains(&query)
@@ -1074,11 +1074,11 @@ fn catalog_read(
 /// or its line was not whole on screen in the last frame (deviation S37's rule).
 fn read_off(inputs: &GenerateInputs<'_>, shown: bool) -> Option<String> {
     if let Some(label) = inputs.busy {
-        Some(strings::is_running(label))
+        Some(crate::strings::is_running(label))
     } else if line_now(inputs.runner, &[]).is_none() {
-        Some(strings::choose_php(inputs.app))
+        Some(crate::strings::choose_php(inputs.app))
     } else if !shown {
-        Some(strings::SCROLL_TO_COMMAND.to_owned())
+        Some(crate::strings::SCROLL_TO_COMMAND.to_owned())
     } else {
         None
     }
@@ -1162,7 +1162,7 @@ fn picker_row(
     current: bool,
     keyboard: bool,
 ) -> bool {
-    let label = strings::generator_label(&generator.name);
+    let label = crate::strings::generator_label(&generator.name);
     let response = ui.interact(rect, id, draw::one_stop(current));
     response.widget_info(|| WidgetInfo::selected(Role::ListBoxOption, true, current, &label));
     if current {
@@ -1319,7 +1319,7 @@ fn generator_field(
     let rect = Rect::from_min_size(pos2(min.x, top), vec2(width, size::FIELD_H));
     draw::outlined(ui, rect, radius::CONTROL, pal.surface, pal.line_2);
     let mid = rect.center().y;
-    let label = strings::generator_label(&generator.name);
+    let label = crate::strings::generator_label(&generator.name);
     let parts = [
         (label.as_str(), ty::BODY.with_face(Face::Sans700), pal.ink),
         ("  ", ty::BODY, pal.ink),
@@ -1858,7 +1858,7 @@ fn new_module_fields(
 
 /// The keys that run the form.
 fn run_keys(mac: bool) -> String {
-    format!("{} Enter", strings::command_key(mac))
+    format!("{} Enter", crate::strings::command_key(mac))
 }
 
 /// The words a run carries: on a 13.4 app with `--json`, once, so that its result
@@ -1905,7 +1905,7 @@ fn command(
         ui,
         min,
         Align2::LEFT_TOP,
-        strings::COMMAND,
+        crate::strings::COMMAND,
         ty::LABEL,
         pal.ink,
     );
@@ -1989,11 +1989,11 @@ fn command(
     // last frame (deviation S40's rule).
     let shown = state.last_shown.as_ref() == Some(&run_args);
     let off = if let Some(label) = inputs.busy {
-        Some(strings::is_running(label))
+        Some(crate::strings::is_running(label))
     } else if line_now(inputs.runner, &[]).is_none() {
-        Some(strings::choose_php(inputs.app))
+        Some(crate::strings::choose_php(inputs.app))
     } else if ready && !shown {
-        Some(strings::SCROLL_TO_COMMAND.to_owned())
+        Some(crate::strings::SCROLL_TO_COMMAND.to_owned())
     } else {
         None
     };
@@ -2038,7 +2038,7 @@ fn command(
     state.last_shown = ui.clip_rect().contains_rect(text).then_some(run_args);
 
     let copy = Button {
-        label: strings::COPY_COMMAND,
+        label: crate::strings::COPY_COMMAND,
         ..Default::default()
     };
     let response = copy.show(ui, pal, pos2(x, y), inputs.keyboard);
@@ -2047,7 +2047,7 @@ fn command(
     if response.clicked() || copy_key {
         asked = Some(WorkAction::Copy {
             text: line,
-            said: strings::COPIED_COMMAND,
+            said: crate::strings::COPIED_COMMAND,
         });
     }
 
@@ -2515,7 +2515,7 @@ fn result_view(
 ) -> (f32, Option<WorkAction>) {
     let now = ui.input(|input| input.time);
     // Replace is off while a run or read holds the app, as the other run buttons are.
-    let busy = inputs.busy.map(strings::is_running);
+    let busy = inputs.busy.map(crate::strings::is_running);
     let Some(shown) = state.result.as_mut().map(|result| &mut result.shown) else {
         return (min.y, None);
     };
@@ -2552,7 +2552,7 @@ fn result_view(
         (false, _) => strings::created_of(written, total),
     };
     let note = if all_done {
-        strings::files(total as u64)
+        crate::strings::files(total as u64)
     } else {
         strings::failed_count(total - written)
     };
@@ -2572,7 +2572,7 @@ fn result_view(
         ..Default::default()
     };
     let replace = Button {
-        label: strings::REPLACE,
+        label: crate::strings::REPLACE,
         small: true,
         ..Default::default()
     };
@@ -2734,7 +2734,7 @@ fn result_view(
             if let Some(words) = words {
                 let replace_said = strings::replace_file(&shown);
                 let replace = Button {
-                    label: strings::REPLACE,
+                    label: crate::strings::REPLACE,
                     small: true,
                     said: Some(&replace_said),
                     disabled: busy.is_some(),

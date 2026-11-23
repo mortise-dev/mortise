@@ -8,8 +8,8 @@ use std::sync::mpsc::{Receiver, channel};
 use eframe::egui::{self, Align2, Pos2, Rect, Ui, Vec2, pos2, vec2};
 use mortise_core::{Answer, Credentials, Environment, Secret, ask};
 
+use crate::runtime::strings;
 use crate::runtime::view::Brief;
-use crate::strings;
 use crate::ui::draw::{self, Button, Icon};
 use crate::ui::theme::{Palette, radius, size, ty};
 
@@ -23,7 +23,7 @@ pub struct EnvironmentForm {
     pub name: String,
     pub base_url: String,
     pub path: String,
-    /// The kind of credentials, as a place in [`strings::CREDENTIAL_KINDS`].
+    /// The kind of credentials, as a place in [`crate::strings::CREDENTIAL_KINDS`].
     pub kind: usize,
     pub user: String,
     pub header: String,
@@ -195,9 +195,15 @@ pub fn environment_form(
     // Name, base URL and path, side by side.
     let side = 110.0_f32.min((width - 24.0) / 4.0);
     let url_w = width - 2.0 * side - 16.0;
-    let fields_y = label(ui, pal, pos2(left, y), strings::NAME, "");
+    let fields_y = label(ui, pal, pos2(left, y), crate::strings::NAME, "");
     let hint = if from_env { strings::BASE_URL_HINT } else { "" };
-    label(ui, pal, pos2(left + side + 8.0, y), strings::BASE_URL, hint);
+    label(
+        ui,
+        pal,
+        pos2(left + side + 8.0, y),
+        crate::strings::BASE_URL,
+        hint,
+    );
     label(
         ui,
         pal,
@@ -229,7 +235,7 @@ pub fn environment_form(
         ui,
         pal,
         url_rect,
-        &field_name(strings::BASE_URL),
+        &field_name(crate::strings::BASE_URL),
         &mut form.base_url,
         true,
         keyboard,
@@ -253,13 +259,13 @@ pub fn environment_form(
     } else {
         ""
     };
-    let kinds_y = label(ui, pal, pos2(left, y), strings::CREDENTIALS, hint);
+    let kinds_y = label(ui, pal, pos2(left, y), crate::strings::CREDENTIALS, hint);
     let (track, clicked) = draw::segmented(
         ui,
         pal,
         pos2(left, kinds_y),
-        &field_name(strings::CREDENTIALS),
-        &strings::CREDENTIAL_KINDS,
+        &field_name(crate::strings::CREDENTIALS),
+        &crate::strings::CREDENTIAL_KINDS,
         form.kind,
         keyboard,
     );
@@ -277,7 +283,7 @@ pub fn environment_form(
     y = track.bottom() + 12.0;
 
     let test = Button {
-        label: strings::TEST,
+        label: crate::strings::TEST,
         ..Default::default()
     };
     let test_w = test.width(ui);
@@ -357,7 +363,7 @@ pub fn environment_form(
                 ..Default::default()
             };
             let replace = Button {
-                label: strings::REPLACE,
+                label: crate::strings::REPLACE,
                 small: true,
                 ..Default::default()
             };
