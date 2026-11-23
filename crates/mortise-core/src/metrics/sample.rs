@@ -5,6 +5,7 @@
 //! can be thinned without changing a figure. The time is a parameter: the store never asks the clock.
 //! [`LiveMetrics`] holds the store of one environment and the clock of a real run.
 
+use std::borrow::Cow;
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
@@ -72,14 +73,26 @@ pub(crate) struct Cell {
 pub(crate) struct Reading {
     /// The finite bucket bounds of the request histogram, lowest first.
     pub bounds: Vec<f64>,
-    /// The counters of each series, by subject and `http_response_status_code`. The status is
-    /// empty for a job, for database time and for a request without one.
+    /// The counters of each series, by subject and the labels of the series (see [`series_key`]).
     pub series: HashMap<(Subject, String), Cell>,
 }
 
 /// A reading that would make a read keep more than `MAX_ROW` numbers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct TooMany;
+
+/// The labels of a series, `le` aside, sorted by name: `name="value",` each, with the value escaped.
+/// Two lines of one series give one key, whatever order they write the labels in.
+fn series_key(labels: &mut [(&str, Cow<'_, str>)]) -> String {
+    use std::fmt::Write;
+    labels.sort_unstable_by_key(|(name, _)| *name);
+    let mut key = String::new();
+    for (name, value) in labels.iter() {
+        // Writing to a `String` does not fail.
+        let _ = write!(key, "{name}={value:?},");
+    }
+    key
+}
 
 /// `true` when `series` with `bounds` need more than `MAX_ROW` numbers.
 fn over(series: usize, bounds: usize) -> bool {
@@ -93,7 +106,9 @@ impl Reading {
     /// An answer over `MAX_ROW` numbers is refused before the reading grows past it.
     pub(crate) fn of(text: &str) -> Result<Reading, TooMany> {
         let mut reading = Reading::default();
-        for sample in samples(text) {
+        // The index of each bound in `reading.bounds`, by its bits. `0.0` and `-0.0` are one bound.
+        let mut bound_at: HashMap<u64, usize> = HashMap::new();
+        for mut sample in samples(text) {
             let module = || {
                 sample
                     .label("module")
@@ -109,37 +124,34 @@ impl Reading {
             if !folded {
                 continue;
             }
-            let (subject, status) = match sample.family {
-                REQUESTS => (
-                    Subject::Request {
-                        module: module(),
-                        route: sample.label("http_route").map(str::to_owned),
-                        method: sample
-                            .label("http_request_method")
-                            .unwrap_or_default()
-                            .to_owned(),
-                    },
-                    sample
-                        .label("http_response_status_code")
-                        .unwrap_or_default(),
-                ),
-                JOBS => (
-                    Subject::Job {
-                        module: module(),
-                        class: sample
-                            .label("laravel_job_name")
-                            .unwrap_or_default()
-                            .to_owned(),
-                    },
-                    "",
-                ),
+            let subject = match sample.family {
+                REQUESTS => Subject::Request {
+                    module: module(),
+                    route: sample.label("http_route").map(str::to_owned),
+                    method: sample
+                        .label("http_request_method")
+                        .unwrap_or_default()
+                        .to_owned(),
+                },
+                JOBS => Subject::Job {
+                    module: module(),
+                    class: sample
+                        .label("laravel_job_name")
+                        .unwrap_or_default()
+                        .to_owned(),
+                },
                 _ => match module() {
-                    Some(module) => (Subject::Database { module }, ""),
+                    Some(module) => Subject::Database { module },
                     None => continue,
                 },
             };
+            let error = sample
+                .label("http_response_status_code")
+                .and_then(|status| status.parse::<u16>().ok())
+                .is_some_and(|status| (500..600).contains(&status));
+            let key = series_key(&mut sample.labels);
             let mut series = reading.series.len();
-            let cell = match reading.series.entry((subject, status.to_owned())) {
+            let cell = match reading.series.entry((subject, key)) {
                 Entry::Occupied(cell) => cell.into_mut(),
                 Entry::Vacant(cell) => {
                     series += 1;
@@ -152,22 +164,21 @@ impl Reading {
             match sample.part {
                 Part::Count => {
                     cell.count += sample.value;
-                    if status
-                        .parse::<u16>()
-                        .is_ok_and(|status| (500..600).contains(&status))
-                    {
+                    if error {
                         cell.errors += sample.value;
                     }
                 }
                 Part::Sum => cell.sum += sample.value,
                 Part::Bucket(bound) => {
-                    let at = match reading.bounds.iter().position(|kept| *kept == bound) {
-                        Some(at) => at,
+                    let bits = if bound == 0.0 { 0.0f64 } else { bound }.to_bits();
+                    let at = match bound_at.get(&bits) {
+                        Some(&at) => at,
                         None => {
                             if over(series, reading.bounds.len() + 1) {
                                 return Err(TooMany);
                             }
                             reading.bounds.push(bound);
+                            bound_at.insert(bits, reading.bounds.len() - 1);
                             reading.bounds.len() - 1
                         }
                     };
@@ -227,7 +238,7 @@ struct Base {
 #[derive(Debug)]
 struct Column {
     subject: Subject,
-    /// The base of each series of the subject, by status.
+    /// The base of each series of the subject, by its labels.
     bases: HashMap<String, Base>,
 }
 
@@ -278,10 +289,10 @@ impl MetricsStore {
         let kept = if renewed {
             series.len()
         } else {
-            let known = |(subject, status): &(Subject, String)| {
+            let known = |(subject, labels): &(Subject, String)| {
                 self.index
                     .get(subject)
-                    .is_some_and(|&column| self.columns[column].bases.contains_key(status))
+                    .is_some_and(|&column| self.columns[column].bases.contains_key(labels))
             };
             let bases: usize = self.columns.iter().map(|kept| kept.bases.len()).sum();
             bases + series.keys().filter(|key| !known(key)).count()
@@ -325,7 +336,7 @@ impl MetricsStore {
         let width = self.width();
         let mut counters = std::mem::take(&mut self.scratch);
         // Each series is compared with its own base, then what it grew by adds into its subject.
-        for ((subject, status), cell) in series {
+        for ((subject, labels), cell) in series {
             if !fill(&cell, self.bounds.len(), &mut counters) {
                 continue;
             }
@@ -335,7 +346,7 @@ impl MetricsStore {
                 totals.resize(row.end, 0.0);
             }
             let bases = &mut self.columns[column].bases;
-            match bases.get_mut(&status) {
+            match bases.get_mut(&labels) {
                 Some(base) => {
                     // A stale base and a reset add nothing. On the first read of a run, every base
                     // is stale.
@@ -363,7 +374,7 @@ impl MetricsStore {
                         add(&mut totals[row], counters.iter().copied());
                     }
                     bases.insert(
-                        status,
+                        labels,
                         Base {
                             counters: counters.clone(),
                             run,
@@ -712,7 +723,7 @@ mod tests {
         }
     }
 
-    /// A reading with one series per subject, with no status.
+    /// A reading with one series per subject, with no label.
     fn reading(cells: &[(Subject, Cell)]) -> Reading {
         Reading {
             bounds: Vec::new(),
@@ -769,17 +780,24 @@ mod tests {
         assert_eq!(grew(&store, PACE, &route("/")), Some(cell(2.0, 1.0)));
         assert_eq!(grew(&store, WINDOW, &route("/")), Some(cell(2.0, 1.0)));
 
-        // Each status is a series of its own: a reset of the 404s does not hide the new 200s.
-        let statuses = |ok, missing| Reading {
-            bounds: Vec::new(),
-            series: HashMap::from([
-                ((route("/"), "200".to_owned()), count(ok)),
-                ((route("/"), "404".to_owned()), count(missing)),
-            ]),
+        // Each label set is a series of its own: a reset on http does not hide the growth on https,
+        // in whatever order a read writes the labels.
+        let schemes = |http, https, labels: [&str; 2]| {
+            let [first, second] = labels;
+            Reading::of(&format!(
+                "# TYPE {REQUESTS} histogram\n\
+                 {REQUESTS}_count{{http_request_method=\"GET\",{first},{second}}} {https}\n\
+                 {REQUESTS}_count{{http_request_method=\"GET\",http_route=\"/\",url_scheme=\"http\"}} {http}\n"
+            ))
+            .unwrap()
         };
+        let https = ["http_route=\"/\"", "url_scheme=\"https\""];
+        let [route_label, scheme_label] = https;
         let mut store = MetricsStore::new(PACE);
-        store.push(secs(0), statuses(100.0, 100.0)).unwrap();
-        store.push(secs(15), statuses(110.0, 1.0)).unwrap();
+        store.push(secs(0), schemes(100, 100, https)).unwrap();
+        store
+            .push(secs(15), schemes(1, 110, [scheme_label, route_label]))
+            .unwrap();
         assert_eq!(grew(&store, PACE, &route("/")), Some(count(10.0)));
     }
 
@@ -877,7 +895,7 @@ mod tests {
         };
         let with_bounds = |bounds: Vec<f64>, cell: Cell| Reading {
             bounds,
-            series: HashMap::from([((route("/"), "200".to_owned()), cell)]),
+            series: HashMap::from([((route("/"), String::new()), cell)]),
         };
         let mut store = MetricsStore::new(PACE);
         // A job comes before the first request, so before the first bounds.
@@ -1051,13 +1069,22 @@ mod tests {
             module: None,
             class: r"Modules\Module7\Jobs\Work".to_owned(),
         };
-        assert_eq!(reading.series[&(job, String::new())], count(14.0));
+        let of = |subject: &Subject| {
+            let mut cells = reading
+                .series
+                .iter()
+                .filter(|((kept, _), _)| kept == subject);
+            let (_, cell) = cells.next().unwrap();
+            assert!(cells.next().is_none());
+            cell
+        };
+        assert_eq!(of(&job), &count(14.0));
         let request = Subject::Request {
             module: None,
             route: Some("/module-7/route-0/{id}".to_owned()),
             method: "GET".to_owned(),
         };
-        let folded = &reading.series[&(request, "200".to_owned())];
+        let folded = of(&request);
         assert_eq!((folded.count, folded.errors, folded.sum), (14.0, 0.0, 0.25));
         assert_eq!(folded.buckets, (0..14).map(f64::from).collect::<Vec<_>>());
         assert!(took < secs(1), "took {took:?}");

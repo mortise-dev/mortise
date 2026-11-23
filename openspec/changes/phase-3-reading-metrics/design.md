@@ -63,8 +63,7 @@ pub(crate) struct Cell {
 pub(crate) struct Reading {
     /// The finite bucket bounds of the request histogram, lowest first.
     pub bounds: Vec<f64>,
-    /// The counters of each series, by subject and `http_response_status_code`. The status is
-    /// empty for a job, for database time and for a request without one.
+    /// The counters of each series, by subject and its labels except `le`, sorted by name.
     pub series: HashMap<(Subject, String), Cell>,
 }
 ```
@@ -123,9 +122,9 @@ Rejected:
 
 ### D2. Resets, gaps, new series
 
-The store keeps, per series, the counters of the last read that held it (the base). A series is a
-subject with its status: each status of a request is a series, a job and database time are one series
-each. Totals stay per subject.
+The store keeps, per series, the counters of the last read that held it (the base). A series is one
+label set of the answer, `le` aside, sorted by name, so a status, a `url_scheme` or a queue each make
+their own series. Totals stay per subject.
 `MetricsStore::push(at, reading)` applies these rules, in this order:
 
 0. A reading over the cap of D1 is refused as a whole and changes nothing.
@@ -160,7 +159,7 @@ Why the base of a missing series is kept: if it comes back with a higher value, 
 counts. This matters when a load balancer shows one server per read (risk below). After a gap the base
 is stale, because the difference would hold the gap.
 
-Why a base per series: statuses add into one subject. A reset of the 404s (100 to 1) would hide the
+Why a base per series: series of several labels add into one subject. A reset of the 404s (100 to 1) would hide the
 growth of the 200s (100 to 110) if the reset rule ran on the sum.
 
 Rejected: adding the whole new value at a reset, as Prometheus `increase` does. With two servers behind
@@ -562,7 +561,7 @@ impl LiveMetrics {
 
 | Family | Subject | Fields |
 |---|---|---|
-| `http_server_request_duration_seconds` | `Request` from `module`, `http_route`, `http_request_method`; one series per `http_response_status_code` | `_count` adds to `count`, and to `errors` when `http_response_status_code` is 500 to 599. `_sum` adds to `sum`. A finite `_bucket` adds to its bucket. `+Inf` is dropped: it equals the count |
+| `http_server_request_duration_seconds` | `Request` from `module`, `http_route`, `http_request_method` | `_count` adds to `count`, and to `errors` when `http_response_status_code` is 500 to 599. `_sum` adds to `sum`. A finite `_bucket` adds to its bucket. `+Inf` is dropped: it equals the count |
 | `messaging_process_duration_seconds` | `Job` from `module`, `laravel_job_name` | `_count` adds to `count` |
 | `db_client_operation_duration_seconds`, only with a `module` label | `Database` | `_sum` adds to `sum` |
 
