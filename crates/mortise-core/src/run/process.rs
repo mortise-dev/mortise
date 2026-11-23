@@ -17,7 +17,7 @@ use std::process::{Command, Stdio};
 #[cfg(feature = "run")]
 use std::sync::atomic::{AtomicBool, Ordering};
 #[cfg(feature = "run")]
-use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender, SyncSender};
 #[cfg(feature = "run")]
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 #[cfg(feature = "run")]
@@ -324,21 +324,24 @@ impl Owner {
             }
         };
         // `stopped` is `Some` when Mortise ended it, with the limit when that did.
-        let (status, stopped) = loop {
-            match process.child.try_wait() {
-                Ok(Some(status)) => break (Some(status), None),
-                Ok(None) => {}
-                Err(_) => break (process.stop(&mut forward).ok(), None),
+        let stopped = loop {
+            match process.exited() {
+                Ok(true) => break None,
+                Ok(false) => {}
+                Err(_) => {
+                    process.stop(&mut forward);
+                    break None;
+                }
             }
             let at_limit = started.elapsed() >= limit;
             if at_limit || stop.load(Ordering::Relaxed) {
-                let status = process.stop(&mut forward).ok();
-                break (status, Some(at_limit.then_some(limit)));
+                process.stop(&mut forward);
+                break Some(at_limit.then_some(limit));
             }
             process.read(TICK, &mut forward);
         };
         let elapsed = started.elapsed();
-        process.finish(&mut forward);
+        let status = process.finish(&mut forward);
         let end = match stopped {
             Some(limit) => RunEnd::Stopped { elapsed, limit },
             None => RunEnd::Exited {
@@ -350,6 +353,11 @@ impl Owner {
         let _ = events.send(RunEvent::Ended(end));
     }
 }
+
+/// How many lines may wait between the readers and the owner. A reader that
+/// finds the queue full waits, so a flood of output stays bounded in memory.
+#[cfg(feature = "run")]
+const QUEUE: usize = 1024;
 
 /// A started program and the threads that read its pipes.
 #[cfg(feature = "run")]
@@ -372,7 +380,7 @@ impl Process {
             command.process_group(0);
         }
         let mut child = command.spawn()?;
-        let (sender, lines) = mpsc::channel();
+        let (sender, lines) = mpsc::sync_channel(QUEUE);
         let readers = [
             read_lines(child.stdout.take(), Stream::Out, sender.clone()),
             read_lines(child.stderr.take(), Stream::Err, sender),
@@ -384,7 +392,8 @@ impl Process {
         })
     }
 
-    /// Waits up to `wait` for a line, then gives `forward` each line that arrived.
+    /// Waits up to `wait` for a line, then gives `forward` the lines that arrived,
+    /// at most [`QUEUE`], so the caller looks at the program again soon.
     fn read(&self, wait: Duration, forward: &mut impl FnMut(Stream, String)) {
         match self.lines.recv_timeout(wait) {
             Ok((stream, text)) => forward(stream, text),
@@ -394,23 +403,37 @@ impl Process {
                 return;
             }
         }
-        for (stream, text) in self.lines.try_iter() {
+        for (stream, text) in self.lines.try_iter().take(QUEUE) {
             forward(stream, text);
         }
     }
 
+    /// Whether the program has exited. On Unix it is not reaped, so its pid, which
+    /// is the id of its group, stays taken until [`Process::finish`] kills the group.
+    #[cfg(unix)]
+    fn exited(&mut self) -> std::io::Result<bool> {
+        use rustix::process::{Pid, WaitId, WaitIdOptions, waitid};
+        let options = WaitIdOptions::EXITED | WaitIdOptions::NOHANG | WaitIdOptions::NOWAIT;
+        let status = waitid(WaitId::Pid(Pid::from_child(&self.child)), options)?;
+        Ok(status.is_some())
+    }
+
+    /// Whether the program has exited. The handle that `Child` holds keeps the pid
+    /// from being used again.
+    #[cfg(not(unix))]
+    fn exited(&mut self) -> std::io::Result<bool> {
+        Ok(self.child.try_wait()?.is_some())
+    }
+
     /// Ends the process tree: it asks first, and kills after [`STOP_GRACE`].
-    /// It reads the lines meanwhile and returns how the program ended.
-    fn stop(&mut self, forward: &mut impl FnMut(Stream, String)) -> std::io::Result<ExitStatus> {
+    /// It reads the lines meanwhile. [`Process::finish`] then kills what is left.
+    fn stop(&mut self, forward: &mut impl FnMut(Stream, String)) {
         self.terminate();
         let asked = Instant::now();
-        loop {
-            if let Some(status) = self.child.try_wait()? {
-                return Ok(status);
-            }
+        while !self.exited().unwrap_or(true) {
             if asked.elapsed() >= STOP_GRACE {
                 self.kill();
-                return self.child.wait();
+                return;
             }
             self.read(TICK, forward);
         }
@@ -464,18 +487,23 @@ impl Process {
         let _ = self.child.kill();
     }
 
-    /// The end, once the program has exited. The readers get [`GRACE`] to finish.
-    /// Then, on Unix, what is left in the group is killed, which closes the pipes.
-    /// The readers are joined and `forward` gets their last lines.
+    /// The end, once the program has exited or was stopped. The readers get
+    /// [`GRACE`] to finish. Then, on Unix, what is left in the group is killed, even
+    /// a child that closed its pipes, and the program is reaped. The readers are
+    /// joined and `forward` gets their last lines. It returns how the program ended.
     ///
     /// Known limit: a process that left the group (`setsid`), or on Windows a child
-    /// of a program that ended by itself, can keep a pipe open. Windows cannot name
-    /// the children of an ended program without a job object. A reader that still
-    /// reads [`DETACH`] later is left behind; it ends when the pipe closes.
-    fn finish(&mut self, forward: &mut impl FnMut(Stream, String)) {
-        if !self.wait_for_readers(GRACE, forward) {
-            #[cfg(unix)]
-            self.kill();
+    /// of a program that ended by itself or that `taskkill` missed, can keep a pipe
+    /// open. Windows cannot name the children of an ended program without a job
+    /// object. A reader that still reads [`DETACH`] later is left behind; it ends
+    /// when the pipe closes or the queue is gone.
+    fn finish(&mut self, forward: &mut impl FnMut(Stream, String)) -> Option<ExitStatus> {
+        let done = self.wait_for_readers(GRACE, forward);
+        // The program is not reaped yet, so the group id cannot belong to another group.
+        #[cfg(unix)]
+        self.kill();
+        let status = self.child.wait().ok();
+        if !done {
             self.wait_for_readers(DETACH, forward);
         }
         for reader in std::mem::take(&mut self.readers) {
@@ -486,6 +514,7 @@ impl Process {
         for (stream, text) in self.lines.try_iter() {
             forward(stream, text);
         }
+        status
     }
 
     /// Reads until both readers finished, for at most `wait`. True when they did.
@@ -543,24 +572,20 @@ pub(crate) fn capture(
             lines.push(text);
         }
     };
-    let mut code = None;
     let mut timed_out = false;
-    loop {
-        if let Some(status) = process.child.try_wait()? {
-            code = status.code();
-            break;
-        }
+    while !process.exited()? {
         if started.elapsed() >= limit {
-            // The program may have ended in the meantime; then there is nothing to stop.
-            let _ = process.stop(&mut keep);
+            process.stop(&mut keep);
             timed_out = true;
             break;
         }
         process.read(TICK, &mut keep);
     }
-    process.finish(&mut keep);
+    let status = process.finish(&mut keep);
     Ok(Captured {
-        code,
+        code: status
+            .and_then(|status| status.code())
+            .filter(|_| !timed_out),
         stdout,
         stderr,
         timed_out,
@@ -655,7 +680,7 @@ fn extra_folders(home: Option<&Path>) -> Vec<PathBuf> {
 fn read_lines(
     pipe: Option<impl Read + Send + 'static>,
     stream: Stream,
-    sender: Sender<(Stream, String)>,
+    sender: SyncSender<(Stream, String)>,
 ) -> Option<JoinHandle<()>> {
     let pipe = pipe?;
     Some(std::thread::spawn(move || {

@@ -141,15 +141,28 @@ fn until_end(run: &Run, within: Duration) -> (Vec<RunEvent>, RunEnd) {
     }
 }
 
-/// Waits for the first line of `run`, which must come within 10 s.
-fn first_line(run: &Run) {
+/// Waits for the first line of `run`, which must come within 10 s, and gives it.
+fn first_line(run: &Run) -> String {
     let deadline = Instant::now() + Duration::from_secs(10);
-    while !run
-        .events()
-        .iter()
-        .any(|event| matches!(event, RunEvent::Line { .. }))
-    {
+    loop {
+        for event in run.events() {
+            if let RunEvent::Line { text, .. } = event {
+                return text;
+            }
+        }
         assert!(Instant::now() < deadline, "no line");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+}
+
+/// Asserts that the process `pid`, which the fake printed, is gone within 2 s.
+#[cfg(unix)]
+fn gone(pid: &str) {
+    use rustix::process::{Pid, test_kill_process};
+    let pid = Pid::from_raw(pid.trim().parse().unwrap()).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(2);
+    while test_kill_process(pid).is_ok() {
+        assert!(Instant::now() < deadline, "the child {pid:?} still runs");
         std::thread::sleep(Duration::from_millis(10));
     }
 }
@@ -190,23 +203,32 @@ fn a_run_stops_at_its_limit_with_its_tree() {
         matches!(end, RunEnd::Stopped { limit: Some(at), .. } if at == limit),
         "{end:?}"
     );
-    // It ends in time only when the child died too and the pipes closed.
-    let run = start("", &["orphan-wait"], limit);
-    let (_, end) = until_end(&run, Duration::from_secs(2));
-    assert!(matches!(end, RunEnd::Stopped { .. }), "{end:?}");
+    // The child of the program ends with it, also one that ignores SIGTERM and
+    // closed its pipes.
+    for case in ["orphan-wait", "orphan-quiet"] {
+        let run = start("", &[case], Duration::from_secs(2));
+        let child = first_line(&run);
+        let (_, end) = until_end(&run, Duration::from_secs(10));
+        assert!(matches!(end, RunEnd::Stopped { .. }), "{case}: {end:?}");
+        #[cfg(unix)]
+        gone(&child);
+        #[cfg(not(unix))]
+        let _ = child;
+    }
 }
 
 #[cfg(unix)]
 #[test]
 fn a_run_ends_soon_after_a_program_that_leaves_a_child() {
     let run = start("", &["orphan"], TEST_LIMIT);
-    first_line(&run);
+    let child = first_line(&run);
     // The readers would be left behind after 1.25 s; an end before means the child died.
     let (_, end) = until_end(&run, Duration::from_secs(1));
     assert!(
         matches!(end, RunEnd::Exited { code: Some(0), .. }),
         "{end:?}"
     );
+    gone(&child);
 }
 
 #[test]

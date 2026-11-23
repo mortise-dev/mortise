@@ -263,6 +263,8 @@ struct Recording {
 /// `ask` asks for a name and ends with 1 when its input ends.
 /// `orphan` starts a copy of itself with `wait` on the same pipes, prints its pid
 /// and ends with 0. `orphan-wait` does the same, then sleeps for 60 seconds.
+/// `orphan-quiet` is `orphan-wait` with a child that ignores SIGTERM and has
+/// closed its pipes, so only a kill of the group ends it.
 /// Any other words replay the recording in `fixtures/output` whose `args` they are,
 /// without `--no-interaction` and `--ansi`. With no recording, they are a command
 /// artisan does not know.
@@ -349,19 +351,27 @@ fn fake_case(words: &[String]) -> ExitCode {
                 }
             }
         }
-        Some(case @ ("orphan" | "orphan-wait")) => {
+        Some(case @ ("orphan" | "orphan-wait" | "orphan-quiet")) => {
+            let quiet = case == "orphan-quiet";
             let child = std::env::current_exe().and_then(|itself| {
-                std::process::Command::new(itself)
-                    .arg("wait")
-                    .stdin(std::process::Stdio::null())
-                    .spawn()
+                let mut child = std::process::Command::new(itself);
+                child.stdin(std::process::Stdio::null());
+                if quiet {
+                    child
+                        .args(["ignore-term", "wait"])
+                        .stdout(std::process::Stdio::null())
+                        .stderr(std::process::Stdio::null());
+                } else {
+                    child.arg("wait");
+                }
+                child.spawn()
             });
             let Ok(child) = child else {
                 eprintln!("the orphan did not start");
                 return ExitCode::from(2);
             };
             println!("{}", child.id());
-            if case == "orphan-wait" {
+            if case != "orphan" {
                 std::thread::sleep(Duration::from_secs(60));
             }
             ExitCode::SUCCESS
