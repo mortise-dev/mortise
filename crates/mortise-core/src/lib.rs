@@ -56,6 +56,10 @@ pub use generate::catalog::{
 pub use generate::output::{
     FileOutcome, GeneratedFile, app_relative, autoload_failed, generated_files, reported_files,
 };
+#[cfg(feature = "actuator")]
+pub use metrics::figures::{Figures, LAST_MINUTE, ModuleFigures, Rates};
+#[cfg(feature = "actuator")]
+pub use metrics::sample::{LiveMetrics, MetricsClock, MetricsState};
 pub use modules::clover::Coverage;
 pub use modules::code::{ALL_CODE, propose_codes, propose_monogram};
 pub use modules::composer::Version;
