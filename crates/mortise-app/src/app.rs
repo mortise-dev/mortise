@@ -1798,6 +1798,14 @@ impl MortiseApp {
             Toast::failed(text).with_action(strings::SHOW_OUTPUT, ToastAction::ShowOutput(root))
         };
         let open = &mut self.apps[index];
+        // A run with `--json` that read no file, such as one that failed at boot: the
+        // form keeps its line and says why the answer was not read (design D2).
+        if attached && files.is_empty() && fallback.is_some() {
+            let result =
+                GenerateResult::new(run.module.clone(), run.args.clone(), Vec::new(), false);
+            open.generate
+                .show_result(result.read_from_output(fallback.clone()));
+        }
 
         if run.generator == MODULE_MAKE {
             let names = typed_names(&run.args);
@@ -1836,7 +1844,8 @@ impl MortiseApp {
             return;
         }
 
-        // No file read: no result; the drawer says what happened.
+        // No file read: no result; the drawer says what happened, and the form why
+        // the answer was not read.
         if files.is_empty() {
             if !done && !in_view {
                 let text = match end {

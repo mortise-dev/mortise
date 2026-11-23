@@ -378,6 +378,13 @@ fn a_dry_run_that_finds_the_policy_takes_it_out_of_the_command() {
         .unwrap();
     assert!(harness.query_by_label_contains("--policy").is_none());
     assert!(!disabled(&harness, "Create the other 2 files"));
+
+    // A run that fails before it answers, with no file read: the form says why.
+    run(&mut harness);
+    wait_for(
+        &mut harness,
+        "Read from the output: the package's answer was ",
+    );
 }
 
 #[test]

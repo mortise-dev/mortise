@@ -308,6 +308,7 @@ impl GenerateState {
     pub fn show_result(&mut self, result: GenerateResult) {
         self.files = None;
         self.focus_result = !result.autoload_failed
+            && !result.files.is_empty()
             && result
                 .files
                 .iter()
@@ -1686,6 +1687,18 @@ fn command(
 
     // The dry run's line, when it is whole on screen in this frame.
     state.read_shown = files.as_mut().and_then(|files| files.read_shown.take());
+    // A run that read no file and gave no answer: why, under the line (design D2).
+    if let Some(reason) = state
+        .result
+        .as_ref()
+        .filter(|result| result.files.is_empty())
+        .and_then(|result| result.fallback.as_deref())
+    {
+        let text = strings::read_from_output(reason);
+        let at = pos2(min.x, y + 8.0);
+        y = draw::paragraph(ui, at, &text, HINT, pal.ink_2, width).bottom();
+    }
+
     let force = new_module && state.filled.flags.contains("force");
     let blocked = files.as_ref().is_some_and(|files| files.blocked);
     // The button and Ctrl Enter run only the line that was whole on screen in the
