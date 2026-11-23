@@ -192,6 +192,7 @@ const SHORTCUTS: &[(&str, &str, &str)] = &[
         "Anywhere",
     ),
     ("Add app", "Ctrl O", "Anywhere"),
+    ("New module", "Ctrl N", "Anywhere"),
     ("Settings", "Ctrl ,", "Anywhere"),
     (
         "Read the app again, from disk and from the actuator",
@@ -215,6 +216,11 @@ const SHORTCUTS: &[(&str, &str, &str)] = &[
     (
         "Summary, Boundary, Generate, Actions, Metrics",
         "1  2  3  4  5",
+        "Main window",
+    ),
+    (
+        "Generate, with the generator filter focused",
+        "G",
         "Main window",
     ),
     ("Findings list of the app", "F", "Main window"),
