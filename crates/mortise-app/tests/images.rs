@@ -376,6 +376,75 @@ fn an_app_without_the_actuator() {
     }
 }
 
+// --- The Actions tab (S10.1 to S10.3) ---
+
+/// The pointer rests where it lights nothing up.
+fn rest(harness: &mut Harness<'static, MortiseApp>) {
+    harness.hover_at(eframe::egui::pos2(1200.0, 780.0));
+    harness.run_steps(3);
+}
+
+fn select(harness: &mut Harness<'static, MortiseApp>, row: &str) {
+    harness
+        .get_by_role_and_label(Role::ListBoxOption, row)
+        .click();
+    rest(harness);
+}
+
+#[test]
+fn actions() {
+    // One set of results for the test: both themes are compared when it ends.
+    let mut shots = Shots::new();
+    for (theme, name) in THEMES {
+        shots.theme = name;
+        // Through Herd, so that the line reads as in the drawings, and nothing runs.
+        let mut desk = Desk::new();
+        desk.theme = theme;
+        let root = desk.app("shop-api");
+        desk.knows(&[(&root, "SA")]);
+        let mut settings = desk.saved();
+        settings.apps[0].php.runner = Some(RunnerKind::Herd);
+        settings.save(&desk.settings_path()).unwrap();
+        let mut harness = desk.start();
+
+        // S10.1: Checkout, with Migrate selected.
+        select(&mut harness, "Checkout");
+        harness.get_by_role_and_label(Role::Tab, "Actions").click();
+        rest(&mut harness);
+        shots.take(&mut harness, "s10.1-actions");
+        // S10.2 a, c, d and e: the other panels of a module that is on.
+        for (row, screen) in [
+            ("Turn off", "s10.2a-turn-off"),
+            ("Roll back", "s10.2c-roll-back"),
+            ("Seed", "s10.2d-seed"),
+            ("Run tests", "s10.2e-run-tests"),
+        ] {
+            select(&mut harness, row);
+            shots.take(&mut harness, screen);
+        }
+        // S10.3: Roll back asks first, with focus on Cancel.
+        select(&mut harness, "Roll back");
+        harness.key_press_modifiers(Modifiers::COMMAND, Key::Enter);
+        harness.run_steps(3);
+        shots.take(&mut harness, "s10.3-roll-back");
+        press(&mut harness, Key::Escape);
+        // S10.2 f: "All modules".
+        select(&mut harness, "All modules");
+        shots.take(&mut harness, "s10.2f-all-modules");
+        // S10.2 b: Turn on, once Checkout is off.
+        common::turn_off(&root, "Checkout");
+        common::wait_until(&mut harness, "Checkout is off", |app| {
+            app.app().is_some_and(|app| {
+                app.module("Checkout")
+                    .is_some_and(|module| module.state == mortise_core::ModuleState::Off)
+            })
+        });
+        select(&mut harness, "Checkout");
+        select(&mut harness, "Turn on");
+        shots.take(&mut harness, "s10.2b-turn-on");
+    }
+}
+
 // --- The runner drawer (S11.1) ---
 
 /// A run of the history: its artisan words, how it ended, its local clock time today
@@ -399,6 +468,14 @@ fn drawer_desk(theme: Theme, width: f32, words: &str, runs: &[Seeded<'_>]) -> De
         line: format!("./fake-artisan{words}"),
     });
     settings.save(&desk.settings_path()).unwrap();
+    // The file of the migration that fails, so that the drawer offers to open it.
+    let migrations = root.join("Modules/Shipping/database/migrations");
+    std::fs::create_dir_all(&migrations).unwrap();
+    std::fs::write(
+        migrations.join("2026_11_22_140500_add_tracking_code_to_shipments_table.php"),
+        "<?php\n",
+    )
+    .unwrap();
     // The clock times are local times of today, so the rows read the same anywhere.
     let history = History::open(&desk.data_dir(), &root);
     for (args, ended, (hour, minute), output) in runs.iter().rev() {
@@ -512,10 +589,10 @@ fn runner_drawer() {
                 recording("module-make"),
             ),
             (
-                &["module:migrate", "NoSuchModule"],
+                &["module:migrate", "Shipping"],
                 failed(),
                 (13, 51),
-                recording("module-failing"),
+                recording("module-migrate-failing-migration"),
             ),
             (
                 &["module:seed", "Blog"],
@@ -555,7 +632,7 @@ fn runner_drawer() {
             harness.run_steps(2);
         }
         harness.key_press(Key::Enter);
-        wait_for(&mut harness, "NoSuchModule: Exit code 1");
+        wait_for(&mut harness, "Shipping: Exit code 1");
         let time = exit_time(&harness);
         let masks = varying(&harness, &[&time]);
         shots.take_part_masked(&mut harness, "s11.1c-failed", part, &masks);
@@ -590,7 +667,7 @@ fn runner_drawer() {
             mortise_app::theme::size::WINDOW_MIN_W,
             "",
             &[(
-                &["module:migrate", "NoSuchModule"],
+                &["module:migrate", "Shipping"],
                 failed(),
                 (14, 5),
                 Vec::new(),
@@ -600,7 +677,7 @@ fn runner_drawer() {
         harness.key_press_modifiers(Modifiers::COMMAND | Modifiers::SHIFT, Key::R);
         harness.run_steps(3);
         harness.key_press_modifiers(Modifiers::COMMAND | Modifiers::SHIFT, Key::R);
-        wait_for(&mut harness, "NoSuchModule: Exit code 1");
+        wait_for(&mut harness, "Shipping: Exit code 1");
         let time = exit_time(&harness);
         let masks = varying(&harness, &[&time]);
         let part = drawer_part(&harness, window_h);
