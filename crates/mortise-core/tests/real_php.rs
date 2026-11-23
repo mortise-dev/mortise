@@ -74,7 +74,8 @@ fn try_run(runs: &Runs, app: &Path, args: &[String]) -> Result<Vec<String>, Stri
 }
 
 /// Rolls back and deletes [`MODULE`] when it drops, also after a failed assertion.
-/// The test makes it only after it saw that the app did not have the module.
+/// The test makes it only after its own `module:make` exited with 0 and created
+/// the `module.json` of the module.
 struct Made<'a> {
     runs: &'a Runs,
     app: &'a Path,
@@ -84,7 +85,7 @@ struct Made<'a> {
 
 impl Drop for Made<'_> {
     fn drop(&mut self) {
-        if self.removed || !module_dir(self.app).exists() {
+        if self.removed {
             return;
         }
         for args in [action(Action::RollBack), action(Action::DeleteModule)] {
@@ -159,24 +160,27 @@ fn make_generate_migrate_and_delete_a_module() {
         "The app already has a module {MODULE}. The test does not change a module it did \
          not make: delete it, or use another app."
     );
-    let mut made = Made {
-        runs: &runs,
-        app: &app,
-        removed: false,
-    };
 
+    // `run` fails unless `module:make` exits with 0.
     let lines = run(
         &runs,
         &app,
         &generator(MODULE_MAKE, &[("name", MODULE)], &[], None),
     );
     let files = generated_files(&lines, false);
+    let manifest = format!("Modules/{MODULE}/module.json");
     assert!(
         files
             .iter()
-            .any(|file| file.path == format!("Modules/{MODULE}/module.json")),
+            .any(|file| file.path == manifest && file.outcome == FileOutcome::Created),
         "{files:?}"
     );
+    // This run made the module: from here on a failure removes it.
+    let mut made = Made {
+        runs: &runs,
+        app: &app,
+        removed: false,
+    };
     all_created(&app, &files);
     assert!(!autoload_failed(&lines), "{}", lines.join("\n"));
     assert!(has_module(&app));
