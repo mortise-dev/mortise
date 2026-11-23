@@ -230,16 +230,19 @@ generator, module, args, force, modules_before }` beside it. At its end:
   new one over it, and Mortise cannot bring the old one back.", confirm "Replace file", `danger`, focus on
   Cancel, and the line in `code` (the exact line on screen before it runs). Confirm runs the words; the
   result of that run lists the file as replaced.
-- **module:make**: Ctrl Enter with Replace checked opens "Replace the module Loyalty?" with "Modules/Loyalty
-  exists with 23 files. module:make --force writes the generated files over it." when the snapshot has a
-  module of that name (ASCII case ignored; its folder relative to the app; its file count), else
-  "module:make --force writes the generated files over the module if it exists." (not in the spec);
-  confirm "Replace module", the line in `code`. At code 0 the app waits for the next snapshot and selects
-  the first module that was not in `modules_before`, else the module whose name equals a typed name
-  (ASCII case ignored, `-` and `_` left out), and opens its Summary; toast "Created the module Loyalty."
-  (not in the spec). When `autoload_failed`, the form shows the alert "The module was created, but
-  composer dump-autoload failed. Fix the module (for example its composer.json), then run composer
-  dump-autoload." and the module is still selected when it appears.
+- **module:make**: Ctrl Enter with Replace checked, or with `--force` in the runner's line, opens "Replace
+  the module Loyalty?" with "Modules/Loyalty exists with 23 files. module:make --force deletes the folder,
+  then generates the module again. Files you wrote in it are lost." when the snapshot has a module of that
+  name (ASCII case ignored; its folder relative to the app; its file count), else "If the module exists,
+  module:make --force deletes its folder, then generates the module again. Files you wrote in it are lost."
+  (not in the spec); confirm "Replace module", the line in `code` (deviation S50: the package deletes the
+  folder first). When the run created or replaced files, whatever its exit code, the app reads the app
+  again, waits for a snapshot and selects the first module that was not in `modules_before`, else the
+  module whose name equals a typed name (ASCII case ignored, `-` and `_` left out), and opens its
+  Summary. At code 0 the toast reads "Created the module Loyalty." (not in the spec). When
+  `autoload_failed`, nothing is selected: the form keeps the alert "The module was created, but composer
+  dump-autoload failed. Fix the module (for example its composer.json), then run composer dump-autoload."
+  on screen, under "All modules".
 - Run again of a generator line from the drawer repeats the words; a line with `--force` asks again
   (`asks_again`, milestone 12).
 
@@ -286,6 +289,11 @@ once in `tests/palette.rs`. Images S9.1, S9.2, S9.4, S9.5, S9.6, light and dark.
   and the toast "Replaced 1 file in Billing." (deviation S47). Any change of the form drops the result
   and brings the line back. Run again from the drawer runs the words, with its own question for
   `--force`, and does not change the result on the tab. Mortise reads the app again after `module:make`.
+  A result shows only while the form the run started from (its generator and module) is still on
+  screen; otherwise the toasts of a run out of view apply. Whether a run carries `--force` is read from
+  the whole line, the runner's words too. The run button, like Ctrl Enter, runs only a line that was
+  whole on screen in the last frame; otherwise it is off with "Scroll up to see the whole command
+  first." (not in the spec). The Actions tab follows the same rule.
 - D7: `menu.rs` lists no shortcut, so no menu item was added. In the palette, a word of the query that
   matches a module names the module; the other words match the generators. A query that only names a
   module lists no generator, so "check" keeps the rows of S12.1 it had.
