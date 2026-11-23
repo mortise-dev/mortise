@@ -477,6 +477,10 @@ accessible name and a 24 px target (`tests/accessibility.rs`).
 - `app_relative(root, modules, names, folders, printed)` places a path of a container by the modules
   that `module:make` asks for first, then by the app's modules, then by the last `/<modules>/`.
 - A row of a result keeps room for its state and its button before its path wraps.
+- A path of a container is read from the first `/<modules>/<Module>/` of the modules the run writes in:
+  its own module, or those `module:make` asks for. Then from the first of the app's modules, then from
+  the last `/<modules>/`. A class name that repeats the module's part
+  (`.../Models/Admin/Modules/Billing/Invoice.php`) keeps its prefix.
 
 ## Risks / Trade-offs
 

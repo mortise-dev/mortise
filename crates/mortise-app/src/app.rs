@@ -1815,12 +1815,13 @@ impl MortiseApp {
             .as_deref()
             .map(crate::generate_view::module_folders)
             .unwrap_or_default();
-        // The modules `module:make` asks for place its paths first.
-        let asked = if run.generator == MODULE_MAKE {
-            typed_names(&run.args)
-        } else {
-            Vec::new()
-        };
+        // The modules the run writes in place its paths first.
+        let asked = crate::generate_view::run_modules(
+            app.as_deref(),
+            &run.generator,
+            run.module.as_deref(),
+            &run.args,
+        );
         let asked: Vec<&str> = asked.iter().map(String::as_str).collect();
         let (mut files, autoload_failed, fallback) = match answer {
             Some(Ok(report)) => (

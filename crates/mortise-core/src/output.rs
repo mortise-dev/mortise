@@ -186,10 +186,12 @@ pub fn reported_files(
 /// then read from a part `/<modules>/<Module>/` on, where `modules` is the modules
 /// folder relative to the app (`Modules`): `Modules/Billing/app/Models/Invoice.php`.
 /// The container's folder may hold that name too (`/srv/Modules/shop-api/Modules/...`),
-/// so the part counts whose `<Module>` is one of `names`, the modules a run of
-/// `module:make` asks for (the package makes them studly: case, `-` and `_` do not
-/// count). Else the last part whose `<Module>` is one of `folders`, the folder names
-/// of the app's modules, counts, and with none of them, the last part.
+/// and so may the class name (`.../Models/Admin/Modules/Billing/Invoice.php`). The
+/// first part counts whose `<Module>` is one of `names`, the modules the run writes
+/// in: its own module, or those `module:make` asks for (the package makes them
+/// studly: case, `-` and `_` do not count). Else the first part whose `<Module>` is
+/// one of `folders`, the folder names of the app's modules, counts, and with none of
+/// them, the last part.
 pub fn app_relative(
     root: &Path,
     modules: &str,
@@ -213,7 +215,7 @@ pub fn app_relative(
 }
 
 /// The part of `printed` from a `/<modules>/<Module>/` on, when a file follows: the
-/// last whose `<Module>` is one of `names`, else the last whose `<Module>` is one of
+/// first whose `<Module>` is one of `names`, else the first whose `<Module>` is one of
 /// `folders`, else the last.
 fn from_modules(modules: &str, names: &[&str], folders: &[&str], printed: &str) -> Option<String> {
     let modules = modules.trim_matches('/');
@@ -237,9 +239,9 @@ fn from_modules(modules: &str, names: &[&str], folders: &[&str], printed: &str) 
             .collect::<String>()
     };
     let asked: Vec<String> = names.iter().map(|name| studly(name)).collect();
-    let last = |known: &dyn Fn(&str) -> bool| found.iter().rev().find(|(module, _)| known(module));
-    last(&|module| asked.contains(&studly(module)))
-        .or_else(|| last(&|module| folders.contains(&module)))
+    let first = |known: &dyn Fn(&str) -> bool| found.iter().find(|(module, _)| known(module));
+    first(&|module| asked.contains(&studly(module)))
+        .or_else(|| first(&|module| folders.contains(&module)))
         .or(found.last())
         .map(|(_, rest)| (*rest).to_owned())
 }
@@ -549,6 +551,19 @@ mod tests {
             )
             .as_deref(),
             Some("Modules/Loyalty/module.json")
+        );
+        // A class name that repeats the module's part: the first part of the run's
+        // own module counts.
+        assert_eq!(
+            app_relative(
+                Path::new("/Users/me/shop"),
+                "Modules",
+                &["Billing"],
+                &["Billing"],
+                "/var/www/html/Modules/Billing/app/Models/Admin/Modules/Billing/Invoice.php"
+            )
+            .as_deref(),
+            Some("Modules/Billing/app/Models/Admin/Modules/Billing/Invoice.php")
         );
     }
 

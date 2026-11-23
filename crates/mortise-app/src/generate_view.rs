@@ -593,6 +593,25 @@ pub fn module_folders(app: &AppSnapshot) -> Vec<&str> {
         .collect()
 }
 
+/// The modules a run writes in, which place a path of a container first: those
+/// that `module:make` asks for, else the folder of the run's own module `module`.
+pub fn run_modules(
+    app: Option<&AppSnapshot>,
+    generator: &str,
+    module: Option<&str>,
+    words: &[String],
+) -> Vec<String> {
+    if generator == MODULE_MAKE {
+        return typed_names(words);
+    }
+    app.zip(module)
+        .and_then(|(app, name)| app.modules.iter().find(|known| known.name == name))
+        .and_then(|module| module.dir.file_name()?.to_str())
+        .map(str::to_owned)
+        .into_iter()
+        .collect()
+}
+
 /// The words that write `path` again, left by a run of `words`, as `replace_words`
 /// gives them. The runner's own options, before a `--` in its line, go with every
 /// command: a Custom line `php artisan --policy` gives the model its policy, and
@@ -2077,7 +2096,7 @@ fn writes<'a>(generator: &str, files: &[&'a ReportedFile]) -> Writes<'a> {
 /// folder for a file generator (`Modules/Billing/`), under the folder of its module
 /// for `module:make` (`Modules/Loyalty/`). A path outside both is shown as printed,
 /// under no folder.
-/// `asked` holds the modules `module:make` asks for, which place a path first.
+/// `asked` holds the modules the run writes in, which place a path first.
 fn placed(
     app: &AppSnapshot,
     module: Option<&Module>,
@@ -2141,11 +2160,12 @@ fn files_this_creates(
         return list_files(ui, pal, min, width, words, list, inputs, ready, shown);
     };
     let new_module = generator.name == MODULE_MAKE;
-    let asked = if new_module {
-        typed_names(words)
-    } else {
-        Vec::new()
-    };
+    let asked = run_modules(
+        Some(app),
+        &generator.name,
+        module.map(|module| module.name.as_str()),
+        words,
+    );
     let asked: Vec<&str> = asked.iter().map(String::as_str).collect();
     // A `delete` entry is the folder that `module:make --force` deletes, not a file.
     let files: Vec<&ReportedFile> = report
