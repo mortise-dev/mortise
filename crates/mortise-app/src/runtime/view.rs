@@ -10,7 +10,7 @@ use mortise_core::{
     module_of,
 };
 
-use crate::strings;
+use crate::runtime::strings;
 use crate::ui::draw::{self, Button, ButtonKind, RuntimeMark, StampState};
 use crate::ui::theme::{Face, Palette, Type, radius, size, ty};
 
@@ -293,14 +293,14 @@ fn items(ui: &Ui, pal: &Palette, name: &str, view: &RuntimeView<'_>, width: f32)
     if !view.installed {
         // a. The package is not installed.
         return vec![
-            Item::Text(strings::actuator_not_installed(name), false),
+            Item::Text(crate::strings::actuator_not_installed(name), false),
             Item::Code(strings::REQUIRE_ACTUATOR.to_owned()),
             Item::Buttons(vec![(
-                strings::COPY_COMMAND,
+                crate::strings::COPY_COMMAND,
                 default,
                 RuntimeAction::Copy {
                     text: strings::REQUIRE_ACTUATOR,
-                    said: strings::COPIED_COMMAND,
+                    said: crate::strings::COPIED_COMMAND,
                 },
             )]),
         ];
@@ -308,9 +308,9 @@ fn items(ui: &Ui, pal: &Palette, name: &str, view: &RuntimeView<'_>, width: f32)
     let Some(environment) = view.chosen else {
         // b. Installed, no environment yet.
         return vec![
-            Item::Text(strings::no_environment(name), false),
+            Item::Text(crate::strings::no_environment(name), false),
             Item::Buttons(vec![(
-                strings::ADD_ENVIRONMENT,
+                crate::strings::ADD_ENVIRONMENT,
                 ButtonKind::Primary,
                 RuntimeAction::AddEnvironment,
             )]),
@@ -344,7 +344,11 @@ fn items(ui: &Ui, pal: &Palette, name: &str, view: &RuntimeView<'_>, width: f32)
                         ButtonKind::Primary,
                         RuntimeAction::TryAgain,
                     ),
-                    (strings::OPEN_SETTINGS, default, RuntimeAction::OpenSettings),
+                    (
+                        crate::strings::OPEN_SETTINGS,
+                        default,
+                        RuntimeAction::OpenSettings,
+                    ),
                 ]),
             ];
         }
@@ -354,7 +358,7 @@ fn items(ui: &Ui, pal: &Palette, name: &str, view: &RuntimeView<'_>, width: f32)
                 status(Some(brief), None),
                 Item::Text(strings::refused_credentials(name, url, *code), false),
                 Item::Buttons(vec![(
-                    strings::OPEN_SETTINGS,
+                    crate::strings::OPEN_SETTINGS,
                     ButtonKind::Primary,
                     RuntimeAction::OpenSettings,
                 )]),
@@ -375,7 +379,7 @@ fn items(ui: &Ui, pal: &Palette, name: &str, view: &RuntimeView<'_>, width: f32)
             ];
             if !(500..600).contains(code) {
                 items.push(Item::Buttons(vec![(
-                    strings::OPEN_SETTINGS,
+                    crate::strings::OPEN_SETTINGS,
                     default,
                     RuntimeAction::OpenSettings,
                 )]));
@@ -387,7 +391,7 @@ fn items(ui: &Ui, pal: &Palette, name: &str, view: &RuntimeView<'_>, width: f32)
 
     let mut items = vec![status(
         Some(brief),
-        view.checked().map(strings::checked_ago),
+        view.checked().map(crate::strings::checked_ago),
     )];
     match &runtime.components {
         Some(components) => items.extend(component_items(ui, pal, components, width)),
@@ -429,11 +433,11 @@ fn items(ui: &Ui, pal: &Palette, name: &str, view: &RuntimeView<'_>, width: f32)
         }
         match (&info.git_branch, &info.git_commit) {
             (Some(branch), Some(commit)) => items.push(line(
-                strings::GIT,
+                crate::strings::GIT,
                 vec![mono(branch), plain(" at ".to_owned()), mono(commit)],
             )),
             (Some(one), None) | (None, Some(one)) => {
-                items.push(line(strings::GIT, vec![mono(one)]));
+                items.push(line(crate::strings::GIT, vec![mono(one)]));
             }
             (None, None) => {}
         }
@@ -444,7 +448,7 @@ fn items(ui: &Ui, pal: &Palette, name: &str, view: &RuntimeView<'_>, width: f32)
             .cloned()
             .collect();
         if !php.is_empty() {
-            items.push(line(strings::PHP, vec![plain(php.join(", "))]));
+            items.push(line(crate::strings::PHP, vec![plain(php.join(", "))]));
         }
         let memory = strings::memory(info.memory_usage, info.memory_peak, info.memory_limit);
         if !memory.is_empty() {
@@ -526,7 +530,7 @@ pub fn runtime_box(
     draw::outlined(ui, rect, radius::CONTROL, Color32::TRANSPARENT, pal.line_2);
     let title = match view.chosen.filter(|_| view.installed) {
         Some(environment) => strings::runtime_on(&environment.name),
-        None => strings::RUNTIME.to_owned(),
+        None => crate::strings::RUNTIME.to_owned(),
     };
     let (mid, mut y) = head(ui, pal, rect, &title, switch);
     if switch {
@@ -845,14 +849,16 @@ pub fn tasks_box(
         (strings::COL_NEXT_RUN, Width::Fixed(150.0)),
     ];
     if modules.is_some() {
-        columns.push((strings::COL_MODULE, Width::Fixed(60.0)));
+        columns.push((crate::strings::COL_MODULE, Width::Fixed(60.0)));
     }
     let rows: Vec<Vec<Cell>> = tasks
         .iter()
         .map(|task| {
             let schedule = match (&task.expression, task.interval_ms) {
                 (Some(expression), _) => Cell::Text(expression.clone(), CELL_CODE, pal.ink),
-                (None, Some(interval)) => Cell::Text(strings::every(interval), ty::BODY, pal.ink),
+                (None, Some(interval)) => {
+                    Cell::Text(crate::strings::every(interval), ty::BODY, pal.ink)
+                }
                 (None, None) => Cell::Text(String::new(), ty::BODY, pal.ink),
             };
             let next = strings::next_run(task.next.as_deref(), task.timezone.as_deref(), now);
@@ -869,7 +875,7 @@ pub fn tasks_box(
             if let Some(app) = modules {
                 row.push(match module_of(app, &task.target) {
                     Some(module) => Cell::Stamp(module.code.clone()),
-                    None => Cell::Text(strings::NONE.to_owned(), ty::BODY, pal.ink_3),
+                    None => Cell::Text(crate::strings::NONE.to_owned(), ty::BODY, pal.ink_3),
                 });
             }
             row
@@ -880,7 +886,7 @@ pub fn tasks_box(
         pal,
         min,
         width,
-        strings::SCHEDULED_TASKS,
+        crate::strings::SCHEDULED_TASKS,
         note,
         &columns,
         &rows,
@@ -949,7 +955,7 @@ pub fn routes_box(
         pal,
         min,
         width,
-        strings::ROUTES,
+        crate::strings::ROUTES,
         note,
         &columns,
         &rows,
