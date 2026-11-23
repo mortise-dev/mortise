@@ -97,7 +97,7 @@ mod tests {
 
     use super::*;
     use crate::metrics::figures::{LAST_MINUTE, Rates};
-    use crate::metrics::sample::{LiveMetrics, MetricsState};
+    use crate::metrics::sample::{LiveMetrics, MetricsState, NotKept};
     use crate::runtime::actuator::NoMetrics;
 
     const FIXTURES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../fixtures");
@@ -176,7 +176,7 @@ mod tests {
         assert_eq!(
             metrics.state(),
             MetricsState {
-                last: Some(Err(NoMetrics::Off)),
+                last: Some(Err(NotKept::NoMetrics(NoMetrics::Off))),
                 serial: 3,
             }
         );

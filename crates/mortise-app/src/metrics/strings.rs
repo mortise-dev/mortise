@@ -61,6 +61,19 @@ pub fn too_large(limit: u64) -> String {
     )
 }
 
+/// Not in the spec: the answer has more series than a read keeps.
+pub fn too_many_title(environment: &str) -> String {
+    format!("The metrics of {environment} have too many series")
+}
+
+/// Not in the spec. `limit` is the most numbers a read keeps.
+pub fn too_many(limit: usize) -> String {
+    format!(
+        "Mortise keeps at most {} figures per read. Export fewer series from the app.",
+        crate::strings::count(limit as u64)
+    )
+}
+
 pub const COL_REQUESTS: &str = "Requests/min";
 pub const COL_JOBS: &str = "Jobs/min";
 

@@ -33,6 +33,8 @@ pub enum MetricsView<'a> {
         environment: &'a str,
         why: NoMetrics,
     },
+    /// The last answer had more series than a read keeps. `limit` is the most numbers a read keeps.
+    TooMany { environment: &'a str, limit: usize },
     /// The figures of the last minute. `placed` is false when `mappings` is not exposed.
     Table {
         environment: &'a str,
@@ -135,6 +137,15 @@ pub fn metrics(
                 Err(answer) => unreached(ui, pal, body, environment, &answer, keyboard),
             }
         }
+        MetricsView::TooMany { environment, limit } => explain(
+            ui,
+            pal,
+            body,
+            &strings::too_many_title(environment),
+            &strings::too_many(*limit),
+            &[try_again],
+            keyboard,
+        ),
         MetricsView::Table {
             environment,
             figures,

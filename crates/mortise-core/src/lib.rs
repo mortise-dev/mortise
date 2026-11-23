@@ -59,7 +59,7 @@ pub use generate::output::{
 #[cfg(feature = "actuator")]
 pub use metrics::figures::{Figures, LAST_MINUTE, ModuleFigures, Rates};
 #[cfg(feature = "actuator")]
-pub use metrics::sample::{LiveMetrics, MetricsClock, MetricsState};
+pub use metrics::sample::{LiveMetrics, MetricsClock, MetricsState, NotKept};
 pub use modules::clover::Coverage;
 pub use modules::code::{ALL_CODE, propose_codes, propose_monogram};
 pub use modules::composer::Version;

@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use mortise_core::{Answer, AppSnapshot, Figures, LAST_MINUTE};
+use mortise_core::{Answer, AppSnapshot, Figures, LAST_MINUTE, NotKept};
 
 use super::Connected;
 use crate::metrics::view::MetricsView;
@@ -43,7 +43,8 @@ pub(super) fn tab<'a>(
     let state = connected.metrics.state();
     match state.last {
         None => MetricsView::Waiting { environment },
-        Some(Err(why)) => MetricsView::NoMetrics { environment, why },
+        Some(Err(NotKept::NoMetrics(why))) => MetricsView::NoMetrics { environment, why },
+        Some(Err(NotKept::TooManySeries { limit })) => MetricsView::TooMany { environment, limit },
         Some(Ok(())) => {
             // Worked out again only after a read, or for another snapshot or answer.
             let kept = match connected.figures.take() {

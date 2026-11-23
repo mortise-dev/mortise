@@ -5,6 +5,7 @@
 //! can be thinned without changing a figure. The time is a parameter: the store never asks the clock.
 //! [`LiveMetrics`] holds the store of one environment and the clock of a real run.
 
+use std::collections::hash_map::Entry;
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant, SystemTime};
@@ -18,7 +19,7 @@ use crate::runtime::live::Pace;
 
 /// A read older than this is dropped.
 const WINDOW: Duration = Duration::from_secs(24 * 60 * 60);
-/// Every read of this last part of the window is kept.
+/// In this last part of the window, one read per pace is kept: the last of each step.
 const FINE: Duration = Duration::from_secs(60 * 60);
 /// Before the fine part, the first read of each step is kept.
 const STEP: Duration = Duration::from_secs(5 * 60);
@@ -30,11 +31,14 @@ const JOBS: &str = "messaging_process_duration_seconds";
 const DATABASE: &str = "db_client_operation_duration_seconds";
 /// `count`, `errors` and `sum` come before the buckets in a row.
 const FIXED: usize = 3;
+/// The most numbers one read keeps: `FIXED` and one per bound, for each series. A reading over it is
+/// refused. The 60 module app of design D1 keeps 660 × 17 = 11,220.
+const MAX_ROW: usize = 32_768;
 
 /// What a series is about, as the answer says it. Not a module.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) enum Subject {
-    /// A request series. Statuses are merged into one subject.
+    /// A request series. Statuses are added into one subject.
     Request {
         module: Option<String>,
         route: Option<String>,
@@ -49,12 +53,13 @@ pub(crate) enum Subject {
     Database { module: String },
 }
 
-/// The counters of one subject. All are counts or seconds, so all are `f64`.
+/// The counters of one series, or what a subject grew by. All are counts or seconds, so all are
+/// `f64`.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub(crate) struct Cell {
-    /// `_count`, summed over statuses.
+    /// `_count`.
     pub count: f64,
-    /// `_count` of the series with a 5xx status.
+    /// `_count` of a series with a 5xx status.
     pub errors: f64,
     /// `_sum`, in seconds.
     pub sum: f64,
@@ -67,15 +72,26 @@ pub(crate) struct Cell {
 pub(crate) struct Reading {
     /// The finite bucket bounds of the request histogram, lowest first.
     pub bounds: Vec<f64>,
-    pub cells: HashMap<Subject, Cell>,
+    /// The counters of each series, by subject and `http_response_status_code`. The status is
+    /// empty for a job, for database time and for a request without one.
+    pub series: HashMap<(Subject, String), Cell>,
+}
+
+/// A reading that would make a read keep more than `MAX_ROW` numbers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct TooMany;
+
+/// `true` when `series` with `bounds` need more than `MAX_ROW` numbers.
+fn over(series: usize, bounds: usize) -> bool {
+    series.saturating_mul(FIXED + bounds) > MAX_ROW
 }
 
 impl Reading {
     /// Folds an answer. Runs on the worker thread.
     ///
-    /// Statuses of a request series add into one subject. A `+Inf` bucket is dropped: it equals the
-    /// count. An empty `module` label counts as no label.
-    pub(crate) fn of(text: &str) -> Reading {
+    /// A `+Inf` bucket is dropped: it equals the count. An empty `module` label counts as no label.
+    /// An answer over `MAX_ROW` numbers is refused before the reading grows past it.
+    pub(crate) fn of(text: &str) -> Result<Reading, TooMany> {
         let mut reading = Reading::default();
         for sample in samples(text) {
             let module = || {
@@ -93,35 +109,52 @@ impl Reading {
             if !folded {
                 continue;
             }
-            let subject = match sample.family {
-                REQUESTS => Subject::Request {
-                    module: module(),
-                    route: sample.label("http_route").map(str::to_owned),
-                    method: sample
-                        .label("http_request_method")
-                        .unwrap_or_default()
-                        .to_owned(),
-                },
-                JOBS => Subject::Job {
-                    module: module(),
-                    class: sample
-                        .label("laravel_job_name")
-                        .unwrap_or_default()
-                        .to_owned(),
-                },
+            let (subject, status) = match sample.family {
+                REQUESTS => (
+                    Subject::Request {
+                        module: module(),
+                        route: sample.label("http_route").map(str::to_owned),
+                        method: sample
+                            .label("http_request_method")
+                            .unwrap_or_default()
+                            .to_owned(),
+                    },
+                    sample
+                        .label("http_response_status_code")
+                        .unwrap_or_default(),
+                ),
+                JOBS => (
+                    Subject::Job {
+                        module: module(),
+                        class: sample
+                            .label("laravel_job_name")
+                            .unwrap_or_default()
+                            .to_owned(),
+                    },
+                    "",
+                ),
                 _ => match module() {
-                    Some(module) => Subject::Database { module },
+                    Some(module) => (Subject::Database { module }, ""),
                     None => continue,
                 },
             };
-            let cell = reading.cells.entry(subject).or_default();
+            let mut series = reading.series.len();
+            let cell = match reading.series.entry((subject, status.to_owned())) {
+                Entry::Occupied(cell) => cell.into_mut(),
+                Entry::Vacant(cell) => {
+                    series += 1;
+                    if over(series, reading.bounds.len()) {
+                        return Err(TooMany);
+                    }
+                    cell.insert(Cell::default())
+                }
+            };
             match sample.part {
                 Part::Count => {
                     cell.count += sample.value;
-                    if sample
-                        .label("http_response_status_code")
-                        .and_then(|status| status.parse::<u16>().ok())
-                        .is_some_and(|status| (500..600).contains(&status))
+                    if status
+                        .parse::<u16>()
+                        .is_ok_and(|status| (500..600).contains(&status))
                     {
                         cell.errors += sample.value;
                     }
@@ -131,6 +164,9 @@ impl Reading {
                     let at = match reading.bounds.iter().position(|kept| *kept == bound) {
                         Some(at) => at,
                         None => {
+                            if over(series, reading.bounds.len() + 1) {
+                                return Err(TooMany);
+                            }
                             reading.bounds.push(bound);
                             reading.bounds.len() - 1
                         }
@@ -143,7 +179,7 @@ impl Reading {
                 Part::Value => {}
             }
         }
-        reading
+        Ok(reading)
     }
 }
 
@@ -163,6 +199,8 @@ struct Read {
     at: Duration,
     /// The time covered by runs so far. It does not grow over a gap.
     covered: Duration,
+    /// `true` for the first read of a run.
+    starts_run: bool,
     /// The running totals, one row of `FIXED + bounds` numbers per subject, in the order of the
     /// columns. A subject that was not known yet has no row here, which reads as zero.
     totals: Vec<f64>,
@@ -174,14 +212,23 @@ impl Read {
     }
 }
 
+/// The counters of one series at the last read that held it.
+#[derive(Debug)]
+struct Base {
+    counters: Vec<f64>,
+    /// The run of that read. A base of an older run is stale: the series was missing when the run
+    /// started, so what it grew by in the gap is not known.
+    run: u64,
+    /// The time of that read.
+    seen: Duration,
+}
+
 /// One kept subject.
 #[derive(Debug)]
 struct Column {
     subject: Subject,
-    /// The counters of the last read that held the subject.
-    base: Option<Vec<f64>>,
-    /// The time of the last read that held the subject.
-    last_seen: Duration,
+    /// The base of each series of the subject, by status.
+    bases: HashMap<String, Base>,
 }
 
 /// The reads of one environment over the last 24 hours, thinned.
@@ -191,11 +238,13 @@ pub(crate) struct MetricsStore {
     bounds: Vec<f64>,
     columns: Vec<Column>,
     index: HashMap<Subject, usize>,
+    /// The number of the current run. It goes up at the first read of each run.
+    run: u64,
     /// Reads older than the fine part, the first of each step, oldest first.
     coarse: VecDeque<Read>,
-    /// Reads of the fine part, oldest first. The newest read is the last.
+    /// Reads of the fine part, the last of each pace, oldest first. The newest read is the last.
     fine: VecDeque<Read>,
-    /// The counters of the cell being pushed, kept to save an allocation per cell.
+    /// The counters of the series being pushed, kept to save an allocation per series.
     scratch: Vec<f64>,
 }
 
@@ -207,6 +256,7 @@ impl MetricsStore {
             bounds: Vec::new(),
             columns: Vec::new(),
             index: HashMap::new(),
+            run: 0,
             coarse: VecDeque::new(),
             fine: VecDeque::new(),
             scratch: Vec::new(),
@@ -214,8 +264,31 @@ impl MetricsStore {
     }
 
     /// Adds a read taken at `at`, a time since any fixed start.
-    pub(crate) fn push(&mut self, at: Duration, reading: Reading) {
-        let Reading { bounds, cells } = reading;
+    ///
+    /// A reading that would make the store keep more than `MAX_ROW` numbers per read, counting
+    /// every series of the kept reads, is refused as a whole and changes nothing.
+    pub(crate) fn push(&mut self, at: Duration, reading: Reading) -> Result<(), TooMany> {
+        let Reading { bounds, series } = reading;
+        let renewed = !bounds.is_empty() && !self.bounds.is_empty() && bounds != self.bounds;
+        let width = if bounds.is_empty() {
+            self.bounds.len()
+        } else {
+            bounds.len()
+        };
+        let kept = if renewed {
+            series.len()
+        } else {
+            let known = |(subject, status): &(Subject, String)| {
+                self.index
+                    .get(subject)
+                    .is_some_and(|&column| self.columns[column].bases.contains_key(status))
+            };
+            let bases: usize = self.columns.iter().map(|kept| kept.bases.len()).sum();
+            bases + series.keys().filter(|key| !known(key)).count()
+        };
+        if over(kept, width) {
+            return Err(TooMany);
+        }
         if !bounds.is_empty() && bounds != self.bounds {
             if self.bounds.is_empty() {
                 self.widen(bounds);
@@ -226,21 +299,33 @@ impl MetricsStore {
                 };
             }
         }
-        let (first, covered, mut totals) = match self.fine.back() {
-            Some(previous) if at <= previous.at => return,
-            Some(previous) if at - previous.at > self.every * GAP_PACES => {
-                (true, previous.covered, previous.totals.clone())
-            }
-            Some(previous) => (
-                false,
-                previous.covered + (at - previous.at),
-                previous.totals.clone(),
-            ),
-            None => (true, Duration::ZERO, Vec::new()),
+        let previous = match self.fine.back() {
+            Some(previous) if at <= previous.at => return Ok(()),
+            previous => previous.map(|previous| (previous.at, previous.covered)),
         };
+        let first = previous.is_none_or(|(before, _)| at - before > self.every * GAP_PACES);
+        let covered = match previous {
+            Some((before, covered)) if !first => covered + (at - before),
+            Some((_, covered)) => covered,
+            None => Duration::ZERO,
+        };
+        // One read per pace in the fine part: a read in the step of the one before takes its place.
+        // Totals only grow, so the dropped read is not needed for a figure.
+        let replaces = previous.is_some_and(|(before, _)| self.step(before) == self.step(at));
+        let mut totals = if replaces {
+            self.fine.pop_back().map(|read| read.totals)
+        } else {
+            self.fine.back().map(|read| read.totals.clone())
+        }
+        .unwrap_or_default();
+        if first {
+            self.run += 1;
+        }
+        let run = self.run;
         let width = self.width();
         let mut counters = std::mem::take(&mut self.scratch);
-        for (subject, cell) in cells {
+        // Each series is compared with its own base, then what it grew by adds into its subject.
+        for ((subject, status), cell) in series {
             if !fill(&cell, self.bounds.len(), &mut counters) {
                 continue;
             }
@@ -249,31 +334,55 @@ impl MetricsStore {
             if totals.len() < row.end {
                 totals.resize(row.end, 0.0);
             }
-            let kept = &mut self.columns[column];
-            kept.last_seen = at;
-            if !first {
-                match kept.base.as_deref() {
-                    None => add(&mut totals[row], counters.iter().copied()),
-                    Some(base) if counters.iter().zip(base).all(|(now, base)| now >= base) => add(
-                        &mut totals[row],
-                        counters.iter().zip(base).map(|(now, base)| now - base),
-                    ),
-                    Some(_) => {}
+            let bases = &mut self.columns[column].bases;
+            match bases.get_mut(&status) {
+                Some(base) => {
+                    // A stale base and a reset add nothing. On the first read of a run, every base
+                    // is stale.
+                    if base.run == run
+                        && counters
+                            .iter()
+                            .zip(&base.counters)
+                            .all(|(now, base)| now >= base)
+                    {
+                        add(
+                            &mut totals[row],
+                            counters
+                                .iter()
+                                .zip(&base.counters)
+                                .map(|(now, base)| now - base),
+                        );
+                    }
+                    base.counters.copy_from_slice(&counters);
+                    base.run = run;
+                    base.seen = at;
                 }
-            }
-            match &mut kept.base {
-                Some(base) => base.copy_from_slice(&counters),
-                None => kept.base = Some(counters.clone()),
+                None => {
+                    // A new series counts from zero, except on the first read of a run.
+                    if !first {
+                        add(&mut totals[row], counters.iter().copied());
+                    }
+                    bases.insert(
+                        status,
+                        Base {
+                            counters: counters.clone(),
+                            run,
+                            seen: at,
+                        },
+                    );
+                }
             }
         }
         self.scratch = counters;
         self.fine.push_back(Read {
             at,
             covered,
+            starts_run: first,
             totals,
         });
         self.thin(at);
         self.drop_gone();
+        Ok(())
     }
 
     /// How many reads are kept.
@@ -283,9 +392,12 @@ impl MetricsStore {
     }
 
     /// The newest read against the oldest kept read at most `span` before it.
-    /// `None` when no time is covered between them.
+    /// `None` when no time is covered between them, or when the newest read starts a run.
     pub(crate) fn change(&self, span: Duration) -> Option<Change<'_>> {
         let newest = self.fine.back()?;
+        if newest.starts_run {
+            return None;
+        }
         let from = newest.at.saturating_sub(span);
         let coarse = self.coarse.partition_point(|read| read.at < from);
         let oldest = match self.coarse.get(coarse) {
@@ -321,6 +433,13 @@ impl MetricsStore {
         FIXED + self.bounds.len()
     }
 
+    /// The step of the fine part that `at` falls in: one per pace.
+    fn step(&self, at: Duration) -> u128 {
+        at.as_nanos()
+            .checked_div(self.every.as_nanos())
+            .unwrap_or(at.as_nanos())
+    }
+
     /// Takes the first bounds while none are kept. Every row and base gets a zero bucket per bound,
     /// so a subject read before them keeps its totals. Jobs and database time come before the first
     /// request in a quiet app.
@@ -334,10 +453,12 @@ impl MetricsStore {
                 .flat_map(|row| row.iter().copied().chain(std::iter::repeat_n(0.0, added)))
                 .collect();
         }
-        for column in &mut self.columns {
-            if let Some(base) = &mut column.base {
-                base.resize(FIXED + added, 0.0);
-            }
+        for base in self
+            .columns
+            .iter_mut()
+            .flat_map(|column| column.bases.values_mut())
+        {
+            base.counters.resize(FIXED + added, 0.0);
         }
     }
 
@@ -350,8 +471,7 @@ impl MetricsStore {
         self.index.insert(subject.clone(), column);
         self.columns.push(Column {
             subject,
-            base: None,
-            last_seen: Duration::ZERO,
+            bases: HashMap::new(),
         });
         column
     }
@@ -375,7 +495,7 @@ impl MetricsStore {
         {}
     }
 
-    /// Drops the subjects that no kept read holds, and packs the rows.
+    /// Drops the series and the subjects that no kept read holds, and packs the rows.
     ///
     /// Such a subject did not change in the kept window and is not in the newest read.
     /// One that is in an older kept read stays, so it keeps its base (a load balancer can show
@@ -389,10 +509,13 @@ impl MetricsStore {
         else {
             return;
         };
+        for column in &mut self.columns {
+            column.bases.retain(|_, base| base.seen >= oldest);
+        }
         let keep: Vec<bool> = self
             .columns
             .iter()
-            .map(|kept| kept.last_seen >= oldest)
+            .map(|kept| !kept.bases.is_empty())
             .collect();
         if keep.iter().all(|&keep| keep) {
             return;
@@ -426,7 +549,7 @@ impl MetricsStore {
 }
 
 /// Writes the counters of `cell` into `into`, one bucket per bound. A missing bucket is zero.
-/// `false` when a counter is negative or not finite: the store then ignores the cell.
+/// `false` when a counter is negative or not finite: the store then ignores the series.
 fn fill(cell: &Cell, bounds: usize, into: &mut Vec<f64>) -> bool {
     into.clear();
     into.extend([cell.count, cell.errors, cell.sum]);
@@ -449,11 +572,26 @@ fn add(totals: &mut [f64], by: impl Iterator<Item = f64>) {
 /// The clock of the reads: the time since any fixed start.
 pub type MetricsClock = Arc<dyn Fn() -> Duration + Send + Sync>;
 
+/// Why a read added nothing to the store.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum NotKept {
+    /// The app gave no metrics.
+    NoMetrics(NoMetrics),
+    /// The answer has more series than a read keeps. `limit` is the most numbers a read keeps.
+    TooManySeries { limit: usize },
+}
+
+impl From<TooMany> for NotKept {
+    fn from(TooMany: TooMany) -> Self {
+        NotKept::TooManySeries { limit: MAX_ROW }
+    }
+}
+
 /// What the reads of an environment gave so far.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct MetricsState {
     /// What the last read gave. `None` before the first read ends.
-    pub last: Option<Result<(), NoMetrics>>,
+    pub last: Option<Result<(), NotKept>>,
     /// Goes up by one when a read ends.
     pub serial: u64,
 }
@@ -487,19 +625,17 @@ impl LiveMetrics {
     }
 
     /// For `LiveRuntime::open_with_metrics`. The text is folded before the lock is taken.
-    /// A read that gave no metrics adds nothing to the store.
+    /// A read that gave no metrics, or too many series, adds nothing to the store.
     pub fn sink(&self) -> impl FnMut(Result<String, NoMetrics>) + Send + 'static {
         let metrics = self.clone();
         move |answer| {
             let at = (metrics.clock)();
-            let (reading, last) = match answer {
-                Ok(text) => (Some(Reading::of(&text)), Ok(())),
-                Err(no) => (None, Err(no)),
-            };
+            let reading = answer
+                .map_err(NotKept::NoMetrics)
+                .and_then(|text| Reading::of(&text).map_err(NotKept::from));
             let mut shared = metrics.lock();
-            if let Some(reading) = reading {
-                shared.0.push(at, reading);
-            }
+            let last =
+                reading.and_then(|reading| shared.0.push(at, reading).map_err(NotKept::from));
             shared.1.last = Some(last);
             shared.1.serial += 1;
         }
@@ -576,10 +712,14 @@ mod tests {
         }
     }
 
+    /// A reading with one series per subject, with no status.
     fn reading(cells: &[(Subject, Cell)]) -> Reading {
         Reading {
             bounds: Vec::new(),
-            cells: cells.iter().cloned().collect(),
+            series: cells
+                .iter()
+                .map(|(subject, cell)| ((subject.clone(), String::new()), cell.clone()))
+                .collect(),
         }
     }
 
@@ -596,8 +736,12 @@ mod tests {
     #[test]
     fn the_first_read_gives_no_change() {
         let mut store = MetricsStore::new(PACE);
-        store.push(secs(0), reading(&[(route("/"), count(7.0))]));
-        store.push(secs(0), reading(&[(route("/"), count(9.0))]));
+        store
+            .push(secs(0), reading(&[(route("/"), count(7.0))]))
+            .unwrap();
+        store
+            .push(secs(0), reading(&[(route("/"), count(9.0))]))
+            .unwrap();
 
         assert_eq!(store.len(), 1);
         assert!(store.change(WINDOW).is_none());
@@ -611,13 +755,32 @@ mod tests {
             ..Cell::default()
         };
         let mut store = MetricsStore::new(PACE);
-        store.push(secs(0), reading(&[(route("/"), cell(100.0, 50.0))]));
-        store.push(secs(15), reading(&[(route("/"), cell(3.0, 1.0))]));
+        store
+            .push(secs(0), reading(&[(route("/"), cell(100.0, 50.0))]))
+            .unwrap();
+        store
+            .push(secs(15), reading(&[(route("/"), cell(3.0, 1.0))]))
+            .unwrap();
         assert_eq!(grew(&store, PACE, &route("/")), Some(cell(0.0, 0.0)));
 
-        store.push(secs(30), reading(&[(route("/"), cell(5.0, 2.0))]));
+        store
+            .push(secs(30), reading(&[(route("/"), cell(5.0, 2.0))]))
+            .unwrap();
         assert_eq!(grew(&store, PACE, &route("/")), Some(cell(2.0, 1.0)));
         assert_eq!(grew(&store, WINDOW, &route("/")), Some(cell(2.0, 1.0)));
+
+        // Each status is a series of its own: a reset of the 404s does not hide the new 200s.
+        let statuses = |ok, missing| Reading {
+            bounds: Vec::new(),
+            series: HashMap::from([
+                ((route("/"), "200".to_owned()), count(ok)),
+                ((route("/"), "404".to_owned()), count(missing)),
+            ]),
+        };
+        let mut store = MetricsStore::new(PACE);
+        store.push(secs(0), statuses(100.0, 100.0)).unwrap();
+        store.push(secs(15), statuses(110.0, 1.0)).unwrap();
+        assert_eq!(grew(&store, PACE, &route("/")), Some(count(10.0)));
     }
 
     #[test]
@@ -629,11 +792,15 @@ mod tests {
             buckets: Vec::new(),
         };
         let mut store = MetricsStore::new(PACE);
-        store.push(secs(0), reading(&[(route("/"), count(10.0))]));
-        store.push(
-            secs(15),
-            reading(&[(route("/"), count(10.0)), (route("/pay"), failing.clone())]),
-        );
+        store
+            .push(secs(0), reading(&[(route("/"), count(10.0))]))
+            .unwrap();
+        store
+            .push(
+                secs(15),
+                reading(&[(route("/"), count(10.0)), (route("/pay"), failing.clone())]),
+            )
+            .unwrap();
 
         assert_eq!(grew(&store, WINDOW, &route("/pay")), Some(failing));
     }
@@ -641,35 +808,55 @@ mod tests {
     #[test]
     fn a_missing_subject_keeps_its_totals_and_its_base() {
         let mut store = MetricsStore::new(PACE);
-        store.push(secs(0), reading(&[(route("/"), count(10.0))]));
-        store.push(secs(15), reading(&[(route("/"), count(15.0))]));
-        store.push(secs(30), reading(&[]));
+        store
+            .push(secs(0), reading(&[(route("/"), count(10.0))]))
+            .unwrap();
+        store
+            .push(secs(15), reading(&[(route("/"), count(15.0))]))
+            .unwrap();
+        store.push(secs(30), reading(&[])).unwrap();
         assert_eq!(grew(&store, WINDOW, &route("/")), Some(count(5.0)));
 
         // A negative counter is ignored, as if the subject were missing.
-        store.push(secs(45), reading(&[(route("/"), count(-1.0))]));
-        store.push(secs(60), reading(&[(route("/"), count(18.0))]));
+        store
+            .push(secs(45), reading(&[(route("/"), count(-1.0))]))
+            .unwrap();
+        store
+            .push(secs(60), reading(&[(route("/"), count(18.0))]))
+            .unwrap();
         assert_eq!(grew(&store, WINDOW, &route("/")), Some(count(8.0)));
     }
 
     #[test]
     fn a_read_after_a_gap_starts_a_new_run() {
+        let both = |home, blog| reading(&[(route("/"), count(home)), (route("/b"), count(blog))]);
         let mut store = MetricsStore::new(PACE);
-        store.push(secs(0), reading(&[(route("/"), count(10.0))]));
-        store.push(secs(46), reading(&[(route("/"), count(20.0))]));
+        store.push(secs(0), both(10.0, 1.0)).unwrap();
+        store.push(secs(15), both(12.0, 2.0)).unwrap();
+        // The first read after a gap gives no rate, though the span reaches into the run before.
+        store
+            .push(secs(61), reading(&[(route("/"), count(20.0))]))
+            .unwrap();
         assert!(store.change(WINDOW).is_none());
 
-        store.push(secs(76), reading(&[(route("/"), count(25.0))]));
+        // `/b` was missing when the run started, so its return adds nothing.
+        store.push(secs(76), both(25.0, 50.0)).unwrap();
         let change = store.change(WINDOW).expect("a change");
         assert_eq!(change.covered, secs(30));
-        assert_eq!(change.cells, vec![(&route("/"), count(5.0))]);
+        assert_eq!(grew(&store, WINDOW, &route("/")), Some(count(7.0)));
+        assert_eq!(grew(&store, WINDOW, &route("/b")), Some(count(1.0)));
+
+        store.push(secs(91), both(25.0, 53.0)).unwrap();
+        assert_eq!(grew(&store, PACE, &route("/b")), Some(count(3.0)));
     }
 
     #[test]
     fn a_rate_divides_by_the_covered_time() {
         let mut store = MetricsStore::new(PACE);
         for (at, total) in [(0, 0.0), (15, 6.0), (100, 50.0), (115, 56.0)] {
-            store.push(secs(at), reading(&[(route("/"), count(total))]));
+            store
+                .push(secs(at), reading(&[(route("/"), count(total))]))
+                .unwrap();
         }
 
         let change = store.change(WINDOW).expect("a change");
@@ -690,21 +877,29 @@ mod tests {
         };
         let with_bounds = |bounds: Vec<f64>, cell: Cell| Reading {
             bounds,
-            cells: HashMap::from([(route("/"), cell)]),
+            series: HashMap::from([((route("/"), "200".to_owned()), cell)]),
         };
         let mut store = MetricsStore::new(PACE);
         // A job comes before the first request, so before the first bounds.
-        store.push(secs(0), reading(&[(job.clone(), count(1.0))]));
-        store.push(
-            secs(15),
-            with_bounds(vec![0.1, 1.0], request(vec![1.0, 2.0])),
-        );
-        store.push(
-            secs(30),
-            with_bounds(vec![0.1, 1.0], request(vec![2.0, 4.0])),
-        );
+        store
+            .push(secs(0), reading(&[(job.clone(), count(1.0))]))
+            .unwrap();
+        store
+            .push(
+                secs(15),
+                with_bounds(vec![0.1, 1.0], request(vec![1.0, 2.0])),
+            )
+            .unwrap();
+        store
+            .push(
+                secs(30),
+                with_bounds(vec![0.1, 1.0], request(vec![2.0, 4.0])),
+            )
+            .unwrap();
 
-        store.push(secs(45), reading(&[(job.clone(), count(3.0))]));
+        store
+            .push(secs(45), reading(&[(job.clone(), count(3.0))]))
+            .unwrap();
         assert_eq!(store.len(), 4);
         assert_eq!(store.bounds, [0.1, 1.0]);
         assert_eq!(
@@ -713,7 +908,9 @@ mod tests {
         );
         assert_eq!(grew(&store, WINDOW, &job).map(|cell| cell.count), Some(2.0));
 
-        store.push(secs(60), with_bounds(vec![0.5], request(vec![3.0, 3.0])));
+        store
+            .push(secs(60), with_bounds(vec![0.5], request(vec![3.0, 3.0])))
+            .unwrap();
         assert_eq!(store.len(), 1);
         assert!(store.change(WINDOW).is_none());
     }
@@ -736,7 +933,7 @@ mod tests {
             if n > 0 {
                 cells.push((route("/"), count(total)));
             }
-            store.push(PACE * n as u32, reading(&cells));
+            store.push(PACE * n as u32, reading(&cells)).unwrap();
 
             assert!(store.len() <= 520);
             match n + 1 {
@@ -752,7 +949,46 @@ mod tests {
         let oldest = 6_999 - change.covered.as_secs() / PACE.as_secs();
         let pushed: f64 = (oldest + 1..7_000).map(stays).sum();
         assert_eq!(change.cells, vec![(&route("/"), count(pushed))]);
+
+        // "Try again" can read faster than the pace. Two hours of reads 1 s apart keep the bound,
+        // and the figures.
+        let burst = PACE * 7_000;
+        for n in 0..7_200 {
+            let reading = reading(&[(route("/"), count(total + n as f64))]);
+            store.push(burst + secs(n), reading).unwrap();
+            assert!(store.len() <= 520);
+        }
+        let change = store.change(secs(60)).expect("a change");
+        assert_eq!(change.cells[0].1.count, change.covered.as_secs_f64());
         assert!(started.elapsed() < secs(1), "took {:?}", started.elapsed());
+    }
+
+    #[test]
+    fn too_many_series_are_refused_as_a_whole() {
+        let jobs = |range: std::ops::Range<usize>| {
+            let mut text = format!("# TYPE {JOBS} histogram\n");
+            for job in range {
+                text.push_str(&format!("{JOBS}_count{{laravel_job_name=\"J{job}\"}} 1\n"));
+            }
+            text
+        };
+        // 3 numbers per job.
+        let metrics = LiveMetrics::with_clock(Arc::new(|| Duration::ZERO));
+        let mut sink = metrics.sink();
+        sink(Ok(jobs(0..MAX_ROW / 3 + 1)));
+        let too_many = Some(Err(NotKept::TooManySeries { limit: MAX_ROW }));
+        assert_eq!(metrics.state().last, too_many);
+        assert_eq!(metrics.lock().0.len(), 0);
+
+        // The store counts every series of its kept reads.
+        let mut store = MetricsStore::new(PACE);
+        let half = MAX_ROW / 6 + 1;
+        store
+            .push(secs(0), Reading::of(&jobs(0..half)).unwrap())
+            .unwrap();
+        let other = Reading::of(&jobs(half..2 * half)).unwrap();
+        assert_eq!(store.push(secs(15), other), Err(TooMany));
+        assert_eq!(store.len(), 1);
     }
 
     /// An answer of 60 modules of 10 routes and 60 jobs, in the shape of the recorded lines.
@@ -803,25 +1039,25 @@ mod tests {
     fn a_large_answer_is_folded_within_the_budget() {
         let text = large_answer();
         let started = Instant::now();
-        let reading = Reading::of(&text);
+        let reading = Reading::of(&text).unwrap();
         let took = started.elapsed();
         println!("folded {} bytes in {took:?}", text.len());
 
-        assert_eq!(reading.cells.len(), 660);
+        assert_eq!(reading.series.len(), 660);
         assert_eq!(reading.bounds.len(), 14);
-        let errors: f64 = reading.cells.values().map(|cell| cell.errors).sum();
+        let errors: f64 = reading.series.values().map(|cell| cell.errors).sum();
         assert_eq!(errors, 60.0 * 14.0);
         let job = Subject::Job {
             module: None,
             class: r"Modules\Module7\Jobs\Work".to_owned(),
         };
-        assert_eq!(reading.cells[&job], count(14.0));
+        assert_eq!(reading.series[&(job, String::new())], count(14.0));
         let request = Subject::Request {
             module: None,
             route: Some("/module-7/route-0/{id}".to_owned()),
             method: "GET".to_owned(),
         };
-        let folded = &reading.cells[&request];
+        let folded = &reading.series[&(request, "200".to_owned())];
         assert_eq!((folded.count, folded.errors, folded.sum), (14.0, 0.0, 0.25));
         assert_eq!(folded.buckets, (0..14).map(f64::from).collect::<Vec<_>>());
         assert!(took < secs(1), "took {took:?}");

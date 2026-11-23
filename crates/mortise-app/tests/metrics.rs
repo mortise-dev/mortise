@@ -115,6 +115,22 @@ fn a_503_quotes_the_app_and_an_empty_answer_says_metrics_are_off() {
     harness.get_by_label(
         "The app answers with no metrics. Set METRICS_ENABLED=true in its .env to turn them on.",
     );
+
+    // 11,000 jobs of 3 numbers each are over the 32,768 a read keeps.
+    let mut jobs = String::from("# TYPE messaging_process_duration_seconds histogram\n");
+    for job in 0..11_000 {
+        jobs.push_str(&format!(
+            "messaging_process_duration_seconds_count{{laravel_job_name=\"J{job}\"}} 1\n"
+        ));
+    }
+    stub.set("/actuator/prometheus", Reply::ok(&jobs));
+    harness
+        .get_by_role_and_label(Role::Button, "Try again")
+        .click();
+    wait_for(&mut harness, "The metrics of local have too many series");
+    harness.get_by_label(
+        "Mortise keeps at most 32,768 figures per read. Export fewer series from the app.",
+    );
 }
 
 /// Every file under `dir` with its content.
