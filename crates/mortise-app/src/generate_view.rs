@@ -2059,6 +2059,10 @@ fn command(
             words: words.clone(),
         }));
     }
+    if files.again {
+        state.drop_list();
+        ui.ctx().request_repaint();
+    }
     // The generator's own file exists: Replace writes it again, after the dialog of S9.6.
     let replace = files
         .replace
@@ -2107,6 +2111,8 @@ struct FilesShown {
     read_shown: Option<Vec<String>>,
     /// "List files" was pressed.
     list: bool,
+    /// "List files again" was pressed: the list goes, and "List files" comes back.
+    again: bool,
 }
 
 /// What the run of a dry run's list writes.
@@ -2271,6 +2277,24 @@ fn files_this_creates(
         strings::files_head(files.len(), exist)
     };
     let top = field_label(ui, pal, min, strings::FILES_THIS_CREATES, &head);
+    // A file may have changed since the dry run: "List files again" drops the list,
+    // and "List files" shows the line of its dry run again (deviation S55).
+    let off = read_off(inputs, true);
+    let again = Button {
+        label: strings::LIST_FILES_AGAIN,
+        small: true,
+        disabled: off.is_some(),
+        ..Default::default()
+    };
+    let mid = min.y + ty::LABEL.line / 2.0;
+    let at = pos2(min.x + width - again.width(ui), mid - again.height() / 2.0);
+    // The tree starts 4 px under the button.
+    let top = top.max(at.y + again.height() + 4.0);
+    let response = again.show(ui, pal, at, inputs.keyboard);
+    let again = response.clicked() && off.is_none();
+    if let Some(tip) = &off {
+        draw::tooltip(response, pal, tip);
+    }
     let mut y = file_tree(ui, pal, pos2(min.x, top), width, &roots);
 
     // What exists, then the errors other than the one of a file that exists.
@@ -2312,6 +2336,7 @@ fn files_this_creates(
         replace: own.map(|file| file.path.clone()),
         read_shown: None,
         list: false,
+        again,
     }
 }
 
@@ -2387,6 +2412,7 @@ fn list_files(
         replace: None,
         read_shown: whole.then_some(dry_run),
         list: pressed,
+        again: false,
     }
 }
 
