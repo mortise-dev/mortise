@@ -221,3 +221,45 @@ jobs:
           name: coverage
           path: target/llvm-cov/html
           if-no-files-found: error
+
+  # Runs the package's commands in a real app: the ignored tests of crates/mortise-core/tests/real_php.rs.
+  # It is the only job that uses the network for Composer. A new release of the package can break it,
+  # so it is not required, and its failure does not fail the run.
+  real-php:
+    name: Real PHP (Linux, not required)
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: sqlite3, pdo_sqlite
+          tools: composer
+
+      # The skeleton uses SQLite and creates database/database.sqlite. The package autoloads
+      # modules through wikimedia/composer-merge-plugin, which Composer must be allowed to run.
+      - name: Create a Laravel app with laravel-modules
+        working-directory: ${{ runner.temp }}
+        run: |
+          composer create-project laravel/laravel app --no-interaction --prefer-dist
+          cd app
+          composer config --no-plugins allow-plugins.wikimedia/composer-merge-plugin true
+          composer require nwidart/laravel-modules:^13.3 --no-interaction
+          composer config --json extra.merge-plugin '{"include": ["Modules/*/composer.json"]}'
+          composer dump-autoload
+          grep -qx 'DB_CONNECTION=sqlite' .env
+          test -f database/database.sqlite
+          composer show --direct | grep -E '^(laravel/framework|nwidart/laravel-modules) '
+
+      - name: Run the ignored tests
+        env:
+          MORTISE_REAL_APP: ${{ runner.temp }}/app
+        run: cargo test -p mortise-core --test real_php --locked -- --ignored --test-threads=1
