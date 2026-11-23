@@ -218,6 +218,7 @@ pub fn refusal(app: &AppSnapshot, name: &str, action: Action) -> Option<String> 
         production: production(app),
         users_on: &[],
         modules_folder_assumed: modules_folder_assumed(app),
+        package_data: mortise_core::gives_data(&app.package),
     };
     mortise_core::refuses(action, &context).then(|| match context.production {
         true => strings::production_refused(name),
@@ -628,10 +629,13 @@ fn panel(
     let destructive = action.is_destructive();
     let name = module.map(|module| module.name.as_str());
     let users = name.map(|name| users_on(app, name)).unwrap_or_default();
+    // A 13.4 app gives the data of the package: Run tests has its command (design D8).
+    let package_data = mortise_core::gives_data(&app.package);
     let context = Context {
         production: production(app),
         users_on: &users,
         modules_folder_assumed: modules_folder_assumed(app),
+        package_data,
     };
     // The line the run button starts, as the options stood at the end of the last frame.
     // It is planned again below, after the options have changed in this frame.
@@ -657,7 +661,7 @@ fn panel(
     draw::announce(ui, title_rect, Role::Heading, &title);
     let text_at = pos2(min.x, title_rect.top() + ty::OVERLAY_TITLE.line + 2.0);
     let mut y = if action == Action::RunTests {
-        tests_text(ui, pal, text_at, width, app, module)
+        tests_text(ui, pal, text_at, width, app, module, package_data)
     } else {
         let text = strings::action_text(action, name);
         draw::paragraph(ui, text_at, &text, ty::BODY, pal.ink_2, width).bottom()
@@ -708,7 +712,7 @@ fn panel(
         pos2(min.x, y),
         width,
         action,
-        action.options(target),
+        action.options(target, package_data),
         name,
         &mut state.options,
         inputs.keyboard,
@@ -1326,6 +1330,8 @@ fn lost_box(ui: &Ui, pal: &Palette, min: Pos2, width: f32, rows: &[Lost]) -> f32
 }
 
 /// The sentence of Run tests: the count, the folder in mono, then the rest (S10.2 e).
+/// On a 13.4 app (`package_data`) the sentence about the placeholder is left out,
+/// and "All modules" counts every module, as `module:test --all` takes them all.
 fn tests_text(
     ui: &Ui,
     pal: &Palette,
@@ -1333,6 +1339,7 @@ fn tests_text(
     width: f32,
     app: &AppSnapshot,
     module: Option<&Module>,
+    package_data: bool,
 ) -> f32 {
     let (count, folder) = match module {
         Some(module) => (
@@ -1340,11 +1347,14 @@ fn tests_text(
             Some(app.path_shown(&module.dir.join("tests"))),
         ),
         None => {
-            let on = app
+            let counted = app
                 .modules
                 .iter()
-                .filter(|module| module.state == ModuleState::On);
-            (strings::tests(on.map(|module| module.tests).sum()), None)
+                .filter(|module| package_data || module.state == ModuleState::On);
+            (
+                strings::tests(counted.map(|module| module.tests).sum()),
+                None,
+            )
         }
     };
     let mono = Type {
@@ -1352,13 +1362,18 @@ fn tests_text(
         ..ty::CODE
     };
     let mut parts = vec![(count.as_str(), ty::BODY, pal.ink_2)];
-    let after = match &folder {
-        Some(folder) => {
+    let after = match (&folder, package_data) {
+        (Some(folder), _) => {
             parts.push((" in ", ty::BODY, pal.ink_2));
             parts.push((folder.as_str(), mono, pal.ink_2));
-            format!(". {}", strings::TESTS_TEXT)
+            if package_data {
+                ".".to_owned()
+            } else {
+                format!(". {}", strings::TESTS_TEXT)
+            }
         }
-        None => format!(" {} {}", strings::TESTS_IN_MODULES_ON, strings::TESTS_TEXT),
+        (None, true) => format!(" {}", strings::TESTS_IN_EVERY_MODULE),
+        (None, false) => format!(" {} {}", strings::TESTS_IN_MODULES_ON, strings::TESTS_TEXT),
     };
     parts.push((after.as_str(), ty::BODY, pal.ink_2));
     let galley = draw::rich_galley(ui, &parts, width);
@@ -1406,6 +1421,7 @@ fn options(
         (set.seed, strings::SEED_AFTERWARDS, "--seed"),
         (set.drop_views, strings::ALSO_DROP_VIEWS, "--drop-views"),
         (set.drop_types, strings::ALSO_DROP_TYPES, "--drop-types"),
+        (set.parallel, strings::RUN_IN_PARALLEL, "--parallel"),
     ];
     if checks.iter().any(|(taken, _, _)| *taken) {
         y += 12.0;
@@ -1419,6 +1435,7 @@ fn options(
                 "--pretend" => &mut options.pretend,
                 "--drop-views" => &mut options.drop_views,
                 "--drop-types" => &mut options.drop_types,
+                "--parallel" => &mut options.parallel,
                 _ => &mut options.seed,
             };
             let at = pos2(top.x, y);
@@ -1444,6 +1461,7 @@ fn options(
             hint: strings::database_hint(action),
             placeholder: strings::DEFAULT_CONNECTION.to_owned(),
             mono: false,
+            flag: false,
         };
         let bottom = if set.class {
             let class = Field {
@@ -1451,6 +1469,7 @@ fn options(
                 hint: strings::class_hint(module.is_none()),
                 placeholder: module.map(strings::module_seeder).unwrap_or_default(),
                 mono: true,
+                flag: false,
             };
             let half = ((width - 10.0) / 2.0).floor();
             let left = class.show(ui, pal, pos2(top.x, y), half, &mut options.class, keyboard);
@@ -1474,6 +1493,26 @@ fn options(
         };
         y = bottom;
     }
+    // Run tests on 13.4: the filter, with its option in dim mono (design D8).
+    if set.filter {
+        y += 12.0;
+        let filter = Field {
+            label: strings::TESTS_FILTER,
+            hint: "--filter",
+            placeholder: String::new(),
+            mono: true,
+            flag: true,
+        };
+        let field_w = width.min(FIELD_MAX_W);
+        y = filter.show(
+            ui,
+            pal,
+            pos2(top.x, y),
+            field_w,
+            &mut options.filter,
+            keyboard,
+        );
+    }
     y
 }
 
@@ -1483,6 +1522,8 @@ struct Field {
     hint: &'static str,
     placeholder: String,
     mono: bool,
+    /// The hint is the option itself, in dim mono as beside a checkbox.
+    flag: bool,
 }
 
 impl Field {
@@ -1497,14 +1538,14 @@ impl Field {
         keyboard: bool,
     ) -> f32 {
         let label = draw::paint_text(ui, min, Align2::LEFT_TOP, self.label, ty::LABEL, pal.ink);
-        draw::label(
-            ui,
-            pos2(label.right() + 4.0, label.top()),
-            Align2::LEFT_TOP,
-            self.hint,
-            ty::SECONDARY,
-            pal.ink_2,
-        );
+        let (at, align, hint_type) = if self.flag {
+            let at = pos2(label.right() + 5.0, label.center().y);
+            (at, Align2::LEFT_CENTER, ty::PATH)
+        } else {
+            let at = pos2(label.right() + 4.0, label.top());
+            (at, Align2::LEFT_TOP, ty::SECONDARY)
+        };
+        draw::label(ui, at, align, self.hint, hint_type, pal.ink_2);
         let rect = Rect::from_min_size(
             pos2(min.x, label.top() + ty::LABEL.line + 4.0),
             vec2(width, size::FIELD_H),

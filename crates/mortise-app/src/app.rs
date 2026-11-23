@@ -6,9 +6,9 @@ use std::sync::Arc;
 
 use eframe::egui::{self, Event, Key, KeyboardShortcut, Modifiers, Rect, Theme, Ui, pos2, vec2};
 use mortise_core::{
-    Action, Ask, Environment, FileOutcome, LiveRuntime, MODULE_MAKE, ModuleState, PackageData,
-    ReadOptions, Rules, RunEnd, RunnerKind, Runs, RuntimeState, Secret, Secrets, Target,
-    ThemeChoice,
+    Action, Ask, Environment, FileOutcome, LangReport, LiveRuntime, MODULE_MAKE, ModuleState,
+    PackageData, ReadOptions, Rules, RunEnd, RunnerKind, Runs, RuntimeState, Secret, Secrets,
+    Target, TestReport, ThemeChoice,
 };
 use mortise_core::{
     AppEntry, AppSnapshot, LiveApp, LiveState, ReadCache, Settings, SettingsError,
@@ -1004,7 +1004,6 @@ impl MortiseApp {
 
     /// Changes the package data of the app at `index` and reads the app again, so
     /// that its snapshot holds the new data (design D7).
-    #[allow(dead_code)] // The reads of P4 and P8 call it.
     fn set_package(&mut self, index: usize, change: impl FnOnce(&mut PackageData)) {
         let (Some(open), Some(entry)) = (self.apps.get_mut(index), self.settings.apps.get(index))
         else {
@@ -1482,6 +1481,7 @@ impl MortiseApp {
                 .assumed
                 .contains(&mortise_core::LayoutKey::ModulesFolder)
                 || layout.modules_dir != app.layout.modules_dir,
+            package_data: mortise_core::gives_data(&app.package),
         };
         mortise_core::refuses(action, &context)
     }
@@ -1546,11 +1546,28 @@ impl MortiseApp {
 
     /// The toast after an action of the app at `index` ended (design D6). A dry run
     /// and Check translations get none when they succeed. A failure gets one only when
-    /// the drawer does not show it.
+    /// the drawer does not show it. On 13.4 the toast of Run tests counts the tests of
+    /// its document, and the report of Check translations goes into the package data,
+    /// whatever the exit code (design D8, D9).
     fn action_ended(&mut self, index: usize, act: &Act, modules_on: usize) {
-        let Some((end, lines, _)) = self.apps[index].runs.ended() else {
+        let Some((end, lines, stdout)) = self.apps[index].runs.ended() else {
             return;
         };
+        let count = mortise_core::migration_count(lines);
+        let json = act.args.iter().any(|word| word == "--json");
+        let tests = match act.action {
+            Action::RunTests if json => mortise_core::document::<TestReport>(stdout)
+                .ok()
+                .and_then(|report| tests_toast(&report, &act.target)),
+            _ => None,
+        };
+        let translations = match act.action {
+            Action::CheckTranslations if json => mortise_core::document::<LangReport>(stdout).ok(),
+            _ => None,
+        };
+        if let Some(report) = translations {
+            self.set_package(index, |data| data.merge_translations(report));
+        }
         let object = match &act.target {
             Target::Module(module) => module.as_str(),
             Target::All => strings::ALL_MODULES_OBJECT,
@@ -1560,7 +1577,6 @@ impl MortiseApp {
             if act.args.iter().any(|word| word == "--pretend") {
                 return;
             }
-            let count = mortise_core::migration_count(lines);
             let text = match act.action {
                 Action::TurnOff => strings::turned_off(object),
                 Action::TurnOn => strings::turned_on(object),
@@ -1577,6 +1593,10 @@ impl MortiseApp {
                     self.apps[index].selection = Selection::All;
                     strings::deleted_module(object)
                 }
+                Action::RunTests => match tests {
+                    Some(text) => text,
+                    None => return,
+                },
                 _ => return,
             };
             self.toast = Some(Toast::done(text));
@@ -1589,9 +1609,10 @@ impl MortiseApp {
         if in_view {
             return;
         }
-        let text = match end {
-            RunEnd::Exited { code, .. } => strings::stopped_with(&label, code),
-            RunEnd::Stopped { .. } => strings::was_stopped(&label),
+        let text = match (end, tests) {
+            (RunEnd::Exited { .. }, Some(text)) => text,
+            (RunEnd::Exited { code, .. }, None) => strings::stopped_with(&label, code),
+            (RunEnd::Stopped { .. }, _) => strings::was_stopped(&label),
         };
         let root = self.settings.apps[index].root.clone();
         let toast =
@@ -3106,6 +3127,33 @@ fn system_reduces_motion() -> bool {
     false
 }
 
+/// The toast of Run tests from the document of `module:test --json` on `target`
+/// (design D8), or `None` when the document has no counts.
+fn tests_toast(report: &TestReport, target: &Target) -> Option<String> {
+    let object = match target {
+        Target::Module(name) => {
+            let listed = report
+                .modules
+                .iter()
+                .find(|module| module.name.eq_ignore_ascii_case(name));
+            if listed.is_some_and(|module| !module.ran) {
+                return Some(strings::no_tests_folder(name));
+            }
+            name.clone()
+        }
+        Target::All => match report.modules.iter().filter(|module| module.ran).count() {
+            0 => return None,
+            n => strings::modules(n),
+        },
+    };
+    let (passed, failed) = (report.passed?, report.failed?);
+    if failed == 0 {
+        return Some(strings::tests_passed(passed, &object));
+    }
+    let total = passed + failed + report.skipped.unwrap_or(0);
+    Some(strings::tests_failed(failed, total, &object))
+}
+
 /// The action and the target of artisan words of reset, refresh, fresh or delete:
 /// `--all`, or the module, which is the second word or the word after `--`.
 fn destructive_words(args: &[String]) -> Option<(Action, Target)> {
@@ -3354,4 +3402,48 @@ pub fn run(chrome: Chrome, folder: Option<PathBuf>) -> eframe::Result {
             Ok(Box::new(app))
         }),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The document of a recording in `fixtures/output`.
+    fn recorded(name: &str) -> TestReport {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../fixtures/output")
+            .join(format!("{name}.json"));
+        let json: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+        let stdout: Vec<String> = json["stdout"]
+            .as_str()
+            .unwrap()
+            .lines()
+            .map(str::to_owned)
+            .collect();
+        mortise_core::document(&stdout).unwrap()
+    }
+
+    #[test]
+    fn the_toast_of_run_tests_counts_from_the_document() {
+        let checkout = Target::Module("Checkout".to_owned());
+        assert_eq!(
+            tests_toast(&recorded("module-test-fail"), &checkout).as_deref(),
+            Some("1 of 1 test failed in Checkout.")
+        );
+        assert_eq!(
+            tests_toast(&recorded("module-test-all"), &Target::All).as_deref(),
+            Some("1 of 2 tests failed in 3 modules.")
+        );
+        let mut report = recorded("module-test-pass");
+        report.modules[0].ran = false;
+        assert_eq!(
+            tests_toast(&report, &checkout).as_deref(),
+            Some("Checkout has no tests folder.")
+        );
+        // Without counts the toasts of an action without data apply.
+        report.modules[0].ran = true;
+        report.passed = None;
+        assert_eq!(tests_toast(&report, &checkout), None);
+    }
 }

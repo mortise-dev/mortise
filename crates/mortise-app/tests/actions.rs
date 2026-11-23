@@ -22,13 +22,19 @@ use mortise_core::history::History;
 fn desk(words: &str) -> (Desk, PathBuf) {
     let desk = Desk::new();
     let root = desk.app("shop-api");
-    desk.knows(&[(&root, "SA")]);
+    through_fake(&desk, &root, words);
+    (desk, root)
+}
+
+/// Makes the app in `root` known and open, run through the fake artisan with `words`
+/// before the artisan arguments.
+fn through_fake(desk: &Desk, root: &std::path::Path, words: &str) {
+    desk.knows(&[(root, "SA")]);
     let mut settings = desk.saved();
     settings.apps[0].php.runner = Some(RunnerKind::Custom {
         line: format!("\"{}\"{words}", env!("CARGO_BIN_EXE_app-fake-artisan")),
     });
     settings.save(&desk.settings_path()).unwrap();
-    (desk, root)
 }
 
 /// Selects a module in the index and opens the Actions tab.
@@ -316,6 +322,45 @@ fn the_header_opens_the_panel_and_run_tests_is_off() {
         harness.state().selection(),
         Selection::Module("Checkout".into())
     );
+}
+
+#[test]
+fn run_tests_on_13_4_runs_module_test_and_check_translations_keeps_its_report() {
+    let desk = Desk::new();
+    let root = common::app_with_package(&desk, "shop-api", "v13.4.0");
+    through_fake(&desk, &root, "");
+    let mut harness = desk.start();
+    actions_of(&mut harness, "Checkout");
+    select(&mut harness, "Run tests");
+    harness.get_by_label("2 tests in Modules/Checkout/tests.");
+    run(&mut harness);
+    wait_for(&mut harness, "1 test passed in Checkout.");
+    let entries = History::open(&desk.data_dir(), &root).entries();
+    assert_eq!(entries[0].args, ["module:test", "Checkout", "--json"]);
+
+    // The options of `module:test` change the line (design D8).
+    type_in(&mut harness, "Filter, a test name or pattern", "Order");
+    harness
+        .get_by_role_and_label(Role::CheckBox, "Run in parallel")
+        .click();
+    harness.run_steps(3);
+    harness
+        .query_by_label_contains("--ansi Checkout --filter=Order --parallel --json")
+        .unwrap();
+
+    // Its report goes into the package data, although keys are missing (exit 1).
+    select(&mut harness, "Check translations");
+    run(&mut harness);
+    common::wait_until(&mut harness, "the report of Checkout", |app| {
+        app.app().is_some_and(|app| {
+            app.package_data
+                .translations
+                .as_ref()
+                .is_some_and(|report| report.modules.iter().any(|m| m.name == "Checkout"))
+        })
+    });
+    let entries = History::open(&desk.data_dir(), &root).entries();
+    assert_eq!(entries[0].args, ["module:lang", "Checkout", "--json"]);
 }
 
 #[test]

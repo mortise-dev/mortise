@@ -11,7 +11,8 @@ pub enum Action {
     Migrate,
     RollBack,
     Seed,
-    /// The package has no command for the tests of one module yet.
+    /// `module:test`, from 13.4 on. Before it the package has no command for the
+    /// tests of one module.
     RunTests,
     CheckTranslations,
     ResetMigrations,
@@ -45,6 +46,10 @@ pub struct Options {
     pub database: String,
     /// `--class=<value>`: the root seeder. Empty leaves it out.
     pub class: String,
+    /// `--filter=<value>`: a test name or pattern. Empty leaves it out.
+    pub filter: String,
+    /// `--parallel`: the tests run in parallel.
+    pub parallel: bool,
 }
 
 /// The options an action takes, as S10.2 draws them.
@@ -56,6 +61,8 @@ pub struct OptionSet {
     pub drop_types: bool,
     pub database: bool,
     pub class: bool,
+    pub filter: bool,
+    pub parallel: bool,
 }
 
 /// What [`plan`] needs to know about the app.
@@ -69,6 +76,9 @@ pub struct Context<'a> {
     /// package default. The package may then delete another folder than the one
     /// on screen.
     pub modules_folder_assumed: bool,
+    /// The app's package gives the data of 13.4 ([`crate::gives_data`]): Run tests
+    /// has `module:test`, and Run tests and Check translations carry `--json`.
+    pub package_data: bool,
 }
 
 /// The question Mortise asks before it runs a command.
@@ -120,7 +130,7 @@ pub fn typed_name_matches(typed: &str, name: &str) -> bool {
 }
 
 impl Action {
-    /// Every action, for the reverse of [`Action::artisan`].
+    /// Every action, for the reverse of [`Action::command`].
     const EVERY: [Action; 11] = [
         Action::TurnOn,
         Action::TurnOff,
@@ -184,11 +194,12 @@ impl Action {
         )
     }
 
-    /// The action whose artisan command is `word`, such as `module:delete`.
+    /// The action whose artisan command is `word`, such as `module:delete`, on any
+    /// version of the package.
     pub fn from_artisan(word: &str) -> Option<Action> {
         Action::EVERY
             .into_iter()
-            .find(|action| action.artisan() == Some(word))
+            .find(|action| action.command(true) == Some(word))
     }
 
     /// The action runs on `target`. A destructive action runs only on the
@@ -197,14 +208,22 @@ impl Action {
         !self.is_destructive() || Action::destructive(target).contains(&self)
     }
 
-    /// The artisan command of the action. [`Action::RunTests`] has none.
+    /// The artisan command of the action on every version of the package.
+    /// [`Action::RunTests`] has none: `module:test` came with 13.4.
     pub fn artisan(self) -> Option<&'static str> {
+        self.command(false)
+    }
+
+    /// The artisan command of the action, on a package that gives the data of 13.4
+    /// when `package_data` is true.
+    fn command(self, package_data: bool) -> Option<&'static str> {
         Some(match self {
             Action::TurnOn => "module:enable",
             Action::TurnOff => "module:disable",
             Action::Migrate => "module:migrate",
             Action::RollBack => "module:migrate-rollback",
             Action::Seed => "module:seed",
+            Action::RunTests if package_data => "module:test",
             Action::RunTests => return None,
             Action::CheckTranslations => "module:lang",
             Action::ResetMigrations => "module:migrate-reset",
@@ -215,8 +234,9 @@ impl Action {
     }
 
     /// The options the action takes on `target`. Migrate of all modules takes
-    /// no database, as S10.2 f draws it.
-    pub fn options(self, target: &Target) -> OptionSet {
+    /// no database, as S10.2 f draws it. Run tests takes its options only on a
+    /// package that gives the data of 13.4 (`package_data`).
+    pub fn options(self, target: &Target, package_data: bool) -> OptionSet {
         let all = *target == Target::All;
         let none = OptionSet::default();
         match self {
@@ -252,6 +272,11 @@ impl Action {
                 database: true,
                 ..none
             },
+            Action::RunTests if package_data => OptionSet {
+                filter: true,
+                parallel: true,
+                ..none
+            },
             Action::TurnOn
             | Action::TurnOff
             | Action::RunTests
@@ -281,8 +306,9 @@ impl Action {
 /// The plan for an action: its words, and whether Mortise asks first.
 ///
 /// The words are the command, the module name or `--all`, the options in the
-/// order of [`OptionSet`], then `--force`. A text option is trimmed and is one
-/// word, such as `--database=testing`. An empty one is left out.
+/// order of [`OptionSet`], `--json` for Run tests and Check translations on a
+/// package that gives the data of 13.4, then `--force`. A text option is trimmed
+/// and is one word, such as `--database=testing`. An empty one is left out.
 /// `--force` is added only when the package confirms and Mortise asks.
 ///
 /// A destructive action on a target it does not take has no command, also in
@@ -291,7 +317,7 @@ pub fn plan(action: Action, target: &Target, options: &Options, context: &Contex
     if !action.takes(target) {
         return Plan::NoCommand;
     }
-    let Some(command) = action.artisan() else {
+    let Some(command) = action.command(context.package_data) else {
         return Plan::NoCommand;
     };
     let mut args = vec![command.to_string()];
@@ -302,7 +328,7 @@ pub fn plan(action: Action, target: &Target, options: &Options, context: &Contex
         Target::Module(name) => args.push(name.clone()),
         Target::All => args.push("--all".to_string()),
     }
-    let set = action.options(target);
+    let set = action.options(target, context.package_data);
     let pretend = set.pretend && options.pretend;
     if pretend {
         args.push("--pretend".to_string());
@@ -322,6 +348,16 @@ pub fn plan(action: Action, target: &Target, options: &Options, context: &Contex
     }
     if set.class {
         args.extend(text_option("class", &options.class));
+    }
+    if set.filter {
+        args.extend(text_option("filter", &options.filter));
+    }
+    if set.parallel && options.parallel {
+        args.push("--parallel".to_string());
+    }
+    // The package prints its answer as one JSON document (P7, P8).
+    if context.package_data && matches!(action, Action::RunTests | Action::CheckTranslations) {
+        args.push("--json".to_string());
     }
 
     let production = context.production;
@@ -397,11 +433,14 @@ impl Options {
                 "--seed" => options.seed = true,
                 "--drop-views" => options.drop_views = true,
                 "--drop-types" => options.drop_types = true,
+                "--parallel" => options.parallel = true,
                 word => {
                     if let Some(value) = word.strip_prefix("--database=") {
                         options.database = value.to_string();
                     } else if let Some(value) = word.strip_prefix("--class=") {
                         options.class = value.to_string();
+                    } else if let Some(value) = word.strip_prefix("--filter=") {
+                        options.filter = value.to_string();
                     }
                 }
             }
@@ -444,6 +483,7 @@ mod tests {
             production,
             users_on: users,
             modules_folder_assumed: false,
+            package_data: false,
         };
         plan(action, target, &options, &context)
     }
@@ -677,6 +717,7 @@ mod tests {
             production: false,
             users_on: none,
             modules_folder_assumed: true,
+            package_data: false,
         };
         let options = Options::default();
         assert_eq!(
@@ -687,6 +728,82 @@ mod tests {
             plan(ResetMigrations, &module, &options, &assumed),
             Plan::Ask { .. }
         ));
+
+        // A package that gives the data of 13.4: Run tests has `module:test`, and Run
+        // tests and Check translations carry `--json`, before a `--`. Neither asks,
+        // also in production.
+        let data = Context {
+            production: true,
+            users_on: none,
+            modules_folder_assumed: false,
+            package_data: true,
+        };
+        let tests = Options {
+            filter: " OrderTest ".to_string(),
+            parallel: true,
+            pretend: true,
+            ..Options::default()
+        };
+        let odd = Target::Module("-Odd".to_string());
+        let gated = [
+            (
+                RunTests,
+                &module,
+                &options,
+                run(&["module:test", "Checkout", "--json"]),
+            ),
+            (
+                RunTests,
+                &all,
+                &options,
+                run(&["module:test", "--all", "--json"]),
+            ),
+            (
+                RunTests,
+                &odd,
+                &tests,
+                run(&[
+                    "module:test",
+                    "--filter=OrderTest",
+                    "--parallel",
+                    "--json",
+                    "--",
+                    "-Odd",
+                ]),
+            ),
+            (
+                CheckTranslations,
+                &module,
+                &tests,
+                run(&["module:lang", "Checkout", "--json"]),
+            ),
+            (
+                CheckTranslations,
+                &all,
+                &options,
+                run(&["module:lang", "--all", "--json"]),
+            ),
+        ];
+        for (action, target, options, expected) in gated {
+            assert_eq!(
+                plan(action, target, options, &data),
+                expected,
+                "{action:?} on {target:?} with the data of 13.4"
+            );
+        }
+        // Without the data of 13.4, Run tests has no options to draw.
+        assert_eq!(RunTests.options(&module, false), OptionSet::default());
+        // Run again reads the action and its options back from the words.
+        assert_eq!(Action::from_artisan("module:test"), Some(RunTests));
+        let words = words(&["module:test", "--filter=OrderTest", "--parallel", "--json"]);
+        assert_eq!(
+            Options::from_args(&words),
+            Options {
+                filter: "OrderTest".to_string(),
+                parallel: true,
+                ..Options::default()
+            }
+        );
     }
 
     #[test]
@@ -756,11 +873,13 @@ mod tests {
             drop_types: true,
             database: "  testing ".to_string(),
             class: "Modules\\Checkout\\Database\\Seeders\\CheckoutSeeder".to_string(),
+            ..Options::default()
         };
         let production = Context {
             production: true,
             users_on: &[],
             modules_folder_assumed: false,
+            package_data: false,
         };
         // Migrate takes no class and no drop.
         assert_eq!(
@@ -816,6 +935,7 @@ mod tests {
             production: false,
             users_on: &[],
             modules_folder_assumed: false,
+            package_data: false,
         };
         // Fresh takes no pretend, so it seeds, and drops views and types.
         let fresh = words(&[
