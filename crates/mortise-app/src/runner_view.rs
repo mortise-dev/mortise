@@ -608,6 +608,9 @@ pub struct Inputs<'a> {
     pub runner: Option<&'a RunnerKind>,
     /// The app as read, to find the file of a migration that failed.
     pub snapshot: &'a AppSnapshot,
+    /// The label of the command or read that runs in the app, if one does. Run
+    /// again is off while it runs.
+    pub busy: Option<&'a str>,
     /// True while the keyboard is in use: focus rings are drawn.
     pub keyboard: bool,
     pub mac: bool,
@@ -1073,7 +1076,7 @@ fn open(
         pos2(right, rect.bottom() - PAD_BOTTOM),
     );
     let roomy = rect.width() >= ROOMY_W;
-    let busy = runs.running().map(strings::is_running);
+    let busy = inputs.busy.map(strings::is_running);
     let hide =
         || BarButton::new(strings::HIDE, DrawerAction::Hide).keys(strings::TOGGLE_RUNNER_KEYS);
     let run_again = |keys: Option<&str>| BarButton {

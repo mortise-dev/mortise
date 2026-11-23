@@ -2714,11 +2714,14 @@ impl eframe::App for MortiseApp {
                     }
                     self.work_rect = work_rect;
 
-                    // The drawer, after the workspace in the Tab order.
+                    // The drawer, after the workspace in the Tab order. A read keeps
+                    // the app busy too (design D3).
+                    let busy = open.busy().map(str::to_owned);
                     let inputs = runner_view::Inputs {
                         app: entry.display_name(),
                         runner: entry.php.runner.as_ref(),
                         snapshot: &app,
+                        busy: busy.as_deref(),
                         keyboard: self.keyboard,
                         mac,
                     };
