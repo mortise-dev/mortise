@@ -18,12 +18,18 @@ pub struct Dialog {
     pub cancel: String,
     /// Focus starts on the quiet choice, as for a stop that can harm the database.
     pub start_on_cancel: bool,
+    /// The button that goes ahead is the filled red one: something is lost.
+    pub danger: bool,
+    /// A quiet button on the left, such as "Dry run".
+    pub left: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Answer {
     Confirm,
     Cancel,
+    /// The button on the left.
+    Left,
 }
 
 impl Dialog {
@@ -35,6 +41,8 @@ impl Dialog {
             confirm,
             cancel: crate::strings::CANCEL.to_owned(),
             start_on_cancel: false,
+            danger: false,
+            left: None,
         }
     }
 
@@ -85,7 +93,7 @@ impl Dialog {
                 );
                 draw::announce(ui, body_rect, Role::Label, &self.body);
 
-                // Footer: the quiet choice, then the one that goes ahead.
+                // Footer: the button on the left, the quiet choice, then the one that goes ahead.
                 let foot = Rect::from_min_max(
                     egui::pos2(rect.left() + 1.0, rect.bottom() - 1.0 - foot_h),
                     egui::pos2(rect.right() - 1.0, rect.bottom() - 1.0),
@@ -94,7 +102,11 @@ impl Dialog {
                 draw::hline(ui, foot.left()..foot.right(), foot.top(), pal.line);
                 let confirm = Button {
                     label: &self.confirm,
-                    kind: ButtonKind::Primary,
+                    kind: if self.danger {
+                        ButtonKind::DangerFill
+                    } else {
+                        ButtonKind::Primary
+                    },
                     ..Default::default()
                 };
                 let cancel = Button {
@@ -103,6 +115,16 @@ impl Dialog {
                     ..Default::default()
                 };
                 let y = foot.top() + 10.0;
+                if let Some(left) = &self.left {
+                    let button = Button {
+                        label: left,
+                        ..Default::default()
+                    };
+                    let at = egui::pos2(foot.left() + 15.0, y);
+                    if button.show(ui, pal, at, keyboard).clicked() {
+                        answer = Some(Answer::Left);
+                    }
+                }
                 let confirm_x = foot.right() - 16.0 - confirm.width(ui);
                 let cancel_x = confirm_x - 8.0 - cancel.width(ui);
                 let quiet = cancel.show(ui, pal, egui::pos2(cancel_x, y), keyboard);

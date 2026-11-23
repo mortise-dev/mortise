@@ -1464,7 +1464,7 @@ fn dependencies(
 /// warn outline and the wedge. It may carry one small button on the right.
 /// Returns its bottom edge and whether the button was pressed.
 #[expect(clippy::too_many_arguments)]
-fn alert_box(
+pub(crate) fn alert_box(
     ui: &Ui,
     pal: &Palette,
     min: eframe::egui::Pos2,

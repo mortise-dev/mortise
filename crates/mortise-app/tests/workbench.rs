@@ -115,7 +115,6 @@ fn a_tab_of_a_later_phase_explains_itself() {
     let (_desk, mut harness) = shop_api();
     for (tab, title) in [
         ("Generate", "Generate is not in this version"),
-        ("Actions", "Actions are not in this version"),
         ("Metrics", "Metrics are not in this version"),
     ] {
         harness.get_by_role_and_label(Role::Tab, tab).click();

@@ -6,14 +6,15 @@ use std::sync::Arc;
 
 use eframe::egui::{self, Event, Key, KeyboardShortcut, Modifiers, Rect, Theme, Ui, pos2, vec2};
 use mortise_core::{
+    Action, Ask, Environment, LiveRuntime, ReadOptions, Rules, RunEnd, RunnerKind, Runs,
+    RuntimeState, Secret, Secrets, Target, ThemeChoice,
+};
+use mortise_core::{
     AppEntry, AppSnapshot, LiveApp, LiveState, ReadCache, Settings, SettingsError,
     propose_monogram, read_app_cached,
 };
-use mortise_core::{
-    Environment, LiveRuntime, ReadOptions, Rules, RunnerKind, Runs, RuntimeState, Secret, Secrets,
-    ThemeChoice,
-};
 
+use crate::actions_view::{self, Act, ActionsInputs, ActionsState};
 use crate::add::{self, AddAction, AddPanel, Checked};
 use crate::boundary::{BoundaryAction, BoundaryState};
 use crate::chrome::{self, Chrome};
@@ -29,7 +30,7 @@ use crate::strings;
 use crate::summary::{Sort, SummaryState};
 use crate::surface_view::SurfaceInputs;
 use crate::theme::{self, radius, size};
-use crate::toast::Toast;
+use crate::toast::{Toast, ToastAction};
 use crate::workspace::{self, EmptyMark, Tab, WorkState};
 
 /// The row of the index that is selected: the whole app or one module.
@@ -96,6 +97,11 @@ struct OpenApp {
     since: std::time::Instant,
     /// The command that runs or ran last, and the history of runs.
     runs: AppRuns,
+    /// What the Actions tab keeps: the selected action and the options.
+    actions: ActionsState,
+    /// The action that runs, when it was started from the Actions tab: its end
+    /// gets a toast (design D6).
+    action_run: Option<Act>,
 }
 
 /// A folder that is read for the add panel.
@@ -438,6 +444,8 @@ impl MortiseApp {
         if let Some(previous) = self.current.filter(|previous| *previous != index) {
             self.apps[previous].live.watch(false);
             self.apps[index].live.refresh();
+            // Another app: its Actions tab starts again on Migrate (design D4).
+            self.apps[index].actions = ActionsState::default();
         }
         self.apps[index].live.watch(true);
         self.current = Some(index);
@@ -962,6 +970,161 @@ impl MortiseApp {
                     state.app = index;
                 }
             }
+            DrawerAction::OpenMigration(path) => self.open_in_editor(&path, 1),
+            // The Migrate panel with the dry run checked; nothing runs (deviation S38).
+            DrawerAction::DryRun(module) => {
+                if self.current != Some(index) {
+                    self.select_app(index);
+                }
+                self.open_action(module, Action::Migrate);
+                self.apps[index].actions.options.pretend = true;
+            }
+        }
+    }
+
+    // --- Actions ---
+
+    /// Selects `module` in the index, or "All modules" for `None`, opens the Actions
+    /// tab and selects `action` there. Nothing runs: the line shows first (deviation S40).
+    fn open_action(&mut self, module: Option<String>, action: Action) {
+        let Some(current) = self.current else {
+            return;
+        };
+        let open = &mut self.apps[current];
+        let target = module.clone().map_or(Target::All, Target::Module);
+        open.selection = module.map_or(Selection::All, Selection::Module);
+        open.tab = Tab::Actions;
+        open.findings_open = false;
+        open.actions = ActionsState::on(target, action);
+        self.reveal_next = true;
+    }
+
+    /// Starts an action of the Actions tab of the app at `index`, or asks first.
+    fn act(&mut self, index: usize, act: Act) {
+        let Some(ask) = act.ask else {
+            self.start_action(index, act);
+            return;
+        };
+        let name = self.settings.apps[index].display_name().to_owned();
+        let object = match &act.target {
+            Target::Module(module) => module.clone(),
+            Target::All => strings::ALL_MODULES_OBJECT.to_owned(),
+        };
+        let production = self.app().is_some_and(|app| actions_view::production(&app));
+        let dialog = match ask {
+            Ask::TurnOff => {
+                let users = self
+                    .app()
+                    .map(|app| actions_view::users_on(&app, &object))
+                    .unwrap_or_default();
+                let users: Vec<&str> = users.iter().map(String::as_str).collect();
+                Dialog::new(
+                    strings::turn_off_title(&object),
+                    strings::turn_off_body(&users, &object),
+                    strings::turn_off_confirm(&object),
+                )
+            }
+            Ask::RollBack => {
+                let mut body = strings::roll_back_body(&object);
+                if production {
+                    body = format!("{body} {}", strings::production_body(&name));
+                }
+                Dialog {
+                    danger: true,
+                    left: Some(strings::DRY_RUN.to_owned()),
+                    ..Dialog::new(
+                        strings::roll_back_title(&object),
+                        body,
+                        strings::action_button(Action::RollBack).to_owned(),
+                    )
+                }
+            }
+            Ask::Production => Dialog {
+                danger: true,
+                ..Dialog::new(
+                    strings::production_title(act.action, &object),
+                    strings::production_body(&name),
+                    strings::production_confirm(act.action).to_owned(),
+                )
+            },
+            // The four destructive actions and their dialogs come in milestone 13;
+            // nothing on screen asks for them yet.
+            Ask::NamingTables | Ask::TypeAppName | Ask::TypeModuleName => return,
+        };
+        // Focus starts on Cancel, so Enter never confirms an action (S10.3).
+        let dialog = Dialog {
+            start_on_cancel: true,
+            ..dialog
+        };
+        self.dialog = Some((dialog, Pending::Action { index, act }));
+        self.dialog_opened = true;
+    }
+
+    /// Starts the words of an action and keeps what it was, for the toast at its end.
+    fn start_action(&mut self, index: usize, act: Act) {
+        if self.apps[index].runs.running().is_some() {
+            return;
+        }
+        self.start_run(index, act.args.clone());
+        let open = &mut self.apps[index];
+        open.action_run = open.runs.running().is_some().then_some(act);
+    }
+
+    /// The toast after an action of the app at `index` ended (design D6). A dry run
+    /// and Check translations get none when they succeed. A failure gets one only when
+    /// the drawer does not show it.
+    fn action_ended(&mut self, index: usize, act: &Act) {
+        let Some((end, lines)) = self.apps[index].runs.ended() else {
+            return;
+        };
+        let object = match &act.target {
+            Target::Module(module) => module.as_str(),
+            Target::All => strings::ALL_MODULES_OBJECT,
+        };
+        let label = act.args.join(" ");
+        if let RunEnd::Exited { code: Some(0), .. } = end {
+            if act.args.iter().any(|word| word == "--pretend") {
+                return;
+            }
+            let done = mortise_core::migrations_done(lines);
+            let text = match act.action {
+                Action::TurnOff => strings::turned_off(object),
+                Action::TurnOn => strings::turned_on(object),
+                Action::Migrate => strings::migrated(object, done),
+                Action::RollBack => strings::rolled_back(object, done),
+                Action::Seed => strings::seeded(object),
+                _ => return,
+            };
+            self.toast = Some(Toast::done(text));
+            return;
+        }
+        let in_view = self.runner.shown == Shown::Open
+            && self.current == Some(index)
+            && self.settings_open.is_none()
+            && self.adding.is_none();
+        if in_view {
+            return;
+        }
+        let text = match end {
+            RunEnd::Exited { code, .. } => strings::stopped_with(&label, code),
+            RunEnd::Stopped { .. } => strings::was_stopped(&label),
+        };
+        let toast =
+            Toast::failed(text).with_action(strings::SHOW_OUTPUT, ToastAction::ShowOutput(index));
+        self.toast = Some(toast);
+    }
+
+    /// What the button of a toast asked for.
+    fn toast_action(&mut self, action: ToastAction) {
+        match action {
+            ToastAction::ShowOutput(index) => {
+                self.toast = None;
+                self.settings_open = None;
+                self.adding = None;
+                self.select_app(index);
+                self.runner.shown = Shown::Open;
+                self.runner.history_open = false;
+            }
         }
     }
 
@@ -1397,8 +1560,19 @@ impl eframe::App for MortiseApp {
         self.sync_runtime(&ctx);
         // Lines and the elapsed time show without a callback from the core.
         let mut running = false;
-        for open in &mut self.apps {
+        let mut ended = Vec::new();
+        for (index, open) in self.apps.iter_mut().enumerate() {
+            let was = open.runs.running().is_some();
             running |= open.runs.poll();
+            if was
+                && open.runs.running().is_none()
+                && let Some(act) = open.action_run.take()
+            {
+                ended.push((index, act));
+            }
+        }
+        for (index, act) in ended {
+            self.action_ended(index, &act);
         }
         if running {
             ctx.request_repaint_after(std::time::Duration::from_millis(100));
@@ -1567,6 +1741,7 @@ impl eframe::App for MortiseApp {
                         open.findings_open = false;
                     }
                     let entry = &self.settings.apps[current];
+                    let held = self.dialog.is_some() || self.palette.is_some();
                     let runtime = RuntimeView {
                         installed: app.actuator.is_some(),
                         environments: &entry.environments,
@@ -1638,6 +1813,15 @@ impl eframe::App for MortiseApp {
                         keyboard: self.keyboard,
                         surface: surface_inputs(&app, &open.selection, &runtime),
                         mac,
+                        actions: &mut open.actions,
+                        actions_inputs: ActionsInputs {
+                            app: entry.display_name(),
+                            runner: entry.php.runner.as_ref(),
+                            busy: open.runs.running(),
+                            held,
+                            keyboard: self.keyboard,
+                            mac,
+                        },
                     };
                     work_action = workspace::workspace(
                         ui,
@@ -1677,6 +1861,7 @@ impl eframe::App for MortiseApp {
                     let inputs = runner_view::Inputs {
                         app: entry.display_name(),
                         runner: entry.php.runner.as_ref(),
+                        snapshot: &app,
                         keyboard: self.keyboard,
                         mac,
                     };
@@ -1749,10 +1934,13 @@ impl eframe::App for MortiseApp {
             0.0
         };
         let toast_area = Rect::from_min_max(rest.min, pos2(rest.right(), rest.bottom() - drawer_h));
-        if let Some(toast) = &mut self.toast
-            && !toast.show(ui, pal, toast_area, reduced_motion)
-        {
-            self.toast = None;
+        let mut toast_action = None;
+        if let Some(toast) = &mut self.toast {
+            let (open, asked) = toast.show(ui, pal, toast_area, reduced_motion);
+            toast_action = asked;
+            if !open {
+                self.toast = None;
+            }
         }
         // The palette, over the workbench.
         let mut palette_action = None;
@@ -1821,6 +2009,15 @@ impl eframe::App for MortiseApp {
                         open.runs.stop();
                     }
                 }
+                (Some(Answer::Confirm), Some((_, Pending::Action { index, act }))) => {
+                    self.start_action(index, act)
+                }
+                // "Dry run" checks the option on the panel and runs nothing (deviation S38).
+                (Some(Answer::Left), Some((_, Pending::Action { index, .. }))) => {
+                    if let Some(open) = self.apps.get_mut(index) {
+                        open.actions.options.pretend = true;
+                    }
+                }
                 _ => {}
             }
         }
@@ -1846,7 +2043,22 @@ impl eframe::App for MortiseApp {
                 ctx.copy_text(text);
                 self.toast = Some(Toast::done(said));
             }
+            Some(BoundaryAction::OpenAction(action)) => {
+                let module = match self.selection() {
+                    Selection::Module(name) => Some(name),
+                    Selection::All => None,
+                };
+                self.open_action(module, action);
+            }
+            Some(BoundaryAction::Act(act)) => {
+                if let Some(current) = self.current {
+                    self.act(current, act);
+                }
+            }
             _ => {}
+        }
+        if let Some(action) = toast_action {
+            self.toast_action(action);
         }
 
         // Focus is always visible while the keyboard is in use.
@@ -1960,6 +2172,8 @@ fn open_app(ctx: &egui::Context, entry: &AppEntry, data_dir: Option<&Path>) -> O
         php_test: crate::php_settings::PhpTest::default(),
         since: std::time::Instant::now(),
         runs: AppRuns::open(data_dir, &entry.root),
+        actions: ActionsState::default(),
+        action_run: None,
     }
 }
 
@@ -2025,6 +2239,8 @@ enum Pending {
     RemoveApp(usize),
     /// Stop the command that runs in the app at this place on the rail.
     StopRun(usize),
+    /// Start an action in the app at this place on the rail.
+    Action { index: usize, act: Act },
 }
 
 /// How wide the module index is for a window of this width (section 5.14), and

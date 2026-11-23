@@ -2055,6 +2055,276 @@ pub fn copy_output_of(label: &str) -> String {
     format!("Copy output of {label}")
 }
 
+/// `module:migrate Checkout stopped with exit code 1 at 2026_11_20_...` (S11.1 c).
+/// A program a signal ended keeps the sentence of [`stopped_with`].
+pub fn failed_at(label: &str, code: Option<i32>, migration: &str) -> String {
+    match code {
+        Some(code) => format!(
+            "{label} stopped with exit code {code} at {migration}. The error from the database \
+             is quoted above. Fix the migration, or try a dry run to read the SQL."
+        ),
+        None => stopped_with(label, code),
+    }
+}
+
+pub const OPEN_MIGRATION: &str = "Open migration file";
+pub const DRY_RUN: &str = "Dry run";
+pub const SHOW_OUTPUT: &str = "Show output";
+
+/// Not in the spec: the name of the step "Dry run" in the drawer, apart from the
+/// "Dry run" of the Actions tab.
+pub fn dry_run_of(label: &str) -> String {
+    format!("Dry run of {label}")
+}
+
+// ---------------------------------------------------------------------------
+// Actions (S10.1 to S10.3)
+
+/// The header of the Actions tab: `Run with` and the keys.
+pub const RUN_WITH: &str = "Run with";
+pub const COMMAND: &str = "Command";
+pub const DRY_RUN_OPTION: &str = "Dry run: print the SQL, change nothing";
+pub const SEED_AFTERWARDS: &str = "Seed afterwards";
+pub const DATABASE_CONNECTION: &str = "Database connection";
+pub const SEEDER_CLASS: &str = "Seeder class";
+/// The placeholder of the database field.
+pub const DEFAULT_CONNECTION: &str = "default";
+pub const ROLL_BACK_HINT: &str = "Destructive. Mortise asks before it runs. The command has no \
+                                  option to choose how many batches.";
+/// The placeholder in the line of Run tests (S10.2 e).
+pub const TESTS_PLACEHOLDER: &str = "[the package's command for the tests of one module]";
+/// Not in the spec: why Run tests and its Copy command are off (design D4).
+pub const NO_TESTS_COMMAND: &str = "The package has no command for the tests of one module yet.";
+
+/// The hint of the database field: Migrate says what an empty field means, Seed
+/// names the option only.
+pub fn database_hint(action: mortise_core::Action) -> &'static str {
+    match action {
+        mortise_core::Action::Seed => "--database",
+        _ => "--database, empty for the default",
+    }
+}
+
+/// The hint of the seeder field. Not in the spec for "All modules".
+pub fn class_hint(all: bool) -> &'static str {
+    if all {
+        "--class, empty for the seeder of each module"
+    } else {
+        "--class, empty for the module seeder"
+    }
+}
+
+/// `CheckoutDatabaseSeeder`, the seeder the package runs when the field is empty.
+pub fn module_seeder(module: &str) -> String {
+    format!("{module}DatabaseSeeder")
+}
+
+/// Not in the spec: a run button is off because no way to run PHP is chosen (design D4).
+pub fn choose_php(app: &str) -> String {
+    format!("Choose how PHP runs for {app} in Settings.")
+}
+
+/// The name of an action in the list. "All modules" names its rows in full (S10.2 f).
+pub fn action_row(action: mortise_core::Action, all: bool) -> &'static str {
+    use mortise_core::Action;
+    match (action, all) {
+        (Action::Migrate, true) => "Migrate all modules",
+        (Action::Seed, true) => "Seed all modules",
+        (Action::RunTests, true) => "Run all module tests",
+        (action, _) => action_button(action),
+    }
+}
+
+/// The label of the button that runs an action. The Migrate button carries no count
+/// without the migration state (deviation S41).
+pub fn action_button(action: mortise_core::Action) -> &'static str {
+    use mortise_core::Action;
+    match action {
+        Action::TurnOn => "Turn on",
+        Action::TurnOff => "Turn off",
+        Action::Migrate => "Migrate",
+        Action::RollBack => "Roll back",
+        Action::Seed => "Seed",
+        Action::RunTests => "Run tests",
+        Action::CheckTranslations => "Check translations",
+        Action::ResetMigrations => "Reset migrations",
+        Action::RefreshMigrations => "Refresh migrations",
+        Action::FreshMigrate => "Drop all tables and migrate",
+        Action::DeleteModule => "Delete module",
+    }
+}
+
+/// The title of the panel of an action: `Migrate Checkout`, `Migrate all modules`.
+/// Not in the spec: the titles of Check translations, and of Run tests and Check
+/// translations for "All modules".
+pub fn action_title(action: mortise_core::Action, module: Option<&str>) -> String {
+    use mortise_core::Action;
+    match (action, module) {
+        (Action::RunTests, Some(module)) => format!("Run tests of {module}"),
+        (Action::CheckTranslations, Some(module)) => format!("Check translations of {module}"),
+        (Action::CheckTranslations, None) => "Check translations of all modules".to_owned(),
+        (action, None) => action_row(action, true).to_owned(),
+        (action, Some(module)) => format!("{} {module}", action_button(action)),
+    }
+}
+
+/// The sentence under the title of the panel. Not in the spec: the sentences of
+/// Check translations, and of Seed for "All modules". Run tests has its own.
+pub fn action_text(action: mortise_core::Action, module: Option<&str>) -> String {
+    use mortise_core::Action;
+    match (action, module) {
+        (Action::TurnOff, Some(module)) => format!(
+            "{module} is on. The app stops loading its providers, routes and migrations. Its \
+             files stay."
+        ),
+        (Action::TurnOn, Some(module)) => {
+            format!("{module} is off. Turning it on does not run its migrations.")
+        }
+        (Action::Migrate, Some(module)) => {
+            format!("Runs the migrations of {module} that have not run yet.")
+        }
+        (Action::Migrate, None) => "Runs the waiting migrations of every module that is on, in \
+                                    the package's order."
+            .to_owned(),
+        (Action::RollBack, Some(module)) => {
+            format!("Runs the down method of the last migration batch of {module}.")
+        }
+        (Action::Seed, Some(module)) => format!(
+            "Runs the seeders of {module}. Rows are added; running it twice can add them twice."
+        ),
+        (Action::Seed, None) => "Runs the seeders of every module that is on. Rows are added; \
+                                 running it twice can add them twice."
+            .to_owned(),
+        (Action::CheckTranslations, Some(module)) => format!(
+            "Lists the translation keys that a language of {module} lacks. The output shows in \
+             the runner."
+        ),
+        (Action::CheckTranslations, None) => "Lists the translation keys that a language of \
+                                              each module lacks. The output shows in the runner."
+            .to_owned(),
+        _ => String::new(),
+    }
+}
+
+/// The sentence of Run tests after its count and folder (S10.2 e).
+pub const TESTS_TEXT: &str = "The package will provide a command that runs the tests of one \
+                              module. Its name and options are not decided, so the line below \
+                              has a placeholder and no options are drawn.";
+
+/// Not in the spec: where the tests of "All modules" are, after their count.
+pub const TESTS_IN_MODULES_ON: &str = "in the modules that are on.";
+
+/// The alert of Turn off (S10.2 a): `Shipping and Notifications use Checkout. ...`
+/// Not in the spec: the sentence for one module.
+pub fn turn_off_alert(users: &[&str], module: &str) -> String {
+    let verb = if users.len() == 1 { "uses" } else { "use" };
+    format!(
+        "{} {verb} {module}. Mortise asks before it turns off a module that others use.",
+        and_list(users)
+    )
+}
+
+/// The dialog of Turn off (S10.3). Not in the spec: the sentence for one module.
+pub fn turn_off_title(module: &str) -> String {
+    format!("Turn off {module}?")
+}
+
+pub fn turn_off_body(users: &[&str], module: &str) -> String {
+    match users {
+        [one] => format!("{one} uses it. It stays on and can fail where it calls {module}."),
+        _ => format!(
+            "{} use it. They stay on and can fail where they call {module}.",
+            and_list(users)
+        ),
+    }
+}
+
+pub fn turn_off_confirm(module: &str) -> String {
+    format!("Turn off {module}")
+}
+
+/// The dialog of Roll back (S10.3). The button has no count without the migration
+/// state (deviation S41).
+pub fn roll_back_title(object: &str) -> String {
+    format!("Roll back {object}?")
+}
+
+pub fn roll_back_body(object: &str) -> String {
+    format!(
+        "This runs the down method of the last migration batch of {object}. Data in the \
+         columns and tables it drops is lost."
+    )
+}
+
+/// The question before migrate or seed in production. Not in the spec: the title
+/// and the button of seed.
+pub fn production_title(action: mortise_core::Action, object: &str) -> String {
+    match action {
+        mortise_core::Action::Seed => format!("Seed {object} in production?"),
+        _ => format!("Migrate {object} in production?"),
+    }
+}
+
+pub fn production_body(app: &str) -> String {
+    format!(
+        "{app} reports the environment production. The command runs with --force on that \
+         database."
+    )
+}
+
+pub fn production_confirm(action: mortise_core::Action) -> &'static str {
+    match action {
+        mortise_core::Action::Seed => "Seed in production",
+        _ => "Migrate in production",
+    }
+}
+
+/// What an action names in a toast or a dialog for "All modules".
+pub const ALL_MODULES_OBJECT: &str = "all modules";
+
+/// The done toasts of C13. Not in the spec: the toasts of a run that changed nothing.
+pub fn turned_off(object: &str) -> String {
+    format!("Turned off {object}.")
+}
+
+pub fn turned_on(object: &str) -> String {
+    format!("Turned on {object}.")
+}
+
+pub fn migrated(object: &str, done: usize) -> String {
+    match done {
+        0 => format!("Migrated {object}: nothing to migrate."),
+        1 => format!("Migrated {object}: 1 migration ran."),
+        n => format!("Migrated {object}: {n} migrations ran."),
+    }
+}
+
+pub fn rolled_back(object: &str, done: usize) -> String {
+    match done {
+        0 => format!("Rolled back {object}: nothing to roll back."),
+        1 => format!("Rolled back {object}: 1 migration."),
+        n => format!("Rolled back {object}: {n} migrations."),
+    }
+}
+
+pub fn seeded(object: &str) -> String {
+    format!("Seeded {object}.")
+}
+
+/// Not in the spec: the failed toast of a run that was stopped.
+pub fn was_stopped(label: &str) -> String {
+    format!("{label} was stopped.")
+}
+
+/// `1 seeder`, `5 seeders`
+pub fn seeders(n: u32) -> String {
+    if n == 1 {
+        "1 seeder".to_owned()
+    } else {
+        format!("{} seeders", count(u64::from(n)))
+    }
+}
+
 #[cfg(test)]
 mod runner_tests {
     use super::*;

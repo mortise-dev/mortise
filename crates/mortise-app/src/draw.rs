@@ -194,6 +194,10 @@ pub enum Icon {
     Lock,
     Plus,
     Stop,
+    /// A migration: a box, then an arrow out of it.
+    Migrate,
+    /// Tests: two ticks and two lines.
+    Test,
 }
 
 /// One stroke of an icon: points on the 16 px grid.
@@ -321,6 +325,19 @@ impl Icon {
             open(&[[3.5, 3.5], [12.5, 12.5]]),
             open(&[[12.5, 3.5], [3.5, 12.5]]),
         ];
+        const MIGRATE_BOX: [[f32; 2]; 4] = square(1.75, 3.75, 6.5, 8.5);
+        const MIGRATE: &[Path] = &[
+            closed(&MIGRATE_BOX),
+            open(&[[1.75, 8.0], [8.25, 8.0]]),
+            open(&[[10.25, 8.0], [14.75, 8.0]]),
+            open(&[[12.5, 5.5], [15.0, 8.0], [12.5, 10.5]]),
+        ];
+        const TEST: &[Path] = &[
+            open(&[[2.25, 4.75], [3.9, 6.4], [6.5, 3.2]]),
+            open(&[[8.75, 4.9], [14.25, 4.9]]),
+            open(&[[2.25, 10.75], [3.9, 12.4], [6.5, 9.2]]),
+            open(&[[8.75, 10.9], [14.25, 10.9]]),
+        ];
 
         match self {
             Icon::Search => SEARCH,
@@ -339,6 +356,8 @@ impl Icon {
             Icon::Lock => LOCK,
             Icon::Plus => PLUS,
             Icon::Stop => STOP,
+            Icon::Migrate => MIGRATE,
+            Icon::Test => TEST,
         }
     }
 }
@@ -639,6 +658,10 @@ pub enum ButtonKind {
     Default,
     /// No outline, for the quiet choice.
     Ghost,
+    /// A destructive action that asks first: bad outline and bad text.
+    Danger,
+    /// The button that confirms a destructive action, in a dialog only: bad fill.
+    DangerFill,
 }
 
 /// A button: 26 px high, or 22 px when small.
@@ -718,6 +741,15 @@ impl Button<'_> {
         let (fill, outline, text) = match (self.kind, self.disabled) {
             (ButtonKind::Primary, true) => (pal.line, pal.line, pal.ink_2),
             (_, true) => (Color32::TRANSPARENT, pal.line, pal.ink_3),
+            (ButtonKind::Danger, false) => {
+                let fill = if pressed || hovered {
+                    pal.bad_soft
+                } else {
+                    pal.surface
+                };
+                (fill, pal.bad, pal.bad)
+            }
+            (ButtonKind::DangerFill, false) => (pal.bad, pal.bad, pal.bad_fg),
             (ButtonKind::Primary, false) => {
                 let fill = if pressed {
                     pal.key_press
@@ -751,6 +783,16 @@ impl Button<'_> {
             }
         };
         outlined(ui, rect, radius::CONTROL, fill, outline);
+        // The filled red button shows hover and press as a ring of its text colour.
+        if self.kind == ButtonKind::DangerFill && !self.disabled && (hovered || pressed) {
+            let width = if pressed { 2.0 } else { 1.0 };
+            ui.painter().rect_stroke(
+                rect.shrink(1.0),
+                CornerRadius::same(radius::CONTROL - 1),
+                Stroke::new(width, pal.bad_fg),
+                StrokeKind::Inside,
+            );
+        }
 
         let mid = rect.center().y;
         let mut x = rect.left() + self.padding();
@@ -1313,7 +1355,22 @@ pub fn text_field(
     mono: bool,
     keyboard: bool,
 ) -> Response {
-    field(ui, pal, rect, name, text, mono, false, keyboard)
+    field(ui, pal, rect, name, text, "", mono, false, keyboard)
+}
+
+/// A text field with a placeholder that shows while it is empty.
+#[expect(clippy::too_many_arguments)]
+pub fn text_field_with_hint(
+    ui: &mut Ui,
+    pal: &Palette,
+    rect: Rect,
+    name: &str,
+    text: &mut String,
+    hint: &str,
+    mono: bool,
+    keyboard: bool,
+) -> Response {
+    field(ui, pal, rect, name, text, hint, mono, false, keyboard)
 }
 
 /// A text field for a secret: what is typed is drawn as dots, and there is no way
@@ -1326,7 +1383,7 @@ pub fn secret_field(
     text: &mut String,
     keyboard: bool,
 ) -> Response {
-    field(ui, pal, rect, name, text, true, true, keyboard)
+    field(ui, pal, rect, name, text, "", true, true, keyboard)
 }
 
 #[expect(clippy::too_many_arguments)]
@@ -1336,6 +1393,7 @@ fn field(
     rect: Rect,
     name: &str,
     text: &mut String,
+    hint: &str,
     mono: bool,
     secret: bool,
     keyboard: bool,
@@ -1351,12 +1409,17 @@ fn field(
     };
     outlined(ui, rect, radius::CONTROL, pal.surface, outline);
     let font = if mono { ty::CODE } else { ty::BODY };
+    let font = eframe::egui::FontId::new(font.size, font.face.family());
+    let placeholder = eframe::egui::RichText::new(hint)
+        .color(pal.ink_3)
+        .font(font.clone());
     let edit = eframe::egui::TextEdit::singleline(text)
         .id(id)
         .password(secret)
+        .hint_text(placeholder)
         .frame(eframe::egui::Frame::NONE)
         .margin(eframe::egui::Margin::ZERO)
-        .font(eframe::egui::FontId::new(font.size, font.face.family()))
+        .font(font)
         .text_color(pal.ink)
         .desired_width(rect.width() - 18.0)
         .align(Align2::LEFT_CENTER);

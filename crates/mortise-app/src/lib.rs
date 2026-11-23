@@ -2,6 +2,7 @@
 //!
 //! Everything that is not drawing lives in `mortise_core`.
 
+pub mod actions_view;
 pub mod add;
 pub mod app;
 pub mod boundary;

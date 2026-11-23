@@ -59,6 +59,10 @@ pub enum BoundaryAction {
     Runtime(crate::runtime_view::RuntimeAction),
     /// Copy a text and say so.
     Copy { text: String, said: &'static str },
+    /// Open the Actions tab of the selected module on this action. Nothing runs.
+    OpenAction(mortise_core::Action),
+    /// Start an action of the Actions tab, asking first where the rules say so.
+    Act(crate::actions_view::Act),
 }
 
 /// Paints the Boundary tab into `body`, which scrolls.
