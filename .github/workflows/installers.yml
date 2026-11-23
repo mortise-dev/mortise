@@ -342,7 +342,8 @@ jobs:
           codesign --verify --strict --verbose=2 "dist/$NAME"
           details=$(codesign -dv --verbose=4 "dist/$NAME" 2>&1)
           grep -q '^Authority=Developer ID Application: ' <<<"$details"
-          hdiutil attach -readonly -nobrowse -mountpoint "$mnt" "dist/$NAME"
+          # The DMG shows the licence and asks to agree before it mounts. Without an answer hdiutil cancels.
+          hdiutil attach -readonly -nobrowse -mountpoint "$mnt" "dist/$NAME" <<<"Y" >/dev/null
           tools/verify-macos-app.sh "$mnt/Mortise.app"
           tools/verify-macos-app.sh target/packages/Mortise.app
 
