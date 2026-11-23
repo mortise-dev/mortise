@@ -186,16 +186,20 @@ pub fn plan(action: Action, target: &Target, options: &Options, context: &Contex
         return Plan::NoCommand;
     };
     let mut args = vec![command.to_string()];
-    args.push(match target {
-        Target::Module(name) => name.clone(),
-        Target::All => "--all".to_string(),
-    });
+    // A name that starts with `-` would read as an option: it goes last, after `--`.
+    let mut last = None;
+    match target {
+        Target::Module(name) if name.starts_with('-') => last = Some(name.clone()),
+        Target::Module(name) => args.push(name.clone()),
+        Target::All => args.push("--all".to_string()),
+    }
     let set = action.options(target);
     let pretend = set.pretend && options.pretend;
     if pretend {
         args.push("--pretend".to_string());
     }
-    if set.seed && options.seed {
+    // The package seeds after a pretend migrate, so a dry run leaves out `--seed`.
+    if set.seed && options.seed && !pretend {
         args.push("--seed".to_string());
     }
     if set.database {
@@ -218,20 +222,49 @@ pub fn plan(action: Action, target: &Target, options: &Options, context: &Contex
         | Action::DeleteModule
             if production =>
         {
+            if let Some(name) = last {
+                args.push("--".to_string());
+                args.push(name);
+            }
             return Plan::Refused { args };
         }
         Action::ResetMigrations | Action::RefreshMigrations => Some(Ask::NamingTables),
         Action::FreshMigrate => Some(Ask::TypeAppName),
         Action::DeleteModule => Some(Ask::TypeModuleName),
     };
+    if let Some(ask) = ask
+        && action.package_confirms(production)
+    {
+        args.push("--force".to_string());
+    }
+    if let Some(name) = last {
+        args.push("--".to_string());
+        args.push(name);
+    }
     match ask {
         None => Plan::Run { args },
-        Some(ask) => {
-            if action.package_confirms(production) {
-                args.push("--force".to_string());
-            }
-            Plan::Ask { ask, args }
-        }
+        Some(ask) => Plan::Ask { ask, args },
+    }
+}
+
+/// True when Mortise asks before `args` run: a command with `--force`, a roll back
+/// that is not a dry run, and reset, refresh, fresh and delete. Run again asks
+/// first for these too, because the question was about this very line.
+pub fn asks_again(args: &[String]) -> bool {
+    let words: Vec<&str> = args
+        .iter()
+        .map(String::as_str)
+        .take_while(|word| *word != "--")
+        .collect();
+    match words.first() {
+        Some(&"module:migrate-rollback") if !words.contains(&"--pretend") => true,
+        Some(
+            &"module:migrate-reset"
+            | &"module:migrate-refresh"
+            | &"module:migrate-fresh"
+            | &"module:delete",
+        ) => true,
+        _ => words.contains(&"--force"),
     }
 }
 
@@ -476,6 +509,24 @@ mod tests {
     }
 
     #[test]
+    fn run_again_asks_where_mortise_asked() {
+        let table: [(&[&str], bool); 8] = [
+            (&["module:migrate", "Checkout", "--force"], true),
+            (&["module:migrate", "Checkout"], false),
+            (&["module:migrate-rollback", "Checkout"], true),
+            (&["module:migrate-rollback", "Checkout", "--pretend"], false),
+            (&["module:migrate-refresh", "Checkout"], true),
+            (&["module:delete", "Checkout", "--force"], true),
+            (&["module:disable", "Checkout"], false),
+            // A module named like an option is not one.
+            (&["module:migrate", "--", "--force"], false),
+        ];
+        for (args, asks) in table {
+            assert_eq!(asks_again(&words(args)), asks, "{args:?}");
+        }
+    }
+
+    #[test]
     fn words_keep_their_order() {
         let options = Options {
             pretend: true,
@@ -501,7 +552,6 @@ mod tests {
                     "module:migrate",
                     "Checkout",
                     "--pretend",
-                    "--seed",
                     "--database=testing",
                     "--force",
                 ]),
@@ -513,7 +563,33 @@ mod tests {
             plan(Action::Migrate, &Target::All, &options, &production),
             Plan::Ask {
                 ask: Ask::Production,
-                args: words(&["module:migrate", "--all", "--pretend", "--seed", "--force"]),
+                args: words(&["module:migrate", "--all", "--pretend", "--force"]),
+            }
+        );
+
+        // Without the dry run, Migrate seeds afterwards. A name that starts with `-`
+        // goes last, after `--`, so that artisan reads it as the module.
+        let seeding = Options {
+            pretend: false,
+            ..options.clone()
+        };
+        assert_eq!(
+            plan(
+                Action::Migrate,
+                &Target::Module("-Odd".to_string()),
+                &seeding,
+                &production
+            ),
+            Plan::Ask {
+                ask: Ask::Production,
+                args: words(&[
+                    "module:migrate",
+                    "--seed",
+                    "--database=testing",
+                    "--force",
+                    "--",
+                    "-Odd",
+                ]),
             }
         );
 

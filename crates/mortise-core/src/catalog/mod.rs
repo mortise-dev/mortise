@@ -5,4 +5,4 @@
 
 mod actions;
 
-pub use actions::{Action, Ask, Context, OptionSet, Options, Plan, Target, plan};
+pub use actions::{Action, Ask, Context, OptionSet, Options, Plan, Target, asks_again, plan};

@@ -43,7 +43,7 @@ pub use actuator::{
 pub use app::{
     AppSnapshot, CoverageReport, ReadError, ReadOptions, read_app, read_app_cached, read_app_with,
 };
-pub use catalog::{Action, Ask, Context, OptionSet, Options, Plan, Target, plan};
+pub use catalog::{Action, Ask, Context, OptionSet, Options, Plan, Target, asks_again, plan};
 pub use clover::Coverage;
 pub use code::{ALL_CODE, propose_codes, propose_monogram};
 pub use composer::Version;
