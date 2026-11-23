@@ -1201,6 +1201,22 @@ impl MortiseApp {
             }
             return;
         }
+        // A fresh that ended, whatever its exit code, may have dropped every table of
+        // its connection: the state of that connection goes, also of the modules that
+        // are off, which the read after it does not list.
+        if let Some((Action::FreshMigrate, _)) = destructive_words(args) {
+            let connection = mortise_core::Options::from_args(args).database;
+            if open
+                .package
+                .migrations_for(&connection)
+                .is_some_and(|migrations| !migrations.is_empty())
+            {
+                self.set_package(index, |package| package.forget_migrations(&connection));
+            }
+        }
+        let Some(open) = self.apps.get(index) else {
+            return;
+        };
         let gives = self
             .snapshot(index)
             .is_some_and(|app| mortise_core::gives_data(&app.package));

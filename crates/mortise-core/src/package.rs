@@ -329,6 +329,15 @@ impl PackageData {
         (self.migration_connection == connection.trim()).then_some(&self.migrations)
     }
 
+    /// Forgets the migration state when it is of `connection`: a fresh dropped every
+    /// table there, also of the modules that are off, which a read with `--all` does
+    /// not list. A state of another connection stays.
+    pub fn forget_migrations(&mut self, connection: &str) {
+        if self.migration_connection == connection.trim() {
+            self.migrations.clear();
+        }
+    }
+
     /// Takes in a state read of `target` on `connection`, read at `read_ms`. A read of
     /// another connection than the state's replaces the whole state. A module of the
     /// document replaces its entry. Under `--all`, a module in `modules_on` that the
@@ -602,6 +611,12 @@ mod tests {
         };
         data.merge_migrations(none.clone(), &Target::All, "", &["Checkout", "Loyalty"], 3);
         assert_eq!(data.migrations.keys().collect::<Vec<_>>(), ["Billing"]);
+
+        // A fresh of another connection keeps it; one of its own forgets it all.
+        data.forget_migrations("testing");
+        assert_eq!(data.migrations.len(), 1);
+        data.forget_migrations("");
+        assert!(data.migrations.is_empty());
 
         // The state is of one connection: a read of another replaces it all.
         assert!(data.migrations_for("testing").is_none());
