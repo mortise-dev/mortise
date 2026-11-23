@@ -217,8 +217,8 @@ fn an_app_whose_php_does_not_answer_is_added_read_only() {
     harness.get_by_label("Not found: Herd, Sail, a compose file.");
     let command = harness.get_by_role_and_label(Role::TextInput, "Run PHP with");
     assert_eq!(
-        command.accesskit_node().value().as_deref(),
-        Some("herd php artisan")
+        command.accesskit_node().value(),
+        Some(mortise_core::RunnerKind::Herd.line())
     );
 
     harness
