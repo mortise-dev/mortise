@@ -74,8 +74,8 @@ pub use output::{
 pub use package::{
     DataError, FileAction, FileResult, GeneratorReport, LangModule, LangReport, Locale,
     MigrationRow, MigrationStatus, ModuleMigrations, ModuleStatus, ModuleTests, PackageData,
-    RanMigration, ReportedFile, TestReport, document, gives_data, migration_file, with_dry_run,
-    with_json,
+    RanMigration, ReportedFile, TestReport, document, gives_data, migrate_status_args,
+    migration_file, with_dry_run, with_json,
 };
 pub use rules::{RULES_FILE, Rules, RulesError, RulesSource};
 #[cfg(feature = "run")]

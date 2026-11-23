@@ -161,6 +161,19 @@ impl Desk {
     }
 }
 
+/// Sets the version of `nwidart/laravel-modules` in the `composer.lock` of the app
+/// in `root`, a copy of shop-api, which has `v13.3.0`. A test that needs 13.4 uses it.
+pub fn package_version(root: &Path, version: &str) {
+    let lock = root.join("composer.lock");
+    let text = std::fs::read_to_string(&lock).unwrap();
+    let changed = text.replace(
+        "\"version\": \"v13.3.0\"",
+        &format!("\"version\": \"{version}\""),
+    );
+    assert_ne!(text, changed, "the lock names no v13.3.0");
+    std::fs::write(lock, changed).unwrap();
+}
+
 /// A desk with shop-api known and open, started.
 pub fn shop_api() -> (Desk, Harness<'static, MortiseApp>) {
     let desk = Desk::new();

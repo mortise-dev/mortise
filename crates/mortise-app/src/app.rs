@@ -118,6 +118,9 @@ struct OpenApp {
     package: PackageData,
     /// The read of package data that runs, if one does (design D3).
     reading: Option<PackageRead>,
+    /// Why the last read of the migration state gave nothing, with its target. The
+    /// state box says so; the state stays as it was (design D2).
+    migration_error: Option<(Target, String)>,
 }
 
 impl OpenApp {
@@ -1045,7 +1048,88 @@ impl MortiseApp {
         match purpose {
             ReadFor::Catalog => {}
             ReadFor::DryRun { .. } => {}
-            ReadFor::Migrations { .. } => {}
+            ReadFor::Migrations { target } => self.migrations_read(index, target, end),
+        }
+    }
+
+    /// Takes in a read of the migration state of `target` (design D7): its document
+    /// merges into the app's package data. Otherwise the state box says why, and the
+    /// state stays as it was (design D2).
+    fn migrations_read(
+        &mut self,
+        index: usize,
+        target: Target,
+        end: Result<mortise_core::ReadEnd, mortise_core::StartError>,
+    ) {
+        let status = match end {
+            Ok(end) => match mortise_core::document::<mortise_core::MigrationStatus>(&end.stdout) {
+                Ok(status) => Ok(status),
+                Err(mortise_core::DataError::Malformed(reason)) => Err(reason),
+                Err(mortise_core::DataError::Missing) => Err(end
+                    .error_line()
+                    .unwrap_or_else(|| strings::read_end_reason(end.end))),
+            },
+            Err(error) => Err(strings::start_reason(&error)),
+        };
+        let modules_on: Vec<String> = self.snapshot(index).map_or_else(Vec::new, |app| {
+            app.modules
+                .iter()
+                .filter(|module| module.state == ModuleState::On)
+                .map(|module| module.name.clone())
+                .collect()
+        });
+        let Some(open) = self.apps.get_mut(index) else {
+            return;
+        };
+        let status = match status {
+            Ok(status) => status,
+            Err(reason) => {
+                open.migration_error = Some((target, reason));
+                return;
+            }
+        };
+        open.migration_error = None;
+        let modules_on: Vec<&str> = modules_on.iter().map(String::as_str).collect();
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |since| since.as_millis() as i64);
+        self.set_package(index, |package| {
+            package.merge_migrations(status, &target, &modules_on, now_ms);
+        });
+    }
+
+    /// After a run of the app at `index` ended, with these words (design D7): once
+    /// the migration state was read in this session, a migrate, roll back, reset,
+    /// refresh or fresh is followed by a read of the same target, whatever its exit
+    /// code. A delete forgets the state of the module it deleted.
+    fn after_run(&mut self, index: usize, args: &[String]) {
+        let Some(open) = self.apps.get(index) else {
+            return;
+        };
+        let deleted = match (destructive_words(args), open.runs.ended()) {
+            (
+                Some((Action::DeleteModule, Target::Module(name))),
+                Some((RunEnd::Exited { code: Some(0), .. }, _, _)),
+            ) => Some(name),
+            _ => None,
+        };
+        if let Some(name) = deleted {
+            if open.package.migrations.contains_key(&name) {
+                self.set_package(index, |package| {
+                    package.migrations.remove(&name);
+                });
+            }
+            return;
+        }
+        let gives = self
+            .snapshot(index)
+            .is_some_and(|app| mortise_core::gives_data(&app.package));
+        if !gives || open.package.migration_table.is_none() {
+            return;
+        }
+        if let Some(target) = actions_view::reads_state_after(args) {
+            let words = mortise_core::migrate_status_args(&target);
+            self.start_read(index, words, ReadFor::Migrations { target });
         }
     }
 
@@ -1225,14 +1309,29 @@ impl MortiseApp {
                 if production {
                     body = format!("{body} {}", strings::production_body(&name));
                 }
+                // With the migration state the dialog lists the last batch and
+                // counts it (S10.3); without it, only the dry run (deviation S41).
+                let last_batch: Vec<String> = self
+                    .snapshot(index)
+                    .and_then(|app| {
+                        app.package_data.migrations.get(&object).map(|state| {
+                            state
+                                .last_batch()
+                                .into_iter()
+                                .map(|ran| ran.name.clone())
+                                .collect()
+                        })
+                    })
+                    .unwrap_or_default();
+                let confirm = match last_batch.len() {
+                    0 => strings::action_button(Action::RollBack).to_owned(),
+                    n => strings::roll_back_counted(n),
+                };
                 Dialog {
                     danger: true,
                     left: Some(strings::DRY_RUN.to_owned()),
-                    ..Dialog::new(
-                        strings::roll_back_title(&object),
-                        body,
-                        strings::action_button(Action::RollBack).to_owned(),
-                    )
+                    code: (!last_batch.is_empty()).then(|| last_batch.join("\n")),
+                    ..Dialog::new(strings::roll_back_title(&object), body, confirm)
                 }
             }
             Ask::Production => Dialog {
@@ -1277,15 +1376,43 @@ impl MortiseApp {
             name: name.to_owned(),
             text: String::new(),
         });
+        // With the migration state reset and refresh name the tables and count the
+        // migrations (S10.5 a and b); without it they do not (deviation S42).
+        let state = app.package_data.migrations.get(module);
+        let ran = state.map_or(0, |state| state.ran.len());
+        let tables = state.map_or(&[][..], |state| state.tables.as_slice());
+        let code = (!tables.is_empty()).then(|| tables.join(", "));
         let dialog = match act.action {
             Action::ResetMigrations => Dialog {
                 left: Some(strings::DRY_RUN.to_owned()),
-                lines: vec![strings::nothing_outside(module)],
-                ..Dialog::new(title, strings::reset_body(module), confirm)
+                code,
+                lines: vec![match tables.len() {
+                    0 => strings::nothing_outside(module),
+                    n => strings::tables_untouched(n, module),
+                }],
+                ..Dialog::new(
+                    title,
+                    strings::reset_body(module),
+                    match ran {
+                        0 => confirm,
+                        n => strings::reset_counted(n),
+                    },
+                )
             },
             Action::RefreshMigrations => Dialog {
-                lines: vec![strings::NO_DRY_RUN.to_owned()],
-                ..Dialog::new(title, strings::refresh_body(module), confirm)
+                code,
+                lines: vec![match tables.len() {
+                    0 => strings::NO_DRY_RUN.to_owned(),
+                    n => strings::tables_no_dry_run(n),
+                }],
+                ..Dialog::new(
+                    title,
+                    strings::refresh_body(module),
+                    match ran {
+                        0 => confirm,
+                        n => strings::refresh_counted(n),
+                    },
+                )
             },
             Action::FreshMigrate => {
                 let on = app
@@ -2168,10 +2295,14 @@ impl eframe::App for MortiseApp {
         let mut running = false;
         let mut ended = Vec::new();
         let mut generated = Vec::new();
+        let mut finished = Vec::new();
         for (index, open) in self.apps.iter_mut().enumerate() {
             let was = open.runs.running().is_some();
             running |= open.runs.poll();
             if was && open.runs.running().is_none() {
+                if let Some(args) = open.runs.args() {
+                    finished.push((index, args.to_vec()));
+                }
                 if let Some((act, modules_on)) = open.action_run.take() {
                     ended.push((index, act, modules_on));
                 }
@@ -2200,6 +2331,10 @@ impl eframe::App for MortiseApp {
         }
         for (index, generating) in generated {
             self.generate_ended(index, generating);
+        }
+        // After the reads that ended, so that a read that follows a run can start.
+        for (index, args) in finished {
+            self.after_run(index, &args);
         }
         if running {
             ctx.request_repaint_after(std::time::Duration::from_millis(100));
@@ -2475,6 +2610,13 @@ impl eframe::App for MortiseApp {
                             held,
                             keyboard: self.keyboard,
                             mac,
+                            reading_state: open.reading.as_ref().and_then(|reading| match &reading
+                                .purpose
+                            {
+                                ReadFor::Migrations { target } => Some(target),
+                                _ => None,
+                            }),
+                            state_error: open.migration_error.as_ref(),
                         },
                         generate: &mut open.generate,
                         generate_inputs: GenerateInputs {
@@ -2746,6 +2888,11 @@ impl eframe::App for MortiseApp {
                     self.act(current, act);
                 }
             }
+            Some(BoundaryAction::ReadMigrations { target, args }) => {
+                if let Some(current) = self.current {
+                    self.start_read(current, args, ReadFor::Migrations { target });
+                }
+            }
             Some(BoundaryAction::Generate(GenerateAsk::NewModule)) => {
                 self.open_generate(None, MODULE_MAKE)
             }
@@ -2901,6 +3048,7 @@ fn open_app(ctx: &egui::Context, entry: &AppEntry, data_dir: Option<&Path>) -> O
         select_new: None,
         package: PackageData::default(),
         reading: None,
+        migration_error: None,
     }
 }
 

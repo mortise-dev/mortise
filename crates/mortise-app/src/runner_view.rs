@@ -420,6 +420,11 @@ impl AppRuns {
         }
     }
 
+    /// The artisan words of the run on screen.
+    pub fn args(&self) -> Option<&[String]> {
+        self.current.as_ref().map(|current| current.args.as_slice())
+    }
+
     /// The label of the command that runs, if one does.
     pub fn running(&self) -> Option<&str> {
         match &self.current {

@@ -66,6 +66,21 @@ pub fn with_dry_run(words: Vec<String>) -> Vec<String> {
     with_flags(words, &["--dry-run", "--json"])
 }
 
+/// The words of a read of the migration state of `target`: `module:migrate-status
+/// Checkout --json`, or `--all`. A module name that starts with `-` goes after `--`,
+/// as [`crate::plan`] puts it.
+pub fn migrate_status_args(target: &Target) -> Vec<String> {
+    let mut words = vec!["module:migrate-status".to_string()];
+    match target {
+        Target::Module(name) if name.starts_with('-') => {
+            words.extend(["--".to_string(), name.clone()]);
+        }
+        Target::Module(name) => words.push(name.clone()),
+        Target::All => words.push("--all".to_string()),
+    }
+    with_json(words)
+}
+
 fn with_flags(mut words: Vec<String>, flags: &[&str]) -> Vec<String> {
     let at = words
         .iter()
@@ -438,6 +453,10 @@ mod tests {
         assert_eq!(
             with_dry_run(words(&["module:make", "--", "--force"])),
             words(&["module:make", "--dry-run", "--json", "--", "--force"])
+        );
+        assert_eq!(
+            migrate_status_args(&Target::Module("-Odd".into())),
+            words(&["module:migrate-status", "--json", "--", "-Odd"])
         );
     }
 

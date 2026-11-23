@@ -589,3 +589,66 @@ fn delete_asks_for_the_name_and_selects_all_modules_when_it_ends() {
     );
     assert_eq!(runs(&mut harness, &desk, &root), 1);
 }
+
+#[test]
+fn the_migration_state_is_read_when_asked_and_again_after_a_migrate() {
+    let (desk, root) = desk("");
+    common::package_version(&root, "v13.4.0");
+    // The migration that ran in the recording creates a table.
+    let migrations = root.join("Modules/Checkout/database/migrations");
+    std::fs::create_dir_all(&migrations).unwrap();
+    std::fs::write(
+        migrations.join("2026_11_23_110149_create_orders_table.php"),
+        "<?php\nreturn new class extends Migration {\n    public function up(): void\n    {\n        \
+         Schema::create('orders', function (Blueprint $table) {\n            $table->id();\n        \
+         });\n    }\n};\n",
+    )
+    .unwrap();
+    let mut harness = desk.start();
+    actions_of(&mut harness, "Checkout");
+    harness.get_by_label("Not read yet.");
+    harness
+        .query_by_label_contains("module:migrate-status --no-interaction --ansi Checkout --json")
+        .unwrap();
+    harness
+        .get_by_role_and_label(Role::Button, "Read migration state")
+        .click();
+    harness.run_steps(3);
+    wait_for(&mut harness, "2026_11_23_120000_create_order_items_table");
+    harness.get_by_label("1 migration");
+    harness.get_by_role_and_label(Role::Button, "Migrate (1)");
+    harness.get_by_role_and_label(Role::Button, "Read again");
+    // A read is not a run: the drawer and the history did not get it.
+    assert_eq!(runs(&mut harness, &desk, &root), 0);
+
+    // Roll back lists its last batch; reset names the table it drops.
+    select(&mut harness, "Roll back");
+    run(&mut harness);
+    harness.get_by_role_and_label(Role::Button, "Roll back 1 migration");
+    harness
+        .get_by_role_and_label(Role::Button, "Cancel")
+        .click();
+    harness.run_steps(3);
+    select(&mut harness, "Destructive");
+    select(&mut harness, "Reset migrations");
+    harness.get_by_label("orders, 1 table");
+
+    // After a read, a migrate is followed by a read of the same module.
+    select(&mut harness, "Migrate");
+    harness.get_by_label("After the run Mortise reads the state again:");
+    let read_ms = |app: &MortiseApp| {
+        app.app().and_then(|app| {
+            app.package_data
+                .migrations
+                .get("Checkout")
+                .map(|state| state.read_ms)
+        })
+    };
+    let before = read_ms(harness.state()).unwrap();
+    run(&mut harness);
+    wait_for(&mut harness, "Migrated Checkout: 1 migration ran.");
+    common::wait_until(&mut harness, "the state is read again", |app| {
+        read_ms(app).is_some_and(|ms| ms > before)
+    });
+    assert_eq!(runs(&mut harness, &desk, &root), 1);
+}

@@ -2370,6 +2370,158 @@ pub fn was_stopped(label: &str) -> String {
 }
 
 // ---------------------------------------------------------------------------
+// The migration state (P4, design D7)
+
+/// The title of the state box of Migrate (S10.1, S10.2 f).
+pub const WAITING: &str = "Waiting";
+/// The title of the state box of Roll back (S10.2 c).
+pub const LAST_BATCH: &str = "Last batch";
+/// Not in the spec: the title of the state box of Reset and Refresh.
+pub const RAN: &str = "Ran";
+/// Not in the spec: the state box before a read.
+pub const NOT_READ_YET: &str = "Not read yet.";
+/// Not in the spec: the button that reads the migration state.
+pub const READ_MIGRATION_STATE: &str = "Read migration state";
+/// Not in the spec: the state box while its read runs.
+pub const STATE_READING: &str = "Reading";
+/// Not in the spec: the button that reads the migration state again.
+pub const STATE_READ_AGAIN: &str = "Read again";
+/// Not in the spec: the state box when nothing waits, and the row detail of Migrate.
+pub const NOTHING_WAITING: &str = "Nothing waiting";
+/// Not in the spec: the state box of Roll back, Reset and Refresh when nothing ran.
+pub const NOTHING_RAN_YET: &str = "Nothing ran";
+/// Not in the spec: the state box when the database has no migrations table.
+pub const NO_MIGRATIONS_TABLE: &str = "The database has no migrations table yet.";
+/// Not in the spec: the line before the read that follows a migration command.
+pub const READS_AGAIN_AFTER: &str = "After the run Mortise reads the state again:";
+
+/// `1 migration`, `9 migrations` (S10.1).
+pub fn migrations(n: usize) -> String {
+    match n {
+        1 => "1 migration".to_owned(),
+        n => format!("{} migrations", count(n as u64)),
+    }
+}
+
+/// `1 migration in 1 module` (S10.2 f). Not in the spec: the other counts.
+pub fn migrations_in_modules(n: usize, modules: usize) -> String {
+    match modules {
+        1 => format!("{} in 1 module", migrations(n)),
+        m => format!("{} in {} modules", migrations(n), count(m as u64)),
+    }
+}
+
+/// The row detail of Migrate: `1 waiting` (S10.1).
+pub fn waiting(n: usize) -> String {
+    match n {
+        0 => NOTHING_WAITING.to_owned(),
+        n => format!("{} waiting", count(n as u64)),
+    }
+}
+
+/// The row detail of Roll back: `last batch, 1` (S10.1).
+pub fn last_batch(n: usize) -> String {
+    format!("last batch, {}", count(n as u64))
+}
+
+/// The row detail of Reset and Refresh, and the Migrations line of S4.3: `9 ran`.
+pub fn ran(n: usize) -> String {
+    format!("{} ran", count(n as u64))
+}
+
+/// `Migrate (1)`, the run button of Migrate and of the header of S4.3 with waiting
+/// migrations (S10.1, S4.3).
+pub fn migrate_counted(waiting: usize) -> String {
+    match waiting {
+        0 => action_button(mortise_core::Action::Migrate).to_owned(),
+        n => format!("Migrate ({})", count(n as u64)),
+    }
+}
+
+/// `Roll back 1 migration`, the button of the roll back dialog (S10.3). Not in the
+/// spec: the other counts.
+pub fn roll_back_counted(n: usize) -> String {
+    format!("Roll back {}", migrations(n))
+}
+
+/// `Reset 9 migrations` (S10.5 a).
+pub fn reset_counted(n: usize) -> String {
+    format!("Reset {}", migrations(n))
+}
+
+/// `Refresh 9 migrations` (S10.5 b).
+pub fn refresh_counted(n: usize) -> String {
+    format!("Refresh {}", migrations(n))
+}
+
+/// Not in the spec: when the state was read, `Read at 14:05`.
+pub fn state_read_at(clock: &str) -> String {
+    format!("Read at {clock}")
+}
+
+/// Not in the spec, design D2: a state read that gave no document.
+pub fn migration_state_failed(reason: &str) -> String {
+    format!("Mortise could not read the migration state: \"{reason}\".")
+}
+
+/// Not in the spec, design D2: the reason of a read that ended without a document
+/// and wrote nothing on standard error.
+pub fn read_end_reason(end: mortise_core::RunEnd) -> String {
+    use mortise_core::RunEnd;
+    match end {
+        RunEnd::Exited {
+            code: Some(code), ..
+        } => format!("exit code {code}"),
+        RunEnd::Exited { code: None, .. } => "stopped by a signal".to_owned(),
+        RunEnd::Stopped { limit: Some(_), .. } => "stopped at the time limit".to_owned(),
+        RunEnd::Stopped { limit: None, .. } => "stopped".to_owned(),
+    }
+}
+
+/// `7 tables` (S10.4).
+pub fn tables(n: usize) -> String {
+    match n {
+        1 => "1 table".to_owned(),
+        n => format!("{} tables", count(n as u64)),
+    }
+}
+
+/// ` and 2 more`, after the tables named in a row of "What is lost" (S10.4).
+pub fn and_more(n: usize) -> String {
+    format!(" and {} more", count(n as u64))
+}
+
+/// `Every table and column created by the 9 migrations of Checkout that ran` (S10.4).
+/// Not in the spec: the sentence for one migration.
+pub fn reset_loses_counted(module: &str, ran: usize) -> String {
+    match ran {
+        1 => format!("Every table and column created by the 1 migration of {module} that ran"),
+        n => format!(
+            "Every table and column created by the {} migrations of {module} that ran",
+            count(n as u64)
+        ),
+    }
+}
+
+/// `7 tables come back empty` (S10.4 a). Not in the spec: one table.
+pub fn tables_come_back_empty(n: usize) -> String {
+    match n {
+        1 => "1 table comes back empty".to_owned(),
+        n => format!("{} come back empty", tables(n)),
+    }
+}
+
+/// `7 tables. Nothing outside Checkout is touched.` (S10.5 a)
+pub fn tables_untouched(n: usize, module: &str) -> String {
+    format!("{}. {}", tables(n), nothing_outside(module))
+}
+
+/// `7 tables. This command has no dry run.` (S10.5 b)
+pub fn tables_no_dry_run(n: usize) -> String {
+    format!("{}. {NO_DRY_RUN}", tables(n))
+}
+
+// ---------------------------------------------------------------------------
 // Destructive actions (S10.4, S10.5)
 
 /// The row of the closed group in the list of actions.

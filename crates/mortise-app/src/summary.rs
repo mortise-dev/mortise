@@ -568,18 +568,29 @@ fn one_module(
         let value = strings::routes_of_module(routes.len(), with("api"), with("web"));
         lines.push((strings::ROUTES, value, pal.ink, StateMark::None));
     }
-    // Which migrations ran needs PHP. Until then: how many files there are.
-    let migrations = module
-        .kinds
-        .iter()
-        .find(|kind| kind.kind == "Migrations")
-        .map_or(0, |kind| kind.files);
-    lines.push((
-        strings::MIGRATIONS,
-        strings::files(u64::from(migrations)),
-        pal.ink,
-        StateMark::None,
-    ));
+    // Which migrations ran comes from a read of the migration state (design D7).
+    // Until then: how many files there are.
+    let state = app.package_data.migrations.get(&module.name);
+    let waiting = state.map_or(0, |state| state.waiting.len());
+    let migrations = match state {
+        Some(state) => strings::ran(state.ran.len()),
+        None => strings::files(u64::from(
+            module
+                .kinds
+                .iter()
+                .find(|kind| kind.kind == "Migrations")
+                .map_or(0, |kind| kind.files),
+        )),
+    };
+    // With waiting migrations: "9 ran" and then "1 waiting" with its mark (S4.3).
+    let mut ran_before = None;
+    if waiting > 0 {
+        ran_before = Some((lines.len(), migrations));
+        let value = strings::waiting(waiting);
+        lines.push((strings::MIGRATIONS, value, pal.warn, StateMark::Warn));
+    } else {
+        lines.push((strings::MIGRATIONS, migrations, pal.ink, StateMark::None));
+    }
     let churn = match (&app.git, module.churn) {
         (Git::Repository { .. }, Some(churn)) => {
             strings::churn(churn.commits, churn.last_commit, now)
@@ -633,7 +644,18 @@ fn one_module(
             match mark {
                 StateMark::Good => draw::mark_good(ui, at, *color),
                 StateMark::Off => draw::mark_off(ui, at, *color),
+                StateMark::Warn => draw::mark_warn(ui, at, *color),
                 StateMark::None => {}
+            }
+            if let Some((_, ran)) = ran_before.as_ref().filter(|(line, _)| *line == i) {
+                draw::label(
+                    ui,
+                    pos2(at.left() - 8.0, mid),
+                    Align2::RIGHT_CENTER,
+                    ran,
+                    ty::BODY,
+                    pal.ink,
+                );
             }
             if i + 1 < lines.len() {
                 draw::hline(
@@ -678,6 +700,7 @@ enum StateMark {
     None,
     Good,
     Off,
+    Warn,
 }
 
 struct Stat {

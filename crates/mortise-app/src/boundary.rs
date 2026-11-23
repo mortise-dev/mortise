@@ -63,6 +63,12 @@ pub enum BoundaryAction {
     OpenAction(mortise_core::Action),
     /// Start an action of the Actions tab, asking first where the rules say so.
     Act(crate::actions_view::Act),
+    /// Read the migration state of a target with these artisan words, the line on
+    /// screen (design D7).
+    ReadMigrations {
+        target: mortise_core::Target,
+        args: Vec<String>,
+    },
     /// Start a generator of the Generate tab, or ask first.
     Generate(crate::generate_view::GenerateAsk),
 }

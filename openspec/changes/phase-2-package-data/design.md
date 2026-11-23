@@ -359,6 +359,26 @@ accessible name and a 24 px target (`tests/accessibility.rs`).
   polled each frame; `start_read` starts one and `read_ended` takes its end (a start error ends it at
   once). `OpenApp::busy()` gives the label of a run or a read; every run button uses it.
 
+### Changed while building 15.5
+
+- `package::migrate_status_args(target)` gives the words of a state read, with a module name that
+  starts with `-` after `--`. The panel shows them and the app runs them.
+- The button that reads ("Read migration state", then "Read again" with "Read at 14:05") and its line
+  stand under the state box. After a read in this session the line has "After the run Mortise reads the
+  state again:" above it, so the one line serves both. Fresh has no box: after a read its panel shows
+  that sentence and the line under "What is lost".
+- "A read in this session" is `PackageData::migration_table` being set. The app looks at the words of
+  every run that ends (`AppRuns::args`), so Run again from the drawer is followed by a read too. A delete
+  forgets the module's state only when it exits with 0.
+- The box of Reset and Refresh is titled "Ran" and lists the migrations that ran (not in the spec).
+  Without a waiting migration the button reads "Migrate", and the box "Nothing waiting"; without a ran
+  one the box reads "Nothing ran" (not in the spec).
+- Under "All modules" the state is that of the modules that are on and were read. The box shows
+  "Reading" while a read of its target or of "All modules" runs.
+- The roll back dialog keeps its dry run on the left and lists the last batch in its code box. The
+  tables row names five tables and then "and 2 more"; the dialogs list them all.
+- S4.3 reads "9 ran" alone when nothing waits.
+
 ## Risks / Trade-offs
 
 - [The user must press "List files" and "Read migration state"] → One more step than the spec draws.
