@@ -15,8 +15,8 @@
 
 ## 3. Summary
 
-- [ ] 3.1 The app runtime box lists the app's own components and names each module that is not Up. Verify with an assertion in the existing runtime screen test
-- [ ] 3.2 The module Summary draws the module runtime box above the tasks box when the module has a status, and none otherwise. Verify with an assertion in the existing runtime screen test, with hidden components and with no module component
+- [x] 3.1 The app runtime box lists the app's own components and names each module that is not Up. Verify with an assertion in the existing runtime screen test
+- [x] 3.2 The module Summary draws the module runtime box above the tasks box when the module has a status, and none otherwise. Verify with an assertion in the existing runtime screen test, with hidden components and with no module component
 
 ## 4. Strings, images, deviations
 
