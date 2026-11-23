@@ -149,6 +149,7 @@ impl CommandLine {
 `artisan` joins the prefix and the arguments, and puts `--no-interaction --ansi` right after the first
 artisan argument: `herd php artisan module:make --no-interaction --ansi Blog`, and
 `herd php artisan --version --no-interaction --ansi`. With no argument the two flags come alone.
+A flag that the prefix, or the arguments before a `--`, already hold is not added again.
 
 - Why not at the end: an argument list can hold `--`. Words after `--` are not options, so flags at the
   end would be lost. Symfony Console reads options anywhere before `--`.
@@ -160,14 +161,16 @@ A word is written bare when it is not empty and holds only ASCII letters, digits
 (and `\` on Windows). Any other word is quoted:
 
 - **macOS, Linux (POSIX `sh`)**: in single quotes. A `'` inside becomes `'\''`. An empty word is `''`.
+  A program that holds `=` is quoted too: `sh` reads `a=b cmd` as an assignment.
 - **Windows (PowerShell)**: in single quotes. A `'` inside becomes `''`. An empty word is `''`. When the
   program itself is quoted, the line starts with `& `.
 
 Why PowerShell and not `cmd`: PowerShell is the default shell of Windows Terminal. A single-quoted
 PowerShell string expands nothing. `cmd` has no quoting that stops `%NAME%`. Known limit, said in a
 comment: Windows PowerShell 5.1 drops an empty argument and mangles a `"` inside an argument to a
-program. PowerShell 7.3 and later pass both. The line is for reading and copying. The process always
-gets the list.
+program. PowerShell 7.3 and later pass both, except to a `.bat` or `.cmd`, which still gets its
+arguments the legacy way. So an empty argument can vanish when the copied Herd line is pasted. The line
+is for reading and copying. The process always gets the list.
 
 Tests, one table per quoting function, in `run/mod.rs`:
 
@@ -183,6 +186,7 @@ Tests, one table per quoting function, in `run/mod.rs`:
 | `C:\Program Files\php\php.exe` as program | `'C:\Program Files\php\php.exe'` | `& 'C:\Program Files\php\php.exe'` |
 | `Füße` | `'Füße'` | `'Füße'` |
 | `a,b`, `@x`, `%PATH%`, `a;b`, `a*` | quoted | quoted |
+| `bin/a=b` as program | `'bin/a=b'` | bare |
 
 One more test: `--no-interaction --ansi` sit after the first argument, also when the list holds `--`.
 
@@ -243,8 +247,11 @@ pub(crate) fn capture(line: &CommandLine, folder: &Path, limit: Duration) -> std
 
 `capture` and, later, a run prepare the command the same way, in one private function:
 
-1. A program that starts with `./` or `.\` is joined to `folder`. std says a relative program with
-   `current_dir` is platform specific, so Mortise makes it absolute. The line on screen keeps `./`.
+1. A relative program that holds a separator (`/`, or `\` on Windows) is joined to `folder`. std says
+   a relative program with `current_dir` is platform specific, so Mortise makes it absolute. The line
+   on screen keeps the word as typed. A bare name stays a lookup in `PATH`.
+   On Windows a `.bat` or `.cmd` whose path holds `%` is refused with `InvalidInput`, because `cmd.exe`
+   would expand it. It shows as "did not start".
 2. `current_dir(folder)`.
 3. `PATH` of the child is the `PATH` of Mortise plus the folders below, added at the end. std looks the
    program up in the child's `PATH`: on Windows in `resolve_exe` (std), on Unix by the documentation
@@ -259,7 +266,8 @@ pub(crate) fn capture(line: &CommandLine, folder: &Path, limit: Duration) -> std
 4. stdout and stderr are piped.
 
 `capture` then starts two threads. Each reads one pipe by line (`BufRead::read_until(b'\n')`, lossy
-UTF-8, `\r` trimmed) and sends `(Stream, String)` over one `mpsc` channel. The caller loops:
+UTF-8, `\r` trimmed) and sends `(Stream, String)` over one `mpsc` channel. A line is cut at 64 KiB,
+and a stream keeps at most 64 KiB. The rest is read and dropped, so the program never blocks. The caller loops:
 `recv_timeout(50 ms)`, then `try_wait`. It ends when the program has ended and both pipes closed, or
 250 ms after the program ended (a grandchild can hold a pipe open), or at the limit. At the limit it
 calls `Child::kill` and sets `timed_out`. It never joins a reader thread.
@@ -397,7 +405,8 @@ required-features = ["testing"]
 
 The binary is three lines: it calls `mortise_core::testing::fake_artisan_main()`. It looks at its first
 argument only. `--version` prints `Laravel Framework ` and `13.2.0` in green SGR codes and exits 0.
-`fail` prints `service "app" is not running` on stderr and exits 1. `wait` sleeps 60 s. Anything else
+`fail` prints `service "app" is not running` on stderr and exits 1. `wait` sleeps 60 s. `flood` prints
+2 MiB of lines on stderr and a 2 MiB line with no newline on stdout, and exits 0. Anything else
 prints `Command "<name>" is not defined.` on stderr and exits 1. A test picks the case with a word in
 the Custom line: `"<path>" fail` makes `fail` the first argument.
 
@@ -426,6 +435,9 @@ Core tests in `tests/run.rs`: answered (with the colour codes gone), `Exited` wi
 - [Arguments pass `cmd.exe` with Herd on Windows] → std escapes or refuses (D4).
 - [The PowerShell line is wrong in PowerShell 5.1 for an empty word or a `"`] → A comment says so. The
   process is not affected.
+- [Test kills only the launcher at its limit, and a descendant that holds the pipes keeps the reader
+  threads alive] → Milestone 11 stops the process group (Unix) or the tree (`taskkill /T`, Windows) as
+  D10 says, for the test too. Until then `--version` is the only command, and it ends by itself.
 
 ## Migration Plan
 
