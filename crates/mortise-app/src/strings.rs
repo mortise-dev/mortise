@@ -10,24 +10,6 @@ use mortise_core::{AppSnapshot, LayoutKey, ReadError, Version};
 pub const ALL_MODULES: &str = "All modules";
 
 // Actions (S10.1, S10.2)
-/// The hint of an action row of the palette.
-pub const ACTION: &str = "Action";
-/// Not in the spec: the group of the palette when "All modules" is selected.
-pub const ACTIONS_FOR_ALL: &str = "Actions for all modules";
-pub fn actions_for(module: &str) -> String {
-    format!("Actions for {module}")
-}
-/// The row of an action in the palette: "Migrate Checkout", or the S10.2 f name for all modules.
-pub fn action_label(action: mortise_core::Action, module: Option<&str>) -> String {
-    match module {
-        Some(module) => match action {
-            mortise_core::Action::RunTests => format!("Run tests of {module}"),
-            mortise_core::Action::CheckTranslations => format!("Check translations in {module}"),
-            action => format!("{} {module}", action_button(action)),
-        },
-        None => action_row(action, true).to_owned(),
-    }
-}
 pub const SEARCH: &str = "Search or run a command";
 pub const MODULES_ON: &str = "Modules on";
 pub const MODULE_STATE: &str = "Module state";
@@ -270,12 +252,6 @@ pub fn ago(now: i64, then: i64) -> String {
     }
 }
 
-/// The age of a recent action in the palette, in seconds since 1970: `ran 2 minutes ago`
-/// (S12.2 a). The other units, such as `ran 8 s ago`, are not in the spec.
-pub fn ran_ago(now: i64, then: i64) -> String {
-    format!("ran {}", ago(now, then))
-}
-
 /// `14 commits in 30 days, last 2 days ago`
 pub fn churn(commits: u32, last: Option<i64>, now: i64) -> String {
     let count = match commits {
@@ -410,11 +386,6 @@ pub fn warnings(n: usize) -> String {
 /// `Findings in shop-api`
 pub fn findings_in(app: &str) -> String {
     format!("Findings in {app}")
-}
-
-/// `Modules in shop-api`: the group of modules in the palette.
-pub fn modules_in(app: &str) -> String {
-    format!("Modules in {app}")
 }
 
 /// `Show all 3 findings`
@@ -1179,8 +1150,6 @@ pub fn exposed(endpoints: &[String]) -> String {
 
 // --- How PHP runs (S1.3, S8.2) ---
 
-/// Not in the spec: the row of the palette that opens Settings on PHP.
-pub const SETTINGS_PHP: &str = "Settings: PHP";
 pub const RUN_PHP_WITH: &str = "Run PHP with";
 /// The choices of "Run PHP with", in the order of [`runner_place`].
 pub const RUNNERS: [&str; 4] = ["Herd", "Sail", "Docker", "Custom"];
@@ -1393,11 +1362,6 @@ mod runtime_tests {
 
 pub const PUBLIC_SURFACE: &str = "Public surface";
 
-/// `Scan the public surface of Billing`
-pub fn scan_the_surface_of(module: &str) -> String {
-    format!("Scan the public surface of {module}")
-}
-
 /// `Reading 61 of 96 files`
 pub fn reading_files(read: usize, total: usize) -> String {
     format!("Reading {read} of {}", files(total as u64))
@@ -1416,8 +1380,6 @@ pub const NOTHING_RAN: &str =
     "No command has run yet. Output of generators and actions appears here.";
 /// The keys that show and hide the drawer, on every platform (section 7).
 pub const TOGGLE_RUNNER_KEYS: &str = "Ctrl `";
-/// Not in the spec: the palette row that shows and hides the drawer, as "Theme: dark" is written.
-pub const SHOW_OR_HIDE_RUNNER: &str = "Runner drawer: show or hide";
 /// Not in the spec: the name of the handle at the top of the drawer.
 pub const DRAWER_HEIGHT: &str = "Height of the runner drawer";
 /// Not in the spec: a run whose output passed the limit of the history.
@@ -1755,19 +1717,6 @@ pub(crate) fn with_article(noun: &str) -> String {
         format!("a {noun}")
     }
 }
-
-/// The row of a generator in the palette: `Generate a model in Checkout`.
-pub fn generate_row(name: &str, module: &str) -> String {
-    format!(
-        "Generate {} in {module}",
-        with_article(&generator_noun(name))
-    )
-}
-
-/// The group of the palette that lists generators.
-pub const GENERATORS: &str = "Generators";
-/// The hint of a generator row of the palette: Enter opens its form.
-pub const FORM: &str = "Form";
 
 /// Not in the spec: why a run gave no document. serde's message for a malformed one,
 /// else how the run ended.
