@@ -1,0 +1,11 @@
+{
+  "command": "php artisan module:make Blog --no-interaction --ansi",
+  "args": [
+    "module:make",
+    "Blog"
+  ],
+  "made_with": "nwidart/laravel-modules 13.3.0, laravel/framework 13.43.0, PHP 8.4.27, macOS",
+  "exit": 0,
+  "stdout": "\n INFO Creating module: [Blog]. \n\n Generating file Modules/Blog/module.json .. 0.20ms DONE\n Generating file Modules/Blog/routes/web.php .. 0.13ms DONE\n Generating file Modules/Blog/routes/api.php .. 0.11ms DONE\n Generating file Modules/Blog/resources/views/index.blade.php .. 0.12ms DONE\n Generating file Modules/Blog/resources/views/components/layouts/master.blade.php  0.21ms DONE\n Generating file Modules/Blog/config/config.php .. 0.08ms DONE\n Generating file Modules/Blog/composer.json .. 0.10ms DONE\n Generating file Modules/Blog/resources/assets/js/app.js .. 0.13ms DONE\n Generating file Modules/Blog/resources/assets/sass/app.scss .. 0.12ms DONE\n Generating file Modules/Blog/vite.config.js .. 0.12ms DONE\n Generating file Modules/Blog/package.json .. 0.11ms DONE\n Generating file Modules/Blog/database/seeders/BlogDatabaseSeeder.php  0.19ms DONE\n Generating file Modules/Blog/app/Providers/BlogServiceProvider.php  0.11ms DONE\n Generating file Modules/Blog/app/Providers/EventServiceProvider.php  0.10ms DONE\n Generating file Modules/Blog/app/Providers/RouteServiceProvider.php  0.11ms DONE\n Generating file Modules/Blog/app/Http/Controllers/BlogController.php  0.10ms DONE\n\n INFO Module [Blog] created successfully. \n\n",
+  "stderr": ""
+}

@@ -1,0 +1,12 @@
+{
+  "command": "php artisan module:make-controller PostController Blog --no-interaction --ansi",
+  "args": [
+    "module:make-controller",
+    "PostController",
+    "Blog"
+  ],
+  "made_with": "nwidart/laravel-modules 13.3.0, laravel/framework 13.43.0, PHP 8.4.27, macOS",
+  "exit": 1,
+  "stdout": " Generating file Modules/Blog/app/Http/Controllers/PostController.php  0.66ms FAIL\n\n ERROR File : Modules/Blog/app/Http/Controllers/PostController.php already exists. \n\n",
+  "stderr": ""
+}

@@ -1,0 +1,11 @@
+{
+  "command": "php artisan module:seed Blog --no-interaction --ansi",
+  "args": [
+    "module:seed",
+    "Blog"
+  ],
+  "made_with": "nwidart/laravel-modules 13.3.0, laravel/framework 13.43.0, PHP 8.4.27, macOS",
+  "exit": 0,
+  "stdout": "\n INFO Seeding module .. \n\n Seeding Blog Module \n INFO Seeding database. \n\n Modules\\Blog\\Database\\Seeders\\BlogDatabaseSeeder .. RUNNING \n Modules\\Blog\\Database\\Seeders\\BlogDatabaseSeeder .. 0 ms DONE \n\nModule [Blog] seeded.\n.. 1.87ms DONE\n",
+  "stderr": ""
+}

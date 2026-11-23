@@ -1,0 +1,12 @@
+{
+  "command": "php artisan module:make-model Post Blog --no-interaction --ansi",
+  "args": [
+    "module:make-model",
+    "Post",
+    "Blog"
+  ],
+  "made_with": "nwidart/laravel-modules 13.3.0, laravel/framework 13.43.0, PHP 8.4.27, macOS",
+  "exit": 0,
+  "stdout": " Generating file Modules/Blog/app/Models/Post.php .. 0.32ms DONE\n",
+  "stderr": ""
+}

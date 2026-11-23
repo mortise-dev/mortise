@@ -1,0 +1,11 @@
+{
+  "command": "php artisan module:migrate --all --no-interaction --ansi",
+  "args": [
+    "module:migrate",
+    "--all"
+  ],
+  "made_with": "nwidart/laravel-modules 13.3.0, laravel/framework 13.43.0, PHP 8.4.27, macOS",
+  "exit": 0,
+  "stdout": " Running Migration Blog Module .. \n\n INFO Nothing to migrate. \n\n Running Migration Shop Module .. \n\n INFO Running migrations. \n\n 2026_11_23_022648_create_items_table .. 1.72ms DONE\n\n",
+  "stderr": ""
+}
