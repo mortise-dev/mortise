@@ -11,8 +11,8 @@ use mortise_core::{
     AppSnapshot, Link, Module, ModuleState, Reference, Rules, RulesSource, columns,
 };
 
+use crate::boundary::surface::{self as surface_view, ModuleSurface, Place, SurfaceInputs};
 use crate::strings;
-use crate::surface_view::{self, ModuleSurface, Place, SurfaceInputs};
 use crate::ui::draw::{self, Button, ButtonKind, StampState};
 use crate::ui::theme::{Face, Palette, Type, radius, size, stroke, ty};
 use crate::workspace::WorkAction;

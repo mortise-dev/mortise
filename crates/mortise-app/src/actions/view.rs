@@ -14,7 +14,7 @@ use mortise_core::{
     Options, Plan, RunnerKind, Severity, Target, gives_data, migrate_status_args, plan,
 };
 
-use crate::runner_view::line_now;
+use crate::runner::view::line_now;
 use crate::strings;
 use crate::ui::draw::alert_box;
 use crate::ui::draw::{self, Button, ButtonKind, Icon, ListNav, StampState};

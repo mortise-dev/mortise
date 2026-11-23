@@ -8,7 +8,7 @@ use std::sync::mpsc::{Receiver, channel};
 use eframe::egui::{self, Align2, Pos2, Rect, Ui, Vec2, pos2, vec2};
 use mortise_core::{Answer, Credentials, Environment, Secret, ask};
 
-use crate::runtime_view::Brief;
+use crate::runtime::view::Brief;
 use crate::strings;
 use crate::ui::draw::{self, Button, Icon};
 use crate::ui::theme::{Palette, radius, size, ty};

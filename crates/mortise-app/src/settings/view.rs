@@ -15,9 +15,9 @@ use mortise_core::{
     Secrets, Settings, TestOutcome, ThemeChoice,
 };
 
-use crate::environment_form::{EnvironmentForm, FormEvent, FormOptions, environment_form};
-use crate::php_settings::{PhpEvent, PhpForm, PhpOptions, PhpTest, php_field, propose};
-use crate::runtime_view::Brief;
+use crate::runner::php_settings::{PhpEvent, PhpForm, PhpOptions, PhpTest, php_field, propose};
+use crate::runtime::environment_form::{EnvironmentForm, FormEvent, FormOptions, environment_form};
+use crate::runtime::view::Brief;
 use crate::strings;
 use crate::ui::draw::{self, Button, Icon};
 use crate::ui::theme::{Face, Palette, Type, radius, size, ty};

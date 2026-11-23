@@ -15,23 +15,25 @@ use mortise_core::{
     propose_monogram, read_app_cached,
 };
 
-use crate::actions_view::{self, Act, ActionsInputs, ActionsState};
-use crate::add::{self, AddAction, AddPanel, Checked};
-use crate::boundary::BoundaryState;
+use crate::actions::view::{self as actions_view, Act, ActionsInputs, ActionsState};
+use crate::apps::view::{self as add, AddAction, AddPanel, Checked};
+use crate::boundary::surface::SurfaceInputs;
+use crate::boundary::view::BoundaryState;
 use crate::chrome::{self, Chrome};
-use crate::generate_view::{
+use crate::generate::view::{
     CatalogRead, GenerateAsk, GenerateInputs, GenerateResult, GenerateRun, GenerateState, RunPlace,
     TakenOut, typed_names,
 };
-use crate::index::{self, IndexRuntime, IndexState, Selection};
-use crate::palette::{self, Command, PaletteAction, PaletteState};
+use crate::index::view::{self as index, IndexRuntime, IndexState, Selection};
+use crate::palette::view::{self as palette, Command, PaletteAction, PaletteState};
 use crate::rail::{self, RailAction, Tile};
-use crate::runner_view::{self, AppRuns, DrawerAction, RunnerView, Shown};
-use crate::runtime_view::{Brief, RuntimeAction, RuntimeView};
-use crate::settings_view::{self, AppInfo, Section, SettingsAction, SettingsState};
+use crate::runner::view::{self as runner_view, AppRuns, DrawerAction, RunnerView, Shown};
+use crate::runtime::view::{Brief, RuntimeAction, RuntimeView};
+use crate::settings::view::{
+    self as settings_view, AppInfo, Section, SettingsAction, SettingsState,
+};
 use crate::strings;
-use crate::summary::{Sort, SummaryState};
-use crate::surface_view::SurfaceInputs;
+use crate::summary::view::{Sort, SummaryState};
 use crate::ui::dialog::{Answer, Dialog, Typed};
 use crate::ui::draw::EmptyMark;
 use crate::ui::draw::{self, Button, ButtonKind};
@@ -91,7 +93,7 @@ struct OpenApp {
     last_answers: BTreeMap<String, Brief>,
     /// The test of how PHP runs for the app: the one that runs and the last one, in
     /// this run (design D8). It stays when Settings close.
-    php_test: crate::php_settings::PhpTest,
+    php_test: crate::runner::php_settings::PhpTest,
     /// When the app was opened, to show how far its first read is only when it takes long.
     since: std::time::Instant,
     /// The command that runs or ran last, and the history of runs.
@@ -1893,7 +1895,7 @@ impl MortiseApp {
                 .catalog
                 .in_use(&app.package)
                 .get(generator)
-                .is_none_or(crate::generate_view::takes_module)
+                .is_none_or(crate::generate::view::takes_module)
         });
         let open = &mut self.apps[current];
         open.selection = match module {
@@ -1919,7 +1921,7 @@ impl MortiseApp {
         let dialog = match &ask {
             GenerateAsk::NewModule => return,
             GenerateAsk::ReadCatalog => {
-                let words = crate::generate_view::read_catalog_words();
+                let words = crate::generate::view::read_catalog_words();
                 let Some(app) = self.snapshot(index) else {
                     return;
                 };
@@ -2065,10 +2067,10 @@ impl MortiseApp {
         );
         let folders = app
             .as_deref()
-            .map(crate::generate_view::module_folders)
+            .map(crate::generate::view::module_folders)
             .unwrap_or_default();
         // The modules the run writes in place its paths first.
-        let asked = crate::generate_view::run_modules(
+        let asked = crate::generate::view::run_modules(
             app.as_deref(),
             &run.generator,
             run.module.as_deref(),
@@ -3452,7 +3454,7 @@ fn open_app(ctx: &egui::Context, entry: &AppEntry, data_dir: Option<&Path>) -> O
         seen: None,
         runtime: None,
         last_answers: BTreeMap::new(),
-        php_test: crate::php_settings::PhpTest::default(),
+        php_test: crate::runner::php_settings::PhpTest::default(),
         since: std::time::Instant::now(),
         runs: AppRuns::open(data_dir, &entry.root),
         actions: ActionsState::default(),

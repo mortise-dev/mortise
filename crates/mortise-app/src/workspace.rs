@@ -3,14 +3,14 @@
 use eframe::egui::{Align2, Color32, Key, Modifiers, Rect, Role, Ui, WidgetInfo, pos2, vec2};
 use mortise_core::{Action, AppSnapshot, Rules};
 
-use crate::actions_view::{self, ActionsInputs, ActionsState};
-use crate::boundary::{self, BoundaryState};
-use crate::findings_view;
-use crate::generate_view::{self, GenerateInputs, GenerateState};
-use crate::index::Selection;
+use crate::actions::view::{self as actions_view, ActionsInputs, ActionsState};
+use crate::boundary::surface::SurfaceInputs;
+use crate::boundary::view::{self as boundary, BoundaryState};
+use crate::findings::view as findings_view;
+use crate::generate::view::{self as generate_view, GenerateInputs, GenerateState};
+use crate::index::view::Selection;
 use crate::strings;
-use crate::summary::{self, SummaryState};
-use crate::surface_view::SurfaceInputs;
+use crate::summary::view::{self as summary, SummaryState};
 use crate::ui::draw::{self, Button, ButtonKind, EmptyMark, Icon, StampState, empty_state};
 use crate::ui::theme::{Face, Palette, size, ty};
 
@@ -30,7 +30,7 @@ pub enum WorkAction {
     /// Open a file or a folder in the editor, at a line.
     OpenInEditor { path: std::path::PathBuf, line: u32 },
     /// Something about the runtime of the app: another environment, a new try.
-    Runtime(crate::runtime_view::RuntimeAction),
+    Runtime(crate::runtime::view::RuntimeAction),
     /// Copy a text and say so.
     Copy { text: String, said: &'static str },
     /// Open the Actions tab of the selected module on this action. Nothing runs.
@@ -41,7 +41,7 @@ pub enum WorkAction {
         action: mortise_core::Action,
     },
     /// Start an action of the Actions tab, asking first where the rules say so.
-    Act(crate::actions_view::Act),
+    Act(crate::actions::view::Act),
     /// Read the migration state of a target with these artisan words, the line on
     /// screen (design D7).
     ReadMigrations {
@@ -49,7 +49,7 @@ pub enum WorkAction {
         args: Vec<String>,
     },
     /// Start a generator of the Generate tab, or ask first.
-    Generate(crate::generate_view::GenerateAsk),
+    Generate(crate::generate::view::GenerateAsk),
 }
 
 /// The five tabs. They are in every build, in this order, with the keys 1 to 5.

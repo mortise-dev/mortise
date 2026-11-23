@@ -6,7 +6,7 @@ use common::{Desk, shop_api};
 use eframe::egui::{Key, Role};
 use egui_kittest::kittest::{NodeT as _, Queryable as _};
 use mortise_app::chrome::Chrome;
-use mortise_app::index::Selection;
+use mortise_app::index::view::Selection;
 use mortise_app::workspace::Tab;
 
 #[test]

@@ -20,7 +20,7 @@ use mortise_core::{
     with_json,
 };
 
-use crate::runner_view::line_now;
+use crate::runner::view::line_now;
 use crate::strings;
 use crate::ui::draw::alert_box;
 use crate::ui::draw::{self, Button, ButtonKind, Icon};

@@ -11,7 +11,7 @@ use mortise_core::{
     tasks_of,
 };
 
-use crate::runtime_view::{self, Brief, RuntimeAction, RuntimeView};
+use crate::runtime::view::{self as runtime_view, Brief, RuntimeAction, RuntimeView};
 use crate::strings;
 use crate::ui::draw::{self, StampState};
 use crate::ui::theme::{Face, Palette, Type, radius, size, ty};

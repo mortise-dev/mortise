@@ -6,7 +6,7 @@ use eframe::egui::{
 };
 use mortise_core::{ALL_CODE, AppSnapshot, FindingState, IndexRows, Module, ModuleState};
 
-use crate::runtime_view::Brief;
+use crate::runtime::view::Brief;
 use crate::strings;
 use crate::ui::draw::{self, Icon, StampState};
 use crate::ui::theme::{Face, Palette, Type, radius, size, stroke, ty};
