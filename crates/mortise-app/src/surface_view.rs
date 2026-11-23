@@ -11,11 +11,11 @@ use eframe::egui::{
 };
 use mortise_core::{AppSnapshot, Module, Proposal, SurfaceEntry, SurfaceKind, SurfaceScan};
 
-use crate::boundary::BoundaryAction;
 use crate::draw::{self, Button, ButtonKind, Icon};
 use crate::draw::{EmptyMark, empty_state};
 use crate::strings;
 use crate::theme::{Palette, Type, radius, size, ty};
+use crate::workspace::WorkAction;
 
 /// How many files a scan reads in one frame.
 const FILES_A_FRAME: usize = 8;
@@ -110,7 +110,7 @@ pub fn surface(
     module: &Module,
     state: &mut ModuleSurface,
     inputs: &SurfaceInputs<'_>,
-) -> (f32, Option<BoundaryAction>) {
+) -> (f32, Option<WorkAction>) {
     let pal = place.pal;
     let typing = ui.ctx().text_edit_focused();
     let run = KeyboardShortcut::new(Modifiers::COMMAND, Key::Enter);
@@ -406,7 +406,7 @@ pub fn surface(
         .show(ui, pal, pos2(x, button_y), place.keyboard)
         .clicked()
     {
-        action = Some(BoundaryAction::Copy {
+        action = Some(WorkAction::Copy {
             text: proposal.as_text(),
             said: strings::COPIED_PROPOSAL,
         });

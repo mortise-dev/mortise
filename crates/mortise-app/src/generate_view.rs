@@ -20,12 +20,12 @@ use mortise_core::{
     with_json,
 };
 
-use crate::boundary::BoundaryAction;
 use crate::draw::alert_box;
 use crate::draw::{self, Button, ButtonKind, Icon};
 use crate::runner_view::line_now;
 use crate::strings;
 use crate::theme::{Face, Palette, Type, radius, size, ty};
+use crate::workspace::WorkAction;
 
 const MAKE_MODEL: &str = "module:make-model";
 /// The flag of `module:make-model` that S9.3 never takes out: the model's stub reads it.
@@ -706,7 +706,7 @@ pub fn generate(
     module: Option<&Module>,
     state: &mut GenerateState,
     inputs: &GenerateInputs<'_>,
-) -> Option<BoundaryAction> {
+) -> Option<WorkAction> {
     let name = module.map(|module| module.name.as_str());
     state.follow(name, true);
     // A list from another runner or working folder lists the files of another app.
@@ -794,7 +794,7 @@ fn picker(
     module: Option<&Module>,
     state: &mut GenerateState,
     inputs: &GenerateInputs<'_>,
-) -> (f32, Option<BoundaryAction>) {
+) -> (f32, Option<WorkAction>) {
     let catalog = inputs.catalog;
     let groups = listed(catalog, module, &state.filter);
     let items: Vec<&Generator> = groups
@@ -985,13 +985,13 @@ fn picker(
 
     let asked = open.and_then(|at| items.get(at)).and_then(|generator| {
         if generator.name == MODULE_MAKE {
-            return Some(BoundaryAction::Generate(GenerateAsk::NewModule));
+            return Some(WorkAction::Generate(GenerateAsk::NewModule));
         }
         state.open_form(&generator.name, takes_module(generator));
         ui.ctx().request_repaint();
         None
     });
-    let asked = asked.or(read_asked.then_some(BoundaryAction::Generate(GenerateAsk::ReadCatalog)));
+    let asked = asked.or(read_asked.then_some(WorkAction::Generate(GenerateAsk::ReadCatalog)));
     (y, asked)
 }
 
@@ -1243,7 +1243,7 @@ fn form(
     inputs: &GenerateInputs<'_>,
     run_key: bool,
     copy_key: bool,
-) -> (f32, Option<BoundaryAction>) {
+) -> (f32, Option<WorkAction>) {
     let catalog = inputs.catalog;
     let Some(generator) = catalog.get(&state.generator) else {
         state.view = View::Picker;
@@ -1888,7 +1888,7 @@ fn command(
     inputs: &GenerateInputs<'_>,
     run_key: bool,
     copy_key: bool,
-) -> (f32, Option<BoundaryAction>) {
+) -> (f32, Option<WorkAction>) {
     let name = module.map(|module| module.name.clone());
     // The words of the form, and the words that run: on a 13.4 app with `--json`.
     let mut words = generator.words(&state.filled, name.as_deref());
@@ -2024,7 +2024,7 @@ fn command(
     }
     let mut asked = None;
     if pressed && off.is_none() && ready && !blocked {
-        asked = Some(BoundaryAction::Generate(GenerateAsk::Run(GenerateRun {
+        asked = Some(WorkAction::Generate(GenerateAsk::Run(GenerateRun {
             generator: generator.name.clone(),
             module: name.clone(),
             args: run_args.clone(),
@@ -2045,7 +2045,7 @@ fn command(
     x = response.rect.right() + 8.0;
     let mut bottom = response.rect.bottom();
     if response.clicked() || copy_key {
-        asked = Some(BoundaryAction::Copy {
+        asked = Some(WorkAction::Copy {
             text: line,
             said: strings::COPIED_COMMAND,
         });
@@ -2055,7 +2055,7 @@ fn command(
         return (bottom, asked);
     };
     if files.list {
-        asked = Some(BoundaryAction::Generate(GenerateAsk::ListFiles {
+        asked = Some(WorkAction::Generate(GenerateAsk::ListFiles {
             words: words.clone(),
         }));
     }
@@ -2080,7 +2080,7 @@ fn command(
         let response = button.show(ui, pal, pos2(x, y), inputs.keyboard);
         bottom = bottom.max(response.rect.bottom());
         if response.clicked() && off.is_none() {
-            asked = Some(BoundaryAction::Generate(GenerateAsk::Replace {
+            asked = Some(WorkAction::Generate(GenerateAsk::Replace {
                 file: file.to_owned(),
                 run: GenerateRun {
                     generator: replace_args.first().cloned().unwrap_or_default(),
@@ -2512,7 +2512,7 @@ fn result_view(
     module: Option<&Module>,
     state: &mut GenerateState,
     inputs: &GenerateInputs<'_>,
-) -> (f32, Option<BoundaryAction>) {
+) -> (f32, Option<WorkAction>) {
     let now = ui.input(|input| input.time);
     // Replace is off while a run or read holds the app, as the other run buttons are.
     let busy = inputs.busy.map(strings::is_running);
@@ -2895,8 +2895,8 @@ fn replace_asked(
     result: &GenerateResult,
     path: &str,
     words: Vec<String>,
-) -> BoundaryAction {
-    BoundaryAction::Generate(GenerateAsk::Replace {
+) -> WorkAction {
+    WorkAction::Generate(GenerateAsk::Replace {
         file: file_name(path).to_owned(),
         run: GenerateRun {
             generator: words.first().cloned().unwrap_or_default(),
@@ -2917,8 +2917,8 @@ fn openable(app: &AppSnapshot, printed: &str) -> bool {
 }
 
 /// Opens a file of a result in the editor, through the code that opens a module.
-fn open_file_asked(app: &AppSnapshot, printed: &str) -> BoundaryAction {
-    BoundaryAction::OpenInEditor {
+fn open_file_asked(app: &AppSnapshot, printed: &str) -> WorkAction {
+    WorkAction::OpenInEditor {
         path: file_path(&app.root, printed),
         line: 1,
     }

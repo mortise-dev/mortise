@@ -1,10 +1,10 @@
 //! The workspace: a header with the title and the five tabs, and the body of the open tab.
 
 use eframe::egui::{Align2, Color32, Key, Modifiers, Rect, Role, Ui, WidgetInfo, pos2, vec2};
-use mortise_core::{Action, AppSnapshot};
+use mortise_core::{Action, AppSnapshot, Rules};
 
 use crate::actions_view::{self, ActionsInputs, ActionsState};
-use crate::boundary::{self, BoundaryAction, BoundaryState};
+use crate::boundary::{self, BoundaryState};
 use crate::draw::{self, Button, ButtonKind, EmptyMark, Icon, StampState, empty_state};
 use crate::findings_view;
 use crate::generate_view::{self, GenerateInputs, GenerateState};
@@ -13,6 +13,44 @@ use crate::strings;
 use crate::summary::{self, SummaryState};
 use crate::surface_view::SurfaceInputs;
 use crate::theme::{Face, Palette, size, ty};
+
+/// What a tab asks the app to do. Every tab returns it, not only Boundary.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WorkAction {
+    /// Select a module in the index.
+    Select(String),
+    /// Select a module and show its link with another.
+    ShowLink { module: String, other: String },
+    /// Change the rules of the app.
+    SetRules(Rules),
+    /// Copy the path of a file.
+    CopyPath(String),
+    /// Open the Findings list of the app.
+    ShowFindings,
+    /// Open a file or a folder in the editor, at a line.
+    OpenInEditor { path: std::path::PathBuf, line: u32 },
+    /// Something about the runtime of the app: another environment, a new try.
+    Runtime(crate::runtime_view::RuntimeAction),
+    /// Copy a text and say so.
+    Copy { text: String, said: &'static str },
+    /// Open the Actions tab of the selected module on this action. Nothing runs.
+    OpenAction(mortise_core::Action),
+    /// Open the Actions tab of a module on this action, from the Findings list. Nothing runs.
+    OpenModuleAction {
+        module: String,
+        action: mortise_core::Action,
+    },
+    /// Start an action of the Actions tab, asking first where the rules say so.
+    Act(crate::actions_view::Act),
+    /// Read the migration state of a target with these artisan words, the line on
+    /// screen (design D7).
+    ReadMigrations {
+        target: mortise_core::Target,
+        args: Vec<String>,
+    },
+    /// Start a generator of the Generate tab, or ask first.
+    Generate(crate::generate_view::GenerateAsk),
+}
 
 /// The five tabs. They are in every build, in this order, with the keys 1 to 5.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -108,7 +146,7 @@ pub fn workspace(
     selection: &Selection,
     tab: &mut Tab,
     state: WorkState<'_>,
-) -> Option<BoundaryAction> {
+) -> Option<WorkAction> {
     ui.painter().rect_filled(rect, 0, pal.surface);
     let module = match selection {
         Selection::All => None,
@@ -259,8 +297,8 @@ pub fn workspace(
         for (button, x, action) in buttons {
             if button.show(ui, pal, pos2(x, y), state.keyboard).clicked() {
                 header_action = Some(match action {
-                    Some(action) => BoundaryAction::OpenAction(action),
-                    None => BoundaryAction::OpenInEditor {
+                    Some(action) => WorkAction::OpenAction(action),
+                    None => WorkAction::OpenInEditor {
                         path: module.dir.clone(),
                         line: 1,
                     },

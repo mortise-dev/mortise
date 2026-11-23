@@ -17,7 +17,7 @@ use mortise_core::{
 
 use crate::actions_view::{self, Act, ActionsInputs, ActionsState};
 use crate::add::{self, AddAction, AddPanel, Checked};
-use crate::boundary::{BoundaryAction, BoundaryState};
+use crate::boundary::BoundaryState;
 use crate::chrome::{self, Chrome};
 use crate::dialog::{Answer, Dialog, Typed};
 use crate::draw::EmptyMark;
@@ -37,7 +37,7 @@ use crate::summary::{Sort, SummaryState};
 use crate::surface_view::SurfaceInputs;
 use crate::theme::{self, radius, size};
 use crate::toast::{Toast, ToastAction};
-use crate::workspace::{self, Tab, WorkState};
+use crate::workspace::{self, Tab, WorkAction, WorkState};
 
 /// How the app is started.
 pub struct Config {
@@ -3046,15 +3046,15 @@ impl eframe::App for MortiseApp {
                         ctx.request_repaint();
                     }
                     match &work_action {
-                        Some(BoundaryAction::Select(module)) => {
+                        Some(WorkAction::Select(module)) => {
                             open.selection = Selection::Module(module.clone());
                             self.reveal_next = true;
                         }
-                        Some(BoundaryAction::ShowFindings) => {
+                        Some(WorkAction::ShowFindings) => {
                             open.findings_open = true;
                             open.finding_row = 0;
                         }
-                        Some(BoundaryAction::ShowLink { module, other }) => {
+                        Some(WorkAction::ShowLink { module, other }) => {
                             open.selection = Selection::Module(module.clone());
                             open.tab = Tab::Boundary;
                             open.boundary.surface_view = false;
@@ -3276,41 +3276,41 @@ impl eframe::App for MortiseApp {
             ctx.request_repaint();
         }
         match work_action {
-            Some(BoundaryAction::SetRules(rules)) => self.set_rules(rules),
-            Some(BoundaryAction::CopyPath(path)) => {
+            Some(WorkAction::SetRules(rules)) => self.set_rules(rules),
+            Some(WorkAction::CopyPath(path)) => {
                 ctx.copy_text(path);
                 self.toast = Some(Toast::done(strings::COPIED_PATH));
             }
-            Some(BoundaryAction::OpenInEditor { path, line }) => self.open_in_editor(&path, line),
-            Some(BoundaryAction::Runtime(action)) => self.runtime_action(&ctx, action),
-            Some(BoundaryAction::Copy { text, said }) => {
+            Some(WorkAction::OpenInEditor { path, line }) => self.open_in_editor(&path, line),
+            Some(WorkAction::Runtime(action)) => self.runtime_action(&ctx, action),
+            Some(WorkAction::Copy { text, said }) => {
                 ctx.copy_text(text);
                 self.toast = Some(Toast::done(said));
             }
-            Some(BoundaryAction::OpenAction(action)) => {
+            Some(WorkAction::OpenAction(action)) => {
                 let module = match self.selection() {
                     Selection::Module(name) => Some(name),
                     Selection::All => None,
                 };
                 self.open_action(module, action);
             }
-            Some(BoundaryAction::OpenModuleAction { module, action }) => {
+            Some(WorkAction::OpenModuleAction { module, action }) => {
                 self.open_action(Some(module), action);
             }
-            Some(BoundaryAction::Act(act)) => {
+            Some(WorkAction::Act(act)) => {
                 if let Some(current) = self.current {
                     self.act(current, act);
                 }
             }
-            Some(BoundaryAction::ReadMigrations { target, args }) => {
+            Some(WorkAction::ReadMigrations { target, args }) => {
                 if let Some(current) = self.current {
                     self.read_migrations(current, target, args);
                 }
             }
-            Some(BoundaryAction::Generate(GenerateAsk::NewModule)) => {
+            Some(WorkAction::Generate(GenerateAsk::NewModule)) => {
                 self.open_generate(None, MODULE_MAKE)
             }
-            Some(BoundaryAction::Generate(ask)) => {
+            Some(WorkAction::Generate(ask)) => {
                 if let Some(current) = self.current {
                     self.generate(current, ask);
                 }

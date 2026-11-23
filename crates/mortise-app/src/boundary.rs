@@ -15,6 +15,7 @@ use crate::draw::{self, Button, ButtonKind, StampState};
 use crate::strings;
 use crate::surface_view::{self, ModuleSurface, Place, SurfaceInputs};
 use crate::theme::{Face, Palette, Type, radius, size, stroke, ty};
+use crate::workspace::WorkAction;
 
 /// Above this many modules the graph of the whole app gives way to a table of links.
 pub const GRAPH_LIMIT: usize = 12;
@@ -41,43 +42,6 @@ pub struct BoundaryState {
     folders_from: Option<Vec<String>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum BoundaryAction {
-    /// Select a module in the index.
-    Select(String),
-    /// Select a module and show its link with another.
-    ShowLink { module: String, other: String },
-    /// Change the rules of the app.
-    SetRules(Rules),
-    /// Copy the path of a file.
-    CopyPath(String),
-    /// Open the Findings list of the app.
-    ShowFindings,
-    /// Open a file or a folder in the editor, at a line.
-    OpenInEditor { path: std::path::PathBuf, line: u32 },
-    /// Something about the runtime of the app: another environment, a new try.
-    Runtime(crate::runtime_view::RuntimeAction),
-    /// Copy a text and say so.
-    Copy { text: String, said: &'static str },
-    /// Open the Actions tab of the selected module on this action. Nothing runs.
-    OpenAction(mortise_core::Action),
-    /// Open the Actions tab of a module on this action, from the Findings list. Nothing runs.
-    OpenModuleAction {
-        module: String,
-        action: mortise_core::Action,
-    },
-    /// Start an action of the Actions tab, asking first where the rules say so.
-    Act(crate::actions_view::Act),
-    /// Read the migration state of a target with these artisan words, the line on
-    /// screen (design D7).
-    ReadMigrations {
-        target: mortise_core::Target,
-        args: Vec<String>,
-    },
-    /// Start a generator of the Generate tab, or ask first.
-    Generate(crate::generate_view::GenerateAsk),
-}
-
 /// Paints the Boundary tab into `body`, which scrolls.
 #[expect(clippy::too_many_arguments)]
 pub fn boundary(
@@ -91,7 +55,7 @@ pub fn boundary(
     surface: &SurfaceInputs<'_>,
     keyboard: bool,
     mac: bool,
-) -> Option<BoundaryAction> {
+) -> Option<WorkAction> {
     let mut action = None;
     // P switches between the links of a module and its public surface.
     if module.is_some()
@@ -275,7 +239,7 @@ impl View<'_> {
         y: f32,
         module: &Module,
         state: &mut BoundaryState,
-        action: &mut Option<BoundaryAction>,
+        action: &mut Option<WorkAction>,
     ) -> f32 {
         let pal = self.pal;
         let rules = &self.app.rules;
@@ -548,7 +512,7 @@ impl View<'_> {
         out: Option<&Link>,
         back: Option<&Link>,
         state: &mut BoundaryState,
-        action: &mut Option<BoundaryAction>,
+        action: &mut Option<WorkAction>,
     ) -> f32 {
         let pal = self.pal;
         let rules = &self.app.rules;
@@ -772,7 +736,7 @@ impl View<'_> {
             && let Some((file, line)) = &selected_path
         {
             // The file at the line that names the class.
-            *action = Some(BoundaryAction::OpenInEditor {
+            *action = Some(WorkAction::OpenInEditor {
                 path: self.app.root.join(file),
                 line: *line,
             });
@@ -780,7 +744,7 @@ impl View<'_> {
         if copy.show(ui, pal, copy_min, self.keyboard).clicked()
             && let Some((path, _)) = selected_path
         {
-            *action = Some(BoundaryAction::CopyPath(path));
+            *action = Some(WorkAction::CopyPath(path));
         }
         panel.bottom()
     }
@@ -865,7 +829,7 @@ impl View<'_> {
         ui: &mut Ui,
         y: f32,
         state: &mut BoundaryState,
-        action: &mut Option<BoundaryAction>,
+        action: &mut Option<WorkAction>,
     ) -> f32 {
         if self.app.modules.is_empty() {
             return self.paragraph(ui, y, &strings::no_modules(self.app, self.name));
@@ -906,7 +870,7 @@ impl View<'_> {
         min: Pos2,
         width: f32,
         state: &mut BoundaryState,
-        action: &mut Option<BoundaryAction>,
+        action: &mut Option<WorkAction>,
     ) -> f32 {
         let pal = self.pal;
         let rules = &self.app.rules;
@@ -1060,7 +1024,7 @@ impl View<'_> {
                 // The tooltip gives the full name.
                 self.node_text(ui, node.rect, node.module, "", pal.ink_2, false);
                 if response.clicked() {
-                    *action = Some(BoundaryAction::Select(node.module.name.clone()));
+                    *action = Some(WorkAction::Select(node.module.name.clone()));
                 }
                 draw::tooltip(response, pal, &node.module.name);
             }
@@ -1151,13 +1115,7 @@ impl View<'_> {
         rows
     }
 
-    fn broken_links(
-        &self,
-        ui: &Ui,
-        min: Pos2,
-        width: f32,
-        action: &mut Option<BoundaryAction>,
-    ) -> f32 {
+    fn broken_links(&self, ui: &Ui, min: Pos2, width: f32, action: &mut Option<WorkAction>) -> f32 {
         let pal = self.pal;
         let rows = self.broken();
         const ROW: f32 = 30.0;
@@ -1213,7 +1171,7 @@ impl View<'_> {
                     .rect_filled(row.shrink2(vec2(0.0, 0.5)), 0, pal.well);
             }
             if response.clicked() {
-                *action = Some(BoundaryAction::ShowLink {
+                *action = Some(WorkAction::ShowLink {
                     module: module.clone(),
                     other: other.clone(),
                 });
@@ -1259,7 +1217,7 @@ impl View<'_> {
         min: Pos2,
         width: f32,
         state: &mut BoundaryState,
-        action: &mut Option<BoundaryAction>,
+        action: &mut Option<WorkAction>,
     ) -> f32 {
         let pal = self.pal;
         let rules = &self.app.rules;
@@ -1328,7 +1286,7 @@ impl View<'_> {
             false,
         );
         if row.clicked() {
-            *action = Some(BoundaryAction::SetRules(Rules {
+            *action = Some(WorkAction::SetRules(Rules {
                 no_circular_use: !rules.no_circular_use,
                 ..rules.clone()
             }));
@@ -1342,7 +1300,7 @@ impl View<'_> {
             false,
         );
         if row.clicked() {
-            *action = Some(BoundaryAction::SetRules(Rules {
+            *action = Some(WorkAction::SetRules(Rules {
                 public_surface_only: !rules.public_surface_only,
                 ..rules.clone()
             }));
@@ -1371,7 +1329,7 @@ impl View<'_> {
                 .map(str::to_owned)
                 .collect();
             if folders != rules.public_folders {
-                *action = Some(BoundaryAction::SetRules(Rules {
+                *action = Some(WorkAction::SetRules(Rules {
                     public_folders: folders,
                     ..rules.clone()
                 }));
@@ -1394,7 +1352,7 @@ impl View<'_> {
         ui: &mut Ui,
         y: f32,
         state: &mut BoundaryState,
-        action: &mut Option<BoundaryAction>,
+        action: &mut Option<WorkAction>,
     ) -> f32 {
         let pal = self.pal;
         let rules = &self.app.rules;
@@ -1515,7 +1473,7 @@ impl View<'_> {
                 ui.painter().rect_filled(row, 0, pal.well);
             }
             if response.clicked() {
-                *action = Some(BoundaryAction::ShowLink {
+                *action = Some(WorkAction::ShowLink {
                     module: link.from.clone(),
                     other: link.to.clone(),
                 });

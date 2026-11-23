@@ -14,12 +14,12 @@ use mortise_core::{
     Options, Plan, RunnerKind, Severity, Target, gives_data, migrate_status_args, plan,
 };
 
-use crate::boundary::BoundaryAction;
 use crate::draw::alert_box;
 use crate::draw::{self, Button, ButtonKind, Icon, ListNav, StampState};
 use crate::runner_view::line_now;
 use crate::strings;
 use crate::theme::{Face, Palette, Type, radius, size, ty};
+use crate::workspace::WorkAction;
 
 /// The list of actions is 250 px wide (S10.1).
 const LIST_W: f32 = 250.0;
@@ -258,7 +258,7 @@ pub fn actions(
     module: Option<&Module>,
     state: &mut ActionsState,
     inputs: &ActionsInputs<'_>,
-) -> Option<BoundaryAction> {
+) -> Option<WorkAction> {
     let target = module.map_or(Target::All, |module| Target::Module(module.name.clone()));
     // Another module, or another app: the options start again on Migrate (D4).
     state.follow(target.clone(), true);
@@ -644,7 +644,7 @@ fn panel(
     inputs: &ActionsInputs<'_>,
     run_key: bool,
     copy_key: bool,
-) -> (f32, Option<BoundaryAction>) {
+) -> (f32, Option<WorkAction>) {
     let action = state.action;
     let destructive = action.is_destructive();
     let name = module.map(|module| module.name.as_str());
@@ -848,7 +848,7 @@ fn panel(
             Plan::Refused { .. } | Plan::NoCommand => None,
         }
         .map(|(args, ask)| {
-            BoundaryAction::Act(Act {
+            WorkAction::Act(Act {
                 action,
                 target: target.clone(),
                 args,
@@ -883,7 +883,7 @@ fn panel(
     let bottom = response.rect.bottom();
     match line {
         Some(line) if response.clicked() || copy_key => {
-            asked = Some(BoundaryAction::Copy {
+            asked = Some(WorkAction::Copy {
                 text: line,
                 said: strings::COPIED_COMMAND,
             });
@@ -950,7 +950,7 @@ fn state_box(
     width: f32,
     shown: &StateShown<'_>,
     inputs: &ActionsInputs<'_>,
-) -> Option<(f32, Option<BoundaryAction>, Option<Vec<String>>)> {
+) -> Option<(f32, Option<WorkAction>, Option<Vec<String>>)> {
     let StateShown {
         app,
         module,
@@ -1149,7 +1149,7 @@ fn state_box(
     let button_rect = response.rect;
     let mut asked = None;
     if response.clicked() && off.is_none() {
-        asked = Some(BoundaryAction::ReadMigrations {
+        asked = Some(WorkAction::ReadMigrations {
             target: target.clone(),
             args: args.clone(),
         });

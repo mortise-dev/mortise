@@ -7,37 +7,37 @@ use eframe::egui::{
 };
 use mortise_core::{Action, AppSnapshot, Check, Detail, Finding, Severity};
 
-use crate::boundary::BoundaryAction;
 use crate::draw::{self, StampState};
 use crate::strings;
 use crate::theme::{Face, Palette, Type, radius, size, ty};
+use crate::workspace::WorkAction;
 
 /// Where Enter on a finding lands.
-fn opens(finding: &Finding, app: &AppSnapshot) -> (&'static str, Option<BoundaryAction>) {
+fn opens(finding: &Finding, app: &AppSnapshot) -> (&'static str, Option<WorkAction>) {
     let module = finding.module.clone();
     match (&finding.detail, module) {
         (Detail::CircularUse { .. }, Some(module)) => {
             let other = app.circle_neighbour(&module).map(str::to_owned);
             (
                 strings::BOUNDARY,
-                other.map(|other| BoundaryAction::ShowLink { module, other }),
+                other.map(|other| WorkAction::ShowLink { module, other }),
             )
         }
         (Detail::ReadsInternals { of, .. }, Some(module)) => (
             strings::BOUNDARY,
-            Some(BoundaryAction::ShowLink {
+            Some(WorkAction::ShowLink {
                 module,
                 other: of.clone(),
             }),
         ),
         (Detail::MissingTranslations { .. }, Some(module)) => (
             strings::ACTIONS,
-            Some(BoundaryAction::OpenModuleAction {
+            Some(WorkAction::OpenModuleAction {
                 module,
                 action: Action::CheckTranslations,
             }),
         ),
-        (_, Some(module)) => (strings::SUMMARY, Some(BoundaryAction::Select(module))),
+        (_, Some(module)) => (strings::SUMMARY, Some(WorkAction::Select(module))),
         // A finding of the app itself lives on this list.
         (_, None) => ("", None),
     }
@@ -51,7 +51,7 @@ pub fn findings(
     app: &AppSnapshot,
     name: &str,
     selected: &mut usize,
-) -> Option<BoundaryAction> {
+) -> Option<WorkAction> {
     let mut action = None;
     ui.scope_builder(UiBuilder::new().max_rect(body), |ui| {
         ScrollArea::vertical()
@@ -113,7 +113,7 @@ struct Row<'a> {
     check: String,
     /// Where Enter lands, in a word, and what it does.
     place: &'static str,
-    opens: Option<BoundaryAction>,
+    opens: Option<WorkAction>,
 }
 
 /// The findings, problems first, then the work to do, each with its module, its check
@@ -127,7 +127,7 @@ fn list(
     app: &AppSnapshot,
     name: &str,
     selected: &mut usize,
-    action: &mut Option<BoundaryAction>,
+    action: &mut Option<WorkAction>,
 ) -> f32 {
     let module_x = min.x + 46.0;
     let text_x = min.x + 102.0;
@@ -157,7 +157,7 @@ fn list(
         sentence: strings::migrations_waiting(&todo.module, todo.waiting),
         check: strings::MIGRATIONS.to_owned(),
         place: strings::ACTIONS,
-        opens: Some(BoundaryAction::OpenModuleAction {
+        opens: Some(WorkAction::OpenModuleAction {
             module: todo.module.clone(),
             action: Action::Migrate,
         }),

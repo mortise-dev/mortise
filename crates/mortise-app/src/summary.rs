@@ -11,11 +11,11 @@ use mortise_core::{
     tasks_of,
 };
 
-use crate::boundary::BoundaryAction;
 use crate::draw::{self, StampState};
 use crate::runtime_view::{self, Brief, RuntimeAction, RuntimeView};
 use crate::strings;
 use crate::theme::{Face, Palette, Type, radius, size, ty};
+use crate::workspace::WorkAction;
 
 /// A column of the "By module" table.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -173,7 +173,7 @@ pub fn summary(
     name: &str,
     module: Option<&Module>,
     state: SummaryState<'_>,
-) -> Option<BoundaryAction> {
+) -> Option<WorkAction> {
     let mut clicked = None;
     let mut shared = Shared {
         name,
@@ -216,12 +216,12 @@ pub fn summary(
             });
     });
     if let Some(asked) = shared.asked {
-        return Some(BoundaryAction::Runtime(asked));
+        return Some(WorkAction::Runtime(asked));
     }
     if shared.show_findings {
-        return Some(BoundaryAction::ShowFindings);
+        return Some(WorkAction::ShowFindings);
     }
-    clicked.map(BoundaryAction::Select)
+    clicked.map(WorkAction::Select)
 }
 
 /// The Summary of "All modules". Returns its height and a module that was clicked.
