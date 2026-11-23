@@ -7,7 +7,7 @@
 use eframe::egui::{Align2, Color32, Pos2, Rect, Role, Ui, pos2, vec2};
 use mortise_core::{
     Answer, AppSnapshot, Component, Environment, Route, Runtime, RuntimeState, Status, Task,
-    by_module, module_of,
+    by_module, module_of_task,
 };
 
 use crate::runtime::strings;
@@ -918,7 +918,7 @@ const CELL_CODE: Type = Type {
 };
 
 /// The scheduled tasks. With `modules`, a column says which module a task belongs
-/// to: only a task whose target is a class can be given to one. Returns its bottom edge.
+/// to: the module of its class or of its artisan command. Returns its bottom edge.
 #[expect(clippy::too_many_arguments)]
 pub fn tasks_box(
     ui: &Ui,
@@ -961,7 +961,7 @@ pub fn tasks_box(
                 Cell::Text(next, ty::BODY, next_color),
             ];
             if let Some(app) = modules {
-                row.push(match module_of(app, &task.target) {
+                row.push(match module_of_task(app, task) {
                     Some(module) => Cell::Stamp(module.code.clone()),
                     None => Cell::Text(crate::strings::NONE.to_owned(), ty::BODY, pal.ink_3),
                 });

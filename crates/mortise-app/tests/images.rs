@@ -537,16 +537,16 @@ fn the_runtime_box_of_a_module() {
             let mut harness = desk.start();
             common::wait_for_answer(&mut harness);
             select(&mut harness, "Billing");
-            // The box, from its heading to the box of routes under it. A heading is
-            // 18 px under the top of its box, and boxes are 12 px apart.
+            // The box, from its heading to the box of scheduled tasks under it. A
+            // heading is 18 px under the top of its box, and boxes are 12 px apart.
             let mid = |(min, max): Part| (min.1 + max.1) / 2.0;
             let heading = bounds(&harness, Role::Heading, "Runtime on local");
-            let routes = bounds(&harness, Role::Heading, "Routes");
+            let next = bounds(&harness, Role::Heading, "Scheduled tasks");
             // The time of the answer is cut out, in the colour outside the box.
             let checked = label_bounds(&harness, "checked ");
             let part = (
                 (heading.0.0 - 13.0 - 8.0, mid(heading) - 18.0 - 8.0),
-                (checked.1.0 + 13.0 + 8.0, mid(routes) - 18.0 - 12.0 + 8.0),
+                (checked.1.0 + 13.0 + 8.0, mid(next) - 18.0 - 12.0 + 8.0),
             );
             shots.take_part_masked(&mut harness, screen, part, &[checked]);
         }

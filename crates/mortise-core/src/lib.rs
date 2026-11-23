@@ -91,7 +91,8 @@ pub use runtime::actuator::{
 pub use runtime::environment::{Credentials, Environment};
 #[cfg(feature = "actuator")]
 pub use runtime::live::{
-    LiveRuntime, Pace, RuntimeState, module_of, routes_by_module, routes_of, tasks_of,
+    LiveRuntime, Pace, RuntimeState, module_of, module_of_task, routes_by_module, routes_of,
+    tasks_of,
 };
 #[cfg(feature = "actuator")]
 pub use runtime::modules::{ModuleRuntime, RuntimeByModule, by_module};

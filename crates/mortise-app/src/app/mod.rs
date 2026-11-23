@@ -1304,8 +1304,8 @@ fn place_of(php: &mortise_core::PhpSettings) -> RunPlace {
     }
 }
 
-/// What a scan of the public surface takes from the running app: the routes of the
-/// selected module and the scheduled tasks, when the chosen environment gave them.
+/// What a scan of the public surface takes from the running app: the routes and the
+/// scheduled tasks of the selected module, when the chosen environment gave them.
 fn surface_inputs<'a>(
     app: &AppSnapshot,
     selection: &Selection,
@@ -1324,19 +1324,23 @@ fn surface_inputs<'a>(
         ),
         _ => None,
     };
-    let scheduled = answered
-        .and_then(|answered| answered.tasks.as_deref())
-        .unwrap_or_default()
-        .iter()
-        .map(|task| {
-            let schedule = match (&task.expression, task.interval_ms) {
-                (Some(expression), _) => expression.clone(),
-                (None, Some(interval)) => crate::strings::every(interval),
-                (None, None) => String::new(),
-            };
-            (task.target.clone(), schedule)
-        })
-        .collect();
+    let scheduled = match (
+        selection,
+        answered.and_then(|answered| answered.tasks.as_deref()),
+    ) {
+        (Selection::Module(name), Some(tasks)) => mortise_core::tasks_of(app, name, tasks),
+        _ => Vec::new(),
+    }
+    .into_iter()
+    .map(|task| {
+        let schedule = match (&task.expression, task.interval_ms) {
+            (Some(expression), _) => expression.clone(),
+            (None, Some(interval)) => crate::strings::every(interval),
+            (None, None) => String::new(),
+        };
+        (task.target.clone(), schedule)
+    })
+    .collect();
     SurfaceInputs {
         routes,
         scheduled,

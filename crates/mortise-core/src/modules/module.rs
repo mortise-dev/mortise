@@ -1,6 +1,6 @@
 //! The modules of an app: found on disk the way the package finds them.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -12,9 +12,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::modules::clover::Coverage;
 use crate::modules::git::Churn;
-use crate::modules::kind::{Kinds, TESTS};
+use crate::modules::kind::{COMMANDS, Kinds, TESTS};
 use crate::modules::layout::Layout;
-use crate::php::{Analysis, analyze, count_tests};
+use crate::php::{Analysis, Declared, analyze, count_tests};
 
 /// Whether a module is turned on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -72,6 +72,8 @@ pub struct Module {
     pub lines: u64,
     /// The files by kind, most files first. The kind comes from the folder a file is in.
     pub kinds: Vec<KindCount>,
+    /// The names of the console commands the module declares outside its tests, sorted.
+    pub commands: Vec<String>,
     /// Tests in the module's test files.
     pub tests: u32,
     /// Statements covered by tests, from the coverage report. `None` when there
@@ -105,6 +107,8 @@ pub(crate) struct Scan {
     pub(crate) lines: u64,
     pub(crate) kinds: Vec<KindCount>,
     pub(crate) tests: u32,
+    /// The names of the console commands of the module's files outside its tests.
+    pub(crate) commands: BTreeSet<String>,
     /// The module's PHP files, by path.
     pub(crate) sources: Vec<Source>,
 }
@@ -318,6 +322,8 @@ struct Entry {
     path: PathBuf,
     /// The path inside the module, with `/` between the parts.
     relative: String,
+    /// The kind of the folder the file is in.
+    folder: String,
     is_test: bool,
     size: u64,
     modified: Option<SystemTime>,
@@ -350,6 +356,37 @@ pub(crate) fn files_of(dir: &Path) -> Vec<(PathBuf, String)> {
         .collect()
 }
 
+/// The name of the console command a class declares: from its signature or its
+/// command attribute, else from its `$name` property when its file is in the
+/// commands folder. `folder` is the kind of the folder the file is in.
+pub(crate) fn command_of(declared: &Declared, folder: &str) -> Option<String> {
+    declared.command.clone().or_else(|| {
+        declared
+            .name_property
+            .clone()
+            .filter(|_| folder == COMMANDS)
+    })
+}
+
+/// The command a scheduled task runs when its target is `php artisan <name> ...`,
+/// the form the actuator writes for a task of `$schedule->command()`. An app that
+/// sets `ARTISAN_BINARY` gives its path in place of `artisan`, such as `./artisan`.
+///
+/// The actuator writes a task's description in the same place, so a description
+/// written in this form is read as the command it names.
+pub(crate) fn artisan_command(target: &str) -> Option<&str> {
+    let mut words = target.split_whitespace();
+    let php = words.next() == Some("php");
+    let artisan = words
+        .next()
+        .and_then(|word| word.rsplit(['/', '\\']).next())
+        == Some("artisan");
+    if !(php && artisan) {
+        return None;
+    }
+    words.next().map(|name| name.trim_matches(['\'', '"']))
+}
+
 /// True for a PHP file that is not a Blade view: those end in `.php` but are templates.
 pub(crate) fn is_php(relative: &str) -> bool {
     relative.ends_with(".php") && !relative.ends_with(".blade.php")
@@ -367,13 +404,14 @@ fn scan(dir: &Path, kinds: &Kinds, cache: &mut ReadCache) -> Scan {
         let kind = kinds.of(&relative);
         let is_test = kind == TESTS;
         scan.files += 1;
-        *by_kind.entry(kind).or_default() += 1;
+        *by_kind.entry(kind.clone()).or_default() += 1;
 
         if is_php(&relative) {
             let metadata = std::fs::metadata(path).ok();
             php.push(Entry {
                 path: path.to_owned(),
                 relative,
+                folder: kind,
                 is_test,
                 size: metadata.as_ref().map_or(0, std::fs::Metadata::len),
                 modified: metadata.and_then(|metadata| metadata.modified().ok()),
@@ -425,6 +463,15 @@ fn scan(dir: &Path, kinds: &Kinds, cache: &mut ReadCache) -> Scan {
         };
         scan.lines += facts.lines;
         scan.tests += facts.tests;
+        if !entry.is_test {
+            scan.commands.extend(
+                facts
+                    .analysis
+                    .declares
+                    .iter()
+                    .filter_map(|declared| command_of(declared, &entry.folder)),
+            );
+        }
         scan.sources.push(Source {
             relative: entry.relative,
             is_test: entry.is_test,
@@ -500,12 +547,12 @@ mod tests {
         );
         write(
             &module.join("tests/Unit/PostTest.php"),
-            "<?php\nclass PostTest {\n  function testTitle() {}\n  function testSlug() {}\n}\n",
+            "<?php\nclass PostTest { protected $signature = 'post:test';\n  function testTitle() {}\n  function testSlug() {}\n}\n",
         );
         // Not in a tests folder: its methods are not counted as tests.
         write(
             &module.join("app/Support/Check.php"),
-            "<?php class Check { function testThis() {} }",
+            "<?php class Check { protected $signature = 'check:run {--all}'; function testThis() {} }",
         );
 
         let scan = scan_dir(module);
@@ -513,6 +560,8 @@ mod tests {
         // 3 + 2 + 1 + 5 + 1. The Blade view and module.json are not PHP.
         assert_eq!(scan.lines, 12);
         assert_eq!(scan.tests, 2);
+        // The command of the test file is not one of the module.
+        assert_eq!(scan.commands, BTreeSet::from(["check:run".to_owned()]));
         let kinds: Vec<_> = scan
             .kinds
             .iter()
