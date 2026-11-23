@@ -33,7 +33,7 @@ pub enum Target {
 /// An option that the action does not take is ignored.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Options {
-    /// `--pretend`: print the SQL and change nothing.
+    /// `--pretend`: print the SQL and run none of it.
     pub pretend: bool,
     /// `--seed`: run the seeders after the migrations.
     pub seed: bool,
