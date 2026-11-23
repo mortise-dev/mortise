@@ -5,8 +5,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
+use crate::boundary::rules::Rules;
 use crate::php::ClassRef;
-use crate::rules::Rules;
 
 /// One file of a module that names one class of another module.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

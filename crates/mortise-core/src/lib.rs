@@ -8,11 +8,11 @@
 #[cfg(feature = "actuator")]
 mod actuator;
 mod app;
+mod boundary;
 mod catalog;
 mod editor;
 mod environment;
 mod findings;
-mod links;
 mod matcher;
 mod modules;
 #[cfg(feature = "run")]
@@ -20,7 +20,6 @@ mod output;
 mod package;
 mod php;
 mod program;
-mod rules;
 mod run;
 #[cfg(feature = "actuator")]
 mod runtime;
@@ -40,6 +39,8 @@ pub use app::{
     AppSnapshot, CoverageReport, ReadError, ReadOptions, read_app, read_app_cached, read_app_env,
     read_app_with,
 };
+pub use boundary::links::{Cycle, Link, Reference, columns};
+pub use boundary::rules::{RULES_FILE, Rules, RulesError, RulesSource};
 #[cfg(feature = "run")]
 pub use catalog::cache as catalog_cache;
 pub use catalog::{
@@ -53,7 +54,6 @@ pub use findings::{
     Check, CheckResult, DEFAULT_COVERAGE_LIMIT, Detail, Finding, FindingState, Findings, Severity,
     Todo,
 };
-pub use links::{Cycle, Link, Reference, columns};
 pub use matcher::fuzzy;
 pub use modules::clover::Coverage;
 pub use modules::code::{ALL_CODE, propose_codes, propose_monogram};
@@ -75,7 +75,6 @@ pub use package::{
     migrate_status_args, migration_file, migrations_changed_by, whole_document, with_dry_run,
     with_json,
 };
-pub use rules::{RULES_FILE, Rules, RulesError, RulesSource};
 #[cfg(feature = "run")]
 pub use run::ansi;
 #[cfg(feature = "run")]
