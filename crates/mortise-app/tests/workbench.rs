@@ -113,14 +113,9 @@ fn the_digits_open_the_tabs_and_the_tab_is_kept_while_moving() {
 #[test]
 fn a_tab_of_a_later_phase_explains_itself() {
     let (_desk, mut harness) = shop_api();
-    for (tab, title) in [
-        ("Generate", "Generate is not in this version"),
-        ("Metrics", "Metrics are not in this version"),
-    ] {
-        harness.get_by_role_and_label(Role::Tab, tab).click();
-        harness.run();
-        harness.get_by_role_and_label(Role::Heading, title);
-    }
+    harness.get_by_role_and_label(Role::Tab, "Metrics").click();
+    harness.run();
+    harness.get_by_role_and_label(Role::Heading, "Metrics are not in this version");
     // Every tab is always there, and none is disabled.
     assert_eq!(harness.get_all_by_role(Role::Tab).count(), 5);
 }

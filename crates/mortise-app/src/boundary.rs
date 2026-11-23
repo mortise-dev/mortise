@@ -63,6 +63,8 @@ pub enum BoundaryAction {
     OpenAction(mortise_core::Action),
     /// Start an action of the Actions tab, asking first where the rules say so.
     Act(crate::actions_view::Act),
+    /// Start a generator of the Generate tab, or ask first.
+    Generate(crate::generate_view::GenerateAsk),
 }
 
 /// Paints the Boundary tab into `body`, which scrolls.

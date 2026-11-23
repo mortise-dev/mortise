@@ -12,6 +12,7 @@ pub mod draw;
 pub mod environment_form;
 pub mod findings_view;
 pub mod fonts;
+pub mod generate_view;
 pub mod index;
 #[cfg(target_os = "macos")]
 pub mod menu;

@@ -6,7 +6,8 @@ use eframe::egui::{
     WidgetInfo, pos2, vec2,
 };
 use mortise_core::{
-    Action, AppSnapshot, Detail, FindingState, ModuleState, Target, ThemeChoice, fuzzy,
+    Action, AppSnapshot, Catalog, Detail, FindingState, MODULE_MAKE, ModuleState, Target,
+    ThemeChoice, fuzzy,
 };
 
 use crate::draw::{self, Icon, StampState};
@@ -57,6 +58,12 @@ pub enum Command {
     Action {
         module: Option<String>,
         action: Action,
+    },
+    /// Open the form of a generator in a module, or the new module form with `None`.
+    /// Nothing runs.
+    Generate {
+        module: Option<String>,
+        generator: String,
     },
 }
 
@@ -254,6 +261,17 @@ pub fn entries(query: &str, source: &Source<'_>) -> Vec<Entry> {
             });
             add(&group, found.collect());
 
+            // The generators of the module the query names, else of the selected
+            // module, matched by the rest of the query. A row opens the form.
+            let found = generator_entries(query, app, source.selected)
+                .into_iter()
+                .map(|(score, label, detail, command)| {
+                    let mut entry = entry(label, strings::FORM, command);
+                    entry.detail = Some(detail);
+                    (score, entry)
+                });
+            add(strings::GENERATORS, found.collect());
+
             let findings = app.findings.list.iter().filter_map(|finding| {
                 let module = finding.module.clone()?;
                 let (label, other) = match &finding.detail {
@@ -391,6 +409,70 @@ fn named_destructive(query: &str) -> Vec<Action> {
         .zip(actions)
         .filter(|(word, _)| words.iter().any(|typed| typed == word))
         .map(|(_, action)| action)
+        .collect()
+}
+
+/// The generator rows for a query: score, label, artisan name and command. A word
+/// that matches a module names the module; the other words match the label and
+/// the artisan name of a generator. Without a module only New module is offered.
+fn generator_entries(
+    query: &str,
+    app: &AppSnapshot,
+    selected: Option<&str>,
+) -> Vec<(u32, String, String, Command)> {
+    let module_of = |word: &str| {
+        app.modules
+            .iter()
+            .filter_map(|module| {
+                Some((
+                    fuzzy(word, &format!("{} {}", module.name, module.code))?,
+                    module,
+                ))
+            })
+            .min_by_key(|(score, _)| *score)
+    };
+    let mut named = None;
+    let mut rest = Vec::new();
+    for word in query.split_whitespace() {
+        match module_of(word) {
+            Some((score, module)) if named.is_none_or(|(best, _)| score < best) => {
+                named = Some((score, module));
+            }
+            Some(_) => {}
+            None => rest.push(word),
+        }
+    }
+    let rest = rest.join(" ");
+    if rest.is_empty() {
+        return Vec::new();
+    }
+    let module = named
+        .map(|(_, module)| module.name.as_str())
+        .or(selected)
+        .and_then(|name| app.module(name).map(|module| module.name.clone()));
+    let catalog = Catalog::v13_3();
+    catalog
+        .grouped()
+        .into_iter()
+        .flat_map(|(_, generators)| generators)
+        .filter_map(|generator| {
+            let label = strings::generator_label(&generator.name);
+            let score = fuzzy(&rest, &format!("{label} {}", generator.name))?;
+            let new_module = generator.name == MODULE_MAKE;
+            let (label, module) = match (&module, new_module) {
+                (_, true) => (label, None),
+                (Some(module), false) => (
+                    strings::generate_row(&generator.name, module),
+                    Some(module.clone()),
+                ),
+                (None, false) => return None,
+            };
+            let command = Command::Generate {
+                module,
+                generator: generator.name.clone(),
+            };
+            Some((score, label, generator.name.clone(), command))
+        })
         .collect()
 }
 

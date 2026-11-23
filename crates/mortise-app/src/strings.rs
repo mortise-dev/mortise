@@ -2563,6 +2563,360 @@ pub fn seeders(n: u32) -> String {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Generate (S9.1 to S9.6)
+
+/// The title of the Generate tab of a module: `Generate in Billing`.
+pub fn generate_in(module: &str) -> String {
+    format!("Generate in {module}")
+}
+
+/// The title of the new module form: `New module in shop-api`.
+pub fn new_module_in(app: &str) -> String {
+    format!("New module in {app}")
+}
+
+pub const NEW_MODULE: &str = "New module";
+pub const FIND_A_GENERATOR: &str = "Find a generator";
+/// Not in the spec: the line of the picker under "All modules", which lists New module only.
+pub const SELECT_A_MODULE_TO_GENERATE: &str =
+    "Select a module in the index to generate files in it.";
+/// The mark of the picker when the app has another version than the shipped catalog.
+pub const FOR_PACKAGE_13_3: &str = "for nwidart/laravel-modules 13.3";
+
+/// `41 generators for Billing, and New module. Enter opens the form.`
+pub fn generators_for(n: usize, module: &str) -> String {
+    match n {
+        1 => format!("1 generator for {module}, and New module. Enter opens the form."),
+        n => format!("{n} generators for {module}, and New module. Enter opens the form."),
+    }
+}
+
+/// The groups of the picker (S9.1). "Other" holds a generator Mortise does not place.
+pub fn generator_group(group: mortise_core::Group) -> &'static str {
+    use mortise_core::Group;
+    match group {
+        Group::Module => "In the app",
+        Group::Data => "Data",
+        Group::Http => "HTTP",
+        Group::Events => "Events and queues",
+        Group::Views => "Views",
+        Group::Classes => "Classes",
+        Group::Console => "Console and setup",
+        Group::Tests => "Tests",
+        Group::Other => "Other",
+    }
+}
+
+/// The label of a generator in the picker (S9.1). A generator the spec does not
+/// name shows its artisan name without `module:` (not in the spec).
+pub fn generator_label(name: &str) -> String {
+    let label = match name {
+        mortise_core::MODULE_MAKE => NEW_MODULE,
+        "module:make-model" => "Model",
+        "module:make-migration" => "Migration",
+        "module:make-factory" => "Factory",
+        "module:make-seed" => "Seeder",
+        "module:make-observer" => "Observer",
+        "module:make-scope" => "Scope",
+        "module:make-cast" => "Cast",
+        "module:make-policy" => "Policy",
+        "module:make-repository" => "Repository",
+        "module:make-controller" => "Controller",
+        "module:make-request" => "Request",
+        "module:make-resource" => "Resource",
+        "module:make-middleware" => "Middleware",
+        "module:make-rule" => "Rule",
+        "module:route-provider" => "Route provider",
+        "module:make-event" => "Event",
+        "module:make-listener" => "Listener",
+        "module:make-job" => "Job",
+        "module:make-job-middleware" => "Job middleware",
+        "module:make-notification" => "Notification",
+        "module:make-mail" => "Mail",
+        "module:make-channel" => "Channel",
+        "module:make-event-provider" => "Event provider",
+        "module:make-view" => "View",
+        "module:make-component" => "Component class",
+        "module:make-component-view" => "Component view",
+        "module:make-inertia-page" => "Inertia page",
+        "module:make-inertia-component" => "Inertia component",
+        "module:make-class" => "Class",
+        "module:make-health-indicator" => "Health indicator",
+        "module:make-action" => "Action",
+        "module:make-service" => "Service",
+        "module:make-interface" => "Interface",
+        "module:make-trait" => "Trait",
+        "module:make-enum" => "Enum",
+        "module:make-helper" => "Helper",
+        "module:make-exception" => "Exception",
+        "module:make-command" => "Command",
+        "module:make-config" => "Config",
+        "module:make-provider" => "Provider",
+        "module:make-replacement" => "Stub replacement",
+        "module:make-test" => "Test",
+        other => return other.strip_prefix("module:").unwrap_or(other).to_owned(),
+    };
+    label.to_owned()
+}
+
+/// The label of a generator inside a sentence: `model`, `Inertia page`.
+fn generator_noun(name: &str) -> String {
+    let label = generator_label(name);
+    if label.starts_with("Inertia") {
+        return label;
+    }
+    let mut chars = label.chars();
+    match chars.next() {
+        Some(first) => first.to_lowercase().chain(chars).collect(),
+        None => label,
+    }
+}
+
+/// `a model`, `an event`.
+fn with_article(noun: &str) -> String {
+    let vowel = noun
+        .chars()
+        .next()
+        .is_some_and(|c| "aeiouAEIOU".contains(c));
+    if vowel {
+        format!("an {noun}")
+    } else {
+        format!("a {noun}")
+    }
+}
+
+/// The row of a generator in the palette: `Generate a model in Checkout`.
+pub fn generate_row(name: &str, module: &str) -> String {
+    format!(
+        "Generate {} in {module}",
+        with_article(&generator_noun(name))
+    )
+}
+
+/// The group of the palette that lists generators.
+pub const GENERATORS: &str = "Generators";
+/// The hint of a generator row of the palette: Enter opens its form.
+pub const FORM: &str = "Form";
+
+pub const GENERATOR: &str = "Generator";
+/// `42 available`, beside "Generator".
+pub fn available(n: usize) -> String {
+    format!("{n} available")
+}
+pub const CHANGE: &str = "Change";
+/// Not in the spec: the name a screen reader says for "Change".
+pub const CHANGE_GENERATOR: &str = "Change generator";
+
+/// The label of the name field of a generator: `Model name`. The labels of the
+/// generators the spec does not draw are not in the spec.
+pub fn name_field(name: &str) -> String {
+    format!("{} name", generator_label(name))
+}
+
+pub const MODULE_NAMES: &str = "Module names";
+pub const MODULE_NAMES_HINT: &str = "one or more, separated by spaces";
+pub const FILLABLE_ATTRIBUTES: &str = "Fillable attributes";
+pub const FILLABLE_HINT: &str = "--fillable, comma separated";
+pub const ALSO_CREATE: &str = "Also create";
+pub const ALL_OF_THESE: &str = "All of these";
+pub const USE_ATTRIBUTES: &str = "Use Eloquent attributes such as #[Fillable]";
+pub const KIND: &str = "Kind";
+pub const KIND_HINT: &str = "--web is the default";
+pub const KINDS: [&str; 3] = ["Web", "API", "Plain"];
+pub const OPTIONS: &str = "Options";
+pub const INERTIA_MODULE: &str = "Inertia controller and pages, no Blade views";
+pub const TURN_ON_AFTER_CREATION: &str = "Turn the module on after creation";
+pub const ADDS_DISABLED: &str = "unchecked adds --disabled";
+pub const REPLACE_MODULE_IF_EXISTS: &str = "Replace the module if it exists";
+pub const AUTHOR: &str = "Author";
+pub const AUTHOR_HINT: &str = "optional, written to composer.json";
+/// The placeholders of the author fields, and, not in the spec, their names.
+pub const AUTHOR_FIELDS: [(&str, &str); 3] = [
+    ("Name", "Author name"),
+    ("Email", "Author email"),
+    ("Vendor", "Author vendor"),
+];
+
+/// The label of a file of `module:make-model` under "Also create", by option name.
+pub fn model_call(option: &str) -> &'static str {
+    match option {
+        "controller" => "Controller",
+        "factory" => "Factory",
+        "migration" => "Migration",
+        "request" => "Request",
+        "resource" => "Resource",
+        "policy" => "Policy",
+        _ => "Seeder",
+    }
+}
+
+/// Not in the spec: a form says when the files are listed, until the package gives
+/// a dry run (P2, deviation S44).
+pub const FILES_AFTER_THE_RUN: &str = "The files are listed after the run.";
+pub const THEN_DUMP_AUTOLOAD: &str = "Then the command runs composer dump-autoload in the app.";
+/// Not in the spec: the button of a file generator, without a count (deviation S44).
+pub const CREATE_FILES: &str = "Create files";
+pub const CREATE_MODULE: &str = "Create module";
+
+/// The error of a class name: `A model name starts with a letter and has no spaces.
+/// Write PaymentIntent, not "payment intent".` The example is the typed name as a
+/// class name, when it makes one. Only the model sentence is in the spec.
+pub fn class_name_error(generator: &str, typed: &str) -> String {
+    let first = format!(
+        "{} name starts with a letter and has no spaces.",
+        capitalised(&with_article(&generator_noun(generator)))
+    );
+    let studly: String = typed
+        .split(|c: char| !c.is_ascii_alphanumeric() && c != '/' && c != '\\')
+        .filter(|word| !word.is_empty())
+        .map(capitalised)
+        .collect();
+    if studly != typed && mortise_core::class_name_ok(&studly) {
+        format!("{first} Write {studly}, not \"{typed}\".")
+    } else {
+        first
+    }
+}
+
+/// Not in the spec: the error of a name that is not a class name, such as a view.
+pub fn free_name_error(generator: &str) -> String {
+    format!(
+        "{} name has no spaces and does not start with \"-\".",
+        capitalised(&with_article(&generator_noun(generator)))
+    )
+}
+
+/// The package's own sentence for a module name it refuses.
+pub fn module_name_error(name: &str) -> String {
+    format!(
+        "The module name [{name}] is not valid. Use letters, digits, \"-\", \"_\" or spaces, \
+         starting with a letter."
+    )
+}
+
+pub const AUTOLOAD_FAILED: &str = "The module was created, but composer dump-autoload failed. \
+                                   Fix the module (for example its composer.json), then run \
+                                   composer dump-autoload.";
+
+/// The heading of a result that wrote every file: `Created in Billing`.
+pub fn created_in(module: &str) -> String {
+    format!("Created in {module}")
+}
+
+/// Not in the spec: the heading of a result that wrote every file again with `--force`.
+pub fn replaced_in(module: &str) -> String {
+    format!("Replaced in {module}")
+}
+
+/// `Created 2 of 3 files`
+pub fn created_of(done: usize, total: usize) -> String {
+    format!("Created {done} of {}", files(total as u64))
+}
+
+/// `1 failed`
+pub fn failed_count(n: usize) -> String {
+    format!("{n} failed")
+}
+
+pub const EXISTS_LEFT: &str = "exists, left as it is";
+/// Not in the spec: a file a run wrote again with `--force`.
+pub const REPLACED: &str = "replaced";
+/// Not in the spec: a file the output names as not written, for another reason
+/// than that it exists.
+pub const NOT_WRITTEN: &str = "not written";
+pub const OPEN: &str = "Open";
+/// Not in the spec: the name a screen reader says for "Open" of a row.
+pub fn open_path(path: &str) -> String {
+    format!("Open {path}")
+}
+/// `Open PaymentIntent.php`
+pub fn open_file(name: &str) -> String {
+    format!("Open {name}")
+}
+pub const GENERATE_ANOTHER: &str = "Generate another";
+/// `Replace PaymentIntentPolicy.php`
+pub fn replace_file(name: &str) -> String {
+    format!("Replace {name}")
+}
+pub const OPEN_THE_EXISTING_FILE: &str = "Open the existing file";
+
+/// The alert of a run that left files (S9.6). More than one file left, and a file
+/// not written for another reason, are not in the spec.
+pub fn left_alert(
+    done: usize,
+    total: usize,
+    module: &str,
+    left: &[&str],
+    failed: &[&str],
+) -> String {
+    let mut text = format!("Created {done} of {} in {module}.", files(total as u64));
+    match left {
+        [] => {}
+        [one] => text.push_str(&format!(" {one} already exists and was left as it is.")),
+        many => text.push_str(&format!(
+            " {} already exist and were left as they are.",
+            and_list(many)
+        )),
+    }
+    match failed {
+        [] => {}
+        [one] => text.push_str(&format!(
+            " {one} was not written. The output is in the runner."
+        )),
+        many => text.push_str(&format!(
+            " {} were not written. The output is in the runner.",
+            and_list(many)
+        )),
+    }
+    text
+}
+
+/// The done toast of a generator run: `Created 3 files in Billing.` A run that wrote
+/// files again (not in the spec) says "Replaced".
+pub fn created_files(n: usize, module: &str, replaced: bool) -> String {
+    let verb = if replaced { "Replaced" } else { "Created" };
+    format!("{verb} {} in {module}.", files(n as u64))
+}
+
+/// `Replace PaymentIntentPolicy.php?`
+pub fn replace_file_title(name: &str) -> String {
+    format!("Replace {name}?")
+}
+pub const REPLACE_FILE_BODY: &str = "The file exists. The generator writes a new one over it, \
+                                     and Mortise cannot bring the old one back.";
+pub const REPLACE_FILE: &str = "Replace file";
+
+/// `Replace the module Loyalty?` More than one name is not in the spec.
+pub fn replace_module_title(names: &[&str]) -> String {
+    match names {
+        [one] => format!("Replace the module {one}?"),
+        many => format!("Replace the modules {}?", and_list(many)),
+    }
+}
+
+/// `Modules/Loyalty exists with 23 files. module:make --force writes the generated
+/// files over it.` The sentence for a module Mortise does not see is not in the spec.
+pub fn replace_module_body(existing: Option<(&str, u64)>) -> String {
+    match existing {
+        Some((folder, n)) => format!(
+            "{folder} exists with {}. module:make --force writes the generated files over it.",
+            files(n)
+        ),
+        None => "module:make --force writes the generated files over the module if it exists."
+            .to_owned(),
+    }
+}
+pub const REPLACE_MODULE: &str = "Replace module";
+
+/// Not in the spec: the done toast of `module:make`.
+pub fn created_modules(names: &[&str]) -> String {
+    match names {
+        [one] => format!("Created the module {one}."),
+        many => format!("Created the modules {}.", and_list(many)),
+    }
+}
+
 #[cfg(test)]
 mod runner_tests {
     use super::*;
