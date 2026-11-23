@@ -14,10 +14,12 @@ use std::sync::OnceLock;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use mortise_core::{
-    Action, Catalog, Context, FileOutcome, Filled, GeneratedFile, MODULE_MAKE, MigrationCount,
-    Options, PhpSettings, Plan, RunEnd, RunEvent, RunnerKind, Runs, STOP_WAIT, Stream, Target,
+    Action, Catalog, Context, FileAction, FileOutcome, FileResult, Filled, GeneratedFile,
+    GeneratorReport, LangReport, MODULE_MAKE, MigrationCount, MigrationStatus, Options,
+    PhpSettings, Plan, RunEnd, RunEvent, RunnerKind, Runs, STOP_WAIT, Stream, Target, TestReport,
     autoload_failed, failed_migration, generated_files, migration_count, read_app,
 };
+use serde::de::DeserializeOwned;
 
 /// The module the test makes and deletes: `MortiseCheck`, the process id and the
 /// time, so no other run or person holds the name. Letters and digits only, as
@@ -109,10 +111,11 @@ fn run_split(runs: &Runs, app: &Path, args: &[&str]) -> (i32, Vec<String>, Vec<S
     panic!("{args:?} did not end");
 }
 
-/// The JSON document that a `--json` command wrote: the one line of standard output.
-fn document(out: &[String], err: &[String]) -> serde_json::Value {
+/// The document that a `--json` command wrote, the one line of standard output,
+/// read as Mortise reads it.
+fn document<T: DeserializeOwned>(out: &[String], err: &[String]) -> T {
     assert_eq!(out.len(), 1, "stdout: {out:?}\nstderr: {err:?}");
-    serde_json::from_str(&out[0]).unwrap_or_else(|error| panic!("{error}: {}", out[0]))
+    mortise_core::document(out).unwrap_or_else(|error| panic!("{error:?}: {}", out[0]))
 }
 
 /// Every file under `folder` with its size and a hash of its contents.
@@ -335,6 +338,12 @@ fn json_output_of_the_package_commands() {
     );
     let dir = module_dir(&app);
 
+    // The generators of the app, with the model's.
+    let (code, out, err) = run_split(&runs, &app, &["module:generators", "--json"]);
+    assert_eq!(code, 0, "{err:?}");
+    let catalog: Catalog = document(&out, &err);
+    assert!(catalog.get("module:make-model").is_some());
+
     // A dry run lists the files and writes nothing.
     let before = listing(&dir);
     let (code, out, err) = run_split(
@@ -349,18 +358,16 @@ fn json_output_of_the_package_commands() {
             "--json",
         ],
     );
-    let json = document(&out, &err);
+    let report: GeneratorReport = document(&out, &err);
     assert_eq!(code, 0, "{err:?}");
-    assert_eq!(json["dry_run"], true);
-    let files = json["files"].as_array().unwrap();
-    assert_eq!(files.len(), 2, "{json}");
-    for file in files {
-        assert!(file["path"].as_str().unwrap().contains(module), "{file}");
+    assert!(report.dry_run);
+    assert_eq!(report.files.len(), 2, "{report:?}");
+    for file in &report.files {
+        assert!(file.path.contains(module), "{file:?}");
         assert_eq!(
-            (&file["action"], &file["exists"]),
-            (&"create".into(), &false.into())
+            (file.action, file.exists, file.result),
+            (FileAction::Create, false, None)
         );
-        assert!(file.get("result").is_none(), "{file}");
     }
     assert_eq!(listing(&dir), before);
 
@@ -376,35 +383,31 @@ fn json_output_of_the_package_commands() {
             "--json",
         ],
     );
-    let json = document(&out, &err);
+    let report: GeneratorReport = document(&out, &err);
     assert_eq!(code, 0, "{err:?}");
-    assert_eq!(json["dry_run"], false);
-    let files = json["files"].as_array().unwrap();
-    assert_eq!(files.len(), 2, "{json}");
-    for file in files {
-        assert_eq!(file["result"], "created", "{file}");
-        assert!(
-            Path::new(file["path"].as_str().unwrap()).is_file(),
-            "{file}"
-        );
+    assert!(!report.dry_run);
+    assert_eq!(report.files.len(), 2, "{report:?}");
+    for file in &report.files {
+        assert_eq!(file.result, Some(FileResult::Created), "{file:?}");
+        assert!(Path::new(&file.path).is_file(), "{file:?}");
     }
 
     // The migration waits, then it has run in batch 1 or later.
     let status = |runs: &Runs| {
         let (code, out, err) = run_split(runs, &app, &["module:migrate-status", module, "--json"]);
         assert_eq!(code, 0, "{err:?}");
-        let json = document(&out, &err);
-        let migrations = json["modules"][0]["migrations"].as_array().unwrap().clone();
-        (json["migration_table"].clone(), migrations)
+        let mut status: MigrationStatus = document(&out, &err);
+        assert_eq!(status.modules.len(), 1, "{status:?}");
+        (status.migration_table, status.modules.remove(0).migrations)
     };
     let (_, migrations) = status(&runs);
     assert_eq!(migrations.len(), 1, "{migrations:?}");
-    assert_eq!(migrations[0]["ran"], false);
+    assert!(!migrations[0].ran);
     run(&runs, &app, &action(Action::Migrate));
     let (table, migrations) = status(&runs);
-    assert_eq!(table, true);
-    assert_eq!(migrations[0]["ran"], true);
-    assert!(migrations[0]["batch"].as_u64().unwrap() >= 1);
+    assert!(table);
+    assert!(migrations[0].ran);
+    assert!(migrations[0].batch.is_some_and(|batch| batch >= 1));
     run(&runs, &app, &action(Action::RollBack));
 
     // One key of the fr file is missing.
@@ -417,13 +420,11 @@ fn json_output_of_the_package_commands() {
         "<?php\n\nreturn ['welcome' => 'Bienvenue'];\n",
     );
     let (code, out, err) = run_split(&runs, &app, &["module:lang", module, "--json"]);
-    let json = document(&out, &err);
+    let report: LangReport = document(&out, &err);
     assert_eq!(code, 1, "{err:?}");
-    assert_eq!(json["modules"][0]["checked"], true);
-    assert_eq!(
-        json["modules"][0]["locales"]["fr"]["missing_keys"]["messages.php"],
-        serde_json::json!(["bye"])
-    );
+    let lang = &report.modules[0];
+    assert!(lang.checked);
+    assert_eq!(lang.locales["fr"].missing_keys["messages.php"], ["bye"]);
 
     // One test passes.
     write(
@@ -435,11 +436,14 @@ fn json_output_of_the_package_commands() {
         ),
     );
     let (code, out, err) = run_split(&runs, &app, &["module:test", module, "--json"]);
-    let json = document(&out, &err);
+    let report: TestReport = document(&out, &err);
     assert_eq!(code, 0, "{err:?}");
-    assert_eq!(json["passed"], 1, "{json}");
-    assert_eq!(json["failed"], 0, "{json}");
-    assert_eq!(json["modules"][0]["ran"], true);
+    assert_eq!(
+        (report.passed, report.failed),
+        (Some(1), Some(0)),
+        "{report:?}"
+    );
+    assert!(report.modules[0].ran);
 
     run(&runs, &app, &action(Action::DeleteModule));
     made.removed = true;
