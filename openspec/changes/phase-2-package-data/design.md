@@ -403,8 +403,10 @@ accessible name and a 24 px target (`tests/accessibility.rs`).
 ### Changed after review
 
 - `replace_words` takes the package version. From 13.4 on `module:make-model` passes `--force` to the
-  generators it calls (package PR #2302), so Replace of the model's own file drops `--factory` too and
-  writes only the model. Before 13.4 `--factory` stays, as in milestone 14.
+  generators it calls (package PR #2302). Replace of the model's own file then writes only the model
+  when the run had no `--factory`. A run with `--factory` or `--all` gets no Replace: `--factory` would
+  write over the factory, and without it the model's stub loses `HasFactory`. Before 13.4 `--factory`
+  stays, as in milestone 14.
 - "List files" and the read of the generators start only from a line that was whole on screen in the
   last frame, as the run buttons do (S37). Otherwise they are off with "Scroll up to see the whole
   command first.".

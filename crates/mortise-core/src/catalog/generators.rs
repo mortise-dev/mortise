@@ -446,7 +446,8 @@ const MODEL_CALLS: [(&str, &str, &str, &str); 6] = [
 ///   Before 13.4 `--factory` stays when the run made the factory, as the model's stub
 ///   uses it, and the factory call leaves its file. From 13.4 on the model passes
 ///   `--force` to its calls (package PR #2302), so `--factory` would write over the
-///   factory too: it goes, and only the model's file is written.
+///   factory too, and without it the stub loses `HasFactory`: a run with `--factory`
+///   or `--all` gets `None`. A run without them writes only the model's file.
 /// - A migration, `module:make-component` and `module:make`: `None`. A migration
 ///   gets a new date in its file name, so `--force` would not write the same file.
 /// - A generator the package does not ship (an app's own): `None`. It may call
@@ -492,8 +493,12 @@ fn replace_from_model(
         }
         // The model stub renders its factory from `--factory`, so it stays; `--all`
         // gives it too. Before 13.4 the factory call then leaves its file: it has no
-        // `--force`. From 13.4 on it gets `--force`, so the flag goes.
-        let factory = released_before_13_4(package) && (all || options.contains(&"--factory"));
+        // `--force`. From 13.4 on it gets `--force` and would write over the factory,
+        // and without the flag the model loses its factory: no Replace.
+        let factory = all || options.contains(&"--factory");
+        if factory && !released_before_13_4(package) {
+            return None;
+        }
         let mut words: Vec<String> = Vec::with_capacity(run.len());
         for word in run {
             let flag = word.strip_prefix("--").unwrap_or_default();
@@ -1043,18 +1048,28 @@ mod tests {
                 "--force"
             ]))
         );
-        // From 13.4 on (and on a dev build) the model passes `--force` to its calls,
-        // so `--factory` would write over the factory: only the model's file is
-        // written. `--json` stays.
-        let json_run = [&run[..], &["--json"]].concat();
+        // From 13.4 on (and on a dev build) the model passes `--force` to its calls:
+        // with `--factory` it would write over the factory, and without it the model
+        // loses its factory, so a run with `--factory` gets nothing. A run without it
+        // writes only the model's file. `--json` stays.
+        let model_file = "Modules/Billing/app/Models/Invoice.php";
+        let without_factory: Vec<&str> = run
+            .iter()
+            .copied()
+            .filter(|word| *word != "--factory")
+            .chain(["--json"])
+            .collect();
         for raw in ["13.4.0", "dev-master"] {
+            let replace =
+                |run: &[&str]| replace_words(&catalog, &words(run), model_file, &version(raw));
+            assert_eq!(replace(&run), None, "{raw}");
             assert_eq!(
-                replace_words(
-                    &catalog,
-                    &words(&json_run),
-                    "Modules/Billing/app/Models/Invoice.php",
-                    &version(raw)
-                ),
+                replace(&[MAKE_MODEL, "Invoice", "Billing", "--all"]),
+                None,
+                "{raw}"
+            );
+            assert_eq!(
+                replace(&without_factory),
                 Some(words(&[
                     MAKE_MODEL,
                     "invoice",
