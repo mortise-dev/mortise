@@ -1776,6 +1776,9 @@ impl MortiseApp {
             forced,
             form,
         });
+        if open.generate_run.is_none() {
+            open.generate.run_ended();
+        }
     }
 
     /// The result and the toast after a generator of the app at `index` ended
@@ -1787,6 +1790,7 @@ impl MortiseApp {
             forced,
             form,
         } = generating;
+        self.apps[index].generate.run_ended();
         let root = self.settings.apps[index].root.clone();
         let Some(runner_view::RunOver {
             end,

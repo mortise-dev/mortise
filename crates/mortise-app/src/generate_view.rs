@@ -261,6 +261,8 @@ pub struct GenerateState {
     pub result: Option<GenerateResult>,
     /// The file list of the last dry run, or why it gave none.
     files: Option<FileList>,
+    /// The file list a run took: its flags come back into the form when the run ends.
+    ran_with: Option<FileList>,
     /// The module the tab was drawn for last: `None` until it is first drawn.
     module: Option<Option<String>>,
     focus_filter: bool,
@@ -392,9 +394,14 @@ impl GenerateState {
     /// took out for it are the list's, not the user's: they come back into the form,
     /// with `all` when S9.3 took it.
     fn drop_list(&mut self) {
-        let Some(list) = self.files.take() else {
-            return;
-        };
+        if let Some(list) = self.files.take() {
+            self.give_back(list);
+        }
+    }
+
+    /// Gives back into the form the flags S9.3 took out for `list`, when the form is
+    /// still the one of its generator.
+    fn give_back(&mut self, list: FileList) {
         if list.before.first() != Some(&self.generator) {
             return;
         }
@@ -441,9 +448,19 @@ impl GenerateState {
             .collect()
     }
 
-    /// Drops the file list: a run starts that writes files.
+    /// Takes the file list off the form: a run starts that writes files. The run holds
+    /// the words without the flags S9.3 took out, and the line on screen stays the
+    /// line that runs until [`Self::run_ended`] gives them back.
     pub fn drop_files(&mut self) {
-        self.files = None;
+        self.ran_with = self.files.take();
+    }
+
+    /// The run that took the file list ended: the flags S9.3 took out come back into
+    /// the form, so the next run starts from the user's own choice.
+    pub fn run_ended(&mut self) {
+        if let Some(list) = self.ran_with.take() {
+            self.give_back(list);
+        }
     }
 
     /// The file list of the form whose words are `words`, if one is kept for them.

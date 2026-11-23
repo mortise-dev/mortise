@@ -394,6 +394,9 @@ fn a_dry_run_that_finds_the_policy_takes_it_out_of_the_command() {
     run(&mut harness);
     wait_for(&mut harness, "Created 2 of 3 files in Billing.");
     harness.get_by_label("app/Policies/InvoicePolicy.php, exists, left as it is");
+    // The run ended: the flag it took out is the user's again, for the next form.
+    let policy = harness.get_by_role_and_label(Role::CheckBox, "Policy");
+    assert_eq!(policy.accesskit_node().toggled(), Some(Toggled::True));
     // Each left row has its own Replace; the one under the alert is the first's.
     click(
         &mut harness,
