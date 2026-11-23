@@ -6,9 +6,10 @@ use common::{Desk, shop_api, wait_until};
 use eframe::egui::{Key, Modifiers, Role, Shape};
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT as _, Queryable as _};
-use mortise_app::app::{MortiseApp, Selection};
-use mortise_app::palette;
-use mortise_app::workspace::Tab;
+use mortise_app::app::MortiseApp;
+use mortise_app::app::workspace::Tab;
+use mortise_app::index::view::Selection;
+use mortise_app::palette::view as palette;
 use mortise_core::history::History;
 use mortise_core::{Catalog, MODULE_MAKE, Version, catalog_cache};
 

@@ -6,10 +6,11 @@ use common::{Desk, shop_api, wait_until};
 use eframe::egui::{Key, Modifiers, Rect, Role, vec2};
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT as _, Queryable as _};
-use mortise_app::app::{MortiseApp, Selection};
+use mortise_app::app::MortiseApp;
+use mortise_app::app::workspace::Tab;
+use mortise_app::index::view::Selection;
 use mortise_app::strings;
-use mortise_app::theme::size;
-use mortise_app::workspace::Tab;
+use mortise_app::ui::theme::size;
 use mortise_core::{Rules, RulesSource};
 
 fn rows(harness: &Harness<'static, MortiseApp>) -> Vec<String> {

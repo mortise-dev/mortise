@@ -11,7 +11,7 @@ use eframe::egui::{Key, Modifiers, Role};
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT as _, Queryable as _};
 use mortise_app::app::MortiseApp;
-use mortise_app::runner_view::AppRuns;
+use mortise_app::runner::view::AppRuns;
 use mortise_core::RunnerKind;
 use mortise_core::history::{Ended, Entry, History};
 

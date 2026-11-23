@@ -9,10 +9,12 @@ use common::{Desk, fixture, shop_api};
 use eframe::egui::{Key, Role, Theme};
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT as _, Queryable as _};
-use mortise_app::app::{MortiseApp, Selection};
-use mortise_app::boundary::BoundaryAction;
-use mortise_app::workspace::Tab;
-use mortise_app::{findings_view, fonts, theme};
+use mortise_app::app::MortiseApp;
+use mortise_app::app::workspace::Tab;
+use mortise_app::app::workspace::WorkAction;
+use mortise_app::findings::view as findings_view;
+use mortise_app::index::view::Selection;
+use mortise_app::ui::{fonts, theme};
 use mortise_core::{
     Action, PackageData, ReadCache, ReadOptions, Target, document, read_app_cached,
 };
@@ -295,7 +297,7 @@ fn package_data_adds_translation_warnings_and_work_to_do() {
         .with_size((1100.0, 800.0))
         .with_context_setup(fonts::install)
         .build_ui_state(
-            move |ui, (selected, opened): &mut (usize, Option<BoundaryAction>)| {
+            move |ui, (selected, opened): &mut (usize, Option<WorkAction>)| {
                 let body = ui.max_rect();
                 let pal = theme::palette(Theme::Light);
                 if let Some(action) =
@@ -331,7 +333,7 @@ fn package_data_adds_translation_warnings_and_work_to_do() {
         harness.run();
         assert_eq!(
             harness.state().1,
-            Some(BoundaryAction::OpenModuleAction {
+            Some(WorkAction::OpenModuleAction {
                 module: "Checkout".into(),
                 action
             })

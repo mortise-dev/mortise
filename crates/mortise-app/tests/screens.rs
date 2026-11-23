@@ -10,7 +10,7 @@ use eframe::egui::{self, Key, Modifiers, Role, Theme};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable as _;
 use mortise_app::app::MortiseApp;
-use mortise_app::chrome::Chrome;
+use mortise_app::app::chrome::Chrome;
 
 fn save(name: &str, harness: &mut Harness<'static, MortiseApp>) {
     let out = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/screens");

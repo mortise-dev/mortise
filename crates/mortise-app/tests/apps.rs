@@ -5,7 +5,7 @@ mod common;
 use common::{Desk, shop_api, wait_until};
 use eframe::egui::{Key, Modifiers, Role, vec2};
 use egui_kittest::kittest::{NodeT as _, Queryable as _};
-use mortise_app::theme::size;
+use mortise_app::ui::theme::size;
 use mortise_core::{RunnerKind, Settings};
 
 const COMMAND_ALT: Modifiers = Modifiers {
