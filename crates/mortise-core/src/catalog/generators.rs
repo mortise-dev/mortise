@@ -1,14 +1,17 @@
 //! The generators of the package, the words a form gives, and the name checks.
 //!
 //! A [`Catalog`] has the shape of the package's generator description (P3).
-//! Mortise ships the one of 13.3.0 ([`Catalog::v13_3`]). [`Generator::words`]
+//! Mortise ships the ones of 13.3.0 and 13.4.0 ([`Catalog::shipped`]). [`Generator::words`]
 //! turns a filled form into the words of a command. Nothing here starts a process
 //! or builds a file path.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+
+use crate::composer::Version;
+use crate::package::gives_data;
 
 /// The artisan name of the generator of a new module.
 pub const MODULE_MAKE: &str = "module:make";
@@ -25,6 +28,10 @@ const MODEL_FLAGS: [&str; 7] = [
     "policy",
     "seed",
 ];
+
+/// The options Mortise adds itself from 13.4 on: `--dry-run` for the file list and
+/// `--json` for the answer (design D4). A form never sets them.
+const ADDED: [&str; 2] = ["dry-run", "json"];
 
 /// The generators whose name is not a class name. The package takes a name that
 /// the class rule refuses:
@@ -140,13 +147,13 @@ const ORDER: [(Group, &[&str]); 8] = [
 ];
 
 /// The generators of the package, as P3 describes them.
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Catalog {
     pub generators: Vec<Generator>,
 }
 
 /// One generator, such as `module:make-model`.
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Generator {
     /// The artisan name.
     pub name: String,
@@ -158,7 +165,7 @@ pub struct Generator {
 }
 
 /// An argument of a generator, in the order artisan reads it.
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Argument {
     pub name: String,
     pub required: bool,
@@ -170,7 +177,7 @@ pub struct Argument {
 }
 
 /// An option of a generator.
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct GeneratorOption {
     pub name: String,
     pub shortcut: Option<String>,
@@ -190,12 +197,31 @@ impl Catalog {
         serde_json::from_str(text)
     }
 
-    /// The catalog Mortise ships: the 42 generators of 13.3.0.
+    /// The catalog Mortise ships for an app before 13.4: the 42 generators of 13.3.0.
     pub fn v13_3() -> &'static Catalog {
         static CATALOG: OnceLock<Catalog> = OnceLock::new();
         CATALOG.get_or_init(|| {
             Catalog::from_json(include_str!("v13_3.json")).expect("the shipped catalog is valid")
         })
+    }
+
+    /// The catalog Mortise ships for a 13.4 app: the 43 generators that
+    /// `module:generators --json` gave on a fresh 13.4.0 app.
+    pub fn v13_4() -> &'static Catalog {
+        static CATALOG: OnceLock<Catalog> = OnceLock::new();
+        CATALOG.get_or_init(|| {
+            Catalog::from_json(include_str!("v13_4.json")).expect("the shipped catalog is valid")
+        })
+    }
+
+    /// The catalog Mortise ships for this package version: [`Catalog::v13_4`] when
+    /// the package gives data ([`gives_data`]), else [`Catalog::v13_3`].
+    pub fn shipped(version: &Version) -> &'static Catalog {
+        if gives_data(version) {
+            Catalog::v13_4()
+        } else {
+            Catalog::v13_3()
+        }
     }
 
     /// The generator with this artisan name.
@@ -234,11 +260,12 @@ impl Catalog {
     }
 }
 
-/// True when the shipped catalog describes this package version: 13.3.x.
-/// A leading `v` is allowed. A dev version is not 13.3.
-pub fn shipped_for(version: &str) -> bool {
-    let version = version.strip_prefix(['v', 'V']).unwrap_or(version);
-    version == "13.3" || version.starts_with("13.3.")
+/// The version that [`Catalog::shipped`] describes, when it is not the app's own
+/// major and minor version: `13.4` for 13.5.0, `13.3` for 13.2.0 or a dev version.
+/// `None` when the shipped catalog is of the app's version.
+pub fn shipped_mark(version: &Version) -> Option<&'static str> {
+    let shipped = if gives_data(version) { "13.4" } else { "13.3" };
+    (version.short() != shipped).then_some(shipped)
 }
 
 /// What the user filled in on the form of a generator.
@@ -302,7 +329,8 @@ impl Generator {
     /// options. An array argument is split on white space into one word per name.
     /// An argument or a value is trimmed and left out when empty. A value is one
     /// word, `--<name>=<value>`, so no shell reads it. A flag or a value that the
-    /// generator does not have is ignored.
+    /// generator does not have is ignored, and so are `--dry-run` and `--json`,
+    /// which Mortise adds itself.
     ///
     /// For `module:make-model`, `--all` stands in for its seven flags when they are
     /// all on or `all` is on. When an argument word starts with `-`, the arguments
@@ -330,7 +358,13 @@ impl Generator {
             && (filled.flags.contains("all")
                 || MODEL_FLAGS.iter().all(|flag| filled.flags.contains(*flag)));
         let mut options = Vec::new();
-        for option in self.options.iter().filter(|option| !option.accepts_value) {
+        let offered = |option: &&GeneratorOption| !ADDED.contains(&option.name.as_str());
+        for option in self
+            .options
+            .iter()
+            .filter(|option| !option.accepts_value)
+            .filter(offered)
+        {
             let on = if all && option.name == "all" {
                 true
             } else if all && MODEL_FLAGS.contains(&option.name.as_str()) {
@@ -342,7 +376,12 @@ impl Generator {
                 options.push(format!("--{}", option.name));
             }
         }
-        for option in self.options.iter().filter(|option| option.accepts_value) {
+        for option in self
+            .options
+            .iter()
+            .filter(|option| option.accepts_value)
+            .filter(offered)
+        {
             let value = filled
                 .values
                 .get(&option.name)
@@ -451,14 +490,11 @@ fn replace_from_model(
         return Some(with_force(&words));
     }
 
-    let (_, command, name_suffix, _) =
-        MODEL_CALLS
-            .iter()
-            .find(|(flag, _, name_suffix, file_suffix)| {
-                let passed = format!("{model}{name_suffix}");
-                (all || options.contains(&format!("--{flag}").as_str()))
-                    && stem == format!("{}{file_suffix}", file_name(&passed))
-            })?;
+    let flag = model_flag_of(&model, left)?;
+    if !(all || options.contains(&format!("--{flag}").as_str())) {
+        return None;
+    }
+    let (_, command, name_suffix, _) = MODEL_CALLS.iter().find(|(call, ..)| *call == flag)?;
     let call = catalog.get(command)?;
     if !call.flag("force") {
         return None;
@@ -473,6 +509,21 @@ fn replace_from_model(
         values: BTreeMap::new(),
     };
     Some(call.words(&filled, module))
+}
+
+/// The flag of `module:make-model` whose call writes the file at `path`, for the
+/// model typed as `model`: `policy` for `<Model>Policy.php`. `None` for the model's
+/// own file, for a migration, whose file name carries the time, and for any other file.
+pub fn model_flag_of(model: &str, path: &str) -> Option<&'static str> {
+    let stem = file_name(path).strip_suffix(".php")?;
+    let model = studly(model);
+    MODEL_CALLS
+        .iter()
+        .find(|(_, _, name_suffix, file_suffix)| {
+            let passed = format!("{model}{name_suffix}");
+            stem == format!("{}{file_suffix}", file_name(&passed))
+        })
+        .map(|(flag, ..)| *flag)
 }
 
 /// The option words and the argument words of a run, after its artisan name.
@@ -622,7 +673,7 @@ mod tests {
     }
 
     #[test]
-    fn the_shipped_catalog_has_the_generators_of_13_3() {
+    fn the_shipped_catalogs_have_the_generators_of_their_version() {
         let catalog = Catalog::v13_3();
         assert_eq!(catalog.generators.len(), 42);
         for (_, names) in ORDER {
@@ -632,14 +683,29 @@ mod tests {
                 }
             }
         }
+        // 13.4 adds the health indicator: every generator has its place in S9.1.
+        let catalog = Catalog::v13_4();
+        assert_eq!(catalog.generators.len(), 43);
+        for (_, names) in ORDER {
+            for name in names {
+                assert!(catalog.get(name).is_some(), "{name}");
+            }
+        }
+        assert!(
+            catalog
+                .grouped()
+                .iter()
+                .all(|(group, _)| *group != Group::Other)
+        );
     }
 
     #[test]
-    fn a_generator_the_order_does_not_name_goes_to_other() {
+    fn an_apps_own_generator_goes_to_other_without_a_module_word() {
+        // `app:make-widget` is a generator of the app's own, with no module argument.
         let catalog = catalog(vec![
             generator("module:make-zeta", &[], &[], &[]),
             generator(MAKE_MODEL, &[], &[], &[]),
-            generator("module:make-alpha", &[], &[], &[]),
+            generator("app:make-widget", &[("name", false)], &[], &[]),
             generator(MODULE_MAKE, &[], &[], &[]),
         ]);
         let grouped: Vec<(Group, Vec<&str>)> = catalog
@@ -655,8 +721,19 @@ mod tests {
             [
                 (Group::Module, vec![MODULE_MAKE]),
                 (Group::Data, vec![MAKE_MODEL]),
-                (Group::Other, vec!["module:make-alpha", "module:make-zeta"]),
+                (Group::Other, vec!["app:make-widget", "module:make-zeta"]),
             ]
+        );
+        let filled = Filled {
+            arguments: BTreeMap::from([("name".to_string(), "Widget".to_string())]),
+            ..Filled::default()
+        };
+        assert_eq!(
+            catalog
+                .get("app:make-widget")
+                .unwrap()
+                .words(&filled, Some("Billing")),
+            words(&["app:make-widget", "Widget"])
         );
     }
 
@@ -730,6 +807,16 @@ mod tests {
             model.words(&filled("-Odd", &["policy"], &[]), Some("Billing")),
             words(&[MAKE_MODEL, "--policy", "--", "-Odd", "Billing"])
         );
+
+        // The 13.4 model has `--dry-run` and `--json`: Mortise adds them itself.
+        let model = Catalog::v13_4().get(MAKE_MODEL).unwrap();
+        assert_eq!(
+            model.words(
+                &filled("Invoice", &["policy", "dry-run", "json"], &[]),
+                Some("Billing")
+            ),
+            words(&[MAKE_MODEL, "Invoice", "Billing", "--policy"])
+        );
     }
 
     #[test]
@@ -771,17 +858,55 @@ mod tests {
     }
 
     #[test]
-    fn the_shipped_catalog_is_for_13_3() {
-        for (version, shipped) in [
-            ("13.3.0", true),
-            ("v13.3.12", true),
-            ("13.3", true),
-            ("13.30.0", false),
-            ("13.2.0", false),
-            ("13.x-dev", false),
+    fn the_shipped_catalog_is_marked_for_another_version() {
+        // The version, the catalog shipped for it, and whether the picker marks it.
+        for (raw, shipped, marked) in [
+            ("13.3.0", "13.3", false),
+            ("v13.3.12", "13.3", false),
+            ("13.30.0", "13.4", true),
+            ("13.2.0", "13.3", true),
+            ("13.x-dev", "13.3", true),
+            ("13.4.0-RC1", "13.3", true),
+            ("v13.4.0", "13.4", false),
+            ("13.5.0", "13.4", true),
         ] {
-            assert_eq!(shipped_for(version), shipped, "{version}");
+            let version = Version {
+                raw: raw.to_string(),
+                alias: None,
+            };
+            assert_eq!(shipped_mark(&version), marked.then_some(shipped), "{raw}");
+            let catalog = match shipped {
+                "13.3" => Catalog::v13_3(),
+                _ => Catalog::v13_4(),
+            };
+            assert!(std::ptr::eq(Catalog::shipped(&version), catalog), "{raw}");
         }
+    }
+
+    #[test]
+    fn a_models_flag_is_found_by_the_file_its_call_writes() {
+        let flag = |model: &str, path: &str| model_flag_of(model, path);
+        let policies = "Modules/Billing/app/Policies";
+        assert_eq!(
+            flag(
+                "payment_intent",
+                &format!("{policies}/PaymentIntentPolicy.php")
+            ),
+            Some("policy")
+        );
+        assert_eq!(flag("Invoice", "InvoiceFactory.php"), Some("factory"));
+        assert_eq!(flag("Invoice", "InvoiceSeeder.php"), Some("seed"));
+        assert_eq!(
+            flag("Admin/Invoice", "InvoiceController.php"),
+            Some("controller")
+        );
+        // The model's own file, a migration and another model's file have no flag.
+        assert_eq!(flag("Invoice", "Invoice.php"), None);
+        assert_eq!(
+            flag("Invoice", "2026_11_23_120000_create_invoices_table.php"),
+            None
+        );
+        assert_eq!(flag("Invoice", "PaymentPolicy.php"), None);
     }
 
     #[test]

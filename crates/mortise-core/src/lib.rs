@@ -45,10 +45,12 @@ pub use app::{
     AppSnapshot, CoverageReport, ReadError, ReadOptions, read_app, read_app_cached, read_app_env,
     read_app_with,
 };
+#[cfg(feature = "run")]
+pub use catalog::cache as catalog_cache;
 pub use catalog::{
     Action, Argument, Ask, Catalog, Context, Filled, Generator, GeneratorOption, Group,
     MODULE_MAKE, NameRule, OptionSet, Options, Plan, Target, asks_again, class_name_ok,
-    module_name_ok, plan, refuses, replace_words, shipped_for, typed_name_matches,
+    model_flag_of, module_name_ok, plan, refuses, replace_words, shipped_mark, typed_name_matches,
 };
 pub use clover::Coverage;
 pub use code::{ALL_CODE, propose_codes, propose_monogram};
@@ -69,8 +71,8 @@ pub use matcher::fuzzy;
 pub use module::{KindCount, Manifest, Module, ModuleState, Progress, ReadCache};
 #[cfg(feature = "run")]
 pub use output::{
-    FailedMigration, FileOutcome, GeneratedFile, MigrationCount, autoload_failed, failed_migration,
-    generated_files, migration_count, prohibited,
+    FailedMigration, FileOutcome, GeneratedFile, MigrationCount, app_relative, autoload_failed,
+    failed_migration, generated_files, migration_count, prohibited, reported_files,
 };
 pub use package::{
     DataError, FileAction, FileResult, GeneratorReport, LangModule, LangReport, Locale,

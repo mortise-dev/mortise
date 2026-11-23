@@ -97,6 +97,8 @@ pub struct Source<'a> {
     pub recent: &'a [String],
     /// The runs of the app in scope, the latest first.
     pub history: &'a [history::Entry],
+    /// The generators of the app in scope: read from it, or shipped for its version.
+    pub catalog: &'a Catalog,
     /// Now, in seconds since 1970, for the age of a run.
     pub now: i64,
     /// The module selected in the index of the app in scope. `None` is "All modules".
@@ -158,8 +160,7 @@ pub fn entries(query: &str, source: &Source<'_>) -> Vec<Entry> {
             // The recent module, the actions and generators that ran last, then the
             // other recent modules (S12.2 a). A row of a run opens its panel or its form.
             let mut modules = source.recent.iter().filter_map(|name| module_entry(name));
-            let runs =
-                mortise_core::recent_runs(source.history, Catalog::v13_3(), app, RECENT_RUNS);
+            let runs = mortise_core::recent_runs(source.history, source.catalog, app, RECENT_RUNS);
             let runs = runs.into_iter().map(|run| {
                 let age = strings::ran_ago(source.now, run.started_ms.div_euclid(1000));
                 let mut row = match run.ran {
@@ -304,7 +305,7 @@ pub fn entries(query: &str, source: &Source<'_>) -> Vec<Entry> {
 
             // The generators of the module the query names, else of the selected
             // module, matched by the rest of the query. A row opens the form.
-            let found = generator_entries(query, app, source.selected)
+            let found = generator_entries(query, app, source.catalog, source.selected)
                 .into_iter()
                 .map(|(score, label, detail, command)| {
                     let mut entry = entry(label, strings::FORM, command);
@@ -469,6 +470,7 @@ fn named_destructive(query: &str) -> Vec<Action> {
 fn generator_entries(
     query: &str,
     app: &AppSnapshot,
+    catalog: &Catalog,
     selected: Option<&str>,
 ) -> Vec<(u32, String, String, Command)> {
     let module_of = |word: &str| {
@@ -501,7 +503,6 @@ fn generator_entries(
         .map(|(_, module)| module.name.as_str())
         .or(selected)
         .and_then(|name| app.module(name).map(|module| module.name.clone()));
-    let catalog = Catalog::v13_3();
     catalog
         .grouped()
         .into_iter()
@@ -814,6 +815,7 @@ mod tests {
             apps: &[],
             recent: &[],
             history: &[],
+            catalog: Catalog::v13_3(),
             now: 0,
             selected: None,
             mac: false,
@@ -838,6 +840,7 @@ mod tests {
             apps: &apps,
             recent: &[],
             history: &[],
+            catalog: Catalog::v13_3(),
             now: 0,
             selected: None,
             mac: true,
@@ -867,6 +870,7 @@ mod tests {
             apps: &[],
             recent: &[],
             history: &[],
+            catalog: Catalog::v13_3(),
             now: 0,
             selected: None,
             mac: false,

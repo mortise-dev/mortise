@@ -102,6 +102,15 @@ pub struct GeneratorReport {
     pub errors: Vec<String>,
 }
 
+impl GeneratorReport {
+    /// True when the errors say that `composer dump-autoload` failed (`module:make`).
+    pub fn autoload_failed(&self) -> bool {
+        self.errors
+            .iter()
+            .any(|error| error.trim().ends_with("composer dump-autoload failed."))
+    }
+}
+
 /// One file of a [`GeneratorReport`].
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct ReportedFile {

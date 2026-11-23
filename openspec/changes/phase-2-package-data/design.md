@@ -405,6 +405,47 @@ accessible name and a 24 px target (`tests/accessibility.rs`).
 - The quiet row draws `module:lang` dim after "Translations are complete", as S6.4 does.
 - With no finding and some work to do, the To do group shows below "No findings. ...".
 
+### Changed while building 15.3
+
+- `shipped_for` is gone. `shipped_mark(version)` gives the version of the shipped catalog when the
+  picker marks it (`13.4` for 13.5.0, `13.3` for 13.2.0 or a dev version), else `None`.
+- The cache is `mortise_core::catalog_cache` (`catalog/cache.rs`, `load` and `store`), behind the
+  `run` feature: it reuses `history::app_key`, which lives there. `Catalog` and its parts are `Serialize`.
+- The app learns the package version from the snapshot, not when it opens the app. So it looks up the
+  cache once for each package version it reads, for every open app. A read catalog, from the cache or
+  from this session, is used only while `package.raw` is the version it was read with.
+- A failed read drops the read catalog of the session, so the sentence "The list is the one shipped for
+  13.4." holds. The cache file stays.
+- The line of the read is a code block under the button, as wide as the picker. What the last read
+  gave stands beside the button.
+- `Generator::words` leaves out `--dry-run` and `--json` even when a form holds them.
+- The palette's generators and recent runs use the same catalog as the picker.
+
+### Changed while building 15.4
+
+- The core gives `output::reported_files(report, root)` beside `generated_files`, and
+  `output::app_relative(root, path)`, which both the result and the file list use. It compares the
+  path with the app folder as given and with its links resolved: PHP prints the real folder
+  (`/private/var/...` on macOS for `/var/...`), and a resolved folder on Windows starts with `\\?\`.
+- `GeneratorReport::autoload_failed()` reads "composer dump-autoload failed." from `errors`.
+- `catalog::model_flag_of(model, file)` holds the name mapping of the model's calls; `replace_words`
+  and S9.3 use it.
+- A run's standard error is not kept apart in `AppRuns`, so a run without a document gives as reason
+  serde's message, "nothing on standard output" at exit 0, else "exit code N" (not in the spec).
+- S9.3 changes the form when the dry run ends, and only while the form still has the words it ran
+  with; otherwise the list is dropped. A change of the words drops the list for good: it does not
+  come back when the words do. A run that starts drops it too: it writes the files.
+- Before a list, "The files are listed after the run." stays under the line of the dry run. "List
+  files" is also off while a name is not valid, as the primary button is.
+- "Replace <file>" for the generator's own file shows only when `replace_words` gives words. A
+  generator without `--force`, a migration, `module:make-component` and `module:make` get none, as
+  the result of S9.6 (S49).
+- In a root folder the files at its top come first, then the files by folder, in write order inside
+  a folder. For `module:make` the root is the modules folder and the next part of the path; several
+  module names give one head each, joined by commas (not in the spec).
+- Text not in the spec: "No files", "3 files, 2 exist already", "Create the other file", the error
+  of the package in quotes, and "Policy exists" as the name a screen reader says for the mark.
+
 ## Risks / Trade-offs
 
 - [The user must press "List files" and "Read migration state"] → One more step than the spec draws.

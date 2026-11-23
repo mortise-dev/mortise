@@ -450,13 +450,7 @@ pub fn pad_module(root: &Path, module: &str, files: usize) {
 /// in its `composer.lock`, such as `v13.4.0`.
 pub fn app_with_package(desk: &Desk, folder: &str, version: &str) -> PathBuf {
     let root = desk.app(folder);
-    let lock = root.join("composer.lock");
-    let text = std::fs::read_to_string(&lock).unwrap();
-    let text = text.replace(
-        "\"version\": \"v13.3.0\"",
-        &format!("\"version\": \"{version}\""),
-    );
-    std::fs::write(lock, text).unwrap();
+    package_version(&root, version);
     root
 }
 
