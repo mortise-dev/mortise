@@ -19,7 +19,7 @@
 
 ## 4. Real PHP (16.3 opus)
 
-- [ ] 4.1 Add `tests/real_php.rs` and the CI job (D8). Verify by running it once on macOS with PHP 8.4
+- [x] 4.1 Add `tests/real_php.rs` and the CI job (D8). Verify by running it once on macOS with PHP 8.4
 
 ## 5. Accessibility and images (16.2, 16.1 sonnet)
 
