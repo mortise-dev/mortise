@@ -1033,6 +1033,10 @@ impl View<'_> {
                     Sense::click(),
                 );
                 response.widget_info(|| WidgetInfo::labeled(Role::Button, true, &node.module.name));
+                // A node that Tab reaches is scrolled into the graph when it scrolls.
+                if response.gained_focus() {
+                    response.scroll_to_me(None);
+                }
                 let fill = if response.hovered() {
                     pal.well
                 } else {

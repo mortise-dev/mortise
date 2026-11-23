@@ -416,6 +416,41 @@ fn the_graph_of_12_modules_gives_each_node_its_full_name() {
         .hover();
     harness.run_steps(12);
     assert_eq!(harness.get_all_by_label("Addresses").count(), before + 1);
+
+    // Tab reaches every node, and the graph scrolls each one into view. The graph runs
+    // from 13 px left of its title to 13 px right of its control.
+    let heading = harness
+        .get_by_role_and_label(Role::Heading, "16 links between 12 modules")
+        .rect();
+    let control = harness
+        .get_by_role_and_label(Role::RadioButton, "Problems only")
+        .rect();
+    let (left, right) = (heading.left() - 13.0, control.right() + 16.0);
+    harness
+        .get_by_role_and_label(Role::RadioButton, "Problems only")
+        .focus();
+    harness.run();
+    let mut reached = std::collections::BTreeSet::new();
+    for _ in 0..40 {
+        harness.key_press(Key::Tab);
+        harness.run_steps(3);
+        let Some(node) = harness
+            .query_all_by_role(Role::Button)
+            .find(|node| node.is_focused())
+        else {
+            continue;
+        };
+        let name = node.accesskit_node().label().unwrap_or_default();
+        if names.contains(&name) {
+            let rect = node.rect();
+            assert!(
+                left <= rect.left() && rect.right() <= right,
+                "{name} {rect:?}"
+            );
+            reached.insert(name);
+        }
+    }
+    assert_eq!(reached.len(), 12);
 }
 
 #[test]
