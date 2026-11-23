@@ -1,7 +1,7 @@
 //! Opening a file in the user's editor, at a line.
 
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 
 use serde::{Deserialize, Serialize};
 
@@ -89,9 +89,8 @@ pub(crate) fn split_words(command: &str) -> Vec<String> {
 pub fn open_in_editor(command: &str, file: &Path, line: u32) -> Result<(), EditorError> {
     let mut words = editor_arguments(command, file, line).into_iter();
     let program = words.next().unwrap_or_default();
-    Command::new(&program)
+    crate::run::process::command(&program)
         .args(words)
-        .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
