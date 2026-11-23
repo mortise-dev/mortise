@@ -516,10 +516,13 @@ fn replace_from_model(
         if factory && !released_before_13_4(package) {
             return None;
         }
+        // Only a word before `--` is a flag: a module named `--factory` stays.
         let mut words: Vec<String> = Vec::with_capacity(run.len());
+        let mut positional = false;
         for word in run {
+            positional |= word == "--";
             let flag = word.strip_prefix("--").unwrap_or_default();
-            let call = flag == "all" || MODEL_FLAGS.contains(&flag);
+            let call = !positional && (flag == "all" || MODEL_FLAGS.contains(&flag));
             if call && factory && !words.iter().any(|kept| kept == "--factory") {
                 words.push("--factory".to_owned());
             } else if !call {
@@ -1111,6 +1114,18 @@ mod tests {
                     "--fillable=total",
                     "--json",
                     "--force"
+                ])),
+                "{raw}"
+            );
+            // A module named `--factory`, after `--`, is a name, not the flag.
+            assert_eq!(
+                replace(&[MAKE_MODEL, "--", "Invoice", "--factory"]),
+                Some(words(&[
+                    MAKE_MODEL,
+                    "--force",
+                    "--",
+                    "Invoice",
+                    "--factory"
                 ])),
                 "{raw}"
             );
