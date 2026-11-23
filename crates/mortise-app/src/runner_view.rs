@@ -492,6 +492,9 @@ struct Status {
     color: Color32,
     /// The time beside an exit code.
     time: Option<String>,
+    /// A text as wide as `text` can be, whose room `text` keeps, so the mark does
+    /// not move as the time changes.
+    room: String,
     /// The run is over: the status is announced.
     ended: bool,
 }
@@ -503,6 +506,7 @@ fn status_of(current: &Current, pal: &Palette) -> Option<Status> {
             text: strings::running_for(run.elapsed()),
             color: pal.code_fg,
             time: None,
+            room: strings::running_for(Duration::from_millis(88_800)),
             ended: false,
         },
         State::Ended(RunEnd::Exited {
@@ -513,6 +517,7 @@ fn status_of(current: &Current, pal: &Palette) -> Option<Status> {
             text: strings::done_in(*elapsed),
             color: pal.code_ok,
             time: None,
+            room: strings::done_in(Duration::from_millis(888)),
             ended: true,
         },
         State::Ended(RunEnd::Exited { code, elapsed }) => Status {
@@ -520,6 +525,7 @@ fn status_of(current: &Current, pal: &Palette) -> Option<Status> {
             text: strings::exit_code(*code),
             color: pal.code_err,
             time: Some(strings::run_time(*elapsed)),
+            room: String::new(),
             ended: true,
         },
         State::Ended(RunEnd::Stopped { elapsed, .. }) => Status {
@@ -527,6 +533,7 @@ fn status_of(current: &Current, pal: &Palette) -> Option<Status> {
             text: strings::stopped_after(*elapsed),
             color: pal.code_fg,
             time: None,
+            room: strings::stopped_after(Duration::from_millis(88_800)),
             ended: true,
         },
         State::NotStarted(_) => return None,
@@ -535,9 +542,12 @@ fn status_of(current: &Current, pal: &Palette) -> Option<Status> {
 }
 
 fn status_width(ui: &Ui, status: &Status) -> f32 {
-    let text = draw::galley(ui, &status.text, STATUS, Color32::PLACEHOLDER)
-        .size()
-        .x;
+    let width = |text: &str| {
+        draw::galley(ui, text, STATUS, Color32::PLACEHOLDER)
+            .size()
+            .x
+    };
+    let text = width(&status.text).max(width(&status.room));
     // The time keeps the room of "999 ms", so the status does not move as times differ.
     let time = status.time.as_ref().map_or(0.0, |time| {
         let width = |text: &str| {
