@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::links::{Cycle, Link};
 use crate::module::{Manifest, Module, ModuleState};
+use crate::package::PackageData;
 use crate::rules::Rules;
 
 /// The coverage limit of an app until it is changed: a module under it is a warning.
@@ -32,6 +33,8 @@ pub enum Check {
     NamespaceMatchesFolder,
     NoStaleStatus,
     CoverageLimit,
+    /// From the report of `module:lang`. It runs only once the user checked translations.
+    TranslationsComplete,
 }
 
 impl Check {
@@ -68,6 +71,14 @@ pub enum Detail {
     StaleStatus { entry: String, file: String },
     /// The module is covered less than the limit of the app.
     LowCoverage { percent: u8, limit: u8 },
+    /// A locale of the module lacks keys or files that its other locales have.
+    /// `from` is the other locale when the module has exactly two.
+    MissingTranslations {
+        locale: String,
+        keys: usize,
+        files: usize,
+        from: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -88,6 +99,14 @@ pub struct CheckResult {
     pub findings: usize,
 }
 
+/// Work in progress on a module. It is not a finding: it changes no mark and no count.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Todo {
+    pub module: String,
+    /// How many of its migrations wait to run, from the last migration state read.
+    pub waiting: usize,
+}
+
 /// The finding state of a module: its worst finding.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum FindingState {
@@ -104,6 +123,8 @@ pub struct Findings {
     pub list: Vec<Finding>,
     /// Every check that ran, in the order of [`Check`].
     pub checks: Vec<CheckResult>,
+    /// The modules with migrations waiting, by module. Never counted as findings.
+    pub todo: Vec<Todo>,
 }
 
 impl Findings {
@@ -167,6 +188,8 @@ pub(crate) struct Subject<'a> {
     /// Without a coverage report the coverage limit is not checked.
     pub(crate) has_coverage_report: bool,
     pub(crate) coverage_limit: u8,
+    /// What the package said in the reads the user started.
+    pub(crate) package: &'a PackageData,
 }
 
 /// Runs every check.
@@ -316,6 +339,54 @@ pub(crate) fn find(subject: &Subject<'_>) -> Findings {
         ran(Check::CoverageLimit, modules.len(), found);
     }
 
+    // Only a module of the app counts: the report can be older than a delete.
+    let in_app = |name: &str| modules.iter().any(|module| module.name == name);
+    if let Some(report) = &subject.package.translations {
+        let checked = report
+            .modules
+            .iter()
+            .filter(|module| module.checked && in_app(&module.name))
+            .count();
+        let found = report
+            .modules
+            .iter()
+            .filter(|module| in_app(&module.name))
+            .flat_map(|module| {
+                module.locales.iter().filter_map(|(locale, missing)| {
+                    let keys = missing.missing_keys.values().map(Vec::len).sum::<usize>();
+                    let files = missing.missing_files.len();
+                    let from = match module.locales.keys().collect::<Vec<_>>()[..] {
+                        [a, b] => Some(if a == locale { b } else { a }.clone()),
+                        _ => None,
+                    };
+                    (keys + files > 0).then(|| Finding {
+                        severity: Severity::Warning,
+                        check: Check::TranslationsComplete,
+                        module: Some(module.name.clone()),
+                        detail: Detail::MissingTranslations {
+                            locale: locale.clone(),
+                            keys,
+                            files,
+                            from,
+                        },
+                    })
+                })
+            })
+            .collect();
+        ran(Check::TranslationsComplete, checked, found);
+    }
+
+    let todo = subject
+        .package
+        .migrations
+        .iter()
+        .filter(|(name, state)| !state.waiting.is_empty() && in_app(name))
+        .map(|(name, state)| Todo {
+            module: name.clone(),
+            waiting: state.waiting.len(),
+        })
+        .collect();
+
     // Problems first, then warnings; within each by module, the app's own last.
     list.sort_by(|a, b| {
         a.severity
@@ -324,5 +395,5 @@ pub(crate) fn find(subject: &Subject<'_>) -> Findings {
             .then_with(|| a.module.cmp(&b.module))
             .then_with(|| a.check.cmp(&b.check))
     });
-    Findings { list, checks }
+    Findings { list, checks, todo }
 }

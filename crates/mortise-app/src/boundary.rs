@@ -61,6 +61,11 @@ pub enum BoundaryAction {
     Copy { text: String, said: &'static str },
     /// Open the Actions tab of the selected module on this action. Nothing runs.
     OpenAction(mortise_core::Action),
+    /// Open the Actions tab of a module on this action, from the Findings list. Nothing runs.
+    OpenModuleAction {
+        module: String,
+        action: mortise_core::Action,
+    },
     /// Start an action of the Actions tab, asking first where the rules say so.
     Act(crate::actions_view::Act),
     /// Start a generator of the Generate tab, or ask first.

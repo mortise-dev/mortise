@@ -315,6 +315,16 @@ pub fn entries(query: &str, source: &Source<'_>) -> Vec<Entry> {
 
             let findings = app.findings.list.iter().filter_map(|finding| {
                 let module = finding.module.clone()?;
+                // A translation warning opens Check translations of its module.
+                if let Detail::MissingTranslations { .. } = finding.detail {
+                    let label = strings::finding(finding, app, app_name);
+                    let score = fuzzy(query, &label)?;
+                    let command = Command::Action {
+                        module: Some(module),
+                        action: Action::CheckTranslations,
+                    };
+                    return Some((score, entry(label, strings::ACTIONS, command)));
+                }
                 let (label, other) = match &finding.detail {
                     Detail::CircularUse { files } => {
                         let names: Vec<String> =
