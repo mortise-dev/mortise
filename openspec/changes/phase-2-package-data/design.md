@@ -481,6 +481,10 @@ accessible name and a 24 px target (`tests/accessibility.rs`).
   its own module, or those `module:make` asks for. Then from the first of the app's modules, then from
   the last `/<modules>/`. A class name that repeats the module's part
   (`.../Models/Admin/Modules/Billing/Invoice.php`) keeps its prefix.
+- A Replace of a left row updates the row only with a file of the row's own path. A file of another path,
+  such as one the app's generator paths now place elsewhere, gets a row of its own, and the left row
+  stays with its Replace. A Replace that read no file keeps the rows and shows "Read from the output:
+  ..." under the result.
 
 ## Risks / Trade-offs
 

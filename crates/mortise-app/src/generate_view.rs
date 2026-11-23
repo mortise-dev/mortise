@@ -455,25 +455,39 @@ impl GenerateState {
         self.result = Some(result);
     }
 
-    /// Takes the end of a Replace of the left row `row` of the result on screen: the
-    /// row gets what the run did to its file, and the other rows stay as they are,
-    /// with their Replace. A run that read no file leaves the row. Returns false when
-    /// the result holds no such row.
-    pub fn replace_row(&mut self, row: &str, files: &[GeneratedFile]) -> bool {
-        let Some(left) = self.result.as_mut().and_then(|result| {
+    /// Takes the end of a Replace of the left row `row` of the result on screen. A
+    /// file of the run whose path is the row's gives the row its outcome. A file of
+    /// another path, such as one the app's generator paths now place elsewhere, gets a
+    /// row of its own, and `row` stays as it was. The other rows stay, with their
+    /// Replace. A run that read no file leaves the rows and shows `fallback`, why it
+    /// gave no answer. Returns false when the result holds no such row.
+    pub fn replace_row(
+        &mut self,
+        row: &str,
+        files: &[GeneratedFile],
+        fallback: Option<String>,
+    ) -> bool {
+        let Some(result) = self.result.as_mut().filter(|result| {
             result
                 .files
-                .iter_mut()
-                .find(|file| file.path == row && file.outcome == FileOutcome::Left)
+                .iter()
+                .any(|file| file.path == row && file.outcome == FileOutcome::Left)
         }) else {
             return false;
         };
-        let done = match files {
-            [only] => Some(only),
-            files => files.iter().find(|file| file.path == row),
-        };
-        if let Some(done) = done {
-            left.outcome = done.outcome;
+        let same = |a: &str, b: &str| a.replace('\\', "/") == b.replace('\\', "/");
+        for done in files {
+            match result
+                .files
+                .iter_mut()
+                .find(|file| same(&file.path, &done.path))
+            {
+                Some(file) => file.outcome = done.outcome,
+                None => result.files.push(done.clone()),
+            }
+        }
+        if fallback.is_some() {
+            result.fallback = fallback;
         }
         true
     }
@@ -2853,6 +2867,50 @@ fn mark_rect(right: f32, mid: f32) -> Rect {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_replace_updates_only_the_row_of_its_path() {
+        let file = |path: &str, outcome| GeneratedFile {
+            path: path.to_owned(),
+            outcome,
+        };
+        let model = "Modules/Billing/app/Models/Invoice.php";
+        let policy = "Modules/Billing/app/Policies/InvoicePolicy.php";
+        let mut state = GenerateState {
+            result: Some(GenerateResult::new(
+                Some("Billing".to_owned()),
+                Vec::new(),
+                vec![
+                    file(model, FileOutcome::Created),
+                    file(policy, FileOutcome::Left),
+                ],
+                false,
+            )),
+            ..Default::default()
+        };
+        // The app's policy path changed since the result: the replacement wrote
+        // another file, which gets its own row; the left row keeps its Replace.
+        let moved = "Modules/Billing/app/Auth/InvoicePolicy.php";
+        assert!(state.replace_row(policy, &[file(moved, FileOutcome::Replaced)], None));
+        // A replacement that read no file keeps the rows and says why.
+        assert!(state.replace_row(policy, &[], Some("no answer".to_owned())));
+        let result = state.result.as_ref().unwrap();
+        assert_eq!(
+            result.files,
+            [
+                file(model, FileOutcome::Created),
+                file(policy, FileOutcome::Left),
+                file(moved, FileOutcome::Replaced),
+            ]
+        );
+        assert_eq!(result.fallback.as_deref(), Some("no answer"));
+        // A file of the row's own path updates the row.
+        assert!(state.replace_row(policy, &[file(policy, FileOutcome::Replaced)], None));
+        assert_eq!(
+            state.result.unwrap().files[1],
+            file(policy, FileOutcome::Replaced)
+        );
+    }
 
     #[test]
     fn only_the_generator_s_own_file_stops_create() {
