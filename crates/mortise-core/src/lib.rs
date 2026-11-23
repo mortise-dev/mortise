@@ -5,13 +5,10 @@
 //! [`read_app`], which turns a folder into an [`AppSnapshot`]: plain data that an
 //! interface, a command line tool or a service can show.
 
-#[cfg(feature = "actuator")]
-mod actuator;
 mod app;
 mod boundary;
 mod catalog;
 mod editor;
-mod environment;
 mod findings;
 mod matcher;
 mod modules;
@@ -21,18 +18,12 @@ mod package;
 mod php;
 mod program;
 mod run;
-#[cfg(feature = "actuator")]
 mod runtime;
-mod secrets;
 mod settings;
 mod surface;
 #[cfg(feature = "testing")]
 pub mod testing;
 
-#[cfg(feature = "actuator")]
-pub use actuator::{
-    Answer, Component, Info, Route, Runtime, Secret, Status, Task, ask, ask_status,
-};
 #[cfg(feature = "watch")]
 pub use app::live::{LiveApp, LiveState};
 pub use app::{
@@ -49,7 +40,6 @@ pub use catalog::{
     module_name_ok, plan, refuses, replace_words, shipped_mark, typed_name_matches,
 };
 pub use editor::{Editor, EditorError, editor_arguments, open_in_editor};
-pub use environment::{Credentials, Environment};
 pub use findings::{
     Check, CheckResult, DEFAULT_COVERAGE_LIMIT, Detail, Finding, FindingState, Findings, Severity,
     Todo,
@@ -89,9 +79,14 @@ pub use run::{
 };
 pub use run::{PhpSettings, RunnerKind};
 #[cfg(feature = "actuator")]
-pub use runtime::{
+pub use runtime::actuator::{
+    Answer, Component, Info, Route, Runtime, Secret, Status, Task, ask, ask_status,
+};
+pub use runtime::environment::{Credentials, Environment};
+#[cfg(feature = "actuator")]
+pub use runtime::live::{
     LiveRuntime, Pace, RuntimeState, module_of, routes_by_module, routes_of, tasks_of,
 };
-pub use secrets::{Kept, Secrets};
+pub use runtime::secrets::{Kept, Secrets};
 pub use settings::{AppEntry, General, IndexRows, Motion, Settings, SettingsError, ThemeChoice};
 pub use surface::{Proposal, ScanCounts, SurfaceEntry, SurfaceKind, SurfaceScan, Typed};

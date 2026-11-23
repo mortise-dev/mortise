@@ -9,10 +9,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::app::AppSnapshot;
 use crate::editor::Editor;
-use crate::environment::Environment;
 use crate::findings::DEFAULT_COVERAGE_LIMIT;
 use crate::modules::code::propose_monogram;
 use crate::run::PhpSettings;
+use crate::runtime::environment::Environment;
 
 /// An app Mortise knows.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -351,7 +351,7 @@ mod tests {
 
     #[test]
     fn an_environment_is_saved_without_a_secret() {
-        use crate::environment::Credentials;
+        use crate::runtime::environment::Credentials;
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("settings.json");
         let staging = Environment {
