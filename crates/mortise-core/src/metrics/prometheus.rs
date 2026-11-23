@@ -122,27 +122,45 @@ fn sample<'a>(line: &'a str, family: &'a str, kind: Kind) -> Option<Sample<'a>> 
 }
 
 /// Reads the labels after `{` into `labels`, and the value of `le` apart. Gives the text after `}`.
-/// `None` when a label has no `=`, a value has no quotes or the closing `}` is missing.
+/// `None` when a label has no name or no `=`, a value has no quotes, a value is followed by
+/// neither `,` nor `}`, or the closing `}` is missing.
 fn read_labels<'a>(
     mut rest: &'a str,
     labels: &mut Vec<(&'a str, Cow<'a, str>)>,
     le: &mut Option<Cow<'a, str>>,
 ) -> Option<&'a str> {
     loop {
-        rest = rest.trim_start_matches([' ', '\t', ',']);
+        rest = rest.trim_start_matches([' ', '\t']);
         if let Some(after) = rest.strip_prefix('}') {
             return Some(after);
         }
         let (name, after) = rest.split_once('=')?;
         let name = name.trim_end();
+        if !is_label_name(name) {
+            return None;
+        }
         let (value, after) = label_value(after.trim_start().strip_prefix('"')?)?;
         if name == "le" {
             *le = Some(value);
         } else {
             labels.push((name, value));
         }
-        rest = after;
+        let after = after.trim_start_matches([' ', '\t']);
+        rest = match after.strip_prefix(',') {
+            Some(after) => after,
+            None if after.starts_with('}') => after,
+            None => return None,
+        };
     }
+}
+
+/// `[a-zA-Z_][a-zA-Z0-9_]*`, the names the format allows.
+fn is_label_name(name: &str) -> bool {
+    let mut bytes = name.bytes();
+    bytes
+        .next()
+        .is_some_and(|first| first.is_ascii_alphabetic() || first == b'_')
+        && bytes.all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
 }
 
 /// Reads a label value after its opening quote, up to the closing quote. Gives the value and the
@@ -277,7 +295,9 @@ untyped 9
 b_count{x="a\"b\nc\\d\e"} 4 1700000000000
 b_sum{x="no value"}
 b_sum{x="open} 5
-b_count{x="last"} 6
+b_sum{x="a" y="b"} 5
+b_sum{,x="a"} 5
+b_count{x="last" , } 6
 # TYPE c counter
 c 7
 "#;
