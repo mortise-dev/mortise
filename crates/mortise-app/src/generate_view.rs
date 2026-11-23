@@ -2459,9 +2459,28 @@ fn result_view(
                 pal.ink_2,
             );
         } else {
+            // A file the run left has its own Replace, not only the first (S9.6).
+            let words = (file.outcome == FileOutcome::Left)
+                .then(|| left_replace(&result, inputs, app, &file.path))
+                .flatten();
+            let mut word_right = right;
+            if let Some(words) = words {
+                let replace_said = strings::replace_file(&shown);
+                let replace = Button {
+                    label: strings::REPLACE,
+                    small: true,
+                    said: Some(&replace_said),
+                    ..Default::default()
+                };
+                let at = pos2(right - replace.width(ui), mid - replace.height() / 2.0);
+                if replace.show(ui, pal, at, inputs.keyboard).clicked() {
+                    asked = Some(replace_asked(app, &result, &file.path, words));
+                }
+                word_right = at.x - 8.0;
+            }
             draw::paint_text(
                 ui,
-                pos2(right, mid),
+                pos2(word_right, mid),
                 Align2::RIGHT_CENTER,
                 state_word,
                 ty::SECONDARY,
@@ -2535,15 +2554,7 @@ fn result_view(
     let Some(first_left) = left.first() else {
         return (y - 12.0, asked);
     };
-    // A file S9.3 took out has the words of the form before its flag went.
-    let words = match result
-        .taken_out
-        .iter()
-        .find(|file| file.path == first_left.path)
-    {
-        Some(file) => file.replace.clone(),
-        None => replace_for(inputs, &result.args, &first_left.path, &app.package),
-    };
+    let words = left_replace(&result, inputs, app, &first_left.path);
     let name = file_name(&first_left.path);
     let mut bottom = y - 12.0;
     if let Some(words) = words {
@@ -2557,15 +2568,7 @@ fn result_view(
         x = response.rect.right() + 8.0;
         bottom = response.rect.bottom();
         if response.clicked() {
-            asked = Some(BoundaryAction::Generate(GenerateAsk::Replace {
-                file: name.to_owned(),
-                run: GenerateRun {
-                    generator: words.first().cloned().unwrap_or_default(),
-                    module: result.module.clone(),
-                    args: run_words(app, words),
-                    taken_out: Vec::new(),
-                },
-            }));
+            asked = Some(replace_asked(app, &result, &first_left.path, words));
         }
     }
     if !openable(app, &first_left.path) {
@@ -2580,6 +2583,38 @@ fn result_view(
         asked = Some(open_file_asked(app, &first_left.path));
     }
     (response.rect.bottom(), asked)
+}
+
+/// The words that write a file the run left again. A file S9.3 took out has the
+/// words of the form before its flag went.
+fn left_replace(
+    result: &GenerateResult,
+    inputs: &GenerateInputs<'_>,
+    app: &AppSnapshot,
+    path: &str,
+) -> Option<Vec<String>> {
+    match result.taken_out.iter().find(|file| file.path == path) {
+        Some(file) => file.replace.clone(),
+        None => replace_for(inputs, &result.args, path, &app.package),
+    }
+}
+
+/// Replace of a file the run left: the dialog of S9.6 asks first.
+fn replace_asked(
+    app: &AppSnapshot,
+    result: &GenerateResult,
+    path: &str,
+    words: Vec<String>,
+) -> BoundaryAction {
+    BoundaryAction::Generate(GenerateAsk::Replace {
+        file: file_name(path).to_owned(),
+        run: GenerateRun {
+            generator: words.first().cloned().unwrap_or_default(),
+            module: result.module.clone(),
+            args: run_words(app, words),
+            taken_out: Vec::new(),
+        },
+    })
 }
 
 /// True when a file of a result opens on this computer: a path under the app folder,
