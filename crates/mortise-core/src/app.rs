@@ -207,7 +207,7 @@ pub enum ReadError {
 
 /// `APP_URL` and `APP_ENV` from the `.env` file of the app, in one read.
 /// No other line is looked at.
-fn app_env_file(root: &Path) -> (Option<String>, Option<String>) {
+fn read_env(root: &Path) -> (Option<String>, Option<String>) {
     match std::fs::read_to_string(root.join(".env")) {
         Ok(env) => (env_value(&env, "APP_URL"), env_value(&env, "APP_ENV")),
         Err(_) => (None, None),
@@ -437,7 +437,7 @@ pub fn read_app_cached(
         coverage_limit: options.coverage_limit,
     });
 
-    let (app_url, app_env) = app_env_file(&root);
+    let (app_url, app_env) = read_env(&root);
     Ok(AppSnapshot {
         name: root
             .file_name()
@@ -485,9 +485,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_url_of_the_app_is_read_from_its_line() {
-        let env_with_both = "APP_ENV=production\nAPP_URL=http://a.test\n";
-        let env = "APP_NAME=Shop\nAPP_URLS=no\nAPP_URL=https://shop-api.test\nDB_PASSWORD=secret\n";
+    fn the_url_and_the_environment_of_the_app_are_read_from_their_lines() {
+        let env = "APP_NAME=Shop\nAPP_ENV=production\nAPP_URLS=no\nAPP_URL=https://shop-api.test\nDB_PASSWORD=secret\n";
         assert_eq!(
             env_value(env, "APP_URL").as_deref(),
             Some("https://shop-api.test")
@@ -507,9 +506,6 @@ mod tests {
         assert_eq!(env_value("APP_URL=", "APP_URL"), None);
         assert_eq!(env_value("# APP_URL=http://old.test", "APP_URL"), None);
         assert_eq!(env_value("APP_ENV=local", "APP_URL"), None);
-        assert_eq!(
-            env_value(env_with_both, "APP_ENV").as_deref(),
-            Some("production")
-        );
+        assert_eq!(env_value(env, "APP_ENV").as_deref(), Some("production"));
     }
 }
