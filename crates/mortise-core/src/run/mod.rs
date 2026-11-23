@@ -4,4 +4,6 @@
 
 #[cfg(feature = "run")]
 mod detect;
+#[cfg(feature = "run")]
+pub use detect::{Detected, detect, herd_config_dir};
 pub(crate) mod process;

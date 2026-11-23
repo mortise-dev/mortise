@@ -56,6 +56,8 @@ pub use live::{LiveApp, LiveState};
 pub use matcher::fuzzy;
 pub use module::{KindCount, Manifest, Module, ModuleState, Progress, ReadCache};
 pub use rules::{RULES_FILE, Rules, RulesError, RulesSource};
+#[cfg(feature = "run")]
+pub use run::{Detected, detect, herd_config_dir};
 #[cfg(feature = "actuator")]
 pub use runtime::{
     LiveRuntime, Pace, RuntimeState, module_of, routes_by_module, routes_of, tasks_of,
