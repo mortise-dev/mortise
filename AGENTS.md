@@ -96,9 +96,8 @@ Environment for work on Mortise itself:
 
 | Path | Holds |
 |---|---|
-| `crates/mortise-core` | Reading an app into a snapshot, links, rules, findings, the scan, the actuator client, settings. Features `watch`, `actuator`, `os-secrets` are on by default; `testing` gives a stub actuator |
-| `crates/mortise-app` | The window, theme, components and screens. Binary `mortise` |
-| `crates/mortise-app/src/strings.rs` | All interface text |
+| `crates/mortise-core` | Reading an app into a snapshot, links, rules, findings, the scan, the actuator client, settings. One folder per feature (`modules`, `app`, `boundary`, `runtime`, `run`, `actions`, `generate`, `palette`); `lib.rs` re-exports every public name. Features `watch`, `actuator`, `os-secrets` are on by default; `testing` gives a stub actuator |
+| `crates/mortise-app` | The window, theme, components and screens. Binary `mortise`. One folder per feature, each with a `view.rs` and a `strings.rs`; `ui/` holds the theme and components; `app/` holds the window and one wiring file per feature |
 | `fixtures` | Laravel apps for the tests. They are never installed or run |
 | `docs/spec` | The design specification (HTML). Screen ids such as S4.2 refer to it |
 | `docs/spec-build` | The scripts that build `docs/spec` |
@@ -112,6 +111,7 @@ Environment for work on Mortise itself:
 - `docs/spec` is the source of truth for screens, tokens, components and text.
 - When egui or the platform forces a difference, add a row to `docs/deviations.md`.
   Give the reason and say how the fact was checked (source read, compiled, run).
+- All interface text is in a file named `strings.rs`. Each feature folder of `mortise-app/src` has one. `mortise-app/src/strings.rs` holds text that more than one feature shows. No other file holds interface text.
 - Interface text follows section 10 of the specification: sentence case, no exclamation marks, no "please".
   An error says what happened, then what to do next. Text that is not in the spec is marked "not in the spec".
 - Every control has an accessible name and a target of at least 24 by 24 px (`tests/accessibility.rs`).
