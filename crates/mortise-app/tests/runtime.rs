@@ -406,6 +406,7 @@ fn an_app_that_is_down_quotes_the_failing_component() {
             "cache":{"status":"UP","details":{"store":"redis"}},
             "module:billing:gateway":{"status":"DOWN"},
             "module:billing:db":{"status":"UP","details":{"replicaLag":12}},
+            "module:billing:queue":{"status":"OUT_OF_SERVICE","details":{"reason":"Queue paused"}},
             "modules":{"status":"DOWN","details":{"modules":{"Billing":{"enabled":true},
             "Ghost":{"enabled":true,"error":"Enabled in the status store, not found on disk."}}}}}}"#,
         ),
@@ -450,6 +451,8 @@ fn an_app_that_is_down_quotes_the_failing_component() {
     harness.get_by_label("gateway");
     harness.get_by_label("db");
     harness.get_by_label("replicaLag 12");
+    // Out of service, it gives its own reason, not the app's sentence.
+    harness.get_by_label("reason Queue paused");
 }
 
 #[test]

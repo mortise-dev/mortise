@@ -214,7 +214,8 @@ fn component_items(
         match (error, component.status) {
             // The detail is the app's own text, quoted.
             (Some((_, error)), _) => items.push(Item::Code(error.clone())),
-            (None, Status::OutOfService) => {
+            // The sentence about maintenance mode is for the app's own components.
+            (None, Status::OutOfService) if of == Of::App => {
                 items.push(Item::Text(strings::out_of_service(&component.name), true));
             }
             (None, _) => {

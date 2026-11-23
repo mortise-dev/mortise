@@ -63,8 +63,9 @@ impl RuntimeByModule { pub fn of(&self, module: &str) -> Option<&ModuleRuntime>;
   default order, decision 4). An error makes it Down. No indicator and no error: no entry.
 - The `modules` detail is parsed from its JSON text with `serde_json`, which the core already uses.
   `Component` does not change, so `actuator.rs` does not either.
-- The `modules` component leaves `app` when its one detail is `modules` with an object: the list of
-  laravel-modules. Any other shape stays in `app`: a check that failed (Down with `error`, no list)
+- The `modules` component leaves `app` when its one detail is `modules` with the list of
+  laravel-modules: an object whose every entry is `{"enabled": bool}` with an optional `"error"`
+  string, or `[]` for an app with no module. Any other shape stays in `app`: a check that failed (Down with `error`, no list)
   or a component of the app's own under that name. An error the list gives for a name that is no
   module of the app goes to `RuntimeByModule::elsewhere`, apart from the details, so a module named
   `error` cannot pass for the exception of the check. An indicator `module:x:y` whose `x` is no

@@ -64,27 +64,43 @@ fn indicator_name(name: &str) -> Option<(&str, &str)> {
 }
 
 /// The errors of the `modules` component: the name of each module it reports, in its
-/// own case, with the sentence. The detail is the JSON text of an object.
+/// own case, with the sentence. The detail is the JSON text of an object, or `[]` when
+/// the app has no module: PHP writes an empty array so.
 ///
 /// `None` when the component is not the list of laravel-modules: its one detail is
-/// not `modules` with an object. That is a check that failed, with the exception as
-/// its `error`, or a component of the app's own under that name.
+/// not `modules`, or an entry is not `{"enabled": bool}` with an optional `"error"`
+/// sentence. That is a check that failed, with the exception as its `error`, or a
+/// component of the app's own under that name.
 fn errors(component: &Component) -> Option<Vec<(String, String)>> {
     let [(key, text)] = component.details.as_slice() else {
         return None;
     };
-    let Ok(Value::Object(modules)) = serde_json::from_str(text) else {
+    if key != MODULES {
         return None;
+    }
+    let modules = match serde_json::from_str(text).ok()? {
+        Value::Object(modules) => modules,
+        Value::Array(empty) if empty.is_empty() => return Some(Vec::new()),
+        _ => return None,
     };
-    (key == MODULES).then(|| {
-        modules
-            .into_iter()
-            .filter_map(|(name, module)| {
-                let error = module.get("error")?.as_str()?.to_owned();
-                Some((name, error))
-            })
-            .collect()
-    })
+    let mut errors = Vec::new();
+    for (name, module) in modules {
+        let Value::Object(fields) = module else {
+            return None;
+        };
+        let shape = fields.iter().all(|(field, value)| match field.as_str() {
+            "enabled" => value.is_boolean(),
+            "error" => value.is_string(),
+            _ => false,
+        });
+        if !shape || !fields.contains_key("enabled") {
+            return None;
+        }
+        if let Some(Value::String(error)) = fields.get("error") {
+            errors.push((name, error.clone()));
+        }
+    }
+    Some(errors)
 }
 
 /// Splits the components of an answer between the app and its modules.

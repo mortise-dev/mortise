@@ -58,6 +58,10 @@ The components of the app SHALL NOT include an indicator that belongs to a modul
 - **WHEN** the `modules` component lists `Ghost` with an error and the app has no module `Ghost`
 - **THEN** the runtime box of the app has a line for `Ghost` with the Down mark and the error
 
+#### Scenario: A check of the app's own named modules
+- **WHEN** a `modules` component has the detail `modules` with `{"loader":{"pending":3}}`
+- **THEN** the runtime box of the app keeps it as a component of the app
+
 #### Scenario: The modules check failed
 - **WHEN** the `modules` component is Down with an `error` detail and no list of modules
 - **THEN** the runtime box of the app keeps the `modules` component with its error

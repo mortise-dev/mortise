@@ -559,6 +559,19 @@ fn a_module_takes_its_worst_indicator_and_the_error_of_the_modules_component() {
     assert_eq!(split.app[0].name, "modules");
     assert_eq!(split.app[0].details[0].0, "error");
     assert_eq!(split.of("Billing").unwrap().status, Status::Up);
+
+    // A check of the app's own under the name `modules`, with another shape, stays
+    // the app's. The list of an app with no module is `[]`, and leaves.
+    let own = r#"{"status":"DOWN","components":{
+        "modules":{"status":"DOWN","details":{"modules":{"loader":{"pending":3}}}}}}"#;
+    assert_eq!(by_module(&recorded_app(), &components_of(own)).app.len(), 1);
+    let none = r#"{"status":"UP","components":{
+        "modules":{"status":"UP","details":{"modules":[]}}}}"#;
+    assert!(
+        by_module(&recorded_app(), &components_of(none))
+            .app
+            .is_empty()
+    );
 }
 
 fn wait_for(
