@@ -244,6 +244,15 @@ fn milestone_4() {
         .click();
     save("c14-dialog-light", &mut harness);
 
+    // S5.3: the graph of 12 modules, the most it draws, in a narrow workspace.
+    let mut desk = Desk::new();
+    desk.size = egui::vec2(1100.0, 700.0);
+    let root = common::app_with_modules(&desk, "platform", 12);
+    desk.knows(&[(&root, "PL")]);
+    let mut harness = desk.start();
+    harness.key_press(Key::Num2);
+    save("s5.3-12-modules-light", &mut harness);
+
     // S5.4: more than 12 modules.
     let desk = Desk::new();
     let root = common::app_with_modules(&desk, "platform", 16);
