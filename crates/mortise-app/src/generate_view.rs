@@ -148,6 +148,8 @@ pub struct GenerateResult {
     pub autoload_failed: bool,
     /// Why the run gave no answer, when the files were read from its output (design D6).
     fallback: Option<String>,
+    /// Why the last Replace of a row gave no answer. A Replace that answers clears it.
+    replace_fallback: Option<String>,
     /// The files S9.3 took out of the command, listed in `files` as left.
     taken_out: Vec<TakenOut>,
     /// When it was first painted, in seconds of egui's clock.
@@ -167,6 +169,7 @@ impl GenerateResult {
             files,
             autoload_failed,
             fallback: None,
+            replace_fallback: None,
             taken_out: Vec::new(),
             shown: None,
         }
@@ -486,7 +489,8 @@ impl GenerateState {
     /// another path, such as one the app's generator paths now place elsewhere, gets a
     /// row of its own, and `row` stays as it was. The other rows stay, with their
     /// Replace. A run that read no file leaves the rows and shows `fallback`, why it
-    /// gave no answer. Returns false when the result holds no such row.
+    /// gave no answer, until a later Replace answers. Returns false when the result
+    /// holds no such row.
     pub fn replace_row(
         &mut self,
         row: &str,
@@ -512,9 +516,7 @@ impl GenerateState {
                 None => result.files.push(done.clone()),
             }
         }
-        if fallback.is_some() {
-            result.fallback = fallback;
-        }
+        result.replace_fallback = fallback;
         true
     }
 
@@ -2746,8 +2748,12 @@ fn result_view(
         let at = pos2(min.x, y + 12.0);
         y = alert_box(ui, pal, at, width, Severity::Problem, "", &text, None, true).0;
     }
-    // Read from the lines: the run gave no answer, and the result says why (design D6).
-    if let Some(reason) = &result.fallback {
+    // Read from the lines: the run, or the last Replace, gave no answer, and the
+    // result says why (design D6).
+    for reason in [&result.fallback, &result.replace_fallback]
+        .into_iter()
+        .flatten()
+    {
         let text = strings::read_from_output(reason);
         y = draw::paragraph(ui, pos2(min.x, y + 8.0), &text, HINT, pal.ink_2, width).bottom();
     }
@@ -2916,15 +2922,18 @@ mod tests {
         let model = "Modules/Billing/app/Models/Invoice.php";
         let policy = "Modules/Billing/app/Policies/InvoicePolicy.php";
         let mut state = GenerateState {
-            result: Some(GenerateResult::new(
-                Some("Billing".to_owned()),
-                Vec::new(),
-                vec![
-                    file(model, FileOutcome::Created),
-                    file(policy, FileOutcome::Left),
-                ],
-                false,
-            )),
+            result: Some(
+                GenerateResult::new(
+                    Some("Billing".to_owned()),
+                    Vec::new(),
+                    vec![
+                        file(model, FileOutcome::Created),
+                        file(policy, FileOutcome::Left),
+                    ],
+                    false,
+                )
+                .read_from_output(Some("first run".to_owned())),
+            ),
             ..Default::default()
         };
         // The app's policy path changed since the result: the replacement wrote
@@ -2942,12 +2951,15 @@ mod tests {
                 file(moved, FileOutcome::Replaced),
             ]
         );
-        assert_eq!(result.fallback.as_deref(), Some("no answer"));
-        // A file of the row's own path updates the row.
+        assert_eq!(result.replace_fallback.as_deref(), Some("no answer"));
+        // A file of the row's own path updates the row, and a Replace that answers
+        // clears the reason of the last one; the run's own stays.
         assert!(state.replace_row(policy, &[file(policy, FileOutcome::Replaced)], None));
+        let result = state.result.unwrap();
+        assert_eq!(result.files[1], file(policy, FileOutcome::Replaced));
         assert_eq!(
-            state.result.unwrap().files[1],
-            file(policy, FileOutcome::Replaced)
+            (result.fallback.as_deref(), result.replace_fallback),
+            (Some("first run"), None)
         );
     }
 

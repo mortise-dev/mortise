@@ -492,6 +492,8 @@ accessible name and a 24 px target (`tests/accessibility.rs`).
 - A run that starts takes the file list off the form and holds the words without those flags. When it
   ends, the flags come back into the form, so "Generate another" starts from the user's choice. The
   line on screen stays the line that runs while it runs.
+- The result keeps why the last Replace gave no answer apart from why the run gave none. A Replace that
+  answers clears its own reason; the run's stays.
 
 ## Risks / Trade-offs
 
