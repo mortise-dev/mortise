@@ -38,7 +38,7 @@ The client SHALL ask for the base path, `health`, `info`, `mappings` and `schedu
 ## ADDED Requirements
 
 ### Requirement: prometheus is read as text
-The client SHALL read the answer of `prometheus` as text. A 200 with text SHALL be the metrics. A 200 with an empty body SHALL mean that metrics are off. A 503 SHALL be an answer of the app, read with the first line of its body. A 401 or 403 SHALL be "not authorized". Any other status SHALL be an unexpected answer that names the status.
+The client SHALL read the answer of `prometheus` as text. A 200 with text SHALL be the metrics. A 200 with an empty body SHALL mean that metrics are off. A 503 SHALL be an answer of the app, read with the first line of its body. A 401 or 403 SHALL be "not authorized". Any other status SHALL be an unexpected answer that names the status. The client SHALL read the body of a 200 or a 503 only, so a body that cannot be read SHALL NOT hide another status.
 
 #### Scenario: The store of the app cannot be read
 - **WHEN** `prometheus` answers 503 with `The metrics store cannot be read.`
@@ -47,6 +47,10 @@ The client SHALL read the answer of `prometheus` as text. A 200 with text SHALL 
 #### Scenario: Metrics are off
 - **WHEN** `prometheus` answers 200 with an empty body
 - **THEN** the client reports that metrics are off, not a failed request
+
+#### Scenario: A refusal whose body breaks off
+- **WHEN** `prometheus` answers 403 and the connection closes before the body ends
+- **THEN** the client reports "not authorized" with the status, not a failed request
 
 ### Requirement: The body of a metrics answer has a limit
 The client SHALL read at most 16 MiB (16,777,216 bytes) of a `prometheus` answer, counted after decompression. A longer body SHALL be the answer "too large", which names the address and the limit. It SHALL NOT fail the worker and SHALL NOT be kept.
@@ -67,8 +71,12 @@ The client SHALL ask for `prometheus` every 15 s while the Metrics tab is open, 
 - **THEN** no request for `prometheus` left Mortise, and `env` was never asked for
 
 #### Scenario: The tab closes
-- **WHEN** the user leaves the Metrics tab
+- **WHEN** the user leaves the Metrics tab, or Settings, the add panel or another app takes its place
 - **THEN** no further request for `prometheus` leaves Mortise from that frame on, a read already on its way ends, and `health` is still asked every 15 s
+
+#### Scenario: Settings open over the tab
+- **WHEN** the Metrics tab shows the table and the user opens Settings
+- **THEN** no further request for `prometheus` leaves Mortise from that frame on
 
 #### Scenario: The window is hidden
 - **WHEN** the Metrics tab is open and the window has not drawn itself for longer than the visibility grace

@@ -35,9 +35,17 @@ Mortise SHALL keep, per route with its method, per job class and per `module` la
 - **WHEN** "Try again" makes reads 1 s apart for two hours
 - **THEN** no more than 520 reads are kept, and the rate of the last minute is unchanged
 
+
+### Requirement: A span beyond the last hour is right for the time it covers
+A span that reaches beyond the last hour SHALL start at a kept read at most 5 minutes inside it. Its rate SHALL divide by the time covered between the two reads it uses, so the rate is right for the time it covers. The totals and the covered time SHALL carry on across a gap, however long.
+
 #### Scenario: A range that reaches into the thinned part
-- **WHEN** figures are asked for a span of 24 hours
-- **THEN** they equal the figures worked out from every read, because a kept read holds totals and not differences
+- **WHEN** figures are asked for a span of 24 hours of reads 15 s apart
+- **THEN** they cover at least 23 hours 55 minutes and at most 24 hours, and equal the figures worked out from every read over that time, because a kept read holds totals and not differences
+
+#### Scenario: A gap longer than an hour
+- **WHEN** reads come at 285 s and 300 s, then at 4,000 s and 4,005 s, and figures are asked for the last 3,710 s
+- **THEN** they cover the 5 s from 4,000 s to 4,005 s
 
 ### Requirement: Two reads of one run always give a rate
 Mortise SHALL keep the first read of each run within the last hour, even when the next read comes within the same 15 s. Two reads of one run SHALL always give a rate.
@@ -75,6 +83,17 @@ Mortise SHALL treat a counter that is lower than at the read before as a reset. 
 #### Scenario: A missing `_sum`
 - **WHEN** a route counts 10 requests in 5 s, then 12 requests with no `_sum` line, then 14 requests in 7 s
 - **THEN** the second read adds 2 requests and no time, and the third adds 2 requests and 2 s
+
+### Requirement: Buckets match by their bound
+A bucket SHALL add to the kept bucket of the same bound, in whatever order a read gives the bounds. A bucket that a read does not give SHALL be a counter that the read does not give. A bound that no read gave before SHALL widen what is kept and SHALL empty nothing. A read whose new bounds take what is kept over the cap SHALL be refused as for too many series.
+
+#### Scenario: Buckets in another order, or one missing
+- **WHEN** a route counts 4 requests with buckets `le="0.1"` and `le="1"`, then 5 with the same buckets in the other order, then 6 with no `le="0.1"` line
+- **THEN** each read adds 1 request and the buckets it gives, and nothing kept is emptied
+
+#### Scenario: A new bound
+- **WHEN** a read gives a bucket `le="0.5"` that no read gave before
+- **THEN** every kept row gains that bucket at zero, and the request rate goes on
 
 ### Requirement: No rate is worked out across a gap or from one read
 Mortise SHALL work out no rate from the first read. It SHALL work out no rate across a gap: two reads more than 45 s apart, such as while the tab was closed or the window hidden. The read after a gap SHALL start again as a first read, and SHALL give no rate while it is the newest read. A series that is missing from that read SHALL add nothing when it returns. A rate SHALL divide by the time between reads that Mortise did cover.

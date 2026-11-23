@@ -55,13 +55,13 @@ pub(crate) struct Cell {
     pub count: f64,        // `_count`
     pub errors: f64,       // `_count` of a series with a 5xx status
     pub sum: f64,          // `_sum`, seconds
-    pub buckets: Vec<f64>, // `_bucket` per finite bound, as the answer gives them. Requests only
+    pub buckets: Vec<f64>, // `_bucket` per finite bound, in the order of `bounds`. Requests only
 }
 
 /// One answer, folded. This is the interface between the parser and the store.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub(crate) struct Reading {
-    /// The finite bucket bounds of the request histogram, lowest first.
+    /// The finite bucket bounds of the request histogram, in the order the answer gives them.
     pub bounds: Vec<f64>,
     /// The counters of each series, by subject and its labels except `le`, sorted by name.
     pub series: HashMap<(Subject, String), Cell>,
@@ -74,17 +74,30 @@ totals: `3 + bounds.len()` numbers per subject, in one flat `Vec<f64>` indexed b
 unknown at an older read has no column there, which reads as zero.
 
 A figure over a span is then `newest − oldest read in the span`, divided by the difference of
-`covered`. It needs two reads, not all of them. So thinning loses nothing for a figure:
+`covered`. It needs two reads, not all of them. So thinning loses nothing for a figure over the time
+it covers:
 
 - Of the last hour, one read per pace (15 s) is kept: a read in the step of the read before takes its
   place, so the newest read is always kept. A read that starts a run (D2) is never replaced, so two
   reads of one run always give a rate. A run starts only after more than 3 paces, which leaves two
   steps empty before it, so this adds at most one read: at most 242, however fast "Try again" reads.
-- Of the 23 hours before, the first read of each 5 minute step is kept: at most 277.
+- Of the 23 hours before, the first read of each 5 minute step is kept: at most 277. A span that
+  reaches into this part starts at the oldest kept read inside it, so at most 5 minutes after the
+  start of the span. The traffic of those first minutes is not counted, and the rate divides by the
+  covered time between the two reads it uses, not by the span. So the rate is right for the time it
+  covers. A span of 24 hours covers at least 23 hours and 55 minutes of reads with no gap.
 - A read older than 24 hours is dropped. The store holds at most 519 reads, under the 520 the tests
   assert.
 - A subject that did not change in the whole kept window and is not in the newest read is dropped,
-  and the rows are packed. So a renamed route does not stay for ever.
+  and the rows are packed. So a renamed route does not stay for ever. With no subject left, the
+  bounds go too.
+- The store keeps the time, the covered time and the totals of the newest read apart from the two
+  queues. A gap longer than the fine part moves every read to the coarse part, and the next read
+  still carries on from them.
+
+**Bounds.** The store holds its bounds lowest first, and a row has one bucket per bound in that
+order. A bucket of a reading goes to the bucket of the store with the same bound, wherever the
+answer writes it. A bound that the store does not hold widens every row and every base (D2, rule 1).
 
 Numbers, with the 14 finite bounds of the recorded app (17 numbers, 136 bytes per subject and read):
 
@@ -137,22 +150,23 @@ label set of the answer, `le` aside, sorted by name, so a status, a `url_scheme`
 their own series. Totals stay per subject.
 `MetricsStore::push(at, reading)` applies these rules, in this order:
 
-0. `at` not later than the newest kept read: the reading is dropped, unless its `bounds` differ
-   from the kept ones (rule 1). Else what `at` makes too old goes first (D1): old reads, then the
-   series and subjects that no kept read holds. Then a reading over the caps of D1 is refused as a
-   whole and adds nothing. A reading with other `bounds` is counted alone, as rule 1 empties the
-   store.
-1. A reading whose `bounds` differ from the kept ones empties the store first. A reading with no
-   request histogram has no `bounds`; it keeps the kept ones and empties nothing. When the store
-   holds no bounds yet, it takes those of the reading and gives every kept row a zero per bucket,
-   and every base an unknown counter per bucket.
+0. `at` not later than the newest read: the reading is dropped. Else what `at` makes too old goes
+   first (D1): old reads, then the series and subjects that no kept read holds. Then a reading over
+   the caps of D1 is refused as a whole and adds nothing. The caps count the bounds of the store
+   and the new bounds of the reading, so a widening over a cap is refused too.
+1. Buckets match by bound, not by place: the same bounds in another order add to the same buckets.
+   A bound of the reading that the store does not hold widens the store: every kept row gets a zero
+   bucket for it, and every base an unknown counter. The first bounds of a store widen it so. A
+   bound the store holds and the reading does not give is an absent bucket (rule 2). A reading with
+   no request histogram has no `bounds` and changes none.
 2. A counter is **absent** when the answer has no line for it, or a line that cannot be read, or a
-   value that is negative or not finite. An absent counter adds nothing and keeps its base. Rule 4
-   compares only the counters present in both the read and the base. A series with every counter
-   absent is missing (rule 5).
+   value that is negative or not finite. A bucket the reading has no line for is absent too. An
+   absent counter adds nothing and keeps its base. Rule 4 compares only the counters present in both
+   the read and the base. A series with every counter absent is missing (rule 5).
 3. **First read of a run.** A run starts with the first read, and with a read more than 3 paces (45 s)
    after the one before it. Every older base becomes stale. Every base of the reading is set. Nothing
-   is added. `covered` does not grow. One missed read (30 s) is not a gap.
+   is added. `covered` does not grow. One missed read (30 s) is not a gap. The totals and `covered`
+   carry on from the newest read before the gap, wherever thinning put that read.
 4. **Otherwise** `covered` grows by the time since the read before, and for each series of the reading:
    - Every counter is at or above its base: its subject's totals grow by the differences.
    - Any counter is below its base: a **reset**. Nothing is added for this series. The base is set,
@@ -181,6 +195,10 @@ is stale, because the difference would hold the gap.
 
 Why an absent counter is not zero: a `_sum` line that cannot be read would read as a reset, and hide
 what `_count` grew by.
+
+Why buckets match by bound: an answer can write one bucket line less, or the same bounds in another
+order. Matching by place would add one bucket to another, and emptying the store on each would lose
+the rates and the job history.
 
 Why a read that starts a run is never replaced: "Try again" can read twice within one pace. The second
 read would take the place of the first, and two good reads would give no rate.
@@ -230,8 +248,10 @@ interface thread                         worker thread (runtime/live.rs)
 - **The request.** The worker loop gets one new branch. `prometheus` is due when all hold: the window
   is visible; `metrics_seen()` was called within `pace.seen`; the last answer is `Answered` and lists
   `prometheus`; the last metrics read ended `pace.metrics` (15 s) ago or more, or there was none.
-  The app calls `metrics_seen()` in each frame that draws the Metrics tab, as it calls `seen()`, and
-  `metrics_closed()` in each frame of the app on screen that does not draw it. `metrics_closed()`
+  At the end of each frame, once nothing else in it can change the tab or what is on screen, the app
+  calls `metrics_seen()` for the app whose workspace it drew if its tab is still Metrics, and
+  `metrics_closed()` for every other connected app. So a frame that leaves the tab, opens Settings or
+  the add panel, or shows another app closes it in that frame. One place decides. `metrics_closed()`
   forgets when the tab was seen and wakes the worker, so no read starts after the tab closes. A read
   on its way ends. It takes a lock and wakes the worker only when the tab was open, so a call per
   frame is cheap.
@@ -339,8 +359,10 @@ pub fn ask_metrics(environment: &Environment, secret: &Secret) -> Result<String,
 
 - 16 MiB is five times the 3.3 MB of 60 modules, and twice the 8 MB of 600 routes with three statuses.
 - The limit counts decoded bytes. `Client::get` gains a limit parameter: `fetch()` keeps today's
-  `read_to_string()`; the text read uses `body_mut().with_config().reader()` (no `ureq` limit), then
-  `take(limit + 1)` and `read_to_end`. More than `limit` bytes is `TooLarge`. Bytes that are not UTF-8
+  `read_to_string()`; with a limit, only the body of a 200 or a 503 is read, and any other status
+  comes back with an empty body, so a body that breaks off cannot hide a 401 or a 403. The text read
+  uses `body_mut().with_config().reader()` (no `ureq` limit), then `take(limit + 1)` and
+  `read_to_end`. More than `limit` bytes is `TooLarge`. Bytes that are not UTF-8
   are replaced (`String::from_utf8_lossy`), so one bad byte does not lose the read.
 - The request keeps `Accept: application/json`. The recorded endpoint answers text to it, and Laravel
   then answers 401 as JSON, not as a redirect to a login page.
@@ -406,6 +428,8 @@ pub const LAST_MINUTE: Duration = Duration::from_secs(60);
 
 - The span is **the last minute**: from the newest read back to the oldest kept read at most 60 s
   before it, over the covered time. With two reads it is their 15 s. With five it is a minute.
+  A span beyond the last hour (milestone 21) starts at a kept read at most 5 minutes inside it (D1),
+  and the rate divides by the covered time between the two reads it uses.
   Rejected: since the last read only. One request in 15 s reads as 4 per minute, then 0.
   Rejected: the whole kept window. That is the range switch of milestone 21, which calls the same
   function with 15 minutes, 1 hour or 24 hours.
@@ -615,9 +639,10 @@ The `LiveMetrics` store uses `Pace::default().metrics` as its pace. `lib.rs` re-
   figures on every run.
 - `Connected` gains `metrics: LiveMetrics`. `sync_runtime` opens with `open_with_metrics` and
   `metrics.sink()`.
-- `app/metrics.rs` calls `connected.live.metrics_seen()` in each frame that draws the Metrics tab of
-  the app on screen, and `metrics_closed()` in each frame that does not, builds what the tab shows (the table of D7) and keeps the last `Figures` with the
-  `serial` they were worked out for.
+- `app/metrics.rs` holds `follow_metrics()`, which the end of each frame calls (D4): it calls
+  `metrics_seen()` for the app whose workspace was drawn with the Metrics tab still shown, and
+  `metrics_closed()` for every other connected app. It builds what the tab shows (the table of D7)
+  and keeps the last `Figures` with the `serial` they were worked out for.
 - `metrics/view.rs` draws it and returns `WorkAction::Runtime(RuntimeAction::TryAgain)` or
   `OpenSettings`. S7.1 and S7.2 use `empty_state` with `Icon::Metrics`. "Connect an environment"
   returns `RuntimeAction::OpenSettings`.
@@ -672,7 +697,8 @@ of the text.
 
 ## Risks / Trade-offs
 
-- [Thinning differs from section 4 of the plan] → A figure over any span is unchanged (D1). The chart
+- [Thinning differs from section 4 of the plan] → A figure over any span is right for the time it
+  covers, which starts at most 5 minutes inside the span (D1). The chart
   of milestone 21 gets a point per 5 minutes beyond the last hour. Milestone 23 updates the plan.
 - [47 MB for a large app with a full window; about 145 MB in the worst case the caps allow] →
   Stated as the bound. Milestone 23 measures a 24 hour run.
