@@ -9,6 +9,41 @@ use mortise_core::{AppSnapshot, LayoutKey, ReadError, Version};
 
 pub const BRAND: &str = "Mortise";
 pub const ALL_MODULES: &str = "All modules";
+
+// Actions (S10.1, S10.2)
+/// The hint of an action row of the palette.
+pub const ACTION: &str = "Action";
+/// Not in the spec: the group of the palette when "All modules" is selected.
+pub const ACTIONS_FOR_ALL: &str = "Actions for all modules";
+pub fn actions_for(module: &str) -> String {
+    format!("Actions for {module}")
+}
+/// The name of an action, as its button says it. Actions that are not in the palette have none.
+pub fn action_name(action: mortise_core::Action) -> Option<&'static str> {
+    use mortise_core::Action;
+    Some(match action {
+        Action::TurnOff => "Turn off",
+        Action::TurnOn => "Turn on",
+        Action::Migrate => "Migrate",
+        Action::RollBack => "Roll back",
+        Action::Seed => "Seed",
+        Action::RunTests => "Run tests",
+        Action::CheckTranslations => "Check translations",
+        _ => return None,
+    })
+}
+/// The row of an action in the palette: "Migrate Checkout", or the S10.2 f name for all modules.
+pub fn action_label(action: mortise_core::Action, module: Option<&str>) -> Option<String> {
+    use mortise_core::Action;
+    let name = action_name(action)?;
+    Some(match (module, action) {
+        (Some(module), _) => format!("{name} {module}"),
+        (None, Action::Migrate) => "Migrate all modules".to_owned(),
+        (None, Action::Seed) => "Seed all modules".to_owned(),
+        (None, Action::RunTests) => "Run all module tests".to_owned(),
+        (None, _) => name.to_owned(),
+    })
+}
 pub const SEARCH: &str = "Search or run a command";
 /// Under 1100 px of window width.
 pub const SEARCH_SHORT: &str = "Search or run";

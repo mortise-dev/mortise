@@ -7,6 +7,7 @@ use eframe::egui::{Key, Modifiers, Role};
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT as _, Queryable as _};
 use mortise_app::app::{MortiseApp, Selection};
+use mortise_app::palette;
 use mortise_app::workspace::Tab;
 
 /// The rows of the palette. Rows of the rail and the index are behind it.
@@ -68,10 +69,37 @@ fn a_query_finds_modules_and_findings_and_enter_opens_the_first() {
     type_query(&mut harness, "check");
 
     harness.get_by_label("Modules in shop-api");
+    harness.get_by_label("Actions for Checkout");
+    let app = harness.state().app().expect("the app is read");
+    let source = palette::Source {
+        scope: Some((0, &app)),
+        apps: &[("shop-api".to_owned(), 0)],
+        recent: &[],
+        selected: None,
+        mac: false,
+    };
+    let found = palette::entries("check", &source);
+    let migrate = found
+        .iter()
+        .find(|entry| entry.label == "Migrate Checkout")
+        .expect("the action is found");
+    assert_eq!(migrate.group, "Actions for Checkout");
+    assert_eq!(migrate.detail.as_deref(), Some("module:migrate Checkout"));
+    assert_eq!(
+        migrate.command,
+        palette::Command::Action {
+            module: Some("Checkout".into()),
+            action: mortise_core::Action::Migrate
+        }
+    );
     assert_eq!(
         palette_rows(&harness),
         [
             "Checkout",
+            "Check translations Checkout",
+            "Turn off Checkout",
+            "Migrate Checkout",
+            "Roll back Checkout",
             "Checkout and Shipping use each other",
             "3 files in Checkout read Billing internals",
             "Scan the public surface of Checkout"
