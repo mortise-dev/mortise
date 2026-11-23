@@ -691,17 +691,14 @@ fn palette_row(
     };
 
     let mid = row.center().y;
-    // What Enter does on the current row; elsewhere the place or the shortcut.
+    // The hint, with Enter after it on the current row. Keys are drawn as keycaps
+    // on the other rows.
     let mut right = row.right() - 14.0;
     if current {
         right = draw::keycap(ui, pal, pos2(right, mid), "Enter").left() - 6.0;
     }
     let chord = entry.keys;
-    let hint = if current && !chord {
-        "Open"
-    } else {
-        entry.hint.as_str()
-    };
+    let hint = entry.hint.as_str();
     if !hint.is_empty() {
         right = if chord && !current {
             draw::keycap(ui, pal, pos2(right, mid), hint).left()

@@ -3,7 +3,7 @@
 mod common;
 
 use common::{Desk, shop_api, wait_until};
-use eframe::egui::{Key, Modifiers, Role};
+use eframe::egui::{Key, Modifiers, Role, Shape};
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT as _, Queryable as _};
 use mortise_app::app::{MortiseApp, Selection};
@@ -92,9 +92,13 @@ fn an_empty_query_shows_places_apps_and_what_ran() {
     assert_eq!(found[0].detail.as_deref(), Some("module:migrate Checkout"));
     assert_eq!(found[1].detail.as_deref(), Some("module:make-model"));
 
-    // Enter on the migrate opens its panel and runs nothing.
+    // The current row keeps its age, and Enter on it opens its panel and runs nothing.
     harness.key_press(Key::ArrowDown);
     harness.run_steps(2);
+    let painted = harness.output().shapes.iter().any(|clipped| {
+        matches!(&clipped.shape, Shape::Text(text) if text.galley.text() == "ran 2 minutes ago")
+    });
+    assert!(painted);
     harness.key_press(Key::Enter);
     harness.run_steps(3);
     assert_eq!(harness.state().tab(), Tab::Actions);
