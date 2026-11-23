@@ -14,13 +14,13 @@
 ## 3. Process model
 
 - [x] 3.1 (11.1, opus) Add `Runs`, `Run`, `RunEvent`, `RunEnd`, `StartError`, `OUTPUT_LIMIT` and `stop_asks_first` (D1, D2, D3, D5) with `rustix` for `cfg(unix)`; make `capture` use the same stop and join. Verify with the core tests of D11 in `tests/run.rs`, and `cargo build -p mortise-core --no-default-features` without a warning
-- [ ] 3.2 Run `python3 tools/third-party-licenses.py` after the dependencies changed. Verify `licenses/THIRD-PARTY.md` lists `rustix` and `jiff`
+- [x] 3.2 Run `python3 tools/third-party-licenses.py` after the dependencies changed. Verify `licenses/THIRD-PARTY.md` lists `rustix` and `jiff`
 
 ## 4. Drawer
 
-- [ ] 4.1 (11.6, opus) Add `runner_view.rs` and wire it into `app.rs` and the workspace layout (D9, D10): states a to g, Stopped, did not start with "Open settings", the handle, the keys, the stop dialog, history with Up, Down, Enter, recording into the history, `Config::data_dir`. Text in `strings.rs`. Verify with `tests/runner.rs` (run, stop, fail, history, did not start) and the accessibility test
-- [ ] 4.2 Add deviation S36 (D10), and S37 if lines of the two streams swap in a test or an image. Name `MORTISE_DATA_DIR` in `AGENTS.md`. Verify `grep -n "S36" docs/deviations.md`
-- [ ] 4.3 Add images for S11.1 a to g, light and dark, with `UPDATE_SNAPSHOTS=1 cargo test -p mortise-app --test images`, and look at each new or changed image
+- [x] 4.1 (11.6, opus) Add `runner_view.rs` and wire it into `app.rs` and the workspace layout (D9, D10): states a to g, Stopped, did not start with "Open settings", the handle, the keys, the stop dialog, history with Up, Down, Enter, recording into the history, `Config::data_dir`. Text in `strings.rs`. Verify with `tests/runner.rs` (run, stop, fail, history, did not start) and the accessibility test
+- [x] 4.2 Add deviation S36 (D10), and S37 if lines of the two streams swap in a test or an image. Name `MORTISE_DATA_DIR` in `AGENTS.md`. Verify `grep -n "S36" docs/deviations.md`
+- [x] 4.3 Add images for S11.1 a to g, light and dark, with `UPDATE_SNAPSHOTS=1 cargo test -p mortise-app --test images`, and look at each new or changed image
 
 ## 5. Integration
 
