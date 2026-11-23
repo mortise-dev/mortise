@@ -4,13 +4,14 @@
 //! `nwidart/laravel-modules` and SQLite. `MORTISE_REAL_APP` names the folder of
 //! that app. The job "Real PHP" in `.github/workflows/ci.yml` makes one. Run it with
 //! `cargo test -p mortise-core --test real_php -- --ignored --test-threads=1`.
-//! It writes into that app and leaves it as it found it. It refuses to run when the
-//! app already has its module, and removes the module it made also when it fails.
+//! It writes into that app and leaves it as it found it. Its module has a name of
+//! its own, which it removes also when it fails.
 #![cfg(feature = "run")]
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant};
+use std::sync::OnceLock;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use mortise_core::{
     Action, Catalog, Context, FileOutcome, Filled, GeneratedFile, MODULE_MAKE, MigrationCount,
@@ -18,8 +19,16 @@ use mortise_core::{
     autoload_failed, failed_migration, generated_files, migration_count, read_app,
 };
 
-/// The module the test makes and deletes. A name no real app is likely to hold.
-const MODULE: &str = "MortiseRealCheck";
+/// The module the test makes and deletes: `MortiseCheck`, the process id and the
+/// time, so no other run or person holds the name. Letters and digits only, as
+/// the module name rule of the package wants.
+fn module() -> &'static str {
+    static NAME: OnceLock<String> = OnceLock::new();
+    NAME.get_or_init(|| {
+        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+        format!("MortiseCheck{}{}", std::process::id(), now.as_millis())
+    })
+}
 
 /// The longest a command may take. `module:make` runs `composer dump-autoload`.
 const LIMIT: Duration = Duration::from_secs(300);
@@ -73,9 +82,10 @@ fn try_run(runs: &Runs, app: &Path, args: &[String]) -> Result<Vec<String>, Stri
     Err(format!("{args:?} did not end:\n{}", lines.join("\n")))
 }
 
-/// Rolls back and deletes [`MODULE`] when it drops, also after a failed assertion.
-/// The test makes it only after its own `module:make` exited with 0 and created
-/// the `module.json` of the module.
+/// Rolls back and deletes [`module`] when it drops, also after a failed assertion.
+/// The name is this run's own, so the test makes it before `module:make` runs,
+/// and a failed `module:make` is cleaned up too. A module that is not there is
+/// left alone.
 struct Made<'a> {
     runs: &'a Runs,
     app: &'a Path,
@@ -85,7 +95,7 @@ struct Made<'a> {
 
 impl Drop for Made<'_> {
     fn drop(&mut self) {
-        if self.removed {
+        if self.removed || !module_dir(self.app).exists() {
             return;
         }
         for args in [action(Action::RollBack), action(Action::DeleteModule)] {
@@ -97,10 +107,10 @@ impl Drop for Made<'_> {
 }
 
 fn module_dir(app: &Path) -> PathBuf {
-    app.join("Modules").join(MODULE)
+    app.join("Modules").join(module())
 }
 
-/// The words of an action on [`MODULE`], outside production, as the app plans them.
+/// The words of an action on [`module`], outside production, as the app plans them.
 fn action(action: Action) -> Vec<String> {
     let context = Context {
         production: false,
@@ -109,7 +119,7 @@ fn action(action: Action) -> Vec<String> {
     };
     match mortise_core::plan(
         action,
-        &Target::Module(MODULE.into()),
+        &Target::Module(module().into()),
         &Options::default(),
         &context,
     ) {
@@ -138,7 +148,7 @@ fn generator(
 
 fn has_module(app: &Path) -> bool {
     let snapshot = read_app(app).unwrap();
-    snapshot.modules.iter().any(|module| module.name == MODULE)
+    snapshot.modules.iter().any(|found| found.name == module())
 }
 
 /// Asserts that every file of a generator run is new and is in the app.
@@ -154,33 +164,34 @@ fn all_created(app: &Path, files: &[GeneratedFile]) {
 fn make_generate_migrate_and_delete_a_module() {
     let app = app();
     let runs = Runs::new();
+    let module = module();
 
     assert!(
         !has_module(&app) && !module_dir(&app).exists(),
-        "The app already has a module {MODULE}. The test does not change a module it did \
+        "The app already has a module {module}. The test does not change a module it did \
          not make: delete it, or use another app."
     );
+    // The name is this run's own: from here on a failure removes the module.
+    let mut made = Made {
+        runs: &runs,
+        app: &app,
+        removed: false,
+    };
 
     // `run` fails unless `module:make` exits with 0.
     let lines = run(
         &runs,
         &app,
-        &generator(MODULE_MAKE, &[("name", MODULE)], &[], None),
+        &generator(MODULE_MAKE, &[("name", module)], &[], None),
     );
     let files = generated_files(&lines, false);
-    let manifest = format!("Modules/{MODULE}/module.json");
+    let manifest = format!("Modules/{module}/module.json");
     assert!(
         files
             .iter()
             .any(|file| file.path == manifest && file.outcome == FileOutcome::Created),
         "{files:?}"
     );
-    // This run made the module: from here on a failure removes it.
-    let mut made = Made {
-        runs: &runs,
-        app: &app,
-        removed: false,
-    };
     all_created(&app, &files);
     assert!(!autoload_failed(&lines), "{}", lines.join("\n"));
     assert!(has_module(&app));
@@ -192,19 +203,19 @@ fn make_generate_migrate_and_delete_a_module() {
             "module:make-model",
             &[("model", "Widget")],
             &["migration"],
-            Some(MODULE),
+            Some(module),
         ),
     );
     let files = generated_files(&lines, false);
     assert_eq!(files.len(), 2, "{}", lines.join("\n"));
     assert_eq!(
         files[0].path,
-        format!("Modules/{MODULE}/app/Models/Widget.php")
+        format!("Modules/{module}/app/Models/Widget.php")
     );
     assert!(
         files[1]
             .path
-            .starts_with(&format!("Modules/{MODULE}/database/migrations/"))
+            .starts_with(&format!("Modules/{module}/database/migrations/"))
             && files[1].path.ends_with("_create_widgets_table.php"),
         "{files:?}"
     );
