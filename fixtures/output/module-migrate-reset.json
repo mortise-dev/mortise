@@ -1,0 +1,11 @@
+{
+  "command": "php artisan module:migrate-reset Checkout --no-interaction --ansi",
+  "args": [
+    "module:migrate-reset",
+    "Checkout"
+  ],
+  "made_with": "nwidart/laravel-modules 13.3.0, laravel/framework 13.43.0, PHP 8.4.27, macOS",
+  "exit": 0,
+  "stdout": "Rollback: \u001b[32m2026_11_20_091200_add_tracking_code_to_checkouts_table\u001b[39m\nRollback: \u001b[32m2026_11_20_090500_create_checkout_items_table\u001b[39m\nRollback: \u001b[32m2026_11_20_090000_create_checkouts_table\u001b[39m\n",
+  "stderr": ""
+}

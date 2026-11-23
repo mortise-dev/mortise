@@ -1,0 +1,11 @@
+{
+  "command": "php artisan module:migrate-reset Shipping --no-interaction --ansi",
+  "args": [
+    "module:migrate-reset",
+    "Shipping"
+  ],
+  "made_with": "nwidart/laravel-modules 13.3.0, laravel/framework 13.43.0, PHP 8.4.27, macOS",
+  "exit": 1,
+  "stdout": "\n  \u001b[30;43m WARN \u001b[39;49m This command is prohibited from running in this environment.  \n\n",
+  "stderr": ""
+}

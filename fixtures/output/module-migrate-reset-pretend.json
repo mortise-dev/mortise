@@ -1,0 +1,12 @@
+{
+  "command": "php artisan module:migrate-reset Checkout --pretend --no-interaction --ansi",
+  "args": [
+    "module:migrate-reset",
+    "Checkout",
+    "--pretend"
+  ],
+  "made_with": "nwidart/laravel-modules 13.3.0, laravel/framework 13.43.0, PHP 8.4.27, macOS",
+  "exit": 0,
+  "stdout": "  2026_11_20_091200_add_tracking_code_to_checkouts_table \u001b[90m.....................\u001b[39m  \n  \u001b[90m⇂ alter table \"checkouts\" drop column \"tracking_code\"\u001b[39m  \n  2026_11_20_090500_create_checkout_items_table \u001b[90m..............................\u001b[39m  \n  \u001b[90m⇂ drop table if exists \"checkout_items\"\u001b[39m  \n  2026_11_20_090000_create_checkouts_table \u001b[90m...................................\u001b[39m  \n  \u001b[90m⇂ drop table if exists \"checkouts\"\u001b[39m  \n",
+  "stderr": ""
+}
