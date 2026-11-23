@@ -29,6 +29,7 @@ use std::time::{Duration, Instant, SystemTime};
 use super::history::OUTPUT_LIMIT;
 #[cfg(feature = "run")]
 use super::{CommandLine, Failure, PhpSettings};
+#[cfg(feature = "run")]
 use crate::program::command;
 
 /// How long a loop waits for a line before it looks at the program again.
