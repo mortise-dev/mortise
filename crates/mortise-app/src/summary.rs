@@ -154,6 +154,8 @@ pub struct SummaryState<'a> {
 
 /// What the parts of a Summary need besides the app, and what was asked for in them.
 struct Shared<'a> {
+    /// The display name of the app.
+    name: &'a str,
     now: i64,
     runtime: &'a RuntimeView<'a>,
     keyboard: bool,
@@ -168,11 +170,13 @@ pub fn summary(
     pal: &Palette,
     body: Rect,
     app: &AppSnapshot,
+    name: &str,
     module: Option<&Module>,
     state: SummaryState<'_>,
 ) -> Option<BoundaryAction> {
     let mut clicked = None;
     let mut shared = Shared {
+        name,
         now: state.now,
         runtime: state.runtime,
         keyboard: state.keyboard,
@@ -240,7 +244,7 @@ fn all_modules(
     let mut clicked = None;
 
     // A note when part of config/modules.php could not be read without PHP.
-    if let Some(note) = strings::assumed(app) {
+    if let Some(note) = strings::assumed(app, shared.name) {
         y = note_alert(ui, pal, pos2(left, y), inner, &note, paint) + 12.0;
     }
 
@@ -291,7 +295,7 @@ fn all_modules(
     // The module that needs attention most, and the way to every finding.
     let all = app.findings.list.len();
     let show = strings::show_all_findings(all);
-    if let Some((severity, bold, rest)) = strings::app_alert(app) {
+    if let Some((severity, bold, rest)) = strings::app_alert(app, shared.name) {
         let (bottom, clicked) = alert_box(
             ui,
             pal,
@@ -309,9 +313,9 @@ fn all_modules(
 
     // What cannot be read from files, in a sentence.
     let sentence = if !app.layout.uses_file_activator() {
-        Some(strings::state_not_in_a_file(app))
+        Some(strings::state_not_in_a_file(app, shared.name))
     } else if app.modules.is_empty() {
-        Some(strings::no_modules(app))
+        Some(strings::no_modules(app, shared.name))
     } else {
         None
     };
@@ -407,7 +411,7 @@ fn all_modules(
         pal,
         runtime_at,
         column_w,
-        app,
+        shared.name,
         runtime,
         shared.keyboard,
         paint,
@@ -481,7 +485,7 @@ fn one_module(
     let inner = width - 32.0;
     let mut top = origin.y + 14.0;
     // What is wrong with the module, at the top of the view it concerns.
-    if let Some((severity, bold, rest)) = strings::module_alert(app, &module.name) {
+    if let Some((severity, bold, rest)) = strings::module_alert(app, shared.name, &module.name) {
         let at = pos2(left, top);
         top = alert_box(ui, pal, at, inner, severity, &bold, &rest, None, paint).0 + 12.0;
     }
@@ -641,7 +645,7 @@ fn one_module(
 
     let mut bottom = kinds_bottom.max(state_rect.bottom());
     if !app.layout.uses_file_activator() {
-        let sentence = strings::state_not_in_a_file(app);
+        let sentence = strings::state_not_in_a_file(app, shared.name);
         let text = draw::galley_wrapped(ui, &sentence, ty::BODY, pal.ink_2, inner.min(560.0));
         let text_h = text.size().y;
         if paint {

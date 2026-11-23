@@ -41,6 +41,7 @@ pub fn findings(
     pal: &Palette,
     body: Rect,
     app: &AppSnapshot,
+    name: &str,
     selected: &mut usize,
 ) -> Option<BoundaryAction> {
     let mut action = None;
@@ -63,7 +64,16 @@ pub fn findings(
                         .bottom()
                         + 12.0;
                 } else {
-                    y = list(ui, pal, pos2(left, y), inner, app, selected, &mut action) + 12.0;
+                    y = list(
+                        ui,
+                        pal,
+                        pos2(left, y),
+                        inner,
+                        app,
+                        name,
+                        selected,
+                        &mut action,
+                    ) + 12.0;
                 }
                 y = quiet_checks(ui, pal, pos2(left, y), inner, app);
                 ui.allocate_rect(
@@ -76,12 +86,14 @@ pub fn findings(
 }
 
 /// The findings, problems first, each with its module, its check and where it opens.
+#[expect(clippy::too_many_arguments)]
 fn list(
     ui: &Ui,
     pal: &Palette,
     min: eframe::egui::Pos2,
     width: f32,
     app: &AppSnapshot,
+    name: &str,
     selected: &mut usize,
     action: &mut Option<BoundaryAction>,
 ) -> f32 {
@@ -98,7 +110,7 @@ fn list(
         .list
         .iter()
         .map(|finding| {
-            let sentence = strings::finding(finding, app);
+            let sentence = strings::finding(finding, app, name);
             let galley = draw::galley_wrapped(ui, &sentence, ty::BODY, pal.ink, text_w);
             let height = (galley.size().y + 14.0).max(size::TABLE_ROW_H + 6.0);
             (finding, sentence, galley, height)

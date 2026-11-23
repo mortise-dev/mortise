@@ -288,18 +288,12 @@ fn detail(component: &Component) -> String {
     }
 }
 
-fn items(
-    ui: &Ui,
-    pal: &Palette,
-    app: &AppSnapshot,
-    view: &RuntimeView<'_>,
-    width: f32,
-) -> Vec<Item> {
+fn items(ui: &Ui, pal: &Palette, name: &str, view: &RuntimeView<'_>, width: f32) -> Vec<Item> {
     let default = ButtonKind::Default;
     if !view.installed {
         // a. The package is not installed.
         return vec![
-            Item::Text(strings::actuator_not_installed(&app.name), false),
+            Item::Text(strings::actuator_not_installed(name), false),
             Item::Code(strings::REQUIRE_ACTUATOR.to_owned()),
             Item::Buttons(vec![(
                 strings::COPY_COMMAND,
@@ -314,7 +308,7 @@ fn items(
     let Some(environment) = view.chosen else {
         // b. Installed, no environment yet.
         return vec![
-            Item::Text(strings::no_environment(&app.name), false),
+            Item::Text(strings::no_environment(name), false),
             Item::Buttons(vec![(
                 strings::ADD_ENVIRONMENT,
                 ButtonKind::Primary,
@@ -509,13 +503,13 @@ pub fn runtime_box(
     pal: &Palette,
     min: Pos2,
     width: f32,
-    app: &AppSnapshot,
+    name: &str,
     view: &RuntimeView<'_>,
     keyboard: bool,
     paint: bool,
 ) -> (f32, Option<RuntimeAction>) {
     let inner = width - 2.0 * PAD;
-    let items = items(ui, pal, app, view, inner);
+    let items = items(ui, pal, name, view, inner);
     // The switch between environments, when there is more than one.
     let switch = view.installed && view.environments.len() > 1;
     let height = head_height(switch)

@@ -90,6 +90,8 @@ impl Tab {
 /// Paints the workspace into `rect`.
 /// What the tabs of the workspace keep between frames.
 pub struct WorkState<'a> {
+    /// The display name of the app.
+    pub name: &'a str,
     pub summary: SummaryState<'a>,
     pub boundary: &'a mut BoundaryState,
     /// The Findings list is open: a second view of the Summary of "All modules".
@@ -131,7 +133,7 @@ pub fn workspace(
 
     // The Findings list takes the place of the Summary of "All modules" until Esc.
     let findings = *state.findings_open && module.is_none() && *tab == Tab::Summary;
-    let findings_title = strings::findings_in(&app.name);
+    let findings_title = strings::findings_in(state.name);
     let mut title_x = head.left() + 16.0;
     let title = if findings {
         // Where the list belongs, then its own name.
@@ -323,7 +325,7 @@ pub fn workspace(
 
     let body = Rect::from_min_max(pos2(rect.left(), head.bottom()), rect.max);
     if findings {
-        return findings_view::findings(ui, pal, body, app, state.finding_row);
+        return findings_view::findings(ui, pal, body, app, state.name, state.finding_row);
     }
     let in_body = match (*tab, tab.explanation()) {
         (_, Some((icon, title, text))) => {
@@ -332,6 +334,7 @@ pub fn workspace(
         }
         (Tab::Boundary, None) => {
             let WorkState {
+                name,
                 boundary,
                 surface,
                 keyboard,
@@ -339,10 +342,10 @@ pub fn workspace(
                 ..
             } = state;
             boundary::boundary(
-                ui, pal, body, app, module, boundary, &surface, keyboard, mac,
+                ui, pal, body, app, name, module, boundary, &surface, keyboard, mac,
             )
         }
-        (_, None) => summary::summary(ui, pal, body, app, module, state.summary),
+        (_, None) => summary::summary(ui, pal, body, app, state.name, module, state.summary),
     };
     in_body.or(header_action)
 }

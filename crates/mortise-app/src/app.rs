@@ -241,7 +241,7 @@ impl MortiseApp {
         self.settings
             .apps
             .iter()
-            .map(|app| app.name.as_str())
+            .map(AppEntry::display_name)
             .collect()
     }
 
@@ -435,7 +435,7 @@ impl MortiseApp {
         if let Some(index) = self.settings.position(folder) {
             return Some(Checked::Known {
                 index,
-                name: self.settings.apps[index].name.clone(),
+                name: self.settings.apps[index].display_name().to_owned(),
             });
         }
         let mut cache = ReadCache::default();
@@ -524,7 +524,10 @@ impl MortiseApp {
         self.settings_open = None;
         self.select_app(index);
         self.save();
-        self.toast = Some(Toast::done(strings::added(&app.name, app.modules.len())));
+        self.toast = Some(Toast::done(strings::added(
+            self.settings.apps[index].display_name(),
+            app.modules.len(),
+        )));
         // Focus moves to the "All modules" row of the new app.
         self.keyboard = true;
     }
@@ -858,15 +861,16 @@ impl MortiseApp {
     /// Changes the rules of the current app. The first change asks before
     /// `mortise.json` is created.
     fn set_rules(&mut self, rules: Rules) {
-        let Some(app) = self.app() else {
+        let (Some(app), Some(current)) = (self.app(), self.current) else {
             return;
         };
         if app.root.join(mortise_core::RULES_FILE).exists() {
             self.save_rules(&app.root, &rules);
         } else {
+            let name = self.settings.apps[current].display_name();
             let dialog = Dialog {
-                title: strings::create_rules_title(&app.name),
-                body: strings::create_rules_body(&app.name),
+                title: strings::create_rules_title(name),
+                body: strings::create_rules_body(name),
                 confirm: strings::CREATE_RULES_FILE.to_owned(),
             };
             let root = app.root.clone();
@@ -1269,7 +1273,7 @@ impl eframe::App for MortiseApp {
         let bar = Rect::from_min_size(window.min, vec2(window.width(), size::TITLEBAR_H));
         let app_name = self
             .current
-            .map(|current| self.settings.apps[current].name.clone());
+            .map(|current| self.settings.apps[current].display_name().to_owned());
         let shown_name = app_name.as_deref().unwrap_or(strings::NO_APP);
         if chrome::title_bar(ui, pal, bar, chrome, frame, Some(shown_name)) {
             self.open_palette();
@@ -1284,7 +1288,7 @@ impl eframe::App for MortiseApp {
             .zip(&self.apps)
             .map(|(app, open)| Tile {
                 root: &app.root,
-                name: &app.name,
+                name: app.display_name(),
                 monogram: &app.monogram,
                 problems: match open.live.state() {
                     LiveState::Ready(app) => app.findings.problems(),
@@ -1413,7 +1417,7 @@ impl eframe::App for MortiseApp {
                         problems_first,
                         rows,
                         mac,
-                        name: &entry.name,
+                        name: entry.display_name(),
                         runtime: runtime.brief().map(|brief| IndexRuntime {
                             brief: brief.for_header(),
                             environment: runtime.environment(),
@@ -1447,6 +1451,7 @@ impl eframe::App for MortiseApp {
                     // The workspace, after the index: Tab goes from the rail to the index
                     // and then to the workspace.
                     let state = WorkState {
+                        name: entry.display_name(),
                         summary: SummaryState {
                             sort: &mut open.sort,
                             now,
@@ -1568,7 +1573,7 @@ impl eframe::App for MortiseApp {
                         LiveState::Ready(app) => app.findings.problems(),
                         _ => 0,
                     };
-                    (entry.name.clone(), problems)
+                    (entry.display_name().to_owned(), problems)
                 })
                 .collect();
             let recent = self
@@ -1674,7 +1679,7 @@ impl eframe::App for MortiseApp {
                     }
                 }
                 SettingsAction::RemoveApp(index) => {
-                    let name = self.settings.apps[index].name.clone();
+                    let name = self.settings.apps[index].display_name().to_owned();
                     let dialog = Dialog {
                         title: format!("Remove {name} from Mortise?"),
                         body: "The folder and its files stay as they are. Mortise forgets the \

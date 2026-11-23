@@ -44,6 +44,19 @@ pub struct AppEntry {
 }
 
 impl AppEntry {
+    /// The name every screen shows for the app: the name set in Settings, else the
+    /// name read from the app, which is the name of its folder.
+    pub fn display_name(&self) -> &str {
+        if self.name.trim().is_empty() {
+            self.root
+                .file_name()
+                .and_then(|folder| folder.to_str())
+                .unwrap_or(&self.name)
+        } else {
+            &self.name
+        }
+    }
+
     /// The environment the runtime box shows: the chosen one, else the first.
     pub fn chosen_environment(&self) -> Option<&Environment> {
         self.environments
@@ -275,6 +288,15 @@ mod tests {
             environments: Vec::new(),
             environment: None,
         }
+    }
+
+    #[test]
+    fn the_display_name_is_the_settings_name_else_the_folder() {
+        let mut app = entry("shop-api", "SA");
+        app.name = "Shop".into();
+        assert_eq!(app.display_name(), "Shop");
+        app.name = "  ".into();
+        assert_eq!(app.display_name(), "shop-api");
     }
 
     #[test]
