@@ -14,11 +14,15 @@ Files in the `tests/` folder of a module SHALL NOT make links. They MUST NOT cou
 - **THEN** no link from Billing to Checkout comes from that file, and no rule finding comes from it
 
 ### Requirement: A rule finding counts only when its modules are on
-A link SHALL make a rule finding only when both of its modules are on. A circle SHALL make a finding only when every module in it is on. Boundary MUST still draw a link to or from a module that is off, in the off style.
+A link SHALL make a rule finding only when both of its modules are on. A circle SHALL make a finding only when every module in it is on. A module counts as on unless the statuses file turns it off, so a module whose state is unknown counts as on. Boundary MUST still draw a link to or from a module that is off, in the off style.
 
 #### Scenario: A link to a module that is off
 - **WHEN** Billing is on, Checkout is off, and Billing uses an internal class of Checkout
 - **THEN** no rule finding is counted, and Boundary draws the link in the off style
+
+#### Scenario: An app whose module states are unknown
+- **WHEN** the app does not use the file activator and Billing uses an internal class of Checkout
+- **THEN** a rule finding is counted
 
 #### Scenario: Both modules on
 - **WHEN** Billing and Checkout are on, and Billing uses an internal class of Checkout
