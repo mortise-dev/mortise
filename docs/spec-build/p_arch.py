@@ -68,7 +68,7 @@ def build():
         ['Files and git', 'The app folder. No PHP, no dependencies installed beyond <code>composer.lock</code>.', 'Module list and on or off state, file and line counts, kinds of class, links between modules from <code>use</code> statements, coverage from <code>clover.xml</code>, commits. Findings are computed from these.', '1'],
         ['Actuator', 'A running app, a base URL, the actuator path, credentials if the app asks. No PHP runner, no package change. The app needs <code>nwidart/laravel-actuator</code>, found in <code>composer.lock</code>.', 'Runtime status and components (<code>health</code>), environment, git, PHP and memory (<code>info</code>), routes (<code>mappings</code>), scheduled tasks (<code>scheduledtasks</code>). Per module status and module data once the packages offer them.', '1, optional'],
         ['Artisan', 'A way to run PHP for the app: Herd, Sail, Docker or a command.', 'Generators, actions, migration state, translation check, tests.', '2'],
-        ['Metrics over the actuator', 'The actuator connection, and a Prometheus endpoint that has no module label yet.', 'Figures per module for the Metrics tab.', '3'],
+        ['Metrics over the actuator', 'The actuator connection, and its Prometheus endpoint. Without a module label, series are placed by route template and job class.', 'Figures per module for the Metrics tab.', '3'],
     ])
     b += '<h2>2.4 Findings and runtime: two things that were both called health</h2>'
     b += spec_table(['', 'Findings', 'Runtime'], [
@@ -83,7 +83,7 @@ def build():
     b += '<h2>2.5 What is on screen in each phase</h2>'
     y, n, e = 'Yes', 'No', 'Shown, explains itself'
     b += spec_table(['', 'Phase 1, read only', 'Phase 2, write', 'Phase 3, live'], [
-        ['Needs', 'The app folder. Optional: a running app with the actuator.', 'PHP for the app. Package additions P1 to P8.', 'A module label on the metrics endpoint of the actuator (A2, in part). Package work P10 (in part) for the per module parts. P9 and A1 are met.'],
+        ['Needs', 'The app folder. Optional: a running app with the actuator.', 'PHP for the app. Package additions P1 to P5, P7 and P8.', 'The metrics endpoint of the actuator. Without a module label (A2, in part), Mortise places requests through <code>mappings</code> and jobs by class namespace; database time per module needs the label. Package work P10 (in part) for the per module parts. P9 and A1 are met.'],
         ['Add app', 'Folder and runtime connection', 'Plus "Run PHP with"', 'Same'],
         ['App rail, module index', y, 'Plus "New module" in the footer', 'Plus the runtime mark per module, when the packages offer it'],
         ['Summary', 'Files, git, coverage, findings. With an environment: runtime box, routes, scheduled tasks.', 'Plus migration state, and the Run tests and Migrate buttons in the header', 'Plus runtime per module'],
