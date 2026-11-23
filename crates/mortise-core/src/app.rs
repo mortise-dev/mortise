@@ -205,6 +205,12 @@ pub enum ReadError {
     },
 }
 
+/// `APP_ENV` from the `.env` file of the app in `root`, read now. A confirmation
+/// checks it again just before a destructive command starts.
+pub fn read_app_env(root: &Path) -> Option<String> {
+    read_env(root).1
+}
+
 /// `APP_URL` and `APP_ENV` from the `.env` file of the app, in one read.
 /// No other line is looked at.
 fn read_env(root: &Path) -> (Option<String>, Option<String>) {
@@ -399,16 +405,20 @@ pub fn read_app_cached(
     drop(sources);
 
     let git = git::read(&root);
-    let churn = match git {
-        Git::Repository { .. } => git::churn(&root, &folders),
-        _ => BTreeMap::new(),
+    let (churn, uncommitted) = match git {
+        Git::Repository { .. } => {
+            let dirs: Vec<PathBuf> = found.iter().map(|module| module.dir.clone()).collect();
+            (git::churn(&root, &folders), git::uncommitted(&root, &dirs))
+        }
+        _ => (BTreeMap::new(), vec![None; found.len()]),
     };
 
     let modules: Vec<Module> = found
         .into_iter()
         .zip(codes)
         .zip(&folders)
-        .map(|((module, code), folder)| Module {
+        .zip(uncommitted)
+        .map(|(((module, code), folder), uncommitted)| Module {
             name: module.name,
             code,
             dir: module.dir,
@@ -423,6 +433,7 @@ pub fn read_app_cached(
             tests: module.scan.tests,
             coverage: coverage_of(folder),
             churn: churn.get(folder).copied(),
+            uncommitted,
         })
         .collect();
 

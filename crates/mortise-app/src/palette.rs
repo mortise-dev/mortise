@@ -5,7 +5,9 @@ use eframe::egui::{
     self, Align2, Color32, FontId, Key, Rect, RichText, Role, ScrollArea, Sense, Shadow, Ui, Vec2,
     WidgetInfo, pos2, vec2,
 };
-use mortise_core::{Action, AppSnapshot, Detail, FindingState, ModuleState, ThemeChoice, fuzzy};
+use mortise_core::{
+    Action, AppSnapshot, Detail, FindingState, ModuleState, Target, ThemeChoice, fuzzy,
+};
 
 use crate::draw::{self, Icon, StampState};
 use crate::strings;
@@ -170,13 +172,21 @@ pub fn entries(query: &str, source: &Source<'_>) -> Vec<Entry> {
             });
             add(&strings::modules_in(app_name), modules.collect());
 
-            // The actions of the best module match, else of the selected module.
+            // The actions of the best module match, else of the selected module. The
+            // word of a destructive action is not part of the module's name (design D8).
+            let named = named_destructive(query);
+            let module_query = query
+                .split_whitespace()
+                .filter(|word| !DESTRUCTIVE_WORDS.contains(&word.to_lowercase().as_str()))
+                .collect::<Vec<_>>()
+                .join(" ");
             let matched = app
                 .modules
                 .iter()
+                .filter(|_| !module_query.is_empty())
                 .filter_map(|module| {
                     Some((
-                        fuzzy(query, &format!("{} {}", module.name, module.code))?,
+                        fuzzy(&module_query, &format!("{} {}", module.name, module.code))?,
                         module,
                     ))
                 })
@@ -198,9 +208,31 @@ pub fn entries(query: &str, source: &Source<'_>) -> Vec<Entry> {
                     Action::for_all().into_iter().map(|a| (None, a)).collect(),
                 ),
             };
+            // A destructive action only by its own word: reset, refresh and delete with
+            // the module, fresh with "All modules" (design D8).
+            let target = module.map(|module| module.name.as_str());
+            let destructive = target
+                .map(|name| Action::destructive(&Target::Module(name.to_owned())))
+                .into_iter()
+                .flatten()
+                .map(|action| (target, *action))
+                .chain(std::iter::once((None, Action::FreshMigrate)))
+                .filter(|(_, action)| named.contains(action));
+            // They come first, so that the limit of the group never leaves them out.
+            let actions: Vec<(Option<&str>, Action)> = destructive.chain(actions).collect();
             let found = actions.into_iter().filter_map(|(module, action)| {
                 let label = strings::action_label(action, module);
                 let words = action_words(action, module);
+                // Named by its own word, a destructive action comes first.
+                if action.is_destructive() {
+                    let command = Command::Action {
+                        module: module.map(str::to_owned),
+                        action,
+                    };
+                    let mut entry = entry(label, strings::ACTION, command);
+                    entry.detail = words;
+                    return Some((0, entry));
+                }
                 // An action named by the query comes before one that only has the module.
                 let own = strings::action_button(action);
                 let score = match fuzzy(query, own) {
@@ -339,6 +371,27 @@ pub fn entries(query: &str, source: &Source<'_>) -> Vec<Entry> {
         add("Mortise", found.collect());
     }
     entries
+}
+
+/// The words that name the destructive actions, in the order of `named_destructive`.
+const DESTRUCTIVE_WORDS: [&str; 4] = ["reset", "refresh", "fresh", "delete"];
+
+/// The destructive actions whose own word is a word of `query`, in lower case.
+/// Words, not parts of words: "refresh" does not name fresh (design D8).
+fn named_destructive(query: &str) -> Vec<Action> {
+    let words: Vec<String> = query.split_whitespace().map(str::to_lowercase).collect();
+    let actions = [
+        Action::ResetMigrations,
+        Action::RefreshMigrations,
+        Action::FreshMigrate,
+        Action::DeleteModule,
+    ];
+    DESTRUCTIVE_WORDS
+        .into_iter()
+        .zip(actions)
+        .filter(|(word, _)| words.iter().any(|typed| typed == word))
+        .map(|(_, action)| action)
+        .collect()
 }
 
 /// The artisan words of an action on a module, or on all modules with `None`.

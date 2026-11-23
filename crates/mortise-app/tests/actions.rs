@@ -1,6 +1,7 @@
-//! The Actions tab (S10.1 to S10.3) against the fake artisan: the line on screen is
-//! the line that runs, the questions of the confirmation table, the toasts, and the
-//! sentence of a migration that failed.
+//! The Actions tab (S10.1 to S10.5) against the fake artisan: the line on screen is
+//! the line that runs, the questions of the confirmation table, the closed group of
+//! the destructive actions and their dialogs, the toasts, and the sentence of a
+//! migration that failed.
 
 mod common;
 
@@ -251,6 +252,27 @@ fn production_asks_and_the_line_carries_force() {
         .get_by_role_and_label(Role::Button, "Cancel")
         .click();
     harness.run_steps(3);
+
+    // A destructive action does not run in production: its line can only be copied.
+    select(&mut harness, "Destructive");
+    select(&mut harness, "Reset migrations");
+    harness.get_by_label(
+        "shop-api reports the environment production. Mortise does not run this command \
+         there. Copy it and run it where you can watch the database.",
+    );
+    let button = harness.get_by_role_and_label(Role::Button, "Reset migrations");
+    assert!(button.accesskit_node().is_disabled());
+    run(&mut harness);
+    assert!(
+        harness
+            .query_by_role_and_label(Role::Heading, "Reset the migrations of Checkout?")
+            .is_none()
+    );
+    harness
+        .get_by_role_and_label(Role::Button, "Copy command")
+        .click();
+    harness.run_steps(3);
+    harness.get_by_label("Copied the command.");
     assert_eq!(runs(&mut harness, &desk, &root), 0);
 }
 
@@ -370,4 +392,202 @@ fn a_run_turns_every_run_button_off() {
         .get_by_role_and_label(Role::Button, "Stop command")
         .click();
     wait_for(&mut harness, "Stopped after");
+}
+
+/// Gives the field of this name focus and types `text` into it.
+fn type_in(harness: &mut Harness<'static, MortiseApp>, field: &str, text: &str) {
+    harness
+        .get_by_role_and_label(Role::TextInput, field)
+        .focus();
+    harness.run_steps(2);
+    harness
+        .get_by_role_and_label(Role::TextInput, field)
+        .type_text(text);
+    harness.run_steps(3);
+}
+
+/// True while a row of this name is in the list.
+fn listed(harness: &Harness<'static, MortiseApp>, row: &str) -> bool {
+    harness
+        .query_by_role_and_label(Role::ListBoxOption, row)
+        .is_some()
+}
+
+#[test]
+fn the_destructive_group_opens_with_its_keys_and_a_reset_dry_run_runs_at_once() {
+    let (desk, root) = desk("");
+    let mut harness = desk.start();
+    actions_of(&mut harness, "Billing");
+    // Closed when the tab opens.
+    assert!(!listed(&harness, "Reset migrations"));
+    let group = harness.get_by_role_and_label(Role::ListBoxOption, "Destructive");
+    assert_eq!(group.accesskit_node().data().is_expanded(), Some(false));
+
+    // J stops at the row of the group, Enter opens it, and J moves on into it.
+    select(&mut harness, "Check translations");
+    harness
+        .get_by_role_and_label(Role::ListBoxOption, "Check translations")
+        .focus();
+    harness.run_steps(2);
+    harness.key_press(Key::J);
+    harness.run_steps(3);
+    assert!(
+        harness
+            .get_by_role_and_label(Role::ListBoxOption, "Destructive")
+            .is_focused()
+    );
+    harness.key_press(Key::Enter);
+    harness.run_steps(3);
+    harness.get_by_label("Dropping all tables is under \"All modules\".");
+    harness.key_press(Key::J);
+    harness.run_steps(3);
+    harness.get_by_role_and_label(Role::Heading, "Reset the migrations of Billing");
+
+    // Dry run checks the option, and a dry run of reset runs without a question.
+    harness
+        .get_by_role_and_label(Role::Button, "Dry run")
+        .click();
+    harness.run_steps(3);
+    // Billing has no recording: the dry run of Checkout prints "⇂", which the
+    // bundled mono font does not have.
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::Enter);
+    harness.run_steps(3);
+    assert!(
+        harness
+            .query_by_role_and_label(Role::Heading, "Reset the migrations of Billing?")
+            .is_none()
+    );
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while History::open(&desk.data_dir(), &root).entries().is_empty() {
+        assert!(Instant::now() < deadline, "the dry run did not end");
+        std::thread::sleep(Duration::from_millis(20));
+        harness.run_steps(2);
+    }
+    let entries = History::open(&desk.data_dir(), &root).entries();
+    assert_eq!(
+        entries[0].args,
+        ["module:migrate-reset", "Billing", "--pretend"]
+    );
+
+    // Another module closes the group, and its own group is closed.
+    select(&mut harness, "Checkout");
+    assert!(!listed(&harness, "Delete module"));
+    harness.get_by_role_and_label(Role::Heading, "Migrate Checkout");
+}
+
+#[test]
+fn delete_asks_for_the_name_and_selects_all_modules_when_it_ends() {
+    let (desk, root) = desk("");
+    let mut harness = desk.start();
+    actions_of(&mut harness, "Checkout");
+    select(&mut harness, "Destructive");
+    select(&mut harness, "Delete module");
+    let field = "Type Checkout to confirm";
+    let confirm = |harness: &Harness<'static, MortiseApp>| {
+        let buttons = harness.get_all_by_role_and_label(Role::Button, "Delete module");
+        !buttons.last().unwrap().accesskit_node().is_disabled()
+    };
+
+    // Ctrl Enter only opens the dialog, with focus on Cancel.
+    run(&mut harness);
+    harness.get_by_role_and_label(Role::Heading, "Delete the module Checkout?");
+    assert!(
+        harness
+            .get_by_role_and_label(Role::Button, "Cancel")
+            .is_focused()
+    );
+    // The app is not in a repository: the panel and the dialog say git cannot tell.
+    let no_git = "Mortise cannot tell whether these files are in git.";
+    assert_eq!(harness.get_all_by_label(no_git).count(), 2);
+    // The name must match exactly. Esc in the field cancels.
+    type_in(&mut harness, field, "checkout");
+    assert!(!confirm(&harness));
+    assert!(
+        harness
+            .get_by_role_and_label(Role::TextInput, field)
+            .is_focused()
+    );
+    harness.key_press(Key::Escape);
+    harness.run_steps(3);
+    assert!(
+        harness
+            .query_by_role_and_label(Role::TextInput, field)
+            .is_none()
+    );
+
+    run(&mut harness);
+    type_in(&mut harness, field, "Checkout");
+    assert!(confirm(&harness));
+    // Enter does not confirm, in the field or on the red button, with or without
+    // the modifier that opened the dialog.
+    harness.key_press(Key::Enter);
+    harness.run_steps(3);
+    harness
+        .get_all_by_role_and_label(Role::Button, "Delete module")
+        .last()
+        .unwrap()
+        .focus();
+    harness.run_steps(2);
+    assert!(
+        harness
+            .get_all_by_role_and_label(Role::Button, "Delete module")
+            .last()
+            .unwrap()
+            .is_focused()
+    );
+    for modifiers in [Modifiers::NONE, Modifiers::SHIFT, Modifiers::COMMAND] {
+        harness.key_press_modifiers(modifiers, Key::Enter);
+        harness.run_steps(2);
+    }
+    // Tab from Cancel to the red button and Enter in one frame.
+    harness
+        .get_by_role_and_label(Role::Button, "Cancel")
+        .focus();
+    harness.run_steps(2);
+    harness.key_press(Key::Tab);
+    harness.key_press(Key::Enter);
+    harness.run_steps(2);
+    harness.get_by_role_and_label(Role::Heading, "Delete the module Checkout?");
+    assert_eq!(runs(&mut harness, &desk, &root), 0);
+
+    harness
+        .get_all_by_role_and_label(Role::Button, "Delete module")
+        .last()
+        .unwrap()
+        .click();
+    harness.run_steps(3);
+    wait_for(&mut harness, "Deleted the module Checkout.");
+    let entries = History::open(&desk.data_dir(), &root).entries();
+    assert_eq!(entries[0].args, ["module:delete", "Checkout", "--force"]);
+    assert_eq!(harness.state().selection(), Selection::All);
+    assert_eq!(harness.state().tab(), Tab::Actions);
+
+    // Run again asks in the same dialog, for the name again.
+    harness.key_press_modifiers(Modifiers::COMMAND | Modifiers::SHIFT, Key::R);
+    harness.run_steps(3);
+    harness.get_by_role_and_label(Role::Heading, "Delete the module Checkout?");
+    harness.get_by_role_and_label(Role::TextInput, field);
+    assert!(!confirm(&harness));
+    type_in(&mut harness, field, "Checkout");
+
+    // The app turns to production while the dialog is open, and the user confirms
+    // before Mortise reads the app again: the confirmation reads `.env` itself and
+    // does not run. The panel says why and keeps the line to copy.
+    std::fs::write(root.join(".env"), "APP_ENV=production\n").unwrap();
+    harness
+        .get_all_by_role_and_label(Role::Button, "Delete module")
+        .last()
+        .unwrap()
+        .click();
+    harness.run_steps(3);
+    common::wait_until(&mut harness, "the app reports production", |app| {
+        app.app()
+            .is_some_and(|app| app.app_env.as_deref() == Some("production"))
+    });
+    harness.run_steps(3);
+    harness.get_by_label(
+        "shop-api reports the environment production. Mortise does not run this command \
+         there. Copy it and run it where you can watch the database.",
+    );
+    assert_eq!(runs(&mut harness, &desk, &root), 1);
 }

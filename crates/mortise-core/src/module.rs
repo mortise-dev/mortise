@@ -79,6 +79,10 @@ pub struct Module {
     pub coverage: Option<Coverage>,
     /// Commits in git. `None` when the app is not in a repository.
     pub churn: Option<Churn>,
+    /// Files of the module that git cannot restore: changed, staged, added,
+    /// deleted or untracked. `None` when the app is not in a repository, git is
+    /// missing, or git failed.
+    pub uncommitted: Option<u32>,
 }
 
 /// A module as read from disk, before it has a code, coverage and git data.

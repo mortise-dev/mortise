@@ -433,6 +433,9 @@ fn actions() {
         shots.take(&mut harness, "s10.2f-all-modules");
         // S10.2 b: Turn on, once Checkout is off.
         common::turn_off(&root, "Checkout");
+        // Read the app again now, rather than wait for the watcher: the git work of
+        // the test beside this one can hold its events back.
+        chord(&mut harness, Key::R);
         common::wait_until(&mut harness, "Checkout is off", |app| {
             app.app().is_some_and(|app| {
                 app.module("Checkout")
@@ -443,6 +446,99 @@ fn actions() {
         select(&mut harness, "Turn on");
         shots.take(&mut harness, "s10.2b-turn-on");
     }
+}
+
+// --- The destructive actions (S10.4, S10.5) ---
+
+#[test]
+fn destructive_actions() {
+    // One set of results for the test: both themes are compared when it ends.
+    let mut shots = Shots::new();
+    for (theme, name) in THEMES {
+        shots.theme = name;
+        // Through Herd, so that the line reads as in the drawings, and nothing runs.
+        let mut desk = Desk::new();
+        desk.theme = theme;
+        let root = desk.app("shop-api");
+        desk.knows(&[(&root, "SA")]);
+        let mut settings = desk.saved();
+        settings.apps[0].php.runner = Some(RunnerKind::Herd);
+        settings.save(&desk.settings_path()).unwrap();
+        // A repository with two changed files in Checkout, for the line of delete.
+        common::with_git_history(&root);
+        for file in ["routes/web.php", "config/config.php"] {
+            let path = root.join("Modules/Checkout").join(file);
+            let mut text = std::fs::read_to_string(&path).unwrap();
+            text.push_str("\n// not committed\n");
+            std::fs::write(path, text).unwrap();
+        }
+        let mut harness = desk.start();
+
+        // S10.4: the group open on Checkout, with Reset migrations selected.
+        select(&mut harness, "Checkout");
+        harness.get_by_role_and_label(Role::Tab, "Actions").click();
+        rest(&mut harness);
+        select(&mut harness, "Destructive");
+        select(&mut harness, "Reset migrations");
+        shots.take(&mut harness, "s10.4-reset");
+        // S10.4 a and b.
+        select(&mut harness, "Refresh migrations");
+        shots.take(&mut harness, "s10.4a-refresh");
+        select(&mut harness, "Delete module");
+        shots.take(&mut harness, "s10.4b-delete");
+
+        // S10.5 d: delete asks for the name, before and after it is typed.
+        chord(&mut harness, Key::Enter);
+        shots.take(&mut harness, "s10.5d-delete");
+        type_name(&mut harness, "Type Checkout to confirm", "Checkout");
+        shots.take(&mut harness, "s10.5d-delete-typed");
+        press(&mut harness, Key::Escape);
+        // S10.5 a and b.
+        select(&mut harness, "Reset migrations");
+        chord(&mut harness, Key::Enter);
+        shots.take(&mut harness, "s10.5a-reset");
+        press(&mut harness, Key::Escape);
+        select(&mut harness, "Refresh migrations");
+        chord(&mut harness, Key::Enter);
+        shots.take(&mut harness, "s10.5b-refresh");
+        press(&mut harness, Key::Escape);
+
+        // S10.4 c and S10.5 c: under "All modules".
+        select(&mut harness, "All modules");
+        select(&mut harness, "Destructive");
+        select(&mut harness, "Drop all tables and migrate");
+        shots.take(&mut harness, "s10.4c-fresh");
+        chord(&mut harness, Key::Enter);
+        shots.take(&mut harness, "s10.5c-fresh");
+        type_name(&mut harness, "Type shop-api to confirm", "shop-api");
+        shots.take(&mut harness, "s10.5c-fresh-typed");
+        press(&mut harness, Key::Escape);
+
+        // S10.4 d: the app reports production.
+        std::fs::write(root.join(".env"), "APP_ENV=production\n").unwrap();
+        // Read the app again now, rather than wait for the watcher.
+        chord(&mut harness, Key::R);
+        common::wait_until(&mut harness, "the app reports production", |app| {
+            app.app()
+                .is_some_and(|app| app.app_env.as_deref() == Some("production"))
+        });
+        select(&mut harness, "Checkout");
+        select(&mut harness, "Destructive");
+        select(&mut harness, "Reset migrations");
+        shots.take(&mut harness, "s10.4d-production");
+    }
+}
+
+/// Types a name into the field of a dialog, with the pointer at rest after.
+fn type_name(harness: &mut Harness<'static, MortiseApp>, field: &str, text: &str) {
+    harness
+        .get_by_role_and_label(Role::TextInput, field)
+        .focus();
+    harness.run_steps(2);
+    harness
+        .get_by_role_and_label(Role::TextInput, field)
+        .type_text(text);
+    rest(harness);
 }
 
 // --- The runner drawer (S11.1) ---

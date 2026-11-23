@@ -308,6 +308,11 @@ fn a_folder_that_is_not_a_repository_has_no_git_data() {
     let app = read_app(app.path()).unwrap();
     assert_eq!(app.git, mortise_core::Git::NotARepository);
     assert!(app.modules.iter().all(|module| module.churn.is_none()));
+    assert!(
+        app.modules
+            .iter()
+            .all(|module| module.uncommitted.is_none())
+    );
 }
 
 #[test]

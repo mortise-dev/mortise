@@ -186,6 +186,8 @@ struct Current {
     recorded: Option<u64>,
     /// The migration at which a `module:migrate` run failed, read once when it ended.
     failed: Option<FailedMigration>,
+    /// The run failed because the app prohibits the command (design D4).
+    prohibited: bool,
 }
 
 /// The line that `args` would run through `runner` now, as the drawer shows it.
@@ -265,6 +267,7 @@ impl AppRuns {
                 state: State::Running(run),
                 recorded: None,
                 failed: None,
+                prohibited: false,
             },
             Err(error) => Current {
                 label,
@@ -277,6 +280,7 @@ impl AppRuns {
                 state: State::NotStarted(error),
                 recorded: None,
                 failed: None,
+                prohibited: false,
             },
         };
         self.current = Some(current);
@@ -311,6 +315,7 @@ impl AppRuns {
         {
             current.failed = mortise_core::failed_migration(&current.output.lines);
         }
+        current.prohibited = failed && mortise_core::prohibited(&current.output.lines);
         current.state = State::Ended(end);
         self.record();
         false
@@ -1160,7 +1165,9 @@ fn current_body(
     // The sentence of a failure follows the output; a long output scrolls above it.
     let width = body.width().min(sentence_width());
     let sentence = failed.map(|code| {
+        // The refusal of the app wins over the migration that failed (design D4).
         let text = match &current.failed {
+            _ if current.prohibited => strings::PROHIBITED.to_owned(),
             Some(at) => strings::failed_at(&current.label, code, &at.migration),
             None => strings::stopped_with(&current.label, code),
         };
@@ -1203,12 +1210,12 @@ fn current_body(
             ..BarButton::new(strings::COPY_OUTPUT, DrawerAction::CopyOutput)
         };
         let steps = match &current.failed {
-            Some(at) => {
+            Some(at) if !current.prohibited => {
                 let mut steps = migration_steps(ui, current, at, inputs.snapshot, actions);
                 steps.push(copy);
                 steps
             }
-            None => vec![copy],
+            _ => vec![copy],
         };
         let mid = at.bottom() + 4.0 + BAR_H / 2.0;
         show_buttons(
@@ -1270,7 +1277,7 @@ fn split_options(args: &[String]) -> (&[String], Option<&String>) {
 }
 
 /// The module that artisan words name: the second word, or the word after `--`.
-fn module_named(args: &[String]) -> Option<String> {
+pub(crate) fn module_named(args: &[String]) -> Option<String> {
     let (options, after) = split_options(args);
     after
         .or(options.get(1).filter(|word| !word.starts_with('-')))

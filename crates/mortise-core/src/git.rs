@@ -4,7 +4,7 @@
 //! repository, this data is absent and nothing else is affected.
 
 use std::collections::BTreeMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
 use serde::{Deserialize, Serialize};
@@ -44,6 +44,8 @@ fn git(root: &Path, args: &[&str]) -> Option<String> {
         .arg(root)
         // Paths as they are, not quoted and escaped.
         .args(["--no-pager", "-c", "core.quotepath=false"])
+        // Never start a file system monitor that the repository configures.
+        .args(["-c", "core.fsmonitor=false"])
         .args(args)
         // Never take a lock or write the index: Mortise only reads.
         .env("GIT_OPTIONAL_LOCKS", "0")
@@ -151,4 +153,86 @@ pub(crate) fn churn(root: &Path, folders: &[String]) -> BTreeMap<String, Churn> 
         );
     }
     churn
+}
+
+/// For each folder in `dirs`, the files git cannot restore: changed, staged,
+/// added, deleted and untracked. Ignored files are left out. `None` for a folder
+/// git cannot tell about: outside the repository of `root`, a repository of its
+/// own such as a submodule, or every folder when git fails.
+pub(crate) fn uncommitted(root: &Path, dirs: &[PathBuf]) -> Vec<Option<u32>> {
+    let unknown = vec![None; dirs.len()];
+    let Some(top) = git(root, &["rev-parse", "--show-toplevel"])
+        .and_then(|top| std::fs::canonicalize(top.trim_end_matches(['\n', '\r'])).ok())
+    else {
+        return unknown;
+    };
+    // Each folder relative to the top of the repository, with `/`, as git prints
+    // the paths of a status. A folder in a repository of its own, such as a
+    // submodule, has a `.git` in it or above it below the top: this status does not
+    // list its files.
+    let relative: Vec<Option<String>> = dirs
+        .iter()
+        .map(|dir| {
+            let dir = std::fs::canonicalize(dir).ok()?;
+            let nested = dir
+                .ancestors()
+                .take_while(|folder| *folder != top)
+                .any(|folder| folder.join(".git").exists());
+            if nested {
+                return None;
+            }
+            let parts: Vec<String> = dir
+                .strip_prefix(&top)
+                .ok()?
+                .components()
+                .map(|part| part.as_os_str().to_string_lossy().into_owned())
+                .collect();
+            (!parts.is_empty()).then(|| parts.join("/"))
+        })
+        .collect();
+    let mut counts: Vec<Option<u32>> = relative
+        .iter()
+        .map(|folder| folder.as_ref().map(|_| 0))
+        .collect();
+    let mut args = vec![
+        "status",
+        "--porcelain=v1",
+        "-z",
+        "--untracked-files=all",
+        "--no-renames",
+        "--",
+    ];
+    args.extend(relative.iter().flatten().map(String::as_str));
+    if args.len() == 6 {
+        return counts;
+    }
+    let Some(status) = git(&top, &args) else {
+        return unknown;
+    };
+    for entry in status.split('\0') {
+        // `XY path`: two status letters, a space, the path from the top.
+        let Some(path) = entry.get(3..) else {
+            continue;
+        };
+        for (folder, count) in relative.iter().zip(counts.iter_mut()) {
+            let Some(rest) = folder
+                .as_deref()
+                .and_then(|folder| path.strip_prefix(folder))
+            else {
+                continue;
+            };
+            match rest {
+                // The folder itself is listed: it is a repository of its own, whose
+                // files this status does not list.
+                "" | "/" => *count = None,
+                _ if rest.starts_with('/') => {
+                    if let Some(count) = count {
+                        *count += 1;
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    counts
 }

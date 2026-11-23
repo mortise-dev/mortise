@@ -117,6 +117,23 @@ fn a_query_finds_modules_and_findings_and_enter_opens_the_first() {
             .query_by_role_and_label(Role::TextInput, "Search or run a command")
             .is_none()
     );
+
+    // A destructive action is listed only by its own word, and opens its panel.
+    let labels = |query: &str| -> Vec<String> {
+        palette::entries(query, &source)
+            .into_iter()
+            .map(|entry| entry.label)
+            .collect()
+    };
+    assert!(!labels("refresh checkout").contains(&"Drop all tables and migrate".to_owned()));
+    open_palette(&mut harness);
+    type_query(&mut harness, "delete checkout");
+    assert_eq!(palette_rows(&harness)[0], "Delete module Checkout");
+    harness.key_press(Key::Enter);
+    harness.run_steps(3);
+    assert_eq!(harness.state().tab(), Tab::Actions);
+    harness.get_by_role_and_label(Role::Heading, "Delete the module Checkout");
+    harness.get_by_role_and_label(Role::ListBoxOption, "Reset migrations");
 }
 
 #[test]

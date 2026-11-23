@@ -2231,6 +2231,20 @@ pub fn action_text(action: mortise_core::Action, module: Option<&str>) -> String
         (Action::CheckTranslations, None) => "Lists the translation keys that a language of \
                                               each module lacks. The output shows in the runner."
             .to_owned(),
+        (Action::ResetMigrations, Some(module)) => {
+            format!("Rolls back every migration of {module} that has run, newest first.")
+        }
+        (Action::RefreshMigrations, Some(module)) => format!(
+            "Rolls back every migration of {module}, then runs them all again. The command has \
+             no dry run."
+        ),
+        (Action::DeleteModule, Some(_)) => "Removes the module from the app. The command always \
+                                            asks, so Mortise asks and then passes --force."
+            .to_owned(),
+        (Action::FreshMigrate, None) => "Runs db:wipe on the database, then the migrations of \
+                                         the app, then those of every module that is on. The \
+                                         command refuses a dry run."
+            .to_owned(),
         _ => String::new(),
     }
 }
@@ -2343,6 +2357,201 @@ pub fn seeded(object: &str) -> String {
 /// Not in the spec: the failed toast of a run that was stopped.
 pub fn was_stopped(label: &str) -> String {
     format!("{label} was stopped.")
+}
+
+// ---------------------------------------------------------------------------
+// Destructive actions (S10.4, S10.5)
+
+/// The row of the closed group in the list of actions.
+pub const DESTRUCTIVE: &str = "Destructive";
+/// The detail of the group row while it is open.
+pub const GROUP_OPEN: &str = "open";
+/// Not in the spec: the detail of the group row while it is closed.
+pub const GROUP_CLOSED: &str = "closed";
+/// The dim line under the group of a module.
+pub const FRESH_IS_UNDER_ALL: &str = "Dropping all tables is under \"All modules\".";
+pub const WHAT_IS_LOST: &str = "What is lost";
+pub const CANNOT_BE_UNDONE: &str = "cannot be undone";
+pub const WITH_ALL_ROWS: &str = "with all rows";
+/// The value of the row of refresh. The spec has "7 tables come back empty"; the
+/// count of tables needs the migration state (deviation S42).
+pub const COME_BACK_EMPTY: &str = "come back empty";
+pub const FRESH_LOSES_TABLES: &str = "Every table of the database, also those that no module owns";
+pub const VIEWS_IF_CHOSEN: &str = "Views, if chosen below";
+pub const TYPES_IF_CHOSEN: &str = "Types, if chosen below";
+pub const POSTGRES_ONLY: &str = "Postgres only";
+pub const ALSO_DROP_VIEWS: &str = "Also drop views";
+pub const ALSO_DROP_TYPES: &str = "Also drop types";
+/// The part of the folder row of delete before the folder, which is set in mono.
+pub const THE_FOLDER: &str = "The folder ";
+/// The part of the statuses row of delete before the file, which is set in mono.
+pub const ITS_LINE_IN: &str = "Its line in ";
+pub const UNCOMMITTED_CHANGES: &str = "Changes that are not committed";
+/// Delete, when the app is not in a git repository or git cannot be asked.
+pub const CANNOT_TELL_GIT: &str = "Mortise cannot tell whether these files are in git.";
+/// Refresh in its dialog.
+pub const NO_DRY_RUN: &str = "This command has no dry run.";
+/// The drawer, under a run the app prohibits (design D4).
+pub const PROHIBITED: &str = "The app prohibits this command, so the package refused to run it. Its message is quoted above.";
+
+/// The title of the panel of a destructive action: `Reset the migrations of Checkout`,
+/// `Drop all tables of shop-api and migrate`.
+pub fn destructive_title(action: mortise_core::Action, module: &str, app: &str) -> String {
+    use mortise_core::Action;
+    match action {
+        Action::ResetMigrations => format!("Reset the migrations of {module}"),
+        Action::RefreshMigrations => format!("Refresh the migrations of {module}"),
+        Action::FreshMigrate => format!("Drop all tables of {app} and migrate"),
+        _ => format!("Delete the module {module}"),
+    }
+}
+
+/// The first row of "What is lost" of reset. The spec counts the migrations, "the
+/// 9 migrations"; the count needs the migration state (deviation S42).
+pub fn reset_loses(module: &str) -> String {
+    format!("Every table and column created by the migrations of {module} that ran")
+}
+
+/// The row of "What is lost" of refresh.
+pub fn refresh_loses(module: &str) -> String {
+    format!("Every row in the tables of {module}")
+}
+
+/// `Stays: the tables of Checkout in the database and the record of its migrations.`
+pub fn stays(module: &str) -> String {
+    format!("Stays: the tables of {module} in the database and the record of its migrations.")
+}
+
+/// `Shipping and Notifications use Checkout and will break.` Not in the spec: the
+/// sentence for one module.
+pub fn will_break(users: &[&str], module: &str) -> String {
+    let verb = if users.len() == 1 { "uses" } else { "use" };
+    format!("{} {verb} {module} and will break.", and_list(users))
+}
+
+/// The production alert of S10.4 d, and the tooltip of the run button it turns off.
+pub fn production_refused(app: &str) -> String {
+    format!(
+        "{app} reports the environment production. Mortise does not run this command there. \
+         Copy it and run it where you can watch the database."
+    )
+}
+
+/// Not in the spec: why Delete module only copies its line when the modules folder
+/// cannot be read from `config/modules.php`.
+pub fn modules_folder_assumed(app: &str) -> String {
+    format!(
+        "Mortise cannot read where {app} keeps its modules, so the package could delete \
+         another folder. Copy the command and run it where you can check the folder."
+    )
+}
+
+/// The title of the dialog of a destructive action (S10.5).
+pub fn destructive_question(action: mortise_core::Action, module: &str, app: &str) -> String {
+    use mortise_core::Action;
+    match action {
+        Action::ResetMigrations => format!("Reset the migrations of {module}?"),
+        Action::RefreshMigrations => format!("Refresh the migrations of {module}?"),
+        Action::FreshMigrate => format!("Drop all tables of {app}?"),
+        _ => format!("Delete the module {module}?"),
+    }
+}
+
+/// The body of the dialog of reset. The spec names the tables below it; that needs
+/// the migration state (deviation S42).
+pub fn reset_body(module: &str) -> String {
+    format!(
+        "This rolls back every migration of {module} that has run. The tables and columns \
+         they created are dropped, with every row in them."
+    )
+}
+
+/// The line under the body of reset. The spec puts the count of tables before it.
+pub fn nothing_outside(module: &str) -> String {
+    format!("Nothing outside {module} is touched.")
+}
+
+pub fn refresh_body(module: &str) -> String {
+    format!(
+        "This rolls back every migration of {module} and runs them again. The tables come \
+         back empty: every row in them is lost."
+    )
+}
+
+/// The body of the dialog of fresh: `... of the 7 modules that are on. ...`
+/// Not in the spec: the sentence for one module.
+pub fn fresh_body(modules_on: usize) -> String {
+    let modules = match modules_on {
+        1 => "the 1 module that is on".to_owned(),
+        n => format!("the {n} modules that are on"),
+    };
+    format!(
+        "This drops every table of the database, not only those of modules, then runs the \
+         migrations of the app and of {modules}. Every row in every table is lost. There is no \
+         dry run."
+    )
+}
+
+/// The body of the dialog of delete. `statuses` is the file that keeps the state of
+/// the modules, when the app keeps it in a file. Not in the spec: the sentence
+/// without that file, and the sentence for one module that uses it.
+pub fn delete_body(folder: &str, files: u64, statuses: Option<&str>, users: &[&str]) -> String {
+    let line = statuses.map_or(String::new(), |file| format!(" and its line in {file}"));
+    let mut body = format!(
+        "This removes the folder {folder} with its {}{line}. Its database tables stay.",
+        self::files(files)
+    );
+    match users {
+        [] => {}
+        [one] => body.push_str(&format!(" {one} uses it.")),
+        _ => body.push_str(&format!(" {} use it.", and_list(users))),
+    }
+    body
+}
+
+/// `12 of the files have changes that are not committed. Git cannot bring those back.`
+/// Not in the spec: the sentence for one file.
+pub fn uncommitted(n: u32) -> String {
+    match n {
+        1 => "1 of the files has changes that are not committed. Git cannot bring it back."
+            .to_owned(),
+        n => format!(
+            "{} of the files have changes that are not committed. Git cannot bring those back.",
+            count(u64::from(n))
+        ),
+    }
+}
+
+/// `Type Checkout to confirm`
+pub fn type_to_confirm(name: &str) -> String {
+    format!("Type {name} to confirm")
+}
+
+/// The done toasts of S10.5. Not in the spec: the toasts of a run that changed nothing,
+/// and of fresh with one module.
+pub fn reset_done(module: &str, rolled_back: usize) -> String {
+    match rolled_back {
+        0 => format!("Reset the migrations of {module}: nothing to roll back."),
+        n => format!("Reset the migrations of {module}: {n} rolled back."),
+    }
+}
+
+pub fn refreshed(module: &str, ran: usize) -> String {
+    match ran {
+        0 => format!("Refreshed the migrations of {module}: nothing ran again."),
+        n => format!("Refreshed the migrations of {module}: {n} ran again."),
+    }
+}
+
+pub fn dropped_all(app: &str, modules_on: usize) -> String {
+    match modules_on {
+        1 => format!("Dropped all tables of {app} and migrated 1 module."),
+        n => format!("Dropped all tables of {app} and migrated {n} modules."),
+    }
+}
+
+pub fn deleted_module(module: &str) -> String {
+    format!("Deleted the module {module}.")
 }
 
 /// `1 seeder`, `5 seeders`

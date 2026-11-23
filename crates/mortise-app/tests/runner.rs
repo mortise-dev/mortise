@@ -1,5 +1,5 @@
 //! The runner drawer (S11.1) against the fake artisan: a run, a stop, a failure,
-//! the history, and a command that does not start.
+//! a command the app prohibits, the history, and a command that does not start.
 
 mod common;
 
@@ -219,6 +219,30 @@ fn a_failure_says_its_exit_code_and_one_sentence() {
         .unwrap();
     harness.get_by_label("module:migrate NoSuchModule stopped with exit code 1.");
     harness.get_by_role_and_label(Role::Button, "Copy output of module:migrate NoSuchModule");
+}
+
+#[test]
+fn a_command_the_app_prohibits_says_so_under_its_output() {
+    let (desk, _root) = desk(&fake(""), &[&["module:migrate-reset", "Shipping"]]);
+    let mut harness = desk.start();
+    run_again(&mut harness);
+    // A reset asks again in its own dialog before it runs.
+    run_again(&mut harness);
+    harness.get_by_role_and_label(Role::Heading, "Reset the migrations of Shipping?");
+    harness
+        .get_all_by_role_and_label(Role::Button, "Reset migrations")
+        .last()
+        .unwrap()
+        .click();
+    wait_for(&mut harness, "module:migrate-reset Shipping: Exit code 1");
+    harness
+        .query_by_label_contains("This command is prohibited from running in this environment.")
+        .unwrap();
+    harness.get_by_label(
+        "The app prohibits this command, so the package refused to run it. Its message is \
+         quoted above.",
+    );
+    harness.get_by_role_and_label(Role::Button, "Copy output of module:migrate-reset Shipping");
 }
 
 #[test]
