@@ -29,9 +29,9 @@
 
 ## 6. Integration
 
-- [ ] 6.1 Run `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings` and `cargo test --workspace` on macOS; all pass
-- [ ] 6.2 Run `python3 tools/third-party-licenses.py` if a dependency changed, and `openspec validate phase-2-how-php-runs --strict`
-- [ ] 6.3 Check Herd detection and `herd.bat` on Windows if a Windows machine is reachable; else record them as not run in the report
+- [x] 6.1 Run `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings` and `cargo test --workspace` on macOS; all pass
+- [x] 6.2 Run `python3 tools/third-party-licenses.py` if a dependency changed, and `openspec validate phase-2-how-php-runs --strict`
+- [x] 6.3 Check Herd detection and `herd.bat` on Windows if a Windows machine is reachable; else record them as not run in the report
 
 ## Workflow follow-up
 
