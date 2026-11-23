@@ -672,7 +672,7 @@ Text of `metrics/strings.rs`. S7.1 and S7.2 are the spec's words. The rest is ma
 | Too many, sentence | Mortise keeps at most 32,768 figures per read. Export fewer series from the app. |
 | Columns | Module, Requests/min, Jobs/min |
 | Under the table, one read | A rate needs two reads. The second read comes 15 s after the first. |
-| Under the table, no `mappings` | Requests are not placed in a module, because mappings is not exposed on {environment}. |
+| Under the table, no `mappings` | Requests without a module label are not placed in a module, because mappings is not exposed on {environment}. |
 
 ## Measured
 

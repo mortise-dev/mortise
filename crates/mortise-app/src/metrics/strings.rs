@@ -86,7 +86,8 @@ pub const ONE_READ: &str = "A rate needs two reads. The second read comes 15 s a
 /// Not in the spec: under the table when `mappings` is not exposed.
 pub fn not_placed(environment: &str) -> String {
     format!(
-        "Requests are not placed in a module, because mappings is not exposed on {environment}."
+        "Requests without a module label are not placed in a module, because mappings is not \
+         exposed on {environment}."
     )
 }
 
