@@ -416,6 +416,23 @@ impl Generator {
         }
     }
 
+    /// The first name typed for `argument` that its rule ([`Generator::name_rule`])
+    /// refuses, or `None` when every name passes or none is typed. An array argument
+    /// holds one name per word, as [`Generator::words`] splits it; another argument is
+    /// one name, trimmed.
+    pub fn refused_name<'t>(&self, argument: &str, text: &'t str) -> Option<&'t str> {
+        let rule = self.name_rule(argument);
+        let array = self
+            .arguments
+            .iter()
+            .any(|known| known.name == argument && known.array);
+        if array {
+            return text.split_whitespace().find(|name| !rule.accepts(name));
+        }
+        let text = text.trim();
+        (!text.is_empty() && !rule.accepts(text)).then_some(text)
+    }
+
     /// True when the generator has a flag with this name.
     fn flag(&self, name: &str) -> bool {
         self.options
@@ -869,6 +886,23 @@ mod tests {
         assert_eq!(rule(MAKE_MODEL, "module"), NameRule::Module);
         assert_eq!(rule(MODULE_MAKE, "name"), NameRule::Module);
         assert_eq!(rule("module:make-view", "name"), NameRule::Free);
+
+        // Each word of an array argument is a name; another argument is one name.
+        let widgets = self::catalog(vec![generator(
+            "app:make-widgets",
+            &[("names", true)],
+            &[],
+            &[],
+        )]);
+        let widgets = widgets.get("app:make-widgets").unwrap();
+        assert_eq!(widgets.refused_name("names", " First  Second "), None);
+        assert_eq!(widgets.refused_name("names", "First 2nd"), Some("2nd"));
+        assert_eq!(widgets.refused_name("names", "  "), None);
+        let model = catalog.get(MAKE_MODEL).unwrap();
+        assert_eq!(
+            model.refused_name("model", " First Second "),
+            Some("First Second")
+        );
 
         let table: [(NameRule, &str, bool); 21] = [
             (NameRule::Class, "PaymentIntent", true),

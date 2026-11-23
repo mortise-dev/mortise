@@ -441,6 +441,8 @@ accessible name and a 24 px target (`tests/accessibility.rs`).
   from the words before the flag went). Its result lists them as left, so "Replace <file>" stays.
 - `created_tables` matches the resolved name only: the facade's full name, or the global `Schema` of
   Laravel's alias. Another class imported as `Schema` does not count.
+- `Generator::refused_name(argument, text)` checks each white-space separated name of an array
+  argument, as `words` splits it, and the whole text of another argument. A form uses it for its errors.
 
 ## Risks / Trade-offs
 

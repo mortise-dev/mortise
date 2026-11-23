@@ -991,20 +991,11 @@ fn picker_row(
 /// Why a name typed in a form cannot run, as the sentence under its field, or
 /// `None` when it can or is empty.
 fn name_error(generator: &Generator, argument: &str, text: &str) -> Option<String> {
-    let rule = generator.name_rule(argument);
-    if generator.name == MODULE_MAKE {
-        return text
-            .split_whitespace()
-            .find(|name| !rule.accepts(name))
-            .map(strings::module_name_error);
-    }
-    let text = text.trim();
-    if text.is_empty() || rule.accepts(text) {
-        return None;
-    }
-    Some(match rule {
+    let refused = generator.refused_name(argument, text)?;
+    Some(match generator.name_rule(argument) {
+        _ if generator.name == MODULE_MAKE => strings::module_name_error(refused),
         NameRule::Free => strings::free_name_error(&generator.name),
-        _ => strings::class_name_error(&generator.name, text),
+        _ => strings::class_name_error(&generator.name, refused),
     })
 }
 
