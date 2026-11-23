@@ -8,10 +8,10 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
-use crate::links::{Cycle, Link};
-use crate::module::{Manifest, Module, ModuleState};
+use crate::boundary::links::{Cycle, Link};
+use crate::boundary::rules::Rules;
+use crate::modules::module::{Manifest, Module, ModuleState};
 use crate::package::PackageData;
-use crate::rules::Rules;
 
 /// The coverage limit of an app until it is changed: a module under it is a warning.
 pub const DEFAULT_COVERAGE_LIMIT: u8 = 50;

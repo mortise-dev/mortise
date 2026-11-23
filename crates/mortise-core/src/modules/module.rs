@@ -10,10 +10,10 @@ use ignore::WalkBuilder;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::clover::Coverage;
-use crate::git::Churn;
-use crate::kind::{Kinds, TESTS};
-use crate::layout::Layout;
+use crate::modules::clover::Coverage;
+use crate::modules::git::Churn;
+use crate::modules::kind::{Kinds, TESTS};
+use crate::modules::layout::Layout;
 use crate::php::{Analysis, analyze, count_tests};
 
 /// Whether a module is turned on.

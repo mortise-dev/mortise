@@ -6,17 +6,20 @@ use std::time::UNIX_EPOCH;
 
 use serde::{Deserialize, Serialize};
 
-use crate::clover::{self, Coverage};
-use crate::code::propose_codes;
-use crate::composer::{Lock, Version};
+use crate::boundary::links::{self, Cycle, Link, ModuleSource};
+use crate::boundary::rules::{Rules, RulesSource};
 use crate::findings::{self, DEFAULT_COVERAGE_LIMIT, Findings, Subject};
-use crate::git::{self, Git};
-use crate::kind::Kinds;
-use crate::layout::Layout;
-use crate::links::{self, Cycle, Link, ModuleSource};
-use crate::module::{Module, ModuleState, ReadCache, find_modules};
+use crate::modules::clover::{self, Coverage};
+use crate::modules::code::propose_codes;
+use crate::modules::composer::{Lock, Version};
+use crate::modules::git::{self, Git};
+use crate::modules::kind::Kinds;
+use crate::modules::layout::Layout;
+use crate::modules::module::{Module, ModuleState, ReadCache, find_modules};
 use crate::package::PackageData;
-use crate::rules::{Rules, RulesSource};
+
+#[cfg(feature = "watch")]
+pub(crate) mod live;
 
 const LARAVEL: &str = "laravel/framework";
 const PACKAGE: &str = "nwidart/laravel-modules";
@@ -117,7 +120,7 @@ impl AppSnapshot {
     /// The module of the circle of `module` that `module` uses directly: the link a
     /// circle finding opens on. `None` when `module` is in no circle.
     pub fn circle_neighbour(&self, module: &str) -> Option<&str> {
-        crate::links::circle_neighbour(&self.links, module)
+        crate::boundary::links::circle_neighbour(&self.links, module)
     }
 
     /// The links of modules that `name` uses.

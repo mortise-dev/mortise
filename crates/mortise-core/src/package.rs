@@ -10,9 +10,9 @@ use std::path::{Path, PathBuf};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
-use crate::catalog::{Catalog, Target};
-use crate::composer::Version;
-use crate::module::Module;
+use crate::modules::composer::Version;
+use crate::modules::module::Module;
+use crate::modules::target::Target;
 use crate::php;
 
 /// True when the app's package gives P2 to P8: a released 13.4.0 or later.
@@ -32,24 +32,6 @@ pub fn gives_data(version: &Version) -> bool {
         (Ok(major), Ok(minor)) => (major, minor) >= (13, 4),
         _ => false,
     }
-}
-
-/// True when the package ships the generator named `generator`: it is in the
-/// catalog of 13.4.0 ([`Catalog::v13_4`]), `module:make` among them.
-///
-/// The package gives `--dry-run` and `--json` their meaning only for the options it
-/// adds itself (`PlansGeneratorRun::addGeneratorRunOptions`). An app's own generator
-/// may declare an option of that name and write its files anyway.
-pub(crate) fn ships(generator: &str) -> bool {
-    Catalog::v13_4().get(generator).is_some()
-}
-
-/// True when Mortise lists the files of `generator` by a dry run and reads the
-/// result of its run from its answer (design D5, D6): the package gives data
-/// ([`gives_data`]) and ships the generator ([`ships`]). An app's own generator
-/// runs as before 13.4.
-pub fn generator_gives_data(version: &Version, generator: &str) -> bool {
-    gives_data(version) && ships(generator)
 }
 
 /// Why a run gave no document.
@@ -506,6 +488,7 @@ pub fn migration_file(module_dir: &Path, migration: &str) -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::generate::catalog::generator_gives_data;
 
     const FIXTURES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../fixtures");
 
