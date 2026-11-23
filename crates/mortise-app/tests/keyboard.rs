@@ -8,8 +8,8 @@ use eframe::egui::{Key, Modifiers, Role};
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT as _, Queryable as _};
 use mortise_app::app::MortiseApp;
+use mortise_app::app::workspace::Tab;
 use mortise_app::index::view::Selection;
-use mortise_app::workspace::Tab;
 
 /// The role and the name of the control that holds focus.
 fn focused(harness: &Harness<'static, MortiseApp>) -> Option<(Role, String)> {

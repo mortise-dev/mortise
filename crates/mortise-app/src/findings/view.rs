@@ -7,10 +7,10 @@ use eframe::egui::{
 };
 use mortise_core::{Action, AppSnapshot, Check, Detail, Finding, Severity};
 
+use crate::app::workspace::WorkAction;
 use crate::strings;
 use crate::ui::draw::{self, StampState};
 use crate::ui::theme::{Face, Palette, Type, radius, size, ty};
-use crate::workspace::WorkAction;
 
 /// Where Enter on a finding lands.
 fn opens(finding: &Finding, app: &AppSnapshot) -> (&'static str, Option<WorkAction>) {

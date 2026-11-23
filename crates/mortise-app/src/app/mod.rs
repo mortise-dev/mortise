@@ -1,5 +1,11 @@
 //! The app: its state, the keys, and the three columns of the workbench.
 
+pub mod chrome;
+#[cfg(target_os = "macos")]
+pub mod menu;
+pub mod rail;
+pub mod workspace;
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -16,17 +22,18 @@ use mortise_core::{
 };
 
 use crate::actions::view::{self as actions_view, Act, ActionsInputs, ActionsState};
+use crate::app::chrome::Chrome;
+use crate::app::rail::{RailAction, Tile};
+use crate::app::workspace::{Tab, WorkAction, WorkState};
 use crate::apps::view::{self as add, AddAction, AddPanel, Checked};
 use crate::boundary::surface::SurfaceInputs;
 use crate::boundary::view::BoundaryState;
-use crate::chrome::{self, Chrome};
 use crate::generate::view::{
     CatalogRead, GenerateAsk, GenerateInputs, GenerateResult, GenerateRun, GenerateState, RunPlace,
     TakenOut, typed_names,
 };
 use crate::index::view::{self as index, IndexRuntime, IndexState, Selection};
 use crate::palette::view::{self as palette, Command, PaletteAction, PaletteState};
-use crate::rail::{self, RailAction, Tile};
 use crate::runner::view::{self as runner_view, AppRuns, DrawerAction, RunnerView, Shown};
 use crate::runtime::view::{Brief, RuntimeAction, RuntimeView};
 use crate::settings::view::{
@@ -39,7 +46,6 @@ use crate::ui::draw::EmptyMark;
 use crate::ui::draw::{self, Button, ButtonKind};
 use crate::ui::theme::{self, radius, size};
 use crate::ui::toast::{Toast, ToastAction};
-use crate::workspace::{self, Tab, WorkAction, WorkState};
 
 /// How the app is started.
 pub struct Config {
@@ -294,7 +300,7 @@ pub struct MortiseApp {
     system_motion: Option<(bool, std::time::Instant)>,
     /// The menu bar of macOS, in the real window.
     #[cfg(target_os = "macos")]
-    menu: Option<crate::menu::MenuBar>,
+    menu: Option<crate::app::menu::MenuBar>,
     toast: Option<Toast>,
     pick_folder: Box<dyn FnMut() -> Option<PathBuf>>,
     /// True while the keyboard is in use, false once the pointer is. The focus ring
@@ -796,14 +802,14 @@ impl MortiseApp {
     /// Gives the app the menu bar of macOS. Only the real window has one.
     #[cfg(target_os = "macos")]
     pub fn with_menu_bar(mut self, ctx: &egui::Context) -> Self {
-        self.menu = crate::menu::MenuBar::install(ctx);
+        self.menu = crate::app::menu::MenuBar::install(ctx);
         self
     }
 
     /// What was chosen in the menu bar. A Settings field in use is left first, so
     /// that its edit applies in this frame, before the choice is done at its end.
     #[cfg(target_os = "macos")]
-    fn menu_chosen(&self, ctx: &egui::Context) -> Vec<crate::menu::MenuAction> {
+    fn menu_chosen(&self, ctx: &egui::Context) -> Vec<crate::app::menu::MenuAction> {
         let chosen = self
             .menu
             .as_ref()
@@ -817,8 +823,8 @@ impl MortiseApp {
 
     /// Does what was chosen in the menu bar: the same commands as the palette.
     #[cfg(target_os = "macos")]
-    fn menu_actions(&mut self, ctx: &egui::Context, chosen: Vec<crate::menu::MenuAction>) {
-        use crate::menu::MenuAction;
+    fn menu_actions(&mut self, ctx: &egui::Context, chosen: Vec<crate::app::menu::MenuAction>) {
+        use crate::app::menu::MenuAction;
         // The choices run after this frame was painted: the next frame shows them.
         if !chosen.is_empty() {
             ctx.request_repaint();
@@ -3795,9 +3801,9 @@ fn style(ctx: &egui::Context) {
 /// its own grid. `tools/app-icon.mjs` makes both files.
 fn app_icon() -> egui::IconData {
     #[cfg(target_os = "macos")]
-    let png = include_bytes!("../../../assets/icon/macos/mortise-512.png");
+    let png = include_bytes!("../../../../assets/icon/macos/mortise-512.png");
     #[cfg(not(target_os = "macos"))]
-    let png = include_bytes!("../../../assets/icon/linux/hicolor/256x256/apps/mortise.png");
+    let png = include_bytes!("../../../../assets/icon/linux/hicolor/256x256/apps/mortise.png");
     eframe::icon_data::from_png_bytes(png).expect("the app icon is a valid PNG")
 }
 

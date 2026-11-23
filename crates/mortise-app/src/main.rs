@@ -3,7 +3,7 @@
 
 use std::path::PathBuf;
 
-use mortise_app::chrome::Chrome;
+use mortise_app::app::chrome::Chrome;
 
 fn main() -> eframe::Result {
     // Until apps can be added in the window, the app folder is the first argument.

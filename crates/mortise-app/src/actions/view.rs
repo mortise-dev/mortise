@@ -14,12 +14,12 @@ use mortise_core::{
     Options, Plan, RunnerKind, Severity, Target, gives_data, migrate_status_args, plan,
 };
 
+use crate::app::workspace::WorkAction;
 use crate::runner::view::line_now;
 use crate::strings;
 use crate::ui::draw::alert_box;
 use crate::ui::draw::{self, Button, ButtonKind, Icon, ListNav, StampState};
 use crate::ui::theme::{Face, Palette, Type, radius, size, ty};
-use crate::workspace::WorkAction;
 
 /// The list of actions is 250 px wide (S10.1).
 const LIST_W: f32 = 250.0;

@@ -11,11 +11,11 @@ use eframe::egui::{
 };
 use mortise_core::{AppSnapshot, Module, Proposal, SurfaceEntry, SurfaceKind, SurfaceScan};
 
+use crate::app::workspace::WorkAction;
 use crate::strings;
 use crate::ui::draw::{self, Button, ButtonKind, Icon};
 use crate::ui::draw::{EmptyMark, empty_state};
 use crate::ui::theme::{Palette, Type, radius, size, ty};
-use crate::workspace::WorkAction;
 
 /// How many files a scan reads in one frame.
 const FILES_A_FRAME: usize = 8;

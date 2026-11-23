@@ -8,8 +8,8 @@ use eframe::egui::{Key, Modifiers, Role};
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT as _, Queryable as _};
 use mortise_app::app::MortiseApp;
+use mortise_app::app::workspace::Tab;
 use mortise_app::index::view::Selection;
-use mortise_app::workspace::Tab;
 
 const INVOICE: &str = r"Modules\Billing\Models\Invoice";
 const CONTROLLER: &str = r"Modules\Billing\Http\Controllers\InvoiceController";

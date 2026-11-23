@@ -9,8 +9,8 @@ use std::time::{Duration, Instant};
 
 use eframe::egui::{self, Theme};
 use egui_kittest::Harness;
+use mortise_app::app::chrome::Chrome;
 use mortise_app::app::{Config, MortiseApp};
-use mortise_app::chrome::Chrome;
 use mortise_core::testing::{Reply, StubActuator};
 use mortise_core::{AppEntry, Credentials, Environment, Secrets, Settings};
 

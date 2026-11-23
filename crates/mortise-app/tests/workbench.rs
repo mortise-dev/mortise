@@ -5,9 +5,9 @@ mod common;
 use common::{Desk, shop_api};
 use eframe::egui::{Key, Role};
 use egui_kittest::kittest::{NodeT as _, Queryable as _};
-use mortise_app::chrome::Chrome;
+use mortise_app::app::chrome::Chrome;
+use mortise_app::app::workspace::Tab;
 use mortise_app::index::view::Selection;
-use mortise_app::workspace::Tab;
 
 #[test]
 fn shows_the_app_and_its_modules() {

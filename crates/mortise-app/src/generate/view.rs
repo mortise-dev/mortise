@@ -20,12 +20,12 @@ use mortise_core::{
     with_json,
 };
 
+use crate::app::workspace::WorkAction;
 use crate::runner::view::line_now;
 use crate::strings;
 use crate::ui::draw::alert_box;
 use crate::ui::draw::{self, Button, ButtonKind, Icon};
 use crate::ui::theme::{Face, Palette, Type, radius, size, ty};
-use crate::workspace::WorkAction;
 
 const MAKE_MODEL: &str = "module:make-model";
 /// The flag of `module:make-model` that S9.3 never takes out: the model's stub reads it.
