@@ -2890,12 +2890,17 @@ pub fn factory_kept(path: &str) -> String {
     )
 }
 
-/// Not in the spec: the generator's own file exists (design D5).
-pub fn own_file_exists(path: &str) -> String {
-    format!(
-        "{path} exists. The generator does not write over a file. Choose another name, or \
-         replace the file."
-    )
+/// Not in the spec: the generator's own file exists (design D5). `replaceable`: the
+/// form offers Replace for it.
+pub fn own_file_exists(path: &str, replaceable: bool) -> String {
+    if replaceable {
+        format!(
+            "{path} exists. The generator does not write over a file. Choose another name, \
+             or replace the file."
+        )
+    } else {
+        format!("{path} exists. The generator does not write over a file. Choose another name.")
+    }
 }
 
 /// Not in the spec: an error of the dry run, in quotes, under the list (design D5).

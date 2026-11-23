@@ -2036,7 +2036,9 @@ fn files_this_creates(
         y = sentence(y, &strings::factory_kept(&shown(file)), pal.ink_2);
     }
     for file in &own {
-        y = sentence(y, &strings::own_file_exists(&shown(file)), pal.bad);
+        let replaceable = replace_words(inputs.catalog, words, &file.path, &app.package).is_some();
+        let text = strings::own_file_exists(&shown(file), replaceable);
+        y = sentence(y, &text, pal.bad);
     }
     for error in &report.errors {
         let error = error.trim();

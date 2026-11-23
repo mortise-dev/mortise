@@ -398,6 +398,8 @@ fn a_dry_run_that_finds_the_factory_keeps_it_in_the_command() {
     click(&mut harness, Role::CheckBox, "Factory");
     click(&mut harness, Role::Button, "List files");
     wait_for(&mut harness, "4 files, 2 exist already");
+    // The button takes the line once a frame drew it whole.
+    harness.run_steps(2);
     // The model's stub uses the factory: its flag stays, the policy's goes, and the
     // button counts the files the run writes.
     let factory = harness.get_by_role_and_label(Role::CheckBox, "Factory");
