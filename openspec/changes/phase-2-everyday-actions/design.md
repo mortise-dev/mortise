@@ -68,7 +68,7 @@ impl Action {
     pub fn for_module(on: bool) -> [Action; 6];      // S10.1 order; TurnOn when off
     pub fn for_all() -> [Action; 4];                 // Migrate, Seed, RunTests, CheckTranslations
     pub fn artisan(self) -> Option<&'static str>;    // "module:migrate"; None for RunTests
-    pub fn options(self) -> OptionSet;               // which of pretend, seed, database, class apply
+    pub fn options(self, target: &Target) -> OptionSet; // which of pretend, seed, database, class apply
 }
 pub fn plan(action: Action, target: &Target, options: &Options, context: &Context) -> Plan;
 ```
@@ -120,7 +120,8 @@ pub fn migrations_done(lines: &[String]) -> usize;
 pub fn migration_file(module_dir: &Path, migration: &str) -> Option<PathBuf>;
 ```
 
-Each line is read through `ansi::plain`. A migration line starts, after spaces, with a name of the form
+Each line is read through `ansi::plain`. A migration line starts, after spaces and an optional
+`Rollback: ` (the rollback's task line, `MigrateRollbackCommand.php:59`), with a name of the form
 `dddd_dd_dd_dddddd_` and ends with `DONE` or `FAIL` (Laravel's task component). `failed_migration`
 takes the first `FAIL` line; its module is the name in the last `Running Migration <Name> Module` line
 before it. `migrations_done` counts the `DONE` lines; it serves the toasts of migrate and roll back.
