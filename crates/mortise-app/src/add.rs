@@ -188,12 +188,14 @@ pub fn add_panel(
 
     // The body scrolls when it does not fit, at 150% text size for one.
     let body = Rect::from_min_max(pos2(rect.left(), head.bottom()), rect.max);
+    let back_id = ui.scope_id().with(("button", strings::BACK));
     ui.scope_builder(UiBuilder::new().max_rect(body), |ui| {
         ScrollArea::vertical()
             .id_salt("add-panel")
             .auto_shrink(false)
             .show(ui, |ui| {
                 ui.spacing_mut().item_spacing = Vec2::ZERO;
+                reveal_focus(ui, back_id);
                 let origin = ui.cursor().min;
                 let area = Rect::from_min_size(origin, vec2(ui.available_width(), body.height()));
                 let (body_action, bottom) =
@@ -206,6 +208,21 @@ pub fn add_panel(
             });
     });
     action
+}
+
+/// Scrolls to the control that just got focus, so that Tab never leaves it out of
+/// sight. The way back, in the header, does not scroll with the body.
+fn reveal_focus(ui: &mut Ui, header_id: egui::Id) {
+    let store = ui.scope_id().with("focused");
+    let focused = ui.memory(|memory| memory.focused());
+    let before = ui.data_mut(|data| data.get_temp::<Option<egui::Id>>(store).flatten());
+    ui.data_mut(|data| data.insert_temp(store, focused));
+    if focused == before || focused == Some(header_id) {
+        return;
+    }
+    if let Some(response) = focused.and_then(|id| ui.ctx().read_response(id)) {
+        ui.scroll_to_rect(response.rect.expand(8.0), None);
+    }
 }
 
 /// Room under the last control of the panel.

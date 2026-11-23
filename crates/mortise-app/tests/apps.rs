@@ -296,22 +296,36 @@ fn a_folder_on_the_command_line_opens_the_panel_or_the_app() {
     assert!(harness.state().is_adding());
     harness.get_by_role_and_label(Role::Button, "Add landing-pages");
 
-    // At 150% text size in a low window the panel scrolls to the Add button.
+    // At 150% text size in a low window the panel scrolls to the control that gets
+    // focus: Tab from the path field reaches Add, and Add is in the window.
     let mut settings = desk.saved();
     settings.general.text_size = 150;
     settings.save(&desk.settings_path()).unwrap();
     let mut desk = desk;
-    desk.size = vec2(900.0, 240.0);
-    let mut harness = desk.start_with(Some(desk.app("landing-pages")));
-    let add = harness.get_by_role_and_label(Role::Button, "Add landing-pages");
+    desk.size = vec2(900.0, 360.0);
+    let mut harness = desk.start_with(Some(desk.app("booking-engine")));
     let window = harness.ctx.content_rect();
+    harness
+        .get_by_role_and_label(Role::TextInput, "App folder")
+        .focus();
+    harness.run_steps(3);
+    let add = harness.get_by_role_and_label(Role::Button, "Add booking-engine");
     assert!(
         !window.contains_rect(add.rect()),
         "the button is below the fold"
     );
-    add.scroll_to_me();
-    harness.run_steps(3);
-    let add = harness.get_by_role_and_label(Role::Button, "Add landing-pages");
+    for _ in 0..40 {
+        if harness
+            .get_by_role_and_label(Role::Button, "Add booking-engine")
+            .is_focused()
+        {
+            break;
+        }
+        harness.key_press(Key::Tab);
+        harness.run_steps(3);
+    }
+    let add = harness.get_by_role_and_label(Role::Button, "Add booking-engine");
+    assert!(add.is_focused());
     assert!(window.contains_rect(add.rect()));
 }
 
