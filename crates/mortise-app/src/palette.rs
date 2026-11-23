@@ -720,58 +720,68 @@ fn palette_row(
         };
     }
 
+    // The stamp and the state keep their size. The label, then the detail, take
+    // the room left before the hint, with a gap; past it they end in an ellipsis.
+    let end = right - 12.0;
+    let state = entry.state.as_ref().map(|(word, problem)| {
+        let color: Color32 = if *problem { pal.bad } else { pal.ink_2 };
+        let face = if *problem {
+            Face::Sans600
+        } else {
+            Face::Sans400
+        };
+        let mark = if *problem {
+            size::STATE_MARK + 5.0
+        } else {
+            0.0
+        };
+        let text = draw::galley(
+            ui,
+            word,
+            Type {
+                face,
+                ..ty::SECONDARY
+            },
+            color,
+        );
+        (12.0 + mark + text.size().x, *problem, color, text)
+    });
+    let state_w = state.as_ref().map_or(0.0, |(width, ..)| *width);
+    let stamp_w = entry.code.as_ref().map_or(0.0, |_| 7.0 + size::STAMP_W);
+
     let label_type = if entry.code.is_some() {
         ty::BODY.with_face(Face::Sans600)
     } else {
         ty::BODY
     };
+    let left = row.left() + 14.0;
     let label = draw::galley_elided(
         ui,
         &entry.label,
         label_type,
         pal.ink,
-        right - 12.0 - (row.left() + 14.0),
+        (end - left - stamp_w - state_w).max(0.0),
     );
-    let mut x =
-        draw::paint_galley(ui, pos2(row.left() + 14.0, mid), Align2::LEFT_CENTER, label).right();
+    let mut x = draw::paint_galley(ui, pos2(left, mid), Align2::LEFT_CENTER, label).right();
     if let Some(code) = &entry.code {
         let stamp_min = pos2(x + 7.0, (mid - size::STAMP_H / 2.0).round());
         x = draw::stamp(ui, pal, stamp_min, code, StampState::default()).right();
     }
-    if let Some(detail) = &entry.detail {
-        draw::paint_text(
-            ui,
-            pos2(x + 12.0, mid),
-            Align2::LEFT_CENTER,
-            detail,
-            ty::CODE,
-            pal.ink_3,
-        );
+    let room = end - state_w - (x + 12.0);
+    if let Some(detail) = &entry.detail
+        && room > 0.0
+    {
+        let detail = draw::galley_elided(ui, detail, ty::CODE, pal.ink_3, room);
+        x = draw::paint_galley(ui, pos2(x + 12.0, mid), Align2::LEFT_CENTER, detail).right();
     }
-    if let Some((word, problem)) = &entry.state {
-        let color: Color32 = if *problem { pal.bad } else { pal.ink_2 };
+    if let Some((_, problem, color, text)) = state {
         let mut at = x + 12.0;
-        if *problem {
+        if problem {
             let mark = Rect::from_min_size(pos2(at, mid - 6.0), Vec2::splat(size::STATE_MARK));
             draw::mark_bad(ui, mark, color, behind);
             at = mark.right() + 5.0;
         }
-        let state_type = Type {
-            face: if *problem {
-                Face::Sans600
-            } else {
-                Face::Sans400
-            },
-            ..ty::SECONDARY
-        };
-        draw::paint_text(
-            ui,
-            pos2(at, mid),
-            Align2::LEFT_CENTER,
-            word,
-            state_type,
-            color,
-        );
+        draw::paint_galley(ui, pos2(at, mid), Align2::LEFT_CENTER, text);
     }
     response.clicked()
 }

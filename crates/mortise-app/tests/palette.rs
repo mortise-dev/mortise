@@ -41,13 +41,18 @@ fn an_empty_query_shows_places_apps_and_what_ran() {
     let desk = Desk::new();
     let shop = desk.app("shop-api");
     let crm = desk.app("crm");
+    // A module with a long name, for a long row.
+    let long = shop.join("Modules/CustomerNotifications");
+    common::copy_dir(&shop.join("Modules/Notifications"), &long);
+    common::rename_in_files(&long, "Notifications", "CustomerNotifications");
     desk.knows(&[(&shop, "SA"), (&crm, "CR")]);
-    // A migrate 2 minutes ago and a model before it, in the history of shop-api.
+    // A migrate 2 minutes ago, a refresh and a model before it, in the history of shop-api.
     let now_ms = common::ran(
         &desk,
         &shop,
         &[
             ("module:make-model Invoice Billing", 5),
+            ("module:migrate-refresh CustomerNotifications", 3),
             ("module:migrate Checkout", 2),
         ],
     );
@@ -63,6 +68,7 @@ fn an_empty_query_shows_places_apps_and_what_ran() {
         [
             "Billing",
             "Migrate Checkout",
+            "Refresh migrations CustomerNotifications",
             "Generate a model in Billing",
             "All modules",
             "Findings in shop-api",
@@ -86,19 +92,38 @@ fn an_empty_query_shows_places_apps_and_what_ran() {
     };
     let found = palette::entries("", &source);
     assert_eq!(
-        [&found[0].hint, &found[1].hint],
+        [&found[0].hint, &found[2].hint],
         ["ran 2 minutes ago", "Form"]
     );
     assert_eq!(found[0].detail.as_deref(), Some("module:migrate Checkout"));
-    assert_eq!(found[1].detail.as_deref(), Some("module:make-model"));
+    assert_eq!(found[2].detail.as_deref(), Some("module:make-model"));
 
-    // The current row keeps its age, and Enter on it opens its panel and runs nothing.
+    // Where a text is painted.
+    let painted = |harness: &Harness<'static, MortiseApp>, text: &str| {
+        harness
+            .output()
+            .shapes
+            .iter()
+            .find_map(|clipped| match &clipped.shape {
+                Shape::Text(shape) if shape.galley.text() == text => {
+                    Some(shape.visual_bounding_rect())
+                }
+                _ => None,
+            })
+    };
+    // The long detail of the current refresh row ends before its age.
     harness.key_press(Key::ArrowDown);
     harness.run_steps(2);
-    let painted = harness.output().shapes.iter().any(|clipped| {
-        matches!(&clipped.shape, Shape::Text(text) if text.galley.text() == "ran 2 minutes ago")
-    });
-    assert!(painted);
+    harness.key_press(Key::ArrowDown);
+    harness.run_steps(2);
+    let detail = painted(&harness, "module:migrate-refresh CustomerNotifications").unwrap();
+    let age = painted(&harness, "ran 3 minutes ago").unwrap();
+    assert!(detail.right() < age.left(), "{detail:?} runs into {age:?}");
+
+    // The current row keeps its age, and Enter on it opens its panel and runs nothing.
+    harness.key_press(Key::ArrowUp);
+    harness.run_steps(2);
+    assert!(painted(&harness, "ran 2 minutes ago").is_some());
     harness.key_press(Key::Enter);
     harness.run_steps(3);
     assert_eq!(harness.state().tab(), Tab::Actions);
@@ -107,7 +132,7 @@ fn an_empty_query_shows_places_apps_and_what_ran() {
         Selection::Module("Checkout".into())
     );
     harness.get_by_role_and_label(Role::Heading, "Migrate Checkout");
-    assert_eq!(history.entries().len(), 2);
+    assert_eq!(history.entries().len(), 3);
 }
 
 #[test]
