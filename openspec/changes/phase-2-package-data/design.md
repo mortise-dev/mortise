@@ -439,6 +439,8 @@ accessible name and a 24 px target (`tests/accessibility.rs`).
   exist on this computer.
 - A run carries the files S9.3 took out (`GenerateRun::taken_out`, with the words that replace each,
   from the words before the flag went). Its result lists them as left, so "Replace <file>" stays.
+- `created_tables` matches the resolved name only: the facade's full name, or the global `Schema` of
+  Laravel's alias. Another class imported as `Schema` does not count.
 
 ## Risks / Trade-offs
 
