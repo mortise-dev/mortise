@@ -65,6 +65,7 @@ pub(super) fn tab<'a>(
         // Also while the newest read is too old to give the rates of now.
         None => MetricsView::Waiting { environment },
         Some(Err(NotKept::NoMetrics(why))) => MetricsView::NoMetrics { environment, why },
+        Some(Err(NotKept::NotMetrics)) => MetricsView::NotMetrics { environment },
         Some(Err(NotKept::TooManySeries { limit })) => MetricsView::TooMany { environment, limit },
         Some(Ok(())) => {
             // Worked out again only after a read, or for another snapshot or answer.

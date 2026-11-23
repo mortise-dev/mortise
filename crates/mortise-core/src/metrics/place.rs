@@ -187,6 +187,10 @@ mod tests {
             }
         );
         assert_eq!(metrics.figures(&app, Some(&routes), LAST_MINUTE), figures);
+        // Nor does a 200 with no `# TYPE` line, such as a sign-in page.
+        sink(Ok("<!doctype html>\n<title>Sign in</title>\n".to_owned()));
+        assert_eq!(metrics.state().last, Some(Err(NotKept::NotMetrics)));
+        assert_eq!(metrics.figures(&app, Some(&routes), LAST_MINUTE), figures);
 
         // Written input.
         let placing = Placing::new(&app, Some(&routes));

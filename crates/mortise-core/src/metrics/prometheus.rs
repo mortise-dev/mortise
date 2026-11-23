@@ -65,6 +65,16 @@ pub(crate) fn samples(text: &str) -> impl Iterator<Item = Sample<'_>> {
     })
 }
 
+/// `true` when the text has a `# TYPE` line, of any kind. An answer with none is not metrics, such
+/// as a sign-in page served with 200. An answer with only families that are not read still has one.
+pub(crate) fn typed(text: &str) -> bool {
+    text.lines().any(|line| {
+        line.trim_start()
+            .strip_prefix('#')
+            .is_some_and(|comment| type_line(comment).is_some())
+    })
+}
+
 /// Reads `TYPE name kind`, the text after `#`. `None` when the comment is not a `TYPE` line, such as
 /// `HELP`. `Some(None)` when it names a kind that is not read.
 fn type_line(comment: &str) -> Option<Option<(&str, Kind)>> {

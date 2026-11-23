@@ -47,6 +47,19 @@ pub fn unavailable(environment: &str, url: &str, line: &str) -> String {
     )
 }
 
+/// Not in the spec: the app answers 200 with text that has no `# TYPE` line.
+pub fn not_metrics_title(environment: &str) -> String {
+    format!("The answer of {environment} is not metrics")
+}
+
+/// Not in the spec.
+pub fn not_metrics(environment: &str) -> String {
+    format!(
+        "{environment} answered prometheus with text that holds no metrics. Check that the \
+         address points to the actuator of the app."
+    )
+}
+
 /// Not in the spec: the answer is over the limit Mortise reads.
 pub fn too_large_title(environment: &str) -> String {
     format!("The metrics of {environment} are too large")

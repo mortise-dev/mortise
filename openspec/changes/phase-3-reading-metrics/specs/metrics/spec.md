@@ -199,6 +199,13 @@ For a 503 from `prometheus` the Metrics tab SHALL quote the first line of the bo
 - **WHEN** `prometheus` answers with more than 16 MiB of text
 - **THEN** the tab says the answer is larger than 16 MB and that Mortise does not read it
 
+### Requirement: An answer that is not metrics is refused
+Mortise SHALL refuse a 200 from `prometheus` whose text has no `# TYPE` line, and SHALL keep nothing of it. An answer with only families that Mortise does not read SHALL be kept. The Metrics tab SHALL say that the answer is not metrics, with "Try again" and "Open settings". This sentence is not in the spec.
+
+#### Scenario: A sign-in page
+- **WHEN** `prometheus` answers 200 with a sign-in page
+- **THEN** nothing of it is kept, and the tab reads "The answer of local is not metrics" with "Try again" and "Open settings"
+
 ### Requirement: The table shows requests and jobs per minute for each module
 When connected, the Metrics tab SHALL show a table with the columns Module, Requests/min and Jobs/min: one row per module of the app, most requests first, then a row "Not in a module". A figure SHALL be the rate over the reads of the last minute. No figure SHALL have a colour or a limit. Rates SHALL be shown only while the newest read is at most 45 s old. Else the tab SHALL read "Reading metrics from {environment}" until a new read ends.
 

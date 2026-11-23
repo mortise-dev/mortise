@@ -148,6 +148,21 @@ fn a_503_quotes_the_app_and_an_empty_answer_says_metrics_are_off() {
         "The app answers with no metrics. Set METRICS_ENABLED=true in its .env to turn them on.",
     );
 
+    // A sign-in page served with 200 is not metrics.
+    stub.set(
+        "/actuator/prometheus",
+        Reply::ok("<!doctype html>\n<title>Sign in</title>\n"),
+    );
+    harness
+        .get_by_role_and_label(Role::Button, "Try again")
+        .click();
+    wait_for(&mut harness, "The answer of local is not metrics");
+    harness.get_by_label(
+        "local answered prometheus with text that holds no metrics. Check that the address \
+         points to the actuator of the app.",
+    );
+    harness.get_by_role_and_label(Role::Button, "Open settings");
+
     // 11,000 jobs of 3 numbers each are over the 32,768 a read keeps.
     let mut jobs = String::from("# TYPE messaging_process_duration_seconds histogram\n");
     for job in 0..11_000 {

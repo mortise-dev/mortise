@@ -381,11 +381,17 @@ How it maps to the tab, first match wins (`app/metrics.rs`):
 | `Err(Off)` | The empty sentence, "Try again" |
 | `Err(Unavailable)` | The 503 sentence with the line, "Try again" |
 | `Err(TooLarge)` | The too large sentence, "Try again" |
+| A 200 whose text has no `# TYPE` line | The not metrics sentence, "Try again", "Open settings" |
 | Too many series (D1) | The too many sentence, "Try again" |
 | `Err(NoAnswer / NotAuthorized / Unexpected)` | The sentence of the runtime box for that address, "Try again", "Open settings" |
 | `Ok` | The table |
 
 A failed read after good ones shows its sentence, not an old table. The kept reads stay, and age out.
+
+A 200 can carry text that is not metrics, such as the sign-in page of a proxy. It would fold to an
+empty reading, and two of them would give a table of zeros. So `LiveMetrics` refuses text with no
+`# TYPE` line at all (`NotKept::NotMetrics`) before it folds it. An answer of metrics with only
+families that Mortise does not read still has `# TYPE` lines, and is kept.
 
 ### D8. The budget
 
@@ -594,6 +600,8 @@ pub type MetricsClock = Arc<dyn Fn() -> Duration + Send + Sync>;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum NotKept {
     NoMetrics(NoMetrics),
+    /// The text has no `# TYPE` line, so it is not metrics (D7).
+    NotMetrics,
     /// More than `limit` numbers per read (D1).
     TooManySeries { limit: usize },
 }
@@ -668,6 +676,8 @@ Text of `metrics/strings.rs`. S7.1 and S7.2 are the spec's words. The rest is ma
 | 503, sentence | {environment} answered 503 for {path}: "{line}" Check the metrics store of the app, then try again. |
 | Too large, title | The metrics of {environment} are too large |
 | Too large, sentence | The answer is larger than 16 MB, so Mortise does not read it. Export fewer series from the app. |
+| Not metrics, title | The answer of {environment} is not metrics |
+| Not metrics, sentence | {environment} answered prometheus with text that holds no metrics. Check that the address points to the actuator of the app. |
 | Too many, title | The metrics of {environment} have too many series |
 | Too many, sentence | Mortise keeps at most 32,768 figures per read. Export fewer series from the app. |
 | Columns | Module, Requests/min, Jobs/min |

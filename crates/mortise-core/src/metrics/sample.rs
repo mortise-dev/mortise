@@ -14,7 +14,7 @@ use std::time::{Duration, Instant, SystemTime};
 use crate::app::AppSnapshot;
 use crate::metrics::figures::Figures;
 use crate::metrics::place::Placing;
-use crate::metrics::prometheus::{Part, samples};
+use crate::metrics::prometheus::{Part, samples, typed};
 use crate::runtime::actuator::{NoMetrics, Route};
 use crate::runtime::live::Pace;
 
@@ -744,6 +744,8 @@ pub type MetricsClock = Arc<dyn Fn() -> Duration + Send + Sync>;
 pub enum NotKept {
     /// The app gave no metrics.
     NoMetrics(NoMetrics),
+    /// The answer has no `# TYPE` line, so it is not metrics: a sign-in page served with 200, say.
+    NotMetrics,
     /// The answer has more series, or longer labels, than a read keeps. `limit` is the most numbers
     /// a read keeps.
     TooManySeries { limit: usize },
@@ -794,14 +796,18 @@ impl LiveMetrics {
     }
 
     /// For `LiveRuntime::open_with_metrics`. The text is folded before the lock is taken.
-    /// A read that gave no metrics, or too many series, adds nothing to the store.
+    /// A read that gave no metrics, text that is not metrics, or too many series adds nothing to
+    /// the store.
     pub fn sink(&self) -> impl FnMut(Result<String, NoMetrics>) + Send + 'static {
         let metrics = self.clone();
         move |answer| {
             let at = (metrics.clock)();
-            let reading = answer
-                .map_err(NotKept::NoMetrics)
-                .and_then(|text| Reading::of(&text).map_err(NotKept::from));
+            let reading = answer.map_err(NotKept::NoMetrics).and_then(|text| {
+                if !typed(&text) {
+                    return Err(NotKept::NotMetrics);
+                }
+                Reading::of(&text).map_err(NotKept::from)
+            });
             let mut shared = metrics.lock();
             let last =
                 reading.and_then(|reading| shared.0.push(at, reading).map_err(NotKept::from));
