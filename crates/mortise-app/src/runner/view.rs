@@ -11,8 +11,9 @@ use std::time::{Duration, Instant};
 
 use eframe::egui::text::LayoutJob;
 use eframe::egui::{
-    self, Align2, Color32, CornerRadius, CursorIcon, Galley, Id, Key, Modifiers, Rect, Response,
-    Role, ScrollArea, Sense, Stroke, StrokeKind, Ui, UiBuilder, Vec2, WidgetInfo, pos2, vec2,
+    self, Align2, Color32, CornerRadius, CursorIcon, Galley, Id, Key, Margin, Modifiers, Rect,
+    Response, Role, ScrollArea, Sense, Stroke, StrokeKind, Ui, UiBuilder, Vec2, WidgetInfo, pos2,
+    vec2,
 };
 use mortise_core::ansi::{self, Span, Style};
 use mortise_core::history::{Ended, Entry, History};
@@ -559,21 +560,35 @@ impl AppRuns {
     }
 }
 
-/// Lines as written, with their codes, and their spans.
+/// Lines as written, with their codes, and the rows that show them. A line that
+/// holds JSON shows as one row per line of its indented form.
 #[derive(Debug, Default)]
 struct Output {
     lines: Vec<String>,
-    spans: Vec<Vec<Span>>,
+    rows: Vec<Vec<Span>>,
 }
 
 impl Output {
     fn of(lines: Vec<String>) -> Self {
-        let spans = lines.iter().map(|line| ansi::spans(line)).collect();
-        Self { lines, spans }
+        let mut output = Self::default();
+        for line in lines {
+            output.push(line);
+        }
+        output
     }
 
     fn push(&mut self, line: String) {
-        self.spans.push(ansi::spans(&line));
+        let spans = ansi::spans(&line);
+        let plain: String = spans.iter().map(|span| span.text.as_str()).collect();
+        match ansi::json_lines(&plain) {
+            Some(json) => self.rows.extend(json.into_iter().map(|text| {
+                vec![Span {
+                    style: Style::Text,
+                    text,
+                }]
+            })),
+            None => self.rows.push(spans),
+        }
         self.lines.push(line);
     }
 }
@@ -1256,8 +1271,8 @@ fn current_body(
         10.0 + 1.0 + 8.0 + galley.size().y + 4.0 + BAR_H
     });
     let first = current.line.as_ref().map(|line| format!("$ {line}"));
-    let rows = usize::from(first.is_some()) + current.output.lines.len() + notes.len();
-    let rows_h = rows as f32 * ty::RUNNER.line;
+    let rows = usize::from(first.is_some()) + current.output.rows.len() + notes.len();
+    let rows_h = rows as f32 * ty::RUNNER.line + scroll_bar_room(ui);
     let room = (body.height() - block_h).max(ty::RUNNER.line);
     let output_rect = Rect::from_min_size(body.min, vec2(body.width(), rows_h.min(room)));
     output_rows(
@@ -1412,6 +1427,13 @@ fn line_galley(ui: &Ui, spans: &[Span], pal: &Palette) -> Arc<Galley> {
     ui.painter().layout_job(job)
 }
 
+/// The room under the last line of output for the horizontal scroll bar, which
+/// floats over the content and takes no room of its own.
+fn scroll_bar_room(ui: &Ui) -> f32 {
+    let scroll = &ui.spacing().scroll;
+    scroll.bar_width + 2.0 * scroll.bar_outer_margin
+}
+
 /// Lines of output in `rect`, as rows of the runner line height: only the rows in
 /// view are laid out, so a long output stays quick. `first` is a line before the
 /// output, `notes` lines after it, both dim.
@@ -1427,17 +1449,22 @@ fn output_rows(
     stick: bool,
 ) {
     let skip = usize::from(first.is_some());
-    let rows = skip + output.lines.len() + notes.len();
+    let rows = skip + output.rows.len() + notes.len();
     let dim = |text: &str| {
         vec![Span {
             style: Style::Dim,
             text: text.to_owned(),
         }]
     };
+    let room = scroll_bar_room(ui);
     ui.scope_builder(UiBuilder::new().max_rect(rect), |ui| {
         ui.spacing_mut().item_spacing = Vec2::ZERO;
         ScrollArea::both()
             .id_salt(salt)
+            .content_margin(Margin {
+                bottom: room.ceil() as i8,
+                ..Margin::ZERO
+            })
             .auto_shrink(false)
             .stick_to_bottom(stick)
             .show_rows(ui, ty::RUNNER.line, rows, |ui, range| {
@@ -1445,11 +1472,11 @@ fn output_rows(
                     let (spans, plain) = if row < skip {
                         let line = first.unwrap_or_default();
                         (dim(line), line.to_owned())
-                    } else if row - skip < output.lines.len() {
-                        let at = row - skip;
-                        (output.spans[at].clone(), ansi::plain(&output.lines[at]))
+                    } else if let Some(spans) = output.rows.get(row - skip) {
+                        let plain = spans.iter().map(|span| span.text.as_str()).collect();
+                        (spans.clone(), plain)
                     } else {
-                        let note = &notes[row - skip - output.lines.len()];
+                        let note = &notes[row - skip - output.rows.len()];
                         (dim(note), note.clone())
                     };
                     let galley = line_galley(ui, &spans, pal);
