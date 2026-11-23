@@ -34,3 +34,9 @@ pub fn no_module_matches(filter: &str) -> String {
 pub const SORTED_PROBLEMS_FIRST: &str = "Sorted: problems first";
 pub const CHANGE_THE_ORDER: &str = "Change the order";
 pub const NEEDS_ATTENTION: &str = "Needs attention";
+
+/// The name a screen reader gives the runtime mark of a row: `Billing: Down on production`.
+/// Not in the spec.
+pub fn module_runtime(module: &str, word: &str, environment: &str) -> String {
+    format!("{module}: {word} on {environment}")
+}
