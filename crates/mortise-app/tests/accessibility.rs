@@ -1,4 +1,4 @@
-//! Accessibility (section 9), checked on the screens of phase 1: every control has a
+//! Accessibility (section 9), checked on the screens of phase 1 and the runner drawer: every control has a
 //! role and a name, every control is a target of at least 24 by 24 px, and a name
 //! tells one button from another.
 
@@ -190,4 +190,52 @@ fn the_first_run_and_an_app_with_many_modules() {
     audit(&harness, "30 modules, Summary");
     press(&mut harness, Key::Num2);
     audit(&harness, "30 modules, the table of links");
+}
+
+#[test]
+fn the_runner_drawer() {
+    let desk = Desk::new();
+    let root = desk.app("shop-api");
+    desk.knows(&[(&root, "SA")]);
+    let mut settings = desk.saved();
+    settings.apps[0].php.runner = Some(mortise_core::RunnerKind::Custom {
+        line: format!("\"{}\"", env!("CARGO_BIN_EXE_fake-artisan")),
+    });
+    settings.save(&desk.settings_path()).unwrap();
+    let args = ["module:migrate", "NoSuchModule"]
+        .map(str::to_owned)
+        .to_vec();
+    let entry = mortise_core::history::Entry {
+        id: 1,
+        label: args.join(" "),
+        args,
+        started_ms: 1,
+        ended: mortise_core::history::Ended::Failed {
+            code: Some(1),
+            ms: 412,
+        },
+        cut: false,
+    };
+    mortise_core::history::History::open(&desk.data_dir(), &root)
+        .record(entry, &[])
+        .unwrap();
+    let mut harness = desk.start();
+
+    harness.key_press_modifiers(Modifiers::CTRL, Key::Backtick);
+    harness.run_steps(3);
+    audit(&harness, "runner drawer, history");
+    harness.key_press_modifiers(Modifiers::COMMAND | Modifiers::SHIFT, Key::R);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    while harness
+        .query_by_label_contains("stopped with exit code 1")
+        .is_none()
+    {
+        assert!(std::time::Instant::now() < deadline, "the run did not end");
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        harness.run_steps(2);
+    }
+    audit(&harness, "runner drawer, failed");
+    harness.key_press_modifiers(Modifiers::CTRL, Key::Backtick);
+    harness.run_steps(3);
+    audit(&harness, "runner drawer, collapsed");
 }
