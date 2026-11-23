@@ -87,7 +87,8 @@ pub(crate) struct ModuleSource<'a> {
     pub(crate) name: &'a str,
     /// The namespace all classes of the module share: `Modules\Billing`.
     pub(crate) namespace: &'a str,
-    /// Each file as the user writes it, with the classes it names.
+    /// Each file as the user writes it, with the classes it names. Test files
+    /// are left out: they make no links.
     pub(crate) files: Vec<(String, &'a [ClassRef])>,
     /// The classes, interfaces, traits and enums the module declares.
     pub(crate) declared: BTreeSet<&'a str>,

@@ -365,16 +365,22 @@ pub fn read_app_cached(
                 .scan
                 .sources
                 .iter()
-                .map(|(relative, analysis)| {
-                    (format!("{folder}/{relative}"), analysis.refs.as_slice())
+                // A test is not a boundary of the running app.
+                .filter(|source| !source.is_test)
+                .map(|source| {
+                    (
+                        format!("{folder}/{}", source.relative),
+                        source.analysis.refs.as_slice(),
+                    )
                 })
                 .collect(),
             declared: module
                 .scan
                 .sources
                 .iter()
-                .flat_map(|(_, analysis)| {
-                    analysis
+                .flat_map(|source| {
+                    source
+                        .analysis
                         .declares
                         .iter()
                         .map(|declared| declared.class.as_str())

@@ -82,7 +82,7 @@ fn reads_shop_api() {
     assert_eq!(
         seen,
         [
-            ("Billing", "BLN", 19, 202, 5, Some(81)),
+            ("Billing", "BLN", 19, 203, 5, Some(81)),
             ("Catalog", "CTL", 10, 90, 4, Some(77)),
             ("Checkout", "CHK", 20, 212, 2, Some(54)),
             ("Inventory", "INV", 9, 75, 2, Some(72)),
@@ -98,7 +98,7 @@ fn reads_shop_api() {
     );
     assert_eq!(app.modules_on(), 7);
     assert_eq!(app.files(), 91);
-    assert_eq!(app.lines(), 860);
+    assert_eq!(app.lines(), 861);
     assert_eq!(app.tests(), 18);
     // 160 of 234 statements. The file outside the modules folder does not count.
     assert_eq!(app.coverage().unwrap().percent(), Some(68));
@@ -486,6 +486,8 @@ fn print_links_of_shop_api() {
 #[test]
 fn finds_which_module_uses_which() {
     let app = read_app(&fixture("shop-api")).unwrap();
+    // A test of Billing uses Order of Checkout. Test files make no links, so
+    // Billing uses no module.
     let links: Vec<_> = app
         .links
         .iter()

@@ -192,7 +192,7 @@ fn the_index_says_how_much_of_each_module_is_covered() {
     let (_desk, harness) = shop_api();
     // The second line of a row is part of the row, so it is read from the summary instead.
     harness.get_by_label("Lines of PHP");
-    harness.get_by_label("860");
+    harness.get_by_label("861");
     harness.get_by_label("Test coverage");
     harness.get_by_label("68%");
     harness.get_by_role_and_label(Role::Heading, "Coverage by module");
