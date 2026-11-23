@@ -337,6 +337,15 @@ fn run_tests_on_13_4_runs_module_test_and_check_translations_keeps_its_report() 
     wait_for(&mut harness, "1 test passed in Checkout.");
     let entries = History::open(&desk.data_dir(), &root).entries();
     assert_eq!(entries[0].args, ["module:test", "Checkout", "--json"]);
+    // Run again in the drawer counts its tests too.
+    harness.key_press(Key::Escape);
+    harness.run_steps(3);
+    assert!(harness.query_by_label_contains("1 test passed").is_none());
+    harness
+        .get_by_role_and_label(Role::Button, "Run again")
+        .click();
+    harness.run_steps(3);
+    wait_for(&mut harness, "1 test passed in Checkout.");
 
     // The options of `module:test` change the line (design D8).
     type_in(&mut harness, "Filter, a test name or pattern", "Order");

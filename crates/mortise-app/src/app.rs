@@ -1180,6 +1180,7 @@ impl MortiseApp {
         args: &[String],
         then_read: Option<(Target, Vec<String>)>,
     ) {
+        self.documents_ended(index, args);
         let Some(open) = self.apps.get(index) else {
             return;
         };
@@ -1724,38 +1725,16 @@ impl MortiseApp {
 
     /// The toast after an action of the app at `index` ended (design D6). A dry run
     /// and Check translations get none when they succeed. A failure gets one only when
-    /// the drawer does not show it. On 13.4 the toast of Run tests counts the tests of
-    /// its document, and the report of Check translations goes into the package data,
-    /// whatever the exit code (design D8, D9).
+    /// the drawer does not show it. On 13.4 a run of tests whose document counts its
+    /// tests gets the toast of [`Self::documents_ended`] instead (design D8).
     fn action_ended(&mut self, index: usize, act: &Act, modules_on: usize) {
-        let Some(runner_view::RunOver {
-            end,
-            lines,
-            stdout,
-            stdout_cut,
-        }) = self.apps[index].runs.ended()
-        else {
+        if self.tests_ended(index, &act.args).is_some() {
+            return;
+        }
+        let Some(runner_view::RunOver { end, lines, .. }) = self.apps[index].runs.ended() else {
             return;
         };
         let count = mortise_core::migration_count(lines);
-        let json = mortise_core::has_option(&act.args, "--json");
-        let tests = match act.action {
-            Action::RunTests if json => {
-                mortise_core::whole_document::<TestReport>(stdout, stdout_cut)
-                    .ok()
-                    .and_then(|report| tests_toast(&report, &act.target))
-            }
-            _ => None,
-        };
-        let translations = match act.action {
-            Action::CheckTranslations if json => {
-                mortise_core::whole_document::<LangReport>(stdout, stdout_cut).ok()
-            }
-            _ => None,
-        };
-        if let Some(report) = translations {
-            self.set_package(index, |data| data.merge_translations(report));
-        }
         let object = match &act.target {
             Target::Module(module) => module.as_str(),
             Target::All => strings::ALL_MODULES_OBJECT,
@@ -1781,31 +1760,81 @@ impl MortiseApp {
                     self.apps[index].selection = Selection::All;
                     strings::deleted_module(object)
                 }
-                Action::RunTests => match tests {
-                    Some(text) => text,
-                    None => return,
-                },
                 _ => return,
             };
             self.toast = Some(Toast::done(text));
             return;
         }
-        let in_view = self.runner.shown == Shown::Open
-            && self.current == Some(index)
-            && self.settings_open.is_none()
-            && self.adding.is_none();
-        if in_view {
+        if self.output_in_view(index) {
             return;
         }
-        let text = match (end, tests) {
-            (RunEnd::Exited { .. }, Some(text)) => text,
-            (RunEnd::Exited { code, .. }, None) => strings::stopped_with(&label, code),
-            (RunEnd::Stopped { .. }, _) => strings::was_stopped(&label),
+        let text = match end {
+            RunEnd::Exited { code, .. } => strings::stopped_with(&label, code),
+            RunEnd::Stopped { .. } => strings::was_stopped(&label),
         };
+        self.failed_toast(index, text);
+    }
+
+    /// True when the drawer shows the output of the app at `index`: a failure there
+    /// needs no toast.
+    fn output_in_view(&self, index: usize) -> bool {
+        self.runner.shown == Shown::Open
+            && self.current == Some(index)
+            && self.settings_open.is_none()
+            && self.adding.is_none()
+    }
+
+    /// The toast of a failed run of the app at `index`, with "Show output".
+    fn failed_toast(&mut self, index: usize, text: String) {
         let root = self.settings.apps[index].root.clone();
         let toast =
             Toast::failed(text).with_action(strings::SHOW_OUTPUT, ToastAction::ShowOutput(root));
         self.toast = Some(toast);
+    }
+
+    /// The toast of a run of `module:test --json` of the app at `index` that ended,
+    /// counted from its document (design D8). `None` for other words, or when the
+    /// document does not count the tests.
+    fn tests_ended(&self, index: usize, args: &[String]) -> Option<String> {
+        if !is_json_run(args, Action::RunTests) {
+            return None;
+        }
+        let over = self.apps.get(index)?.runs.ended()?;
+        let report =
+            mortise_core::whole_document::<TestReport>(over.stdout, over.stdout_cut).ok()?;
+        tests_toast(&report, &words_target(args)?)
+    }
+
+    /// The documents of a run of the app at `index` that ended, from wherever it
+    /// started: the Actions tab, Run again or the history (design D8, D9). The report
+    /// of `module:lang --json` goes into the package data, and `module:test --json`
+    /// gets the toast that counts its tests, whatever the exit code. A failure gets
+    /// that toast only when the drawer does not show it.
+    fn documents_ended(&mut self, index: usize, args: &[String]) {
+        if let Some(text) = self.tests_ended(index, args) {
+            let passed = matches!(
+                self.apps[index].runs.ended(),
+                Some(runner_view::RunOver {
+                    end: RunEnd::Exited { code: Some(0), .. },
+                    ..
+                })
+            );
+            if passed {
+                self.toast = Some(Toast::done(text));
+            } else if !self.output_in_view(index) {
+                self.failed_toast(index, text);
+            }
+            return;
+        }
+        if !is_json_run(args, Action::CheckTranslations) {
+            return;
+        }
+        let report = self.apps[index].runs.ended().and_then(|over| {
+            mortise_core::whole_document::<LangReport>(over.stdout, over.stdout_cut).ok()
+        });
+        if let Some(report) = report {
+            self.set_package(index, |data| data.merge_translations(report));
+        }
     }
 
     /// What the button of a toast asked for.
@@ -3502,20 +3531,30 @@ fn tests_toast(report: &TestReport, target: &Target) -> Option<String> {
     Some(strings::tests_failed(failed, total, &object))
 }
 
-/// The action and the target of artisan words of reset, refresh, fresh or delete:
-/// `--all`, or the module, which is the second word or the word after `--`.
+/// The action and the target of artisan words of reset, refresh, fresh or delete.
 fn destructive_words(args: &[String]) -> Option<(Action, Target)> {
     let action = Action::from_artisan(args.first()?).filter(|action| action.is_destructive())?;
-    let target = if args
+    Some((action, words_target(args)?))
+}
+
+/// The target of artisan words: `--all`, or the module, which is the second word
+/// or the word after `--`.
+fn words_target(args: &[String]) -> Option<Target> {
+    if args
         .iter()
         .take_while(|word| *word != "--")
         .any(|word| word == "--all")
     {
-        Target::All
+        Some(Target::All)
     } else {
-        Target::Module(runner_view::module_named(args)?)
-    };
-    Some((action, target))
+        runner_view::module_named(args).map(Target::Module)
+    }
+}
+
+/// True when artisan words run `action` with `--json`: its answer is a document.
+fn is_json_run(args: &[String], action: Action) -> bool {
+    args.first().and_then(|word| Action::from_artisan(word)) == Some(action)
+        && mortise_core::has_option(args, "--json")
 }
 
 /// True when the line that runs `args` carries `--force` before a `--`: in the
