@@ -101,8 +101,19 @@ pub(crate) struct Scan {
     pub(crate) lines: u64,
     pub(crate) kinds: Vec<KindCount>,
     pub(crate) tests: u32,
-    /// The module's PHP files: the path inside the module, and what the file names.
-    pub(crate) sources: Vec<(String, Arc<Analysis>)>,
+    /// The module's PHP files, by path.
+    pub(crate) sources: Vec<Source>,
+}
+
+/// A PHP file of a module.
+#[derive(Debug, Clone)]
+pub(crate) struct Source {
+    /// The path inside the module, with `/` between the parts.
+    pub(crate) relative: String,
+    /// True when the file is in a folder of tests.
+    pub(crate) is_test: bool,
+    /// What the file names and declares.
+    pub(crate) analysis: Arc<Analysis>,
 }
 
 /// What was worked out from the content of a file, kept so that a file that did
@@ -410,10 +421,13 @@ fn scan(dir: &Path, kinds: &Kinds, cache: &mut ReadCache) -> Scan {
         };
         scan.lines += facts.lines;
         scan.tests += facts.tests;
-        scan.sources
-            .push((entry.relative, Arc::clone(&facts.analysis)));
+        scan.sources.push(Source {
+            relative: entry.relative,
+            is_test: entry.is_test,
+            analysis: Arc::clone(&facts.analysis),
+        });
     }
-    scan.sources.sort_by(|a, b| a.0.cmp(&b.0));
+    scan.sources.sort_by(|a, b| a.relative.cmp(&b.relative));
 
     scan.kinds = by_kind
         .into_iter()

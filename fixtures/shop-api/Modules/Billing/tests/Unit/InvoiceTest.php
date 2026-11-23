@@ -3,13 +3,14 @@
 namespace Modules\Billing\Tests\Unit;
 
 use Modules\Billing\Models\Invoice;
+use Modules\Checkout\Models\Order;
 use Tests\TestCase;
 
 class InvoiceTest extends TestCase
 {
     public function test_it_numbers_invoices(): void
     {
-        $this->assertTrue(true);
+        $this->assertNotNull(Order::factory()->create());
     }
 
     public function test_it_sums_lines(): void
