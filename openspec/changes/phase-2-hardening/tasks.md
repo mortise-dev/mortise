@@ -23,7 +23,7 @@
 
 ## 5. Accessibility and images (16.2, 16.1 sonnet)
 
-- [ ] 5.1 (16.2) Cover the phase 2 screens in `tests/accessibility.rs`, add the four keys to Settings, Keyboard (D9)
+- [x] 5.1 (16.2) Cover the phase 2 screens in `tests/accessibility.rs`, add the four keys to Settings, Keyboard (D9)
 - [ ] 5.2 (16.1) Add the missing images, light and dark, and look at each new or changed one (D10)
 
 ## 6. Docs (16.10 sonnet)
