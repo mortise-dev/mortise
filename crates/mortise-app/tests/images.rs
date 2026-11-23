@@ -299,10 +299,34 @@ fn palette_and_settings() {
     let mut shots = Shots::new();
     for (theme, name) in THEMES {
         shots.theme = name;
-        let (_desk, mut harness) = shop_api(theme);
-        // S12.1: the palette, empty and with a query.
+        let mut desk = Desk::new();
+        desk.theme = theme;
+        let root = desk.app("shop-api");
+        desk.knows(&[(&root, "SA")]);
+        // S12.2 a: a migrate 2 minutes ago and a model before it, in "Recent".
+        common::ran(
+            &desk,
+            &root,
+            &[
+                ("module:make-model Invoice Billing", 5),
+                ("module:migrate Checkout", 2),
+            ],
+        );
+        let mut harness = desk.start();
+        // S12.1: the palette, empty with Checkout opened last, then with a query on
+        // "All modules". Keys, not clicks, so that no pointer shows.
+        chord(&mut harness, Key::K);
+        harness
+            .get_by_role_and_label(Role::TextInput, "Search or run a command")
+            .type_text("checkout");
+        press(&mut harness, Key::Enter);
         chord(&mut harness, Key::K);
         shots.take(&mut harness, "s12.1-palette");
+        press(&mut harness, Key::Escape);
+        for key in [Key::K; 3] {
+            press(&mut harness, key);
+        }
+        chord(&mut harness, Key::K);
         harness
             .get_by_role_and_label(Role::TextInput, "Search or run a command")
             .type_text("check");

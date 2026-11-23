@@ -394,6 +394,12 @@ pub fn ago(now: i64, then: i64) -> String {
     }
 }
 
+/// The age of a recent action in the palette, in seconds since 1970: `ran 2 minutes ago`
+/// (S12.2 a). The other units, such as `ran 8 s ago`, are not in the spec.
+pub fn ran_ago(now: i64, then: i64) -> String {
+    format!("ran {}", ago(now, then))
+}
+
 /// `14 commits in 30 days, last 2 days ago`
 pub fn churn(commits: u32, last: Option<i64>, now: i64) -> String {
     let count = match commits {

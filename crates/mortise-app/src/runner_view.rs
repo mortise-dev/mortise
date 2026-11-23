@@ -240,6 +240,14 @@ impl AppRuns {
         self.shown_output = None;
     }
 
+    /// The runs kept in the history, the latest first, as read at the last record.
+    pub fn history(&self) -> Vec<Entry> {
+        self.entries
+            .iter()
+            .map(|listed| listed.entry.clone())
+            .collect()
+    }
+
     /// Starts `args` through the runner of `php`, for at most its time limit. A start
     /// that fails is shown as such.
     pub fn start(&mut self, runs: &Runs, app: &Path, php: &PhpSettings, args: Vec<String>) {

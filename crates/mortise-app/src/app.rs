@@ -2529,10 +2529,17 @@ impl eframe::App for MortiseApp {
                 .apps
                 .get(scope)
                 .map_or(&[][..], |open| open.recent.as_slice());
+            let history = self
+                .apps
+                .get(scope)
+                .map(|open| open.runs.history())
+                .unwrap_or_default();
             let source = palette::Source {
                 scope: snapshot.as_deref().map(|app| (scope, app)),
                 apps: &names,
                 recent,
+                history: &history,
+                now: jiff::Timestamp::now().as_second(),
                 selected: self.apps.get(scope).and_then(|open| match &open.selection {
                     Selection::Module(name) => Some(name.as_str()),
                     Selection::All => None,

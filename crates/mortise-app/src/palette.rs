@@ -6,8 +6,8 @@ use eframe::egui::{
     WidgetInfo, pos2, vec2,
 };
 use mortise_core::{
-    Action, AppSnapshot, Catalog, Detail, FindingState, MODULE_MAKE, ModuleState, Target,
-    ThemeChoice, fuzzy,
+    Action, AppSnapshot, Catalog, Detail, FindingState, MODULE_MAKE, ModuleState, Ran, Target,
+    ThemeChoice, fuzzy, history,
 };
 
 use crate::draw::{self, Icon, StampState};
@@ -16,6 +16,8 @@ use crate::theme::{Face, Palette as Colors, Type, radius, size, ty};
 
 /// At most this many rows of a group are shown.
 const GROUP_LIMIT: usize = 4;
+/// At most this many actions and generators that ran are in "Recent".
+const RECENT_RUNS: usize = 3;
 /// The list scrolls after this many rows.
 const VISIBLE_ROWS: f32 = 12.0;
 
@@ -76,8 +78,10 @@ pub struct Entry {
     pub code: Option<String>,
     /// A finding state after the label: its word, and whether it is a problem.
     pub state: Option<(String, bool)>,
-    /// What Enter does, in a word, or the shortcut of the command.
+    /// What Enter does, in a word, the shortcut of the command, or when it ran.
     pub hint: String,
+    /// The hint is a shortcut, drawn as keys.
+    pub keys: bool,
     /// The artisan words of an action, after the label, in dim mono.
     pub detail: Option<String>,
     pub command: Command,
@@ -91,6 +95,10 @@ pub struct Source<'a> {
     pub apps: &'a [(String, usize)],
     /// The modules opened last in the app in scope, the latest first.
     pub recent: &'a [String],
+    /// The runs of the app in scope, the latest first.
+    pub history: &'a [history::Entry],
+    /// Now, in seconds since 1970, for the age of a run.
+    pub now: i64,
     /// The module selected in the index of the app in scope. `None` is "All modules".
     pub selected: Option<&'a str>,
     pub mac: bool,
@@ -117,6 +125,7 @@ pub fn entries(query: &str, source: &Source<'_>) -> Vec<Entry> {
         code: None,
         state: None,
         hint: hint.to_owned(),
+        keys: hint.contains(' ') || hint.len() == 1,
         detail: None,
         command,
     };
@@ -146,7 +155,39 @@ pub fn entries(query: &str, source: &Source<'_>) -> Vec<Entry> {
         };
 
         if query.is_empty() {
-            let recent = source.recent.iter().filter_map(|name| module_entry(name));
+            // The recent module, the actions and generators that ran last, then the
+            // other recent modules (S12.2 a). A row of a run opens its panel or its form.
+            let mut modules = source.recent.iter().filter_map(|name| module_entry(name));
+            let runs =
+                mortise_core::recent_runs(source.history, Catalog::v13_3(), app, RECENT_RUNS);
+            let runs = runs.into_iter().map(|run| {
+                let age = strings::ran_ago(source.now, run.started_ms.div_euclid(1000));
+                let mut row = match run.ran {
+                    Ran::Action { action, module } => {
+                        let label = strings::action_label(action, module.as_deref());
+                        let detail = action_words(action, module.as_deref());
+                        let mut row = entry(label, &age, Command::Action { module, action });
+                        row.detail = detail;
+                        row
+                    }
+                    Ran::Generator { name, module } => {
+                        let label = match &module {
+                            Some(module) => strings::generate_row(&name, module),
+                            None => strings::generator_label(&name),
+                        };
+                        let command = Command::Generate {
+                            module,
+                            generator: name.clone(),
+                        };
+                        let mut row = entry(label, strings::FORM, command);
+                        row.detail = Some(name);
+                        row
+                    }
+                };
+                row.keys = false;
+                row
+            });
+            let recent = modules.next().into_iter().chain(runs).chain(modules);
             add(
                 "Recent",
                 recent
@@ -655,7 +696,7 @@ fn palette_row(
     if current {
         right = draw::keycap(ui, pal, pos2(right, mid), "Enter").left() - 6.0;
     }
-    let chord = entry.hint.contains(' ') || entry.hint.len() == 1;
+    let chord = entry.keys;
     let hint = if current && !chord {
         "Open"
     } else {
@@ -750,6 +791,8 @@ mod tests {
             scope: None,
             apps: &[],
             recent: &[],
+            history: &[],
+            now: 0,
             selected: None,
             mac: false,
         };
@@ -772,6 +815,8 @@ mod tests {
             scope: None,
             apps: &apps,
             recent: &[],
+            history: &[],
+            now: 0,
             selected: None,
             mac: true,
         };
@@ -799,6 +844,8 @@ mod tests {
             scope: None,
             apps: &[],
             recent: &[],
+            history: &[],
+            now: 0,
             selected: None,
             mac: false,
         };
