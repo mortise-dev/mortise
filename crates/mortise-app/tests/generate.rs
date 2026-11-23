@@ -378,6 +378,16 @@ fn a_dry_run_that_finds_the_policy_takes_it_out_of_the_command() {
         .unwrap();
     assert!(harness.query_by_label_contains("--policy").is_none());
     assert!(!disabled(&harness, "Create the other 2 files"));
+    // Another name drops the list, and the flag it took out comes back.
+    type_into(&mut harness, "Model name", "Receipt");
+    let policy = harness.get_by_role_and_label(Role::CheckBox, "Policy");
+    assert_eq!(policy.accesskit_node().toggled(), Some(Toggled::True));
+    harness
+        .query_by_label_contains("Receipt Billing --migration --policy --json")
+        .unwrap();
+    type_into(&mut harness, "Model name", "Invoice");
+    click(&mut harness, Role::Button, "List files");
+    wait_for(&mut harness, "3 files, 1 exists already");
 
     // The result lists the policy as left, and Replace writes it with the words of
     // the form before the flag went.

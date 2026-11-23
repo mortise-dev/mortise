@@ -487,6 +487,8 @@ accessible name and a 24 px target (`tests/accessibility.rs`).
   ..." under the result.
 - Every Replace of a result, on a row or under the alert, is off while a run or read holds the app, with
   "<command> is running", as the run buttons are.
+- The flags S9.3 takes out belong to the file list, not to the user's choice. Every drop of the list for
+  a change of the words (another name, another flag) or of the place gives them back, with `all`.
 
 ## Risks / Trade-offs
 

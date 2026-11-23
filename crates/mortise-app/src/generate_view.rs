@@ -381,9 +381,18 @@ impl GenerateState {
     }
 
     /// Drops a file list that ran in another place than `place`: it lists the files
-    /// of another app. The flags S9.3 took out for it come back into the form.
+    /// of another app.
     fn drop_files_of_another_place(&mut self, place: &RunPlace) {
-        let Some(list) = self.files.take_if(|list| list.place != *place) else {
+        if self.files.as_ref().is_some_and(|list| list.place != *place) {
+            self.drop_list();
+        }
+    }
+
+    /// Drops the file list of the form, whose words or place changed. The flags S9.3
+    /// took out for it are the list's, not the user's: they come back into the form,
+    /// with `all` when S9.3 took it.
+    fn drop_list(&mut self) {
+        let Some(list) = self.files.take() else {
             return;
         };
         if list.before.first() != Some(&self.generator) {
@@ -1863,10 +1872,12 @@ fn command(
 ) -> (f32, Option<BoundaryAction>) {
     let name = module.map(|module| module.name.clone());
     // The words of the form, and the words that run: on a 13.4 app with `--json`.
-    let words = generator.words(&state.filled, name.as_deref());
-    // The file list belongs to the words it ran with: a change of the line drops it.
+    let mut words = generator.words(&state.filled, name.as_deref());
+    // The file list belongs to the words it ran with: a change of the line drops it,
+    // and gives back the flags it took out.
     if state.files.as_ref().is_some_and(|list| list.words != words) {
-        state.files = None;
+        state.drop_list();
+        words = generator.words(&state.filled, name.as_deref());
     }
     let run_args = run_words(app, words.clone());
     let line = line_now(inputs.runner, &run_args)
