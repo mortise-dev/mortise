@@ -7,7 +7,6 @@ use std::path::Path;
 
 use mortise_core::{AppSnapshot, LayoutKey, ReadError, Version};
 
-pub const BRAND: &str = "Mortise";
 pub const ALL_MODULES: &str = "All modules";
 
 // Actions (S10.1, S10.2)
@@ -30,8 +29,6 @@ pub fn action_label(action: mortise_core::Action, module: Option<&str>) -> Strin
     }
 }
 pub const SEARCH: &str = "Search or run a command";
-/// Under 1100 px of window width.
-pub const SEARCH_SHORT: &str = "Search or run";
 pub const SORTED_BY_NAME: &str = "Sorted: by name";
 pub const MODULES_ON: &str = "Modules on";
 pub const MODULE_STATE: &str = "Module state";
@@ -40,12 +37,9 @@ pub const OFF: &str = "Off";
 /// Not in the spec: the state of a module when the app does not use the file activator.
 pub const STATE_UNKNOWN: &str = "Unknown";
 
-pub const NO_APPS_TITLE: &str = "No apps yet";
 pub const NO_APPS_BODY: &str = "Add the folder of a Laravel app that uses nwidart/laravel-modules. \
     Mortise reads its modules from disk and changes nothing until you run a command.";
-pub const NO_APP: &str = "No app";
 pub const ADD_APP: &str = "Add app";
-pub const ADD_APP_FOLDER: &str = "Add app folder";
 pub const BACK: &str = "Back";
 pub const CANCEL: &str = "Cancel";
 pub const APP_FOLDER: &str = "App folder";
@@ -114,24 +108,6 @@ pub fn modules_found(app: &AppSnapshot) -> (String, String, String) {
     )
 }
 
-/// Not in the spec: the title when an app Mortise knows cannot be read any more.
-pub fn cannot_read_title(name: &str) -> String {
-    format!("{name} cannot be read")
-}
-
-/// Not in the spec: Mortise's own settings file is broken. The broken file is kept.
-pub fn settings_invalid(kept_as: &Path) -> String {
-    format!(
-        "Mortise could not read its settings, so it starts without apps. The old file is kept as {}.",
-        tilde(kept_as)
-    )
-}
-
-pub const MINIMISE: &str = "Minimise";
-pub const MAXIMISE: &str = "Maximise";
-/// Not in the spec.
-pub const RESTORE: &str = "Restore";
-pub const CLOSE: &str = "Close";
 /// Not in the spec: the name of the cross on a toast, for a screen reader.
 pub const CLOSE_MESSAGE: &str = "Close the message";
 
@@ -187,11 +163,6 @@ pub fn versions(laravel: Option<&Version>, package: &Version) -> String {
         Some(laravel) => format!("Laravel {}, package {}", laravel.short(), package.full()),
         None => format!("package {}", package.full()),
     }
-}
-
-/// `CHK is the code for Checkout`
-pub fn code_is_for(code: &str, module: &str) -> String {
-    format!("{code} is the code for {module}")
 }
 
 /// A path as the user writes it: `~/code/shop-api`.
@@ -291,8 +262,6 @@ pub fn no_modules(app: &AppSnapshot, name: &str) -> String {
 }
 
 pub const FILTER_MODULES: &str = "Filter modules";
-/// Not in the spec: the name of the edge of the index that sets its width.
-pub const INDEX_WIDTH: &str = "Width of the module index";
 pub const LINES_OF_PHP: &str = "Lines of PHP";
 pub const TEST_COVERAGE: &str = "Test coverage";
 /// The word for a coverage that cannot be worked out: there is no report.
@@ -457,12 +426,6 @@ pub const COPY_PATH: &str = "Copy path";
 /// What a screen reader says for "Open in editor" under the files of a link.
 pub const OPEN_FILE_IN_EDITOR: &str = "Open the selected file in the editor";
 
-/// What a screen reader says for "Open in editor" in the header of a module.
-pub fn open_module_in_editor(module: &str) -> String {
-    format!("Open {module} in the editor")
-}
-/// Not in the spec: the toast after "Copy path".
-pub const COPIED_PATH: &str = "Copied the path.";
 pub const COL_FILE: &str = "File";
 pub const COL_LINE: &str = "Line";
 pub const COL_READS: &str = "Reads";
@@ -476,8 +439,6 @@ pub const CIRCULAR: &str = "Circular";
 pub const FILTER_LINKS: &str = "Filter links";
 /// The name of the folders field of the second rule, for a screen reader. Not in the spec.
 pub const PUBLIC_FOLDERS: &str = "Folders that count as public";
-/// Not in the spec: the button of the dialog that asks before mortise.json is created.
-pub const CREATE_RULES_FILE: &str = "Create mortise.json";
 
 /// `Used by, 2`
 pub fn used_by_count(n: usize) -> String {
@@ -672,24 +633,6 @@ pub fn no_links_of(module: &str) -> String {
     format!("{module} uses no other module, and no other module uses it.")
 }
 
-/// Not in the spec: the dialog before the rules file is created.
-pub fn create_rules_title(app: &str) -> String {
-    format!("Create mortise.json in {app}?")
-}
-
-/// Not in the spec.
-pub fn create_rules_body(app: &str) -> String {
-    format!(
-        "Mortise keeps the boundary rules of {app} in mortise.json in the app folder, so a team \
-         shares them. It is the only file Mortise writes into the app without a command."
-    )
-}
-
-/// Not in the spec: mortise.json could not be written. The system's message is quoted.
-pub fn rules_not_saved(error: &mortise_core::RulesError) -> String {
-    format!("The rules were not saved: {error}.")
-}
-
 /// Not in the spec: mortise.json is there but cannot be read as rules.
 pub fn rules_invalid(message: &str) -> String {
     format!("mortise.json is not valid: {message}. The default rules apply until it is corrected.")
@@ -699,7 +642,6 @@ pub const FINDINGS: &str = "Findings";
 pub const SORTED_PROBLEMS_FIRST: &str = "Sorted: problems first";
 pub const CHANGE_THE_ORDER: &str = "Change the order";
 pub const NEEDS_ATTENTION: &str = "Needs attention";
-pub const BACK_TO_SUMMARY: &str = "Back to Summary";
 pub const COL_FINDING: &str = "Finding";
 pub const COL_CHECK: &str = "Check";
 pub const COL_ENTER_OPENS: &str = "Enter opens";
@@ -773,15 +715,6 @@ pub fn show_all_findings(n: usize) -> String {
         "Show the finding".to_owned()
     } else {
         format!("Show all {n} findings")
-    }
-}
-
-/// `shop-api, 2 problems`
-pub fn app_with_problems(app: &str, problem_count: usize) -> String {
-    if problem_count == 0 {
-        app.to_owned()
-    } else {
-        format!("{app}, {}", problems(problem_count))
     }
 }
 
@@ -2198,8 +2131,6 @@ pub fn dry_run_of(label: &str) -> String {
 // ---------------------------------------------------------------------------
 // Actions (S10.1 to S10.3)
 
-/// The header of the Actions tab: `Run with` and the keys.
-pub const RUN_WITH: &str = "Run with";
 pub const COMMAND: &str = "Command";
 
 /// Not in the spec: a run button is off while its line was not whole on screen,

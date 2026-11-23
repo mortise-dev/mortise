@@ -8,7 +8,7 @@ use eframe::egui::{
     pos2, vec2,
 };
 
-use crate::strings;
+use crate::app::strings;
 use crate::ui::draw;
 use crate::ui::theme::{Face, Palette, Type, radius, size, stroke, ty};
 
@@ -23,7 +23,7 @@ pub struct Tile<'a> {
 
 /// Cmd on macOS, Ctrl elsewhere.
 fn command_key(ui: &Ui) -> &'static str {
-    strings::command_key(ui.ctx().os() == eframe::egui::os::OperatingSystem::Mac)
+    crate::strings::command_key(ui.ctx().os() == eframe::egui::os::OperatingSystem::Mac)
 }
 
 fn current_tile_id() -> eframe::egui::Id {
@@ -233,7 +233,7 @@ fn app_tile(
 /// The add tile: a dashed outline and a plus.
 fn add_tile(ui: &Ui, pal: &Palette, rect: Rect, active: bool) -> bool {
     let response = ui.interact(rect, ui.scope_id().with("rail-add"), Sense::click());
-    response.widget_info(|| WidgetInfo::labeled(Role::Button, true, strings::ADD_APP));
+    response.widget_info(|| WidgetInfo::labeled(Role::Button, true, crate::strings::ADD_APP));
 
     let fill = if response.is_pointer_button_down_on() {
         pal.line
@@ -275,7 +275,7 @@ fn add_tile(ui: &Ui, pal: &Palette, rect: Rect, active: bool) -> bool {
 
     let clicked = response.clicked();
     let keys = format!("{} O", command_key(ui));
-    draw::tooltip_keys(response, pal, strings::ADD_APP, &keys);
+    draw::tooltip_keys(response, pal, crate::strings::ADD_APP, &keys);
     clicked
 }
 

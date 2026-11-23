@@ -11,7 +11,7 @@ use eframe::egui;
 use mortise_core::ThemeChoice;
 use muda::{Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu};
 
-use crate::strings;
+use crate::app::strings;
 
 /// What an item of the menu bar asks for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -68,8 +68,8 @@ impl MenuBar {
         let file = Submenu::with_items("File", true, &[&add]).ok()?;
 
         let palette = item("Command Palette", MenuAction::Palette);
-        let all = item(strings::ALL_MODULES, MenuAction::AllModules);
-        let findings = item(strings::FINDINGS, MenuAction::Findings);
+        let all = item(crate::strings::ALL_MODULES, MenuAction::AllModules);
+        let findings = item(crate::strings::FINDINGS, MenuAction::Findings);
         let index = item("Collapse or Open the Module Index", MenuAction::ToggleIndex);
         let read = item("Read the App Again", MenuAction::ReadAgain);
         let system = item("Theme: System", MenuAction::Theme(ThemeChoice::System));
