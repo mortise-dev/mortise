@@ -393,7 +393,7 @@ fn drawer_desk(theme: Theme, width: f32, words: &str, runs: &[Seeded<'_>]) -> De
     let mut settings = desk.saved();
     // A copy of the fake artisan in the app folder, so that the $ line reads the
     // same on every machine. macOS starts a relative program from the folder it runs in.
-    let fake = env!("CARGO_BIN_EXE_fake-artisan");
+    let fake = env!("CARGO_BIN_EXE_app-fake-artisan");
     std::fs::copy(fake, root.join("fake-artisan")).unwrap();
     settings.apps[0].php.runner = Some(RunnerKind::Custom {
         line: format!("./fake-artisan{words}"),

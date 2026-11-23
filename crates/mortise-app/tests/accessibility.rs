@@ -199,7 +199,7 @@ fn the_runner_drawer() {
     desk.knows(&[(&root, "SA")]);
     let mut settings = desk.saved();
     settings.apps[0].php.runner = Some(mortise_core::RunnerKind::Custom {
-        line: format!("\"{}\"", env!("CARGO_BIN_EXE_fake-artisan")),
+        line: format!("\"{}\"", env!("CARGO_BIN_EXE_app-fake-artisan")),
     });
     settings.save(&desk.settings_path()).unwrap();
     let args = ["module:migrate", "NoSuchModule"]

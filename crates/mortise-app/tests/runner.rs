@@ -31,7 +31,7 @@ fn desk(line: &str, runs: &[&[&str]]) -> (Desk, PathBuf) {
 
 /// The fake artisan, with these words before the artisan arguments.
 fn fake(words: &str) -> String {
-    format!("\"{}\"{words}", env!("CARGO_BIN_EXE_fake-artisan"))
+    format!("\"{}\"{words}", env!("CARGO_BIN_EXE_app-fake-artisan"))
 }
 
 /// Writes these runs into the history of the app, the latest first, an hour ago.

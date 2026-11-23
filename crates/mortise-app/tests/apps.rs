@@ -271,12 +271,13 @@ fn an_app_whose_php_does_not_answer_is_added_read_only() {
         })
     );
     // Settings shows the test of the add panel as the last test of the app.
+    // The toast of the new app still moves, so a fixed number of steps.
     harness.key_press_modifiers(Modifiers::COMMAND, Key::Comma);
-    harness.run();
+    harness.run_steps(6);
     harness
         .get_by_role_and_label(Role::ListBoxOption, "PHP")
         .click();
-    harness.run();
+    harness.run_steps(6);
     harness.get_by_label("No answer: mortise-no-such-php: command not found");
 }
 

@@ -15,11 +15,12 @@ name = "mortise_app"
 name = "mortise"
 path = "src/main.rs"
 
-# The artisan of the tests, the same as that of `mortise-core`. A release build
-# leaves `testing` off, so it is not built.
+# The artisan of the tests, the same as that of `mortise-core`, under another name:
+# two binaries of one name in a workspace collide in the target folder. A release
+# build leaves `testing` off, so it is not built.
 [[bin]]
-name = "fake-artisan"
-path = "src/bin/fake-artisan.rs"
+name = "app-fake-artisan"
+path = "src/bin/app-fake-artisan.rs"
 required-features = ["testing"]
 
 [features]

@@ -370,7 +370,8 @@ Interface, `tests/runner.rs` with `egui_kittest` against the fake: run (Run agai
 output and "Done in"), stop (`hold`, Ctrl ., "Stopped after"), fail (a failing recording, "Exit code 1"
 and the sentence), history (Up, Down, Enter), did not start (missing program, "Open settings" opens the
 PHP section). Cargo sets `CARGO_BIN_EXE_<name>` only for the tests of the package that owns the
-binary. So `mortise-app` gets the same three-line binary as the core: `[[bin]] fake-artisan` with
+binary. So `mortise-app` gets the same three-line binary as the core: `[[bin]] app-fake-artisan`
+(another name, because two binaries of one name collide in the target folder) with
 `required-features = ["testing"]`, a feature `testing = ["mortise-core/testing"]`, and a dev-dependency
 on itself with `testing`, as `mortise-core` has. A release build leaves the feature off, so the binary
 is not built, and cargo-packager names its one binary (`binaries = [{ path = "mortise", main = true }]`).
