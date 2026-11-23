@@ -1503,7 +1503,7 @@ impl MortiseApp {
                 Dialog {
                     danger: true,
                     left: Some(strings::DRY_RUN.to_owned()),
-                    code: (!last_batch.is_empty()).then(|| last_batch.join("\n")),
+                    code: (!last_batch.is_empty()).then(|| bounded(&last_batch, "\n")),
                     ..Dialog::new(strings::roll_back_title(&object), body, confirm)
                 }
             }
@@ -1559,7 +1559,7 @@ impl MortiseApp {
             .and_then(|migrations| migrations.get(module));
         let ran = state.map_or(0, |state| state.ran.len());
         let tables = state.map_or(&[][..], |state| state.tables.as_slice());
-        let code = (!tables.is_empty()).then(|| tables.join(", "));
+        let code = (!tables.is_empty()).then(|| bounded(tables, ", "));
         let dialog = match act.action {
             Action::ResetMigrations => Dialog {
                 left: Some(strings::DRY_RUN.to_owned()),
@@ -3540,6 +3540,31 @@ fn tests_toast(report: &TestReport, target: &Target) -> Option<String> {
     Some(strings::tests_failed(failed, total, &object))
 }
 
+/// The names a dialog lists at most: the migrations of a roll back, the tables of
+/// a reset or a refresh. With the footer, the dialog fits in a window 600 px high.
+const DIALOG_NAMES: usize = 6;
+
+/// At most [`DIALOG_NAMES`] of `names` joined by `separator`, then "and 24 more"
+/// (not in the spec): on a line of its own after a line break, else after the last name.
+fn bounded(names: &[String], separator: &str) -> String {
+    let mut text = names
+        .iter()
+        .take(DIALOG_NAMES)
+        .map(String::as_str)
+        .collect::<Vec<_>>()
+        .join(separator);
+    if names.len() > DIALOG_NAMES {
+        let more = strings::and_more(names.len() - DIALOG_NAMES);
+        if separator == "\n" {
+            text.push('\n');
+            text.push_str(more.trim_start());
+        } else {
+            text.push_str(&more);
+        }
+    }
+    text
+}
+
 /// The action and the target of artisan words of reset, refresh, fresh or delete.
 fn destructive_words(args: &[String]) -> Option<(Action, Target)> {
     let action = Action::from_artisan(args.first()?).filter(|action| action.is_destructive())?;
@@ -3831,5 +3856,16 @@ mod tests {
         report.modules[0].ran = true;
         report.passed = None;
         assert_eq!(tests_toast(&report, &checkout), None);
+    }
+
+    #[test]
+    fn a_dialog_lists_six_names_then_counts_the_rest() {
+        let names: Vec<String> = (1..=30).map(|n| format!("t{n}")).collect();
+        assert_eq!(bounded(&names, "\n"), "t1\nt2\nt3\nt4\nt5\nt6\nand 24 more");
+        assert_eq!(
+            bounded(&names[..7], ", "),
+            "t1, t2, t3, t4, t5, t6 and 1 more"
+        );
+        assert_eq!(bounded(&names[..2], ", "), "t1, t2");
     }
 }

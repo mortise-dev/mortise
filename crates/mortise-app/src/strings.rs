@@ -2580,7 +2580,8 @@ pub fn tables(n: usize) -> String {
     }
 }
 
-/// ` and 2 more`, after the tables named in a row of "What is lost" (S10.4).
+/// ` and 2 more`, after the tables named in a row of "What is lost" (S10.4). Not in
+/// the spec: after the migrations or tables a dialog lists, at most six.
 pub fn and_more(n: usize) -> String {
     format!(" and {} more", count(n as u64))
 }
