@@ -268,11 +268,15 @@ fn quiet_checks(
     if quiet.is_empty() {
         return min.y - 12.0;
     }
+    let note = strings::of_checks(quiet.len(), app.findings.checks.len());
+    let head = draw::box_head_extra(ui, width, strings::CHECKS_WITHOUT_A_FINDING, &note);
     let rect = Rect::from_min_size(
         min,
-        vec2(width, 41.0 + quiet.len() as f32 * size::LIST_LINE_H + 8.0),
+        vec2(
+            width,
+            41.0 + head + quiet.len() as f32 * size::LIST_LINE_H + 8.0,
+        ),
     );
-    let note = strings::of_checks(quiet.len(), app.findings.checks.len());
     let mut y = draw::box_head(ui, pal, rect, strings::CHECKS_WITHOUT_A_FINDING, &note);
     let _: Check = quiet[0].check;
     let value_type = Type {

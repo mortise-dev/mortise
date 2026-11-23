@@ -671,7 +671,16 @@ fn found(ui: &Ui, pal: &Palette, column: Rect, app: &AppSnapshot, monogram: &str
 
     let found = Rect::from_min_size(
         column.min,
-        vec2(column.width(), 41.0 + 6.0 * size::LIST_LINE_H + 8.0),
+        vec2(
+            column.width(),
+            41.0 + draw::box_head_extra(
+                ui,
+                column.width(),
+                strings::FOUND_TITLE,
+                strings::FOUND_NOTE,
+            ) + 6.0 * size::LIST_LINE_H
+                + 8.0,
+        ),
     );
     let mut y = draw::box_head(ui, pal, found, strings::FOUND_TITLE, strings::FOUND_NOTE);
 
@@ -769,7 +778,17 @@ fn found(ui: &Ui, pal: &Palette, column: Rect, app: &AppSnapshot, monogram: &str
 
     let shown = Rect::from_min_size(
         pos2(column.left(), found.bottom() + 12.0),
-        vec2(column.width(), 41.0 + size::LIST_LINE_H + 34.0 + 8.0),
+        vec2(
+            column.width(),
+            41.0 + draw::box_head_extra(
+                ui,
+                column.width(),
+                strings::SHOWN_TITLE,
+                strings::SHOWN_NOTE,
+            ) + size::LIST_LINE_H
+                + 34.0
+                + 8.0,
+        ),
     );
     let y = draw::box_head(ui, pal, shown, strings::SHOWN_TITLE, strings::SHOWN_NOTE);
     let name = [(app.name.as_str(), body.0, body.1)];

@@ -5,6 +5,7 @@ mod common;
 use common::{Desk, shop_api, wait_until};
 use eframe::egui::{Key, Modifiers, Role, vec2};
 use egui_kittest::kittest::{NodeT as _, Queryable as _};
+use mortise_app::theme::size;
 use mortise_core::{RunnerKind, Settings};
 
 const COMMAND_ALT: Modifiers = Modifiers {
@@ -75,6 +76,18 @@ fn adding_an_app_with_the_keyboard_takes_three_actions() {
     ] {
         harness.get_by_label(found);
     }
+    // At 960 by 700 the note of the box goes under its title, and the box grows: its
+    // last line, Git, ends 8 px above its bottom edge, 12 px above the next box.
+    harness.set_size(vec2(960.0, 700.0));
+    harness.run();
+    let git = harness.get_by_label("Git").rect();
+    let next = harness
+        .get_by_role_and_label(Role::Heading, "Shown in the rail as")
+        .rect();
+    let line_bottom = git.center().y + size::LIST_LINE_H / 2.0;
+    assert!(line_bottom + 8.0 + 12.0 <= next.top(), "{git:?} {next:?}");
+    harness.set_size(vec2(1280.0, 800.0));
+    harness.run();
     // Focus lands on the button that adds.
     assert!(
         harness

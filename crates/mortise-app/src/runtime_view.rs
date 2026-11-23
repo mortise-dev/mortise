@@ -730,7 +730,11 @@ fn table_box(
     rows: &[Vec<Cell>],
     paint: bool,
 ) -> f32 {
-    let height = 41.0 - 6.0 + size::TABLE_HEAD_H + rows.len() as f32 * size::TABLE_ROW_H + 1.0;
+    let height = 41.0 - 6.0
+        + draw::box_head_extra(ui, width, title, note)
+        + size::TABLE_HEAD_H
+        + rows.len() as f32 * size::TABLE_ROW_H
+        + 1.0;
     let rect = Rect::from_min_size(min, vec2(width, height));
     if !paint {
         return rect.bottom();

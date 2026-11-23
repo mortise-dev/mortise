@@ -581,12 +581,6 @@ impl View<'_> {
         let footer = draw::galley_wrapped(ui, &footer_text, ty::SECONDARY, pal.ink_2, footer_w);
         let footer_h = (footer.size().y + 20.0).max(46.0);
 
-        let height = 35.0
-            + sections.len() as f32 * (section_head + size::TABLE_HEAD_H)
-            + rows as f32 * size::TABLE_ROW_H
-            + footer_h;
-        let panel = Rect::from_min_size(pos2(self.left, y), vec2(self.width, height));
-
         // Head: what the link is, and how much of it breaks a rule.
         let (title, note, bad) = match (circle, sections.as_slice()) {
             (Some(cycle), [out, back]) => {
@@ -622,7 +616,14 @@ impl View<'_> {
                 }
             }
         };
-        let mut row_y = draw::box_head(ui, pal, panel, &title, if bad { "" } else { &note }) - 6.0;
+        let head_note = if bad { "" } else { note.as_str() };
+        let height = 35.0
+            + draw::box_head_extra(ui, self.width, &title, head_note)
+            + sections.len() as f32 * (section_head + size::TABLE_HEAD_H)
+            + rows as f32 * size::TABLE_ROW_H
+            + footer_h;
+        let panel = Rect::from_min_size(pos2(self.left, y), vec2(self.width, height));
+        let mut row_y = draw::box_head(ui, pal, panel, &title, head_note) - 6.0;
         if bad {
             let mid = panel.top() + 18.0;
             let text = draw::label(

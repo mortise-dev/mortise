@@ -1803,8 +1803,16 @@ impl Form<'_> {
         } else {
             form_w
         };
-        let choices =
-            Rect::from_min_size(box_min, vec2(box_w, 41.0 + 4.0 * size::LIST_LINE_H + 8.0));
+        let head = draw::box_head_extra(
+            ui,
+            box_w,
+            strings::WHAT_EACH_RUNS,
+            strings::WHAT_EACH_RUNS_NOTE,
+        );
+        let choices = Rect::from_min_size(
+            box_min,
+            vec2(box_w, 41.0 + head + 4.0 * size::LIST_LINE_H + 8.0),
+        );
         let mut line_y = draw::box_head(
             ui,
             pal,

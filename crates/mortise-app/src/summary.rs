@@ -440,10 +440,14 @@ fn all_modules(
 
     // By module: a table that sorts.
     let modules = sort.apply(app);
-    let table_h = 41.0 - 6.0 + size::TABLE_HEAD_H + modules.len() as f32 * size::TABLE_ROW_H + 1.0;
+    let note = strings::sorted_by(sort.column.label(), sort.ascending);
+    let table_h = 41.0 - 6.0
+        + draw::box_head_extra(ui, inner, strings::BY_MODULE, &note)
+        + size::TABLE_HEAD_H
+        + modules.len() as f32 * size::TABLE_ROW_H
+        + 1.0;
     let table = Rect::from_min_size(pos2(left, y), vec2(inner, table_h));
     if paint {
-        let note = strings::sorted_by(sort.column.label(), sort.ascending);
         let top = draw::box_head(ui, pal, table, strings::BY_MODULE, &note) - 6.0;
         clicked = by_module(
             ui,
@@ -914,7 +918,11 @@ fn bar_box(
     } else {
         0.0
     };
-    let height = 41.0 + bars.len() as f32 * ROW + 8.0 + footer_h;
+    let height = 41.0
+        + draw::box_head_extra(ui, width, title, note)
+        + bars.len() as f32 * ROW
+        + 8.0
+        + footer_h;
     let rect = Rect::from_min_size(min, vec2(width, height));
     if !paint {
         return rect.bottom();
@@ -1444,11 +1452,12 @@ fn dependencies(
         lines.push(DependencyLine::new(ui, pal, room, name, None, value, false));
     }
     let height: f32 = lines.iter().map(|line| line.height).sum();
-    let rect = Rect::from_min_size(min, vec2(width, 41.0 + height + 8.0));
+    let note = strings::out_in(uses.len(), used_by.len());
+    let head = draw::box_head_extra(ui, width, strings::DEPENDENCIES, &note);
+    let rect = Rect::from_min_size(min, vec2(width, 41.0 + head + height + 8.0));
     if !paint {
         return Some(rect.bottom());
     }
-    let note = strings::out_in(uses.len(), used_by.len());
     let mut y = draw::box_head(ui, pal, rect, strings::DEPENDENCIES, &note);
     let count = lines.len();
     for (i, line) in lines.into_iter().enumerate() {
