@@ -1062,7 +1062,7 @@ impl View<'_> {
         let rules = &self.app.rules;
         let mut rows = Vec::new();
         if rules.no_circular_use {
-            for cycle in &self.app.cycles {
+            for cycle in self.app.cycles.iter().filter(|cycle| !cycle.off) {
                 let files = cycle.files.iter().map(|(_, files)| files).sum();
                 let other = self
                     .app

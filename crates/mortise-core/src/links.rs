@@ -17,7 +17,8 @@ pub struct Reference {
     pub line: u32,
     /// The class that is named: `Modules\Billing\Models\Invoice`.
     pub class: String,
-    /// True when the class is not part of the public surface of its module.
+    /// True when reading the class breaks the rule public surface only: the class is
+    /// not part of the public surface of its module, and both modules are on.
     pub internal: bool,
 }
 
@@ -30,7 +31,7 @@ pub struct Link {
     pub to: String,
     /// What makes the link. References to internals first, then by file and line.
     pub refs: Vec<Reference>,
-    /// True when the two modules are in one circle.
+    /// True when the two modules are in one circle and every module of it is on.
     pub circular: bool,
 }
 
@@ -71,6 +72,8 @@ pub struct Cycle {
     pub carrier: String,
     /// For each module of the circle, how many of its files use another module of it.
     pub files: Vec<(String, usize)>,
+    /// True when a module of the circle is off. The circle does not run, so it breaks no rule.
+    pub off: bool,
 }
 
 /// The module of the circle of `module` that `module` uses directly. Every member of a
@@ -85,6 +88,8 @@ pub(crate) fn circle_neighbour<'a>(links: &'a [Link], module: &str) -> Option<&'
 /// The PHP files of one module, as the links need them.
 pub(crate) struct ModuleSource<'a> {
     pub(crate) name: &'a str,
+    /// False when the module is off. Its links then break no rule.
+    pub(crate) on: bool,
     /// The namespace all classes of the module share: `Modules\Billing`.
     pub(crate) namespace: &'a str,
     /// Each file as the user writes it, with the classes it names. Test files
@@ -138,7 +143,10 @@ pub(crate) fn build(modules: &[ModuleSource<'_>], rules: &Rules) -> (Vec<Link>, 
                         file: file.clone(),
                         line: named.line,
                         class: named.class.clone(),
-                        internal: rules.public_surface_only && !rules.is_public(&inside),
+                        internal: rules.public_surface_only
+                            && module.on
+                            && owner.on
+                            && !rules.is_public(&inside),
                     });
             }
         }
@@ -149,15 +157,21 @@ pub(crate) fn build(modules: &[ModuleSource<'_>], rules: &Rules) -> (Vec<Link>, 
         .map(|(from, to)| (from.as_str(), to.as_str()))
         .collect();
     let names: Vec<&str> = modules.iter().map(|module| module.name).collect();
+    let is_on = |name: &str| {
+        modules
+            .iter()
+            .any(|module| module.name == name && module.on)
+    };
     // Owned, so that the links can be taken out of `found` below.
     let circles: Vec<Vec<String>> = circles(&names, &edges)
         .into_iter()
         .map(|circle| circle.into_iter().map(str::to_owned).collect())
         .collect();
+    // Only a circle whose modules are all on runs.
     let circle_of = |name: &str| {
-        circles
-            .iter()
-            .position(|circle| circle.iter().any(|member| member == name))
+        circles.iter().position(|circle| {
+            circle.iter().any(|member| member == name) && circle.iter().all(|member| is_on(member))
+        })
     };
 
     let cycles = circles
@@ -184,6 +198,7 @@ pub(crate) fn build(modules: &[ModuleSource<'_>], rules: &Rules) -> (Vec<Link>, 
                 modules: files.iter().map(|(name, _)| name.clone()).collect(),
                 carrier,
                 files,
+                off: !circle.iter().all(|member| is_on(member)),
             }
         })
         .collect();
@@ -349,6 +364,7 @@ mod tests {
     ) -> ModuleSource<'a> {
         ModuleSource {
             name,
+            on: true,
             namespace,
             files: files
                 .iter()
@@ -489,6 +505,7 @@ mod tests {
                 modules: vec!["Checkout".into(), "Shipping".into()],
                 carrier: "Checkout".into(),
                 files: vec![("Checkout".into(), 2), ("Shipping".into(), 4)],
+                off: false,
             }]
         );
         // With the rule off, a circle is not a problem, but it is still known.
@@ -526,6 +543,13 @@ mod tests {
         // B is shown with the member it uses, not the first other member by name.
         assert_eq!(circle_neighbour(&links, "B"), Some("C"));
         assert_eq!(circle_neighbour(&links, "D"), None);
+
+        // With C off the circle does not run: A and B are on, but their link is not circular.
+        let mut modules = modules;
+        modules[2].on = false;
+        let (links, cycles) = build(&modules, &Rules::default());
+        assert!(cycles[0].off);
+        assert!(links.iter().all(|link| !link.circular));
     }
 
     #[test]
@@ -549,6 +573,7 @@ mod tests {
             modules: vec!["Checkout".into(), "Shipping".into()],
             carrier: "Checkout".into(),
             files: Vec::new(),
+            off: false,
         }];
         let names = [
             "Billing",

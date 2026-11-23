@@ -426,6 +426,10 @@ fn a_module_with_many_users_names_them_and_keeps_problems_in_the_graph() {
         "Checkout\\Events\\OrderPaid",
         "Checkout\\Models\\Order",
     );
+    // A link to or from a module that is off breaks no rule: Webhooks must be on.
+    let statuses = root.join("modules_statuses.json");
+    let json = std::fs::read_to_string(&statuses).unwrap();
+    std::fs::write(&statuses, json.replace('{', "{\n    \"Webhooks\": true,")).unwrap();
     desk.knows(&[(&root, "SA")]);
     let mut harness = desk.start();
     harness
