@@ -1310,12 +1310,19 @@ fn style_color(style: Style, pal: &Palette) -> Color32 {
     }
 }
 
+/// The text as drawn. The bundled mono font has no U+21C2, which Laravel prints
+/// in `--pretend` and `module:lang` output, so it is drawn as U+2193. Copied
+/// text and the history keep the real character.
+fn drawable(text: &str) -> String {
+    text.replace('\u{21c2}', "\u{2193}")
+}
+
 /// One line of output in its styles, on one line however long.
 fn line_galley(ui: &Ui, spans: &[Span], pal: &Palette) -> Arc<Galley> {
     let mut job = LayoutJob::default();
     for span in spans {
         job.append(
-            &span.text,
+            &drawable(&span.text),
             0.0,
             ty::RUNNER.format(style_color(span.style, pal)),
         );
@@ -1530,6 +1537,12 @@ fn result_of(ended: &Ended) -> (Mark, String) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_harpoon_is_drawn_as_an_arrow() {
+        assert_eq!(drawable("\u{21c2} create table"), "\u{2193} create table");
+        assert_eq!(drawable("plain"), "plain");
+    }
 
     #[test]
     fn a_dry_run_keeps_the_module_and_the_database_of_the_failed_run() {
