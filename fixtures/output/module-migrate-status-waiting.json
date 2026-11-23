@@ -1,0 +1,13 @@
+{
+  "command": "php artisan module:migrate-status Checkout --json --no-interaction --ansi",
+  "args": [
+    "module:migrate-status",
+    "Checkout",
+    "--json"
+  ],
+  "made_with": "nwidart/laravel-modules 13.4.0, laravel/framework 13.43.0, PHP 8.4.27, macOS",
+  "exit": 0,
+  "stdout": "{\"modules\":[{\"name\":\"Checkout\",\"migrations\":[{\"name\":\"2026_11_23_110149_create_orders_table\",\"ran\":true,\"batch\":1},{\"name\":\"2026_11_23_120000_create_order_items_table\",\"ran\":false,\"batch\":null}]}],\"migration_table\":true}\n",
+  "stderr": "",
+  "root": "/tmp/scratch-app"
+}

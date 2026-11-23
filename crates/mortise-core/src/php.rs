@@ -12,11 +12,12 @@ use mago_names::ResolvedNames;
 use mago_names::resolver::NameResolver;
 use mago_span::HasSpan;
 use mago_syntax::cst::{
-    Argument, ArrayElement, Attribute, AttributeList, Binary, BinaryOperator, Call, Class,
-    ClassConstantAccess, Enum, Expression, Extends, FunctionCall, Hint, Identifier, Implements,
-    Instantiation, Interface, Literal, LocalIdentifier, Method, Modifier, PartialArgument,
-    PropertyConcreteItem, Sequence, Statement, StaticMethodCall, StaticMethodPartialApplication,
-    StaticPropertyAccess, TokenSeparatedSequence, Trait, TraitUse, TriviaKind, Use, UseItems,
+    Argument, ArgumentList, ArrayElement, Attribute, AttributeList, Binary, BinaryOperator, Call,
+    Class, ClassConstantAccess, ClassLikeMemberSelector, Enum, Expression, Extends, FunctionCall,
+    Hint, Identifier, Implements, Instantiation, Interface, Literal, LocalIdentifier, Method,
+    MethodCall, Modifier, PartialArgument, PropertyConcreteItem, Sequence, Statement,
+    StaticMethodCall, StaticMethodPartialApplication, StaticPropertyAccess, TokenSeparatedSequence,
+    Trait, TraitUse, TriviaKind, Use, UseItems,
 };
 use mago_syntax::parser::{parse_file_content, parse_file_with_settings};
 use mago_syntax::settings::ParserSettings;
@@ -238,6 +239,109 @@ impl<'ast, 'arena> MutWalker<'ast, 'arena, ()> for TestCounter {
             && (name.value() == b"it" || name.value() == b"test")
         {
             self.calls += 1;
+        }
+    }
+}
+
+/// The class of Laravel's `Schema` facade.
+const SCHEMA: &[u8] = b"Illuminate\\Support\\Facades\\Schema";
+
+/// The tables a migration creates: the table of each `Schema::create(...)` and
+/// `Schema::connection(...)->create(...)` in its `up` method, when it is a string
+/// literal, as the first argument or the named argument `table`. `Schema` is the
+/// facade under any name the file's `use` gives it, its full name, or the plain
+/// `Schema` that Laravel's alias gives. In order, each once.
+pub(crate) fn created_tables(source: &str) -> Vec<String> {
+    let arena = LocalArena::new();
+    let program = parse_file_content(&arena, FileId::zero(), source.as_bytes());
+    let names = NameResolver::new(&arena).resolve(program);
+    let mut reader = TableReader {
+        names: &names,
+        methods: Vec::new(),
+        tables: Vec::new(),
+    };
+    reader.walk_program(program, &mut ());
+    reader.tables
+}
+
+struct TableReader<'a, 'arena> {
+    names: &'a ResolvedNames<'arena>,
+    /// For each method the walk is in, whether it is `up`.
+    methods: Vec<bool>,
+    tables: Vec<String>,
+}
+
+impl TableReader<'_, '_> {
+    fn in_up(&self) -> bool {
+        self.methods.last().copied().unwrap_or(false)
+    }
+
+    /// The table of a `create` call with these arguments.
+    fn create(&mut self, method: &ClassLikeMemberSelector<'_>, arguments: &ArgumentList<'_>) {
+        if !self.in_up() || !is_named(method, b"create") {
+            return;
+        }
+        let table = arguments
+            .arguments
+            .iter()
+            .enumerate()
+            .find_map(|(at, argument)| match argument {
+                Argument::Positional(argument) if at == 0 => Some(argument.value),
+                Argument::Named(argument) if argument.name.value == b"table" => {
+                    Some(argument.value)
+                }
+                _ => None,
+            })
+            .and_then(string_of);
+        if let Some(table) = table
+            && !self.tables.contains(&table)
+        {
+            self.tables.push(table);
+        }
+    }
+
+    /// Whether an expression is the `Schema` facade: its full name once resolved
+    /// through the file's `use`, or the global `Schema` of Laravel's alias. A class the
+    /// file imports as `Schema` resolves to its own name, so it is not the facade.
+    fn is_schema(&self, class: &Expression<'_>) -> bool {
+        let Expression::Identifier(name) = class else {
+            return false;
+        };
+        let resolved = self.names.resolve(&name.span()).unwrap_or(name.value());
+        let resolved = resolved.strip_prefix(b"\\").unwrap_or(resolved);
+        resolved.eq_ignore_ascii_case(SCHEMA) || resolved.eq_ignore_ascii_case(b"Schema")
+    }
+}
+
+/// Whether a method selector is the plain name `name`. PHP method names ignore case.
+fn is_named(method: &ClassLikeMemberSelector<'_>, name: &[u8]) -> bool {
+    matches!(method, ClassLikeMemberSelector::Identifier(identifier) if identifier.value.eq_ignore_ascii_case(name))
+}
+
+impl<'ast, 'arena> MutWalker<'ast, 'arena, ()> for TableReader<'_, 'arena> {
+    fn walk_in_method(&mut self, method: &'ast Method<'arena>, _: &mut ()) {
+        self.methods
+            .push(method.name.value.eq_ignore_ascii_case(b"up"));
+    }
+
+    fn walk_out_method(&mut self, _: &'ast Method<'arena>, _: &mut ()) {
+        self.methods.pop();
+    }
+
+    // `Schema::create('orders', ...)`.
+    fn walk_in_static_method_call(&mut self, call: &'ast StaticMethodCall<'arena>, _: &mut ()) {
+        if self.is_schema(call.class) {
+            self.create(&call.method, &call.argument_list);
+        }
+    }
+
+    // `Schema::connection('reports')->create('orders', ...)`.
+    fn walk_in_method_call(&mut self, call: &'ast MethodCall<'arena>, _: &mut ()) {
+        if let Expression::Call(Call::StaticMethod(connection)) = call.object
+            && self.is_schema(connection.class)
+            && is_named(&connection.method, b"connection")
+        {
+            self.create(&call.method, &call.argument_list);
         }
     }
 }
@@ -545,6 +649,54 @@ impl<'ast, 'arena> MutWalker<'ast, 'arena, ()> for ClassReader<'_, 'arena> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_tables_of_a_migration_are_the_literals_its_up_method_creates() {
+        let source = r#"<?php
+use Illuminate\Support\Facades\Schema as S;
+use App\Support\Other;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('orders', function (Blueprint $table) {
+            $table->id();
+        });
+        Schema::connection('reports')->create('order_totals', fn ($table) => null);
+        Schema::create($this->table, fn ($table) => null);
+        \Illuminate\Support\Facades\Schema::create('refunds', fn ($table) => null);
+        S::create('payments', fn ($table) => null);
+        S::connection('reports')->create('orders', fn ($table) => null);
+        Schema::create(callback: fn ($table) => null, table: 'invoices');
+        Other::create('carts', fn ($table) => null);
+        Schema::table('carts', fn ($table) => null);
+    }
+
+    public function down(): void
+    {
+        Schema::create('old_orders', fn ($table) => null);
+    }
+};
+"#;
+        assert_eq!(
+            created_tables(source),
+            ["orders", "order_totals", "refunds", "payments", "invoices"]
+        );
+        // Another class imported as `Schema` is not the facade.
+        let other = r#"<?php
+use App\Support\TestSchema as Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('orders', fn ($table) => null);
+    }
+};
+"#;
+        assert!(created_tables(other).is_empty());
+    }
 
     #[test]
     fn reads_the_name_of_a_console_command() {

@@ -5,6 +5,8 @@
 //! whether Mortise asks first. [`Generator::words`] gives the words of a generator.
 
 mod actions;
+#[cfg(feature = "run")]
+pub mod cache;
 mod generators;
 
 pub use actions::{
@@ -13,5 +15,5 @@ pub use actions::{
 };
 pub use generators::{
     Argument, Catalog, Filled, Generator, GeneratorOption, Group, MODULE_MAKE, NameRule,
-    class_name_ok, module_name_ok, replace_words, shipped_for,
+    class_name_ok, model_flag_of, module_name_ok, replace_words, shipped_mark,
 };

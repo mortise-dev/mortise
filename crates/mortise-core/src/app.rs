@@ -15,6 +15,7 @@ use crate::kind::Kinds;
 use crate::layout::Layout;
 use crate::links::{self, Cycle, Link, ModuleSource};
 use crate::module::{Module, ModuleState, ReadCache, find_modules};
+use crate::package::PackageData;
 use crate::rules::{Rules, RulesSource};
 
 const LARAVEL: &str = "laravel/framework";
@@ -68,6 +69,9 @@ pub struct AppSnapshot {
     pub findings: Findings,
     /// A module covered less than this many per cent is a warning.
     pub coverage_limit: u8,
+    /// What the package said in the reads the user started, from [`ReadOptions::package`].
+    /// The read fills in the tables of each module's ran migrations.
+    pub package_data: PackageData,
 }
 
 impl AppSnapshot {
@@ -267,6 +271,8 @@ pub struct ReadOptions {
     /// The clover report, relative to the app folder or absolute. `None` looks in
     /// `phpunit.xml` and the usual places.
     pub coverage_report: Option<PathBuf>,
+    /// What the package said in the reads the user started. Kept in memory only.
+    pub package: PackageData,
 }
 
 impl Default for ReadOptions {
@@ -274,6 +280,7 @@ impl Default for ReadOptions {
         Self {
             coverage_limit: DEFAULT_COVERAGE_LIMIT,
             coverage_report: None,
+            package: PackageData::default(),
         }
     }
 }
@@ -449,6 +456,7 @@ pub fn read_app_cached(
         coverage_limit: options.coverage_limit,
     });
 
+    let package_data = options.package.with_tables(&modules);
     let (app_url, app_env) = read_env(&root);
     Ok(AppSnapshot {
         name: root
@@ -477,6 +485,7 @@ pub fn read_app_cached(
         rules_source,
         findings,
         coverage_limit: options.coverage_limit,
+        package_data,
         root,
     })
 }

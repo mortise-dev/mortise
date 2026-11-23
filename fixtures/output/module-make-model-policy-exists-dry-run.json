@@ -1,0 +1,17 @@
+{
+  "command": "php artisan module:make-model Invoice Billing --migration --policy --dry-run --json --no-interaction --ansi",
+  "args": [
+    "module:make-model",
+    "Invoice",
+    "Billing",
+    "--migration",
+    "--policy",
+    "--dry-run",
+    "--json"
+  ],
+  "made_with": "nwidart/laravel-modules 13.4.0, laravel/framework 13.43.0, PHP 8.4.27, macOS",
+  "exit": 1,
+  "stdout": "{\"command\":\"module:make-model\",\"dry_run\":true,\"files\":[{\"path\":\"/tmp/scratch-app/Modules/Billing/app/Models/Invoice.php\",\"exists\":false,\"action\":\"create\"},{\"path\":\"/tmp/scratch-app/Modules/Billing/database/migrations/2026_11_23_110213_create_invoices_table.php\",\"exists\":false,\"action\":\"create\"},{\"path\":\"/tmp/scratch-app/Modules/Billing/app/Policies/InvoicePolicy.php\",\"exists\":true,\"action\":\"keep\"}],\"errors\":[\"File : /tmp/scratch-app/Modules/Billing/app/Policies/InvoicePolicy.php already exists.\"]}\n",
+  "stderr": "",
+  "root": "/tmp/scratch-app"
+}

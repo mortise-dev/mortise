@@ -6,8 +6,9 @@ use std::sync::Arc;
 
 use eframe::egui::{self, Event, Key, KeyboardShortcut, Modifiers, Rect, Theme, Ui, pos2, vec2};
 use mortise_core::{
-    Action, Ask, Environment, FileOutcome, LiveRuntime, MODULE_MAKE, ModuleState, ReadOptions,
-    Rules, RunEnd, RunnerKind, Runs, RuntimeState, Secret, Secrets, Target, ThemeChoice,
+    Action, Ask, Catalog, Environment, FileOutcome, LiveRuntime, MODULE_MAKE, ModuleState,
+    PackageData, ReadOptions, Rules, RunEnd, RunnerKind, Runs, RuntimeState, Secret, Secrets,
+    Target, ThemeChoice, Version, gives_data,
 };
 use mortise_core::{
     AppEntry, AppSnapshot, LiveApp, LiveState, ReadCache, Settings, SettingsError,
@@ -21,7 +22,8 @@ use crate::chrome::{self, Chrome};
 use crate::dialog::{Answer, Dialog, Typed};
 use crate::draw::{self, Button, ButtonKind};
 use crate::generate_view::{
-    GenerateAsk, GenerateInputs, GenerateResult, GenerateRun, GenerateState,
+    CatalogRead, GenerateAsk, GenerateInputs, GenerateResult, GenerateRun, GenerateState, RunPlace,
+    TakenOut, typed_names,
 };
 use crate::index::{self, IndexRuntime, IndexState};
 use crate::palette::{self, Command, PaletteAction, PaletteState};
@@ -112,6 +114,110 @@ struct OpenApp {
     generate_run: Option<Generating>,
     /// After `module:make`: the module to select once a snapshot has it.
     select_new: Option<SelectNew>,
+    /// The data the package gave in this session (P4, P8). It goes into every read
+    /// of the app, so the snapshot holds it (design D7).
+    package: PackageData,
+    /// The read of package data that runs, if one does (design D3).
+    reading: Option<PackageRead>,
+    /// The generators read from the app (P3, design D4).
+    catalog: AppCatalog,
+}
+
+impl OpenApp {
+    /// The label of the command that runs in the app, a run or a read. While one
+    /// runs, every run button of the app is off.
+    fn busy(&self) -> Option<&str> {
+        busy(&self.runs, self.reading.as_ref())
+    }
+}
+
+/// [`OpenApp::busy`] from its two fields, for code that borrows the others.
+fn busy<'a>(runs: &'a AppRuns, reading: Option<&'a PackageRead>) -> Option<&'a str> {
+    runs.running()
+        .or_else(|| reading.map(|read| read.label.as_str()))
+}
+
+/// The generators read from a 13.4 app (design D4): in this session, or from the
+/// cache in Mortise's data folder.
+#[derive(Debug, Default)]
+struct AppCatalog {
+    /// The catalog, when it was read in ms since 1970, and the raw package version
+    /// it was read with.
+    read: Option<(Catalog, i64, String)>,
+    /// Why the last read gave no catalog.
+    error: Option<String>,
+    /// The package version the cache was last looked up for.
+    looked_up: Option<String>,
+}
+
+impl AppCatalog {
+    /// The read catalog and its time, while the app is a 13.4 app with the package
+    /// version it was read with.
+    fn read_for(&self, package: &Version) -> Option<(&Catalog, i64)> {
+        let (catalog, read_ms, raw) = self.read.as_ref()?;
+        (gives_data(package) && *raw == package.raw).then_some((catalog, *read_ms))
+    }
+
+    /// The generators every screen uses: the read ones, else the ones shipped for
+    /// the app's package version.
+    fn in_use(&self, package: &Version) -> &Catalog {
+        self.read_for(package)
+            .map_or_else(|| Catalog::shipped(package), |(catalog, _)| catalog)
+    }
+
+    /// What the picker says about the read, on a 13.4 app only.
+    fn picker(&self, package: &Version, reading: bool) -> Option<CatalogRead<'_>> {
+        if !gives_data(package) {
+            return None;
+        }
+        Some(if reading {
+            CatalogRead::Reading
+        } else if let Some((_, read_ms)) = self.read_for(package) {
+            CatalogRead::Read(read_ms)
+        } else if let Some(error) = &self.error {
+            CatalogRead::Failed(error)
+        } else {
+            CatalogRead::NotRead
+        })
+    }
+
+    /// Takes the catalog from the cache, once for each package version the app has.
+    fn look_up(&mut self, data_dir: Option<&Path>, root: &Path, package: &Version) {
+        if self.looked_up.as_ref() == Some(&package.raw) {
+            return;
+        }
+        self.looked_up = Some(package.raw.clone());
+        if self.read_for(package).is_some() || !gives_data(package) {
+            return;
+        }
+        if let Some((catalog, read_ms)) =
+            data_dir.and_then(|dir| mortise_core::catalog_cache::load(dir, root, package))
+        {
+            self.read = Some((catalog, read_ms, package.raw.clone()));
+        }
+    }
+}
+
+/// A read of package data: a command that only gives data, whose result goes where
+/// the data is shown, not to the drawer (design D3).
+struct PackageRead {
+    read: mortise_core::Read,
+    /// The artisan words, for the tooltip of a busy app.
+    label: String,
+    purpose: ReadFor,
+}
+
+/// What a read is for.
+#[allow(dead_code)] // Each variant is started by the task of its data (15.3 to 15.5).
+enum ReadFor {
+    /// `module:generators --json` (P3, design D4), started while the app had this
+    /// package version.
+    Catalog { package: Version },
+    /// A generator with `--dry-run --json` (P2, design D5): the words of the form,
+    /// and the runner and working folder it started with.
+    DryRun { words: Vec<String>, place: RunPlace },
+    /// `module:migrate-status --json` (P4, design D7).
+    Migrations { target: Target },
 }
 
 /// A generator that runs, and what its end needs.
@@ -959,6 +1065,127 @@ impl MortiseApp {
         }
     }
 
+    /// Changes the package data of the app at `index` and reads the app again, so
+    /// that its snapshot holds the new data (design D7).
+    #[allow(dead_code)] // The reads of P4 and P8 call it.
+    fn set_package(&mut self, index: usize, change: impl FnOnce(&mut PackageData)) {
+        let (Some(open), Some(entry)) = (self.apps.get_mut(index), self.settings.apps.get(index))
+        else {
+            return;
+        };
+        change(&mut open.package);
+        open.live.set_options(read_options(entry, &open.package));
+    }
+
+    /// Starts a read of package data in the app at `index` (design D3). It does not
+    /// open the drawer. A read that cannot start ends at once with its error.
+    fn start_read(&mut self, index: usize, args: Vec<String>, purpose: ReadFor) {
+        let (Some(open), Some(entry)) = (self.apps.get(index), self.settings.apps.get(index))
+        else {
+            return;
+        };
+        if open.busy().is_some() {
+            return;
+        }
+        match mortise_core::Read::start(&self.runs, &entry.root, &entry.php, &args) {
+            Ok(read) => {
+                self.apps[index].reading = Some(PackageRead {
+                    read,
+                    label: args.join(" "),
+                    purpose,
+                });
+            }
+            Err(error) => self.read_ended(index, purpose, Err(error)),
+        }
+    }
+
+    /// What a read gave, or why it did not start (design D2, D3).
+    fn read_ended(
+        &mut self,
+        index: usize,
+        purpose: ReadFor,
+        end: Result<mortise_core::ReadEnd, mortise_core::StartError>,
+    ) {
+        match purpose {
+            ReadFor::Catalog { package } => self.catalog_read(index, &package, end),
+            ReadFor::DryRun { words, place } => self.dry_run_read(index, words, place, end),
+            ReadFor::Migrations { .. } => {}
+        }
+    }
+
+    /// The end of `module:generators --json` (design D4): the catalog replaces the
+    /// shipped one for the app and goes into the cache, or the picker says why not.
+    /// `package` is the version the app had when the read started. When the app's
+    /// version changed meanwhile, the answer may be of either version: it is dropped,
+    /// and the picker shows the shipped catalog of the new version.
+    fn catalog_read(
+        &mut self,
+        index: usize,
+        package: &Version,
+        end: Result<mortise_core::ReadEnd, mortise_core::StartError>,
+    ) {
+        let Some(app) = self.snapshot(index) else {
+            return;
+        };
+        if app.package.raw != package.raw {
+            return;
+        }
+        let root = self.settings.apps[index].root.clone();
+        let read = match &end {
+            Ok(end) => end
+                .document::<Catalog>()
+                .map_err(|error| strings::no_document(end, &error)),
+            Err(error) => Err(strings::start_reason(error)),
+        };
+        let catalog = &mut self.apps[index].catalog;
+        match read {
+            Ok(read) => {
+                let read_ms = jiff::Timestamp::now().as_millisecond();
+                if let Some(dir) = &self.data_dir {
+                    // A cache that cannot be written leaves the read for this session.
+                    let _ = mortise_core::catalog_cache::store(dir, &root, package, &read, read_ms);
+                }
+                catalog.read = Some((read, read_ms, package.raw.clone()));
+                catalog.error = None;
+            }
+            Err(reason) => {
+                catalog.read = None;
+                catalog.error = Some(reason);
+            }
+        }
+    }
+
+    /// The end of a dry run of a form (design D5): the file list for its words, or
+    /// why it gave none. The exit code does not matter: a kept file exits 1 with a
+    /// whole document. A dry run whose runner or working folder changed meanwhile
+    /// listed the files of another app: its answer changes nothing.
+    fn dry_run_read(
+        &mut self,
+        index: usize,
+        words: Vec<String>,
+        place: RunPlace,
+        end: Result<mortise_core::ReadEnd, mortise_core::StartError>,
+    ) {
+        let Some(app) = self.snapshot(index) else {
+            return;
+        };
+        let php = &self.settings.apps[index].php;
+        if php.runner != place.runner || php.working_folder != place.folder {
+            return;
+        }
+        let listed = match &end {
+            Ok(end) => end
+                .document::<mortise_core::GeneratorReport>()
+                .map_err(|error| strings::no_document(end, &error)),
+            Err(error) => Err(strings::start_reason(error)),
+        };
+        let open = &mut self.apps[index];
+        let catalog = open.catalog.in_use(&app.package);
+        if let Some(generator) = words.first().and_then(|name| catalog.get(name)) {
+            open.generate.take_files(generator, words, place, listed);
+        }
+    }
+
     // --- Runs ---
 
     /// Starts artisan with `args` in the app at `index`, through its current runner.
@@ -1000,11 +1227,11 @@ impl MortiseApp {
     /// its exact line is on screen; otherwise the drawer shows that line first.
     /// A line Mortise asked about before it ran asks again (design D2).
     fn run_again(&mut self, index: usize) {
-        let runner = self.settings.apps[index].php.runner.as_ref();
-        let runs = &mut self.apps[index].runs;
-        if runs.running().is_some() {
+        if self.apps[index].busy().is_some() {
             return;
         }
+        let runner = self.settings.apps[index].php.runner.as_ref();
+        let runs = &mut self.apps[index].runs;
         let Some(args) = runs.again(&mut self.runner, runner) else {
             return;
         };
@@ -1313,7 +1540,7 @@ impl MortiseApp {
 
     /// Starts the words of an action and keeps what it was, for the toast at its end.
     fn start_action(&mut self, index: usize, act: Act) {
-        if self.apps[index].runs.running().is_some() {
+        if self.apps[index].busy().is_some() {
             return;
         }
         let modules_on = self.snapshot(index).map_or(0, |app| {
@@ -1331,7 +1558,7 @@ impl MortiseApp {
     /// and Check translations get none when they succeed. A failure gets one only when
     /// the drawer does not show it.
     fn action_ended(&mut self, index: usize, act: &Act, modules_on: usize) {
-        let Some((end, lines)) = self.apps[index].runs.ended() else {
+        let Some(runner_view::RunOver { end, lines, .. }) = self.apps[index].runs.ended() else {
             return;
         };
         let object = match &act.target {
@@ -1340,7 +1567,7 @@ impl MortiseApp {
         };
         let label = act.args.join(" ");
         if let RunEnd::Exited { code: Some(0), .. } = end {
-            if act.args.iter().any(|word| word == "--pretend") {
+            if mortise_core::has_option(&act.args, "--pretend") {
                 return;
             }
             let count = mortise_core::migration_count(lines);
@@ -1408,6 +1635,14 @@ impl MortiseApp {
         let Some(current) = self.current else {
             return;
         };
+        // A generator without a module argument opens under "All modules" too.
+        let takes_module = self.snapshot(current).is_none_or(|app| {
+            self.apps[current]
+                .catalog
+                .in_use(&app.package)
+                .get(generator)
+                .is_none_or(crate::generate_view::takes_module)
+        });
         let open = &mut self.apps[current];
         open.selection = match module {
             Some(name) if generator != MODULE_MAKE => Selection::Module(name),
@@ -1415,7 +1650,7 @@ impl MortiseApp {
         };
         open.tab = Tab::Generate;
         open.findings_open = false;
-        open.generate.open_form(generator);
+        open.generate.open_form(generator, takes_module);
         self.adding = None;
         self.settings_open = None;
         self.reveal_next = true;
@@ -1431,6 +1666,35 @@ impl MortiseApp {
         };
         let dialog = match &ask {
             GenerateAsk::NewModule => return,
+            GenerateAsk::ReadCatalog => {
+                let words = crate::generate_view::read_catalog_words();
+                let Some(app) = self.snapshot(index) else {
+                    return;
+                };
+                let package = app.package.clone();
+                self.start_read(index, words, ReadFor::Catalog { package });
+                return;
+            }
+            GenerateAsk::ListFiles { words } => {
+                // Only a generator the package ships honours `--dry-run`: an app's
+                // own may declare it and write anyway.
+                let generator = words.first().map_or("", String::as_str);
+                let ships = self
+                    .snapshot(index)
+                    .is_some_and(|app| mortise_core::generator_gives_data(&app.package, generator));
+                if !ships {
+                    return;
+                }
+                let args = mortise_core::with_dry_run(words.clone());
+                let words = words.clone();
+                let php = &self.settings.apps[index].php;
+                let place = RunPlace {
+                    runner: php.runner.clone(),
+                    folder: php.working_folder.clone(),
+                };
+                self.start_read(index, args, ReadFor::DryRun { words, place });
+                return;
+            }
             GenerateAsk::Run(run) if run.generator != MODULE_MAKE || !forced(runner, &run.args) => {
                 None
             }
@@ -1471,7 +1735,9 @@ impl MortiseApp {
         };
         let run = match ask {
             GenerateAsk::Run(run) | GenerateAsk::Replace { run, .. } => run,
-            GenerateAsk::NewModule => return,
+            GenerateAsk::NewModule | GenerateAsk::ReadCatalog | GenerateAsk::ListFiles { .. } => {
+                return;
+            }
         };
         let Some(dialog) = dialog else {
             self.start_generate(index, run);
@@ -1489,7 +1755,7 @@ impl MortiseApp {
 
     /// Starts a generator and keeps what it was, for its result at its end.
     fn start_generate(&mut self, index: usize, run: GenerateRun) {
-        if self.apps[index].runs.running().is_some() {
+        if self.apps[index].busy().is_some() {
             return;
         }
         let before: BTreeSet<String> = self.snapshot(index).map_or_else(BTreeSet::new, |app| {
@@ -1502,6 +1768,7 @@ impl MortiseApp {
         self.start_run(index, run.args.clone());
         let open = &mut self.apps[index];
         open.select_new = None;
+        open.generate.drop_files();
         let form = open.generate.form();
         open.generate_run = open.runs.running().is_some().then_some(Generating {
             run,
@@ -1509,6 +1776,9 @@ impl MortiseApp {
             forced,
             form,
         });
+        if open.generate_run.is_none() {
+            open.generate.run_ended();
+        }
     }
 
     /// The result and the toast after a generator of the app at `index` ended
@@ -1520,12 +1790,72 @@ impl MortiseApp {
             forced,
             form,
         } = generating;
-        let Some((end, lines)) = self.apps[index].runs.ended() else {
+        self.apps[index].generate.run_ended();
+        let root = self.settings.apps[index].root.clone();
+        let Some(runner_view::RunOver {
+            end,
+            lines,
+            stdout,
+            stdout_cut,
+        }) = self.apps[index].runs.ended()
+        else {
             return;
         };
         let done = matches!(end, RunEnd::Exited { code: Some(0), .. });
-        let files = mortise_core::generated_files(lines, forced);
-        let autoload_failed = mortise_core::autoload_failed(lines);
+        // A run with `--json` gives its files in its answer (P5); without one they are
+        // read from the lines, and the result says why (design D6).
+        let json = mortise_core::has_option(&run.args, "--json");
+        let answer = json.then(|| {
+            mortise_core::whole_document::<mortise_core::GeneratorReport>(stdout, stdout_cut)
+        });
+        // The modules folder of the app's layout and its modules place a path of a
+        // container (Sail).
+        let app = self.snapshot(index);
+        let modules = app.as_ref().map_or_else(
+            || "Modules".to_owned(),
+            |app| app.path_shown(&app.layout.modules_dir),
+        );
+        let folders = app
+            .as_deref()
+            .map(crate::generate_view::module_folders)
+            .unwrap_or_default();
+        // The modules the run writes in place its paths first.
+        let asked = crate::generate_view::run_modules(
+            app.as_deref(),
+            &run.generator,
+            run.module.as_deref(),
+            &run.args,
+        );
+        let asked: Vec<&str> = asked.iter().map(String::as_str).collect();
+        let (mut files, autoload_failed, fallback) = match answer {
+            Some(Ok(report)) => (
+                mortise_core::reported_files(&report, &root, &modules, &asked, &folders),
+                report.autoload_failed(),
+                None,
+            ),
+            answer => (
+                mortise_core::generated_files(lines, forced),
+                mortise_core::autoload_failed(lines),
+                answer.and_then(|answer| answer.err().map(|e| strings::no_run_document(&e, end))),
+            ),
+        };
+        // The files S9.3 took out of the command: the run left them, so its result
+        // lists them as left, each with its own Replace (design D5).
+        let taken_out: Vec<TakenOut> = run
+            .taken_out
+            .iter()
+            .map(|file| TakenOut {
+                path: mortise_core::app_relative(&root, &modules, &asked, &folders, &file.path)
+                    .unwrap_or_else(|| file.path.clone()),
+                replace: file.replace.clone(),
+            })
+            .collect();
+        if !files.is_empty() {
+            files.extend(taken_out.iter().map(|file| mortise_core::GeneratedFile {
+                path: file.path.clone(),
+                outcome: FileOutcome::Left,
+            }));
+        }
         let label = run.args.join(" ");
         let in_view = self.runner.shown == Shown::Open
             && self.current == Some(index)
@@ -1537,8 +1867,21 @@ impl MortiseApp {
         let failed_toast = |text: String, root: PathBuf| {
             Toast::failed(text).with_action(strings::SHOW_OUTPUT, ToastAction::ShowOutput(root))
         };
-        let root = self.settings.apps[index].root.clone();
         let open = &mut self.apps[index];
+        // A Replace of a left row of the result: that row changes, the others stay.
+        let row_taken = attached
+            && run
+                .row
+                .as_deref()
+                .is_some_and(|row| open.generate.replace_row(row, &files, fallback.clone()));
+        // A run with `--json` that read no file, such as one that failed at boot: the
+        // form keeps its line and says why the answer was not read (design D2).
+        if attached && !row_taken && files.is_empty() && fallback.is_some() {
+            let result =
+                GenerateResult::new(run.module.clone(), run.args.clone(), Vec::new(), false);
+            open.generate
+                .show_result(result.read_from_output(fallback.clone()));
+        }
 
         if run.generator == MODULE_MAKE {
             let names = typed_names(&run.args);
@@ -1551,8 +1894,9 @@ impl MortiseApp {
             open.live.refresh();
             if autoload_failed {
                 if attached {
-                    open.generate
-                        .show_result(GenerateResult::new(None, run.args, files, true));
+                    // Read from the lines when the answer was missing or cut: why.
+                    let result = GenerateResult::new(None, run.args, files, true);
+                    open.generate.show_result(result.read_from_output(fallback));
                 }
             } else if wrote {
                 open.select_new = Some(SelectNew {
@@ -1577,7 +1921,8 @@ impl MortiseApp {
             return;
         }
 
-        // No file read: no result; the drawer says what happened.
+        // No file read: no result; the drawer says what happened, and the form why
+        // the answer was not read.
         if files.is_empty() {
             if !done && !in_view {
                 let text = match end {
@@ -1622,9 +1967,10 @@ impl MortiseApp {
         if let Some(toast) = toast {
             self.toast = Some(toast);
         }
-        if attached {
+        if attached && !row_taken {
+            let result = GenerateResult::new(run.module, run.args, files, false);
             open.generate
-                .show_result(GenerateResult::new(run.module, run.args, files, false));
+                .show_result(result.read_from_output(fallback).with_taken_out(taken_out));
         }
     }
 
@@ -2090,8 +2436,29 @@ impl eframe::App for MortiseApp {
                 }
             }
         }
+        let mut read = Vec::new();
+        for (index, open) in self.apps.iter_mut().enumerate() {
+            if let (LiveState::Ready(app), Some(entry)) =
+                (open.live.state(), self.settings.apps.get(index))
+            {
+                open.catalog
+                    .look_up(self.data_dir.as_deref(), &entry.root, &app.package);
+            }
+            let Some(reading) = &mut open.reading else {
+                continue;
+            };
+            running = true;
+            if let Some(end) = reading.read.poll()
+                && let Some(reading) = open.reading.take()
+            {
+                read.push((index, reading.purpose, Ok(end)));
+            }
+        }
         for (index, act, modules_on) in ended {
             self.action_ended(index, &act, modules_on);
+        }
+        for (index, purpose, end) in read {
+            self.read_ended(index, purpose, end);
         }
         for (index, generating) in generated {
             self.generate_ended(index, generating);
@@ -2217,7 +2584,7 @@ impl eframe::App for MortiseApp {
                         app_url: app.as_ref().and_then(|app| app.app_url.clone()),
                         last: &mut open.last_answers,
                         php_test: &mut open.php_test,
-                        running: open.runs.running().map(strings::is_running),
+                        running: busy(&open.runs, open.reading.as_ref()).map(strings::is_running),
                     }
                 })
                 .collect();
@@ -2366,7 +2733,7 @@ impl eframe::App for MortiseApp {
                         actions_inputs: ActionsInputs {
                             app: entry.display_name(),
                             runner: entry.php.runner.as_ref(),
-                            busy: open.runs.running(),
+                            busy: busy(&open.runs, open.reading.as_ref()),
                             held,
                             keyboard: self.keyboard,
                             mac,
@@ -2374,8 +2741,27 @@ impl eframe::App for MortiseApp {
                         generate: &mut open.generate,
                         generate_inputs: GenerateInputs {
                             app: entry.display_name(),
+                            catalog: open.catalog.in_use(&app.package),
+                            catalog_read: open.catalog.picker(
+                                &app.package,
+                                matches!(
+                                    open.reading,
+                                    Some(PackageRead {
+                                        purpose: ReadFor::Catalog { .. },
+                                        ..
+                                    })
+                                ),
+                            ),
                             runner: entry.php.runner.as_ref(),
-                            busy: open.runs.running(),
+                            folder: entry.php.working_folder.as_deref(),
+                            busy: busy(&open.runs, open.reading.as_ref()),
+                            listing: matches!(
+                                open.reading,
+                                Some(PackageRead {
+                                    purpose: ReadFor::DryRun { .. },
+                                    ..
+                                })
+                            ),
                             held,
                             keyboard: self.keyboard,
                             mac,
@@ -2416,11 +2802,14 @@ impl eframe::App for MortiseApp {
                     }
                     self.work_rect = work_rect;
 
-                    // The drawer, after the workspace in the Tab order.
+                    // The drawer, after the workspace in the Tab order. A read keeps
+                    // the app busy too (design D3).
+                    let busy = open.busy().map(str::to_owned);
                     let inputs = runner_view::Inputs {
                         app: entry.display_name(),
                         runner: entry.php.runner.as_ref(),
                         snapshot: &app,
+                        busy: busy.as_deref(),
                         keyboard: self.keyboard,
                         mac,
                     };
@@ -2534,11 +2923,16 @@ impl eframe::App for MortiseApp {
                 .get(scope)
                 .map(|open| open.runs.history())
                 .unwrap_or_default();
+            let catalog = match (self.apps.get(scope), snapshot.as_deref()) {
+                (Some(open), Some(app)) => open.catalog.in_use(&app.package),
+                _ => Catalog::v13_3(),
+            };
             let source = palette::Source {
                 scope: snapshot.as_deref().map(|app| (scope, app)),
                 apps: &names,
                 recent,
                 history: &history,
+                catalog,
                 now: jiff::Timestamp::now().as_second(),
                 selected: self.apps.get(scope).and_then(|open| match &open.selection {
                     Selection::Module(name) => Some(name.as_str()),
@@ -2583,7 +2977,7 @@ impl eframe::App for MortiseApp {
                     if self
                         .apps
                         .get(index)
-                        .is_some_and(|open| open.runs.running().is_none())
+                        .is_some_and(|open| open.busy().is_none())
                     {
                         self.start_run(index, args);
                     }
@@ -2686,13 +3080,13 @@ impl eframe::App for MortiseApp {
                 SettingsAction::Changed { reread } => {
                     self.save();
                     if let Some(index) = reread {
-                        self.apps[index]
-                            .live
-                            .set_options(read_options(&self.settings.apps[index]));
+                        let open = &self.apps[index];
+                        open.live
+                            .set_options(read_options(&self.settings.apps[index], &open.package));
                     }
                 }
                 // An app that runs a command stays: Remove is off until it ends.
-                SettingsAction::RemoveApp(index) if self.apps[index].runs.running().is_some() => {}
+                SettingsAction::RemoveApp(index) if self.apps[index].busy().is_some() => {}
                 SettingsAction::RemoveApp(index) => {
                     let name = self.settings.apps[index].display_name().to_owned();
                     let dialog = Dialog::new(
@@ -2739,10 +3133,16 @@ impl eframe::App for MortiseApp {
     fn on_exit(&mut self) {
         for open in &self.apps {
             open.runs.stop();
+            if let Some(reading) = &open.reading {
+                reading.read.stop();
+            }
         }
         let deadline = std::time::Instant::now() + mortise_core::STOP_WAIT;
         for open in &mut self.apps {
             open.runs.wait(deadline);
+            if let Some(reading) = &mut open.reading {
+                reading.read.wait(deadline);
+            }
         }
     }
 
@@ -2763,7 +3163,7 @@ fn open_app(ctx: &egui::Context, entry: &AppEntry, data_dir: Option<&Path>) -> O
         live: LiveApp::open(
             entry.root.clone(),
             entry.codes.clone(),
-            read_options(entry),
+            read_options(entry, &PackageData::default()),
             move || {
                 ctx.request_repaint();
             },
@@ -2788,6 +3188,9 @@ fn open_app(ctx: &egui::Context, entry: &AppEntry, data_dir: Option<&Path>) -> O
         generate: GenerateState::default(),
         generate_run: None,
         select_new: None,
+        package: PackageData::default(),
+        reading: None,
+        catalog: AppCatalog::default(),
     }
 }
 
@@ -2871,20 +3274,6 @@ fn forced(runner: Option<&RunnerKind>, args: &[String]) -> bool {
     line.iter()
         .take_while(|word| *word != "--")
         .any(|word| word == "--force")
-}
-
-/// The names `module:make` words give: the words that are not options.
-fn typed_names(args: &[String]) -> Vec<String> {
-    let mut names = Vec::new();
-    let mut after_dashes = false;
-    for word in args.iter().skip(1) {
-        if word == "--" {
-            after_dashes = true;
-        } else if after_dashes || !word.starts_with('-') {
-            names.push(word.clone());
-        }
-    }
-    names
 }
 
 /// What a dialog waits to do.
@@ -2977,10 +3366,11 @@ fn index_edge(
 }
 
 /// What the user set for an app, as the reader takes it.
-fn read_options(entry: &AppEntry) -> ReadOptions {
+fn read_options(entry: &AppEntry, package: &PackageData) -> ReadOptions {
     ReadOptions {
         coverage_limit: entry.coverage_limit,
         coverage_report: entry.coverage_report.as_ref().map(PathBuf::from),
+        package: package.clone(),
     }
 }
 

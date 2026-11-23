@@ -349,6 +349,18 @@ pub fn ran(desk: &Desk, root: &Path, runs: &[(&str, i64)]) -> i64 {
     now_ms
 }
 
+/// Gives the app in `root` another version of `nwidart/laravel-modules` in its
+/// `composer.lock`, such as `v13.4.0` for the package data.
+pub fn package_version(root: &Path, version: &str) {
+    let lock = root.join("composer.lock");
+    let json = std::fs::read_to_string(&lock).unwrap();
+    let json = json.replace(
+        "\"version\": \"v13.3.0\"",
+        &format!("\"version\": \"{version}\""),
+    );
+    std::fs::write(lock, json).unwrap();
+}
+
 pub fn turn_off(root: &Path, module: &str) {
     let statuses = root.join("modules_statuses.json");
     let json = std::fs::read_to_string(&statuses).unwrap();

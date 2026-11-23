@@ -1,0 +1,13 @@
+{
+  "command": "php artisan module:lang --all --json --no-interaction --ansi",
+  "args": [
+    "module:lang",
+    "--all",
+    "--json"
+  ],
+  "made_with": "nwidart/laravel-modules 13.4.0, laravel/framework 13.43.0, PHP 8.4.27, macOS",
+  "exit": 1,
+  "stdout": "{\"modules\":[{\"name\":\"Billing\",\"checked\":false,\"locales\":{}},{\"name\":\"Checkout\",\"checked\":true,\"locales\":{\"en\":{\"missing_files\":[],\"missing_keys\":{}},\"fr\":{\"missing_files\":[],\"missing_keys\":{\"messages.php\":[\"tracking_code\",\"order_placed\"]}}}},{\"name\":\"Loyalty\",\"checked\":false,\"locales\":{}}]}\n",
+  "stderr": "\n  \u001b[37;44m INFO \u001b[39;49m Checking languages ...  \n\n  \u001b[37;44m INFO \u001b[39;49m No language files found in module Billing.  \n\n  \u001b[37;44m INFO \u001b[39;49m No language files found in module Loyalty.  \n\n",
+  "root": "/tmp/scratch-app"
+}

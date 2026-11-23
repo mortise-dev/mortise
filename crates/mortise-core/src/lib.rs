@@ -25,6 +25,7 @@ mod matcher;
 mod module;
 #[cfg(feature = "run")]
 mod output;
+mod package;
 mod php;
 mod rules;
 mod run;
@@ -44,10 +45,12 @@ pub use app::{
     AppSnapshot, CoverageReport, ReadError, ReadOptions, read_app, read_app_cached, read_app_env,
     read_app_with,
 };
+#[cfg(feature = "run")]
+pub use catalog::cache as catalog_cache;
 pub use catalog::{
     Action, Argument, Ask, Catalog, Context, Filled, Generator, GeneratorOption, Group,
     MODULE_MAKE, NameRule, OptionSet, Options, Plan, Target, asks_again, class_name_ok,
-    module_name_ok, plan, refuses, replace_words, shipped_for, typed_name_matches,
+    model_flag_of, module_name_ok, plan, refuses, replace_words, shipped_mark, typed_name_matches,
 };
 pub use clover::Coverage;
 pub use code::{ALL_CODE, propose_codes, propose_monogram};
@@ -67,8 +70,14 @@ pub use matcher::fuzzy;
 pub use module::{KindCount, Manifest, Module, ModuleState, Progress, ReadCache};
 #[cfg(feature = "run")]
 pub use output::{
-    FailedMigration, FileOutcome, GeneratedFile, MigrationCount, autoload_failed, failed_migration,
-    generated_files, migration_count, migration_file, prohibited,
+    FailedMigration, FileOutcome, GeneratedFile, MigrationCount, app_relative, autoload_failed,
+    failed_migration, generated_files, migration_count, prohibited, reported_files,
+};
+pub use package::{
+    DataError, FileAction, FileResult, GeneratorReport, LangModule, LangReport, Locale,
+    MigrationRow, MigrationStatus, ModuleMigrations, ModuleStatus, ModuleTests, PackageData,
+    RanMigration, ReportedFile, TestReport, document, generator_gives_data, gives_data, has_option,
+    migration_file, whole_document, with_dry_run, with_json,
 };
 pub use rules::{RULES_FILE, Rules, RulesError, RulesSource};
 #[cfg(feature = "run")]
@@ -79,8 +88,8 @@ pub use run::history;
 pub use run::history::OUTPUT_LIMIT;
 #[cfg(feature = "run")]
 pub use run::{
-    CommandLine, Detected, Failure, Ran, RecentRun, Run, RunEnd, RunEvent, Runs, STOP_WAIT,
-    StartError, Stream, TEST_LIMIT, TestOutcome, detect, herd_config_dir, recent_runs,
+    CommandLine, Detected, Failure, Ran, Read, ReadEnd, RecentRun, Run, RunEnd, RunEvent, Runs,
+    STOP_WAIT, StartError, Stream, TEST_LIMIT, TestOutcome, detect, herd_config_dir, recent_runs,
     stop_asks_first, test_php,
 };
 pub use run::{PhpSettings, RunnerKind};

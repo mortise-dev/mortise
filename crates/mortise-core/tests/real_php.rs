@@ -14,10 +14,12 @@ use std::sync::OnceLock;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use mortise_core::{
-    Action, Catalog, Context, FileOutcome, Filled, GeneratedFile, MODULE_MAKE, MigrationCount,
-    Options, PhpSettings, Plan, RunEnd, RunEvent, RunnerKind, Runs, STOP_WAIT, Target,
+    Action, Catalog, Context, FileAction, FileOutcome, FileResult, Filled, GeneratedFile,
+    GeneratorReport, LangReport, MODULE_MAKE, MigrationCount, MigrationStatus, Options,
+    PhpSettings, Plan, RunEnd, RunEvent, RunnerKind, Runs, STOP_WAIT, Stream, Target, TestReport,
     autoload_failed, failed_migration, generated_files, migration_count, read_app,
 };
+use serde::de::DeserializeOwned;
 
 /// The module the test makes and deletes: `MortiseCheck`, the process id and the
 /// time, so no other run or person holds the name. Letters and digits only, as
@@ -80,6 +82,66 @@ fn try_run(runs: &Runs, app: &Path, args: &[String]) -> Result<Vec<String>, Stri
     started.stop();
     started.wait(Instant::now() + STOP_WAIT);
     Err(format!("{args:?} did not end:\n{}", lines.join("\n")))
+}
+
+/// Runs `args` to its end and gives its exit code and the lines of standard
+/// output and of standard error, apart.
+fn run_split(runs: &Runs, app: &Path, args: &[&str]) -> (i32, Vec<String>, Vec<String>) {
+    let args: Vec<String> = args.iter().map(|word| word.to_string()).collect();
+    let started = runs
+        .start(app, &php(), &args, LIMIT)
+        .unwrap_or_else(|error| panic!("{args:?} did not start: {error:?}"));
+    let (mut out, mut err) = (Vec::new(), Vec::new());
+    for event in started.wait(Instant::now() + LIMIT + Duration::from_secs(10)) {
+        match event {
+            RunEvent::Line {
+                stream: Stream::Out,
+                text,
+                ..
+            } => out.push(text),
+            RunEvent::Line { text, .. } => err.push(text),
+            RunEvent::Cut => panic!("{args:?}: the output passed the limit"),
+            RunEvent::Ended(RunEnd::Exited {
+                code: Some(code), ..
+            }) => return (code, out, err),
+            RunEvent::Ended(end) => panic!("{args:?} ended with {end:?}"),
+        }
+    }
+    started.stop();
+    panic!("{args:?} did not end");
+}
+
+/// The document that a `--json` command wrote, the one line of standard output,
+/// read as Mortise reads it.
+fn document<T: DeserializeOwned>(out: &[String], err: &[String]) -> T {
+    assert_eq!(out.len(), 1, "stdout: {out:?}\nstderr: {err:?}");
+    mortise_core::document(out).unwrap_or_else(|error| panic!("{error:?}: {}", out[0]))
+}
+
+/// Every file under `folder` with its size and a hash of its contents.
+fn listing(folder: &Path) -> BTreeMap<PathBuf, (u64, u64)> {
+    use std::hash::{Hash, Hasher};
+    let mut found = BTreeMap::new();
+    let mut open = vec![folder.to_path_buf()];
+    while let Some(next) = open.pop() {
+        for entry in std::fs::read_dir(next).unwrap().flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                open.push(path);
+            } else {
+                let bytes = std::fs::read(&path).unwrap();
+                let mut hasher = std::collections::hash_map::DefaultHasher::new();
+                bytes.hash(&mut hasher);
+                found.insert(path, (bytes.len() as u64, hasher.finish()));
+            }
+        }
+    }
+    found
+}
+
+fn write(path: &Path, text: &str) {
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(path, text).unwrap();
 }
 
 /// Rolls back and deletes [`module`] when it drops, also after a failed assertion.
@@ -250,5 +312,140 @@ fn make_generate_migrate_and_delete_a_module() {
     run(&runs, &app, &delete);
     made.removed = true;
     assert!(!has_module(&app));
+    assert!(!module_dir(&app).exists());
+}
+
+#[test]
+#[ignore = "needs PHP and the app in MORTISE_REAL_APP"]
+fn json_output_of_the_package_commands() {
+    let app = app();
+    let runs = Runs::new();
+    let module = module();
+    assert!(
+        !has_module(&app) && !module_dir(&app).exists(),
+        "The app already has a module {module}. The test does not change a module it did \
+         not make: delete it, or use another app."
+    );
+    let mut made = Made {
+        runs: &runs,
+        app: &app,
+        removed: false,
+    };
+    run(
+        &runs,
+        &app,
+        &generator(MODULE_MAKE, &[("name", module)], &[], None),
+    );
+    let dir = module_dir(&app);
+
+    // The generators of the app, with the model's.
+    let (code, out, err) = run_split(&runs, &app, &["module:generators", "--json"]);
+    assert_eq!(code, 0, "{err:?}");
+    let catalog: Catalog = document(&out, &err);
+    assert!(catalog.get("module:make-model").is_some());
+
+    // A dry run lists the files and writes nothing.
+    let before = listing(&dir);
+    let (code, out, err) = run_split(
+        &runs,
+        &app,
+        &[
+            "module:make-model",
+            "Widget",
+            module,
+            "--migration",
+            "--dry-run",
+            "--json",
+        ],
+    );
+    let report: GeneratorReport = document(&out, &err);
+    assert_eq!(code, 0, "{err:?}");
+    assert!(report.dry_run);
+    assert_eq!(report.files.len(), 2, "{report:?}");
+    for file in &report.files {
+        assert!(file.path.contains(module), "{file:?}");
+        assert_eq!(
+            (file.action, file.exists, file.result),
+            (FileAction::Create, false, None)
+        );
+    }
+    assert_eq!(listing(&dir), before);
+
+    // The real run lists the same files as created.
+    let (code, out, err) = run_split(
+        &runs,
+        &app,
+        &[
+            "module:make-model",
+            "Widget",
+            module,
+            "--migration",
+            "--json",
+        ],
+    );
+    let report: GeneratorReport = document(&out, &err);
+    assert_eq!(code, 0, "{err:?}");
+    assert!(!report.dry_run);
+    assert_eq!(report.files.len(), 2, "{report:?}");
+    for file in &report.files {
+        assert_eq!(file.result, Some(FileResult::Created), "{file:?}");
+        assert!(Path::new(&file.path).is_file(), "{file:?}");
+    }
+
+    // The migration waits, then it has run in batch 1 or later.
+    let status = |runs: &Runs| {
+        let (code, out, err) = run_split(runs, &app, &["module:migrate-status", module, "--json"]);
+        assert_eq!(code, 0, "{err:?}");
+        let mut status: MigrationStatus = document(&out, &err);
+        assert_eq!(status.modules.len(), 1, "{status:?}");
+        (status.migration_table, status.modules.remove(0).migrations)
+    };
+    let (_, migrations) = status(&runs);
+    assert_eq!(migrations.len(), 1, "{migrations:?}");
+    assert!(!migrations[0].ran);
+    run(&runs, &app, &action(Action::Migrate));
+    let (table, migrations) = status(&runs);
+    assert!(table);
+    assert!(migrations[0].ran);
+    assert!(migrations[0].batch.is_some_and(|batch| batch >= 1));
+    run(&runs, &app, &action(Action::RollBack));
+
+    // One key of the fr file is missing.
+    write(
+        &dir.join("lang/en/messages.php"),
+        "<?php\n\nreturn ['welcome' => 'Welcome', 'bye' => 'Bye'];\n",
+    );
+    write(
+        &dir.join("lang/fr/messages.php"),
+        "<?php\n\nreturn ['welcome' => 'Bienvenue'];\n",
+    );
+    let (code, out, err) = run_split(&runs, &app, &["module:lang", module, "--json"]);
+    let report: LangReport = document(&out, &err);
+    assert_eq!(code, 1, "{err:?}");
+    let lang = &report.modules[0];
+    assert!(lang.checked);
+    assert_eq!(lang.locales["fr"].missing_keys["messages.php"], ["bye"]);
+
+    // One test passes.
+    write(
+        &dir.join("tests/Unit/SumTest.php"),
+        &format!(
+            "<?php\n\nnamespace Modules\\{module}\\Tests\\Unit;\n\nuse PHPUnit\\Framework\\TestCase;\n\n\
+             class SumTest extends TestCase\n{{\n    public function test_a_sum(): void\n    {{\n        \
+             $this->assertSame(4, 2 + 2);\n    }}\n}}\n"
+        ),
+    );
+    let (code, out, err) = run_split(&runs, &app, &["module:test", module, "--json"]);
+    let report: TestReport = document(&out, &err);
+    assert_eq!(code, 0, "{err:?}");
+    assert_eq!(
+        (report.passed, report.failed),
+        (Some(1), Some(0)),
+        "{report:?}"
+    );
+    assert!(report.modules[0].ran);
+
+    run(&runs, &app, &action(Action::DeleteModule));
+    made.removed = true;
     assert!(!module_dir(&app).exists());
 }

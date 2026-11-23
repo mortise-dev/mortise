@@ -713,6 +713,61 @@ fn generate() {
     }
 }
 
+/// The Generate tab of a 13.4 app: the generators read from the app and the files
+/// that a dry run lists (S9.1 to S9.4, deviations S44 and S55 to S57).
+#[test]
+fn generate_with_package_data() {
+    let mut shots = Shots::new();
+    for (theme, name) in THEMES {
+        shots.theme = name;
+        let desk = drawer_desk(theme, 1280.0, "", &[]);
+        common::package_version(&desk.path().join("shop-api"), "v13.4.0");
+        let mut harness = desk.start();
+
+        // S9.1: the picker after "Read the generators". The time of the read is cut out.
+        select(&mut harness, "Billing");
+        harness.get_by_role_and_label(Role::Tab, "Generate").click();
+        rest(&mut harness);
+        click(
+            &mut harness,
+            Role::Button,
+            "Read the generators of shop-api",
+        );
+        wait_for(&mut harness, "Read from shop-api at ");
+        let masks = varying(&harness, &["Read from shop-api at "]);
+        shots.take_part_masked(&mut harness, "s9.1-picker-read", WINDOW, &masks);
+
+        // S9.2: the model form with the three files of the dry run.
+        click(&mut harness, Role::ListBoxOption, "Model");
+        fill(&mut harness, "Model name", "PaymentIntent");
+        fill(
+            &mut harness,
+            "Fillable attributes",
+            "order_id,amount,currency,status",
+        );
+        click(&mut harness, Role::CheckBox, "Migration");
+        click(&mut harness, Role::CheckBox, "Policy");
+        click(&mut harness, Role::Button, "List files");
+        wait_for(&mut harness, "3 files, none exist yet");
+        shots.take(&mut harness, "s9.2-model-files");
+
+        // S9.3: the dry run finds the policy of Invoice.
+        fill(&mut harness, "Model name", "Invoice");
+        fill(&mut harness, "Fillable attributes", "");
+        click(&mut harness, Role::Button, "List files");
+        wait_for(&mut harness, "3 files, 1 exists already");
+        shots.take(&mut harness, "s9.3-file-exists");
+
+        // S9.4: the new module form with the files of the module.
+        chord(&mut harness, Key::N);
+        fill(&mut harness, "Module names", "Loyalty");
+        click(&mut harness, Role::RadioButton, "API");
+        click(&mut harness, Role::Button, "List files");
+        wait_for(&mut harness, "Modules/Loyalty does not exist yet");
+        shots.take(&mut harness, "s9.4-new-module-files");
+    }
+}
+
 // --- The runner drawer (S11.1) ---
 
 /// A run of the history: its artisan words, how it ended, its local clock time today

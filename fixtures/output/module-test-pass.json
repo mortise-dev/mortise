@@ -1,0 +1,13 @@
+{
+  "command": "php artisan module:test Checkout --json --no-interaction --ansi",
+  "args": [
+    "module:test",
+    "Checkout",
+    "--json"
+  ],
+  "made_with": "nwidart/laravel-modules 13.4.0, laravel/framework 13.43.0, PHP 8.4.27, macOS",
+  "exit": 0,
+  "stdout": "{\"modules\":[{\"name\":\"Checkout\",\"ran\":true,\"passed\":1,\"failed\":0,\"skipped\":0,\"exit_code\":0}],\"passed\":1,\"failed\":0,\"skipped\":0,\"exit_code\":0}\n",
+  "stderr": "\n  \u001b[30;42;1m PASS \u001b[39;49;22m\u001b[39m Modules\\Checkout\\Tests\\Unit\\OrderTest\u001b[39m\n  \u001b[32;1m\u2713\u001b[39;22m\u001b[90m \u001b[39m\u001b[90man order adds up\u001b[39m\n\n  \u001b[90mTests:\u001b[39m    \u001b[32;1m1 passed\u001b[39;22m\u001b[90m (1 assertions)\u001b[39m\n  \u001b[90mDuration:\u001b[39m \u001b[39m0.07s\u001b[39m\n\n",
+  "root": "/tmp/scratch-app"
+}

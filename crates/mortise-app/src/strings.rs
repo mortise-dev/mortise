@@ -2591,8 +2591,52 @@ pub const FIND_A_GENERATOR: &str = "Find a generator";
 /// Not in the spec: the line of the picker under "All modules", which lists New module only.
 pub const SELECT_A_MODULE_TO_GENERATE: &str =
     "Select a module in the index to generate files in it.";
-/// The mark of the picker when the app has another version than the shipped catalog.
-pub const FOR_PACKAGE_13_3: &str = "for nwidart/laravel-modules 13.3";
+/// The mark of the picker when the app has another version than the shipped
+/// catalog: `for nwidart/laravel-modules 13.3`.
+pub fn for_package(version: &str) -> String {
+    format!("for nwidart/laravel-modules {version}")
+}
+
+/// Not in the spec: the button of the picker that reads the generators of a 13.4
+/// app (design D4): `Read the generators of shop-api`.
+pub fn read_generators(app: &str) -> String {
+    format!("Read the generators of {app}")
+}
+
+/// Not in the spec: the button that reads the generators again after a read.
+pub const READ_AGAIN: &str = "Read again";
+
+/// Not in the spec: the place of the data while a read of it runs (design D3).
+pub const READING: &str = "Reading";
+
+/// Not in the spec: the picker after a read of the generators, `Read from shop-api at 14:05.`
+pub fn read_from(app: &str, clock: &str) -> String {
+    format!("Read from {app} at {clock}.")
+}
+
+/// Not in the spec: the picker after a read of the generators that gave none (design D2).
+pub fn generators_not_read(app: &str, reason: &str) -> String {
+    format!(
+        "Mortise could not read the generators of {app}: \"{reason}\". The list is the one \
+         shipped for 13.4."
+    )
+}
+
+/// Not in the spec: the reason in quotes of a read that gave no document (design D2):
+/// serde's message for a malformed one, [`ANSWER_CUT`] for a cut one, else the last
+/// line of standard error, else how the read ended.
+pub fn no_document(end: &mortise_core::ReadEnd, error: &mortise_core::DataError) -> String {
+    use mortise_core::DataError;
+    match error {
+        DataError::Malformed(message) => message.clone(),
+        DataError::Cut => ANSWER_CUT.to_owned(),
+        DataError::Missing => end.error_line().unwrap_or_else(|| ended_as(end.end)),
+    }
+}
+
+/// Not in the spec: the reason of a document that was too long to keep whole (design D2).
+pub const ANSWER_CUT: &str =
+    "the answer was cut: Mortise keeps 64 KiB of a line and 1 MB of output";
 
 /// `41 generators for Billing, and New module. Enter opens the form.`
 pub fn generators_for(n: usize, module: &str) -> String {
@@ -2768,6 +2812,142 @@ pub const THEN_DUMP_AUTOLOAD: &str = "Then the command runs composer dump-autolo
 /// Not in the spec: the button of a file generator, without a count (deviation S44).
 pub const CREATE_FILES: &str = "Create files";
 pub const CREATE_MODULE: &str = "Create module";
+
+/// The heading of the file list of a 13.4 app (S9.2).
+pub const FILES_THIS_CREATES: &str = "Files this creates";
+/// Not in the spec: the button that starts the dry run of the form (design D5).
+pub const LIST_FILES: &str = "List files";
+/// Not in the spec: the button beside the head of a file list that drops the list, so
+/// that "List files" and the line of its dry run come back for a fresh answer.
+pub const LIST_FILES_AGAIN: &str = "List files again";
+/// A file of the list that exists (S9.3).
+pub const EXISTS: &str = "exists";
+
+/// The head of a file list: `3 files, none exist yet`, `3 files, 1 exists already`
+/// (S9.2, S9.3). More than one file that exists, and a list without files, are not
+/// in the spec.
+pub fn files_head(n: usize, exist: usize) -> String {
+    match (n, exist) {
+        (0, _) => "No files".to_owned(),
+        (n, 0) => format!("{}, none exist yet", files(n as u64)),
+        (n, 1) => format!("{}, 1 exists already", files(n as u64)),
+        (n, exist) => format!("{}, {exist} exist already", files(n as u64)),
+    }
+}
+
+/// The head of the file list of `module:make` (S9.4): `Modules/Loyalty does not exist
+/// yet`, or, with the module in the snapshot, `Modules/Loyalty exists with 23 files`.
+pub fn module_folder_head(folder: &str, files_count: Option<u64>) -> String {
+    match files_count {
+        Some(n) => format!("{folder} exists with {}", files(n)),
+        None => format!("{folder} does not exist yet"),
+    }
+}
+
+/// The button of a file generator with a file list: `Create 3 files` (S9.2).
+pub fn create_n_files(n: usize) -> String {
+    format!("Create {}", files(n as u64))
+}
+
+/// The button after a flag was taken out of the command: `Create the other 2 files`
+/// (S9.3). One file is not in the spec.
+pub fn create_other_files(n: usize) -> String {
+    match n {
+        1 => "Create the other file".to_owned(),
+        n => format!("Create the other {n} files"),
+    }
+}
+
+/// Not in the spec: the name a screen reader says for the mark of a box whose file
+/// exists, `Policy exists`.
+pub fn flag_exists(label: &str) -> String {
+    format!("{label} {EXISTS}")
+}
+
+/// What a flag of `module:make-model` creates, in a sentence: `policy`.
+pub fn model_call_kind(flag: &str) -> &'static str {
+    match flag {
+        "controller" => "controller",
+        "factory" => "factory",
+        "request" => "request",
+        "resource" => "resource",
+        "seed" => "seeder",
+        _ => "policy",
+    }
+}
+
+/// A flag taken out of the command because its file exists (S9.3).
+pub fn taken_out(path: &str, kind: &str) -> String {
+    format!(
+        "{path} exists. A generator does not write over a file, so the {kind} was taken out \
+         of the command. Create it afterwards with \"Replace\" if you want the generated one."
+    )
+}
+
+/// Not in the spec: the factory of a model exists. Its flag stays, as the model's
+/// stub reads it (S9.3).
+pub fn factory_kept(path: &str) -> String {
+    format!(
+        "{path} exists. The model uses its factory, so the factory stays in the command. The \
+         run leaves the file as it is."
+    )
+}
+
+/// Not in the spec: the generator's own file exists (design D5). `replaceable`: the
+/// form offers Replace for it.
+pub fn own_file_exists(path: &str, replaceable: bool) -> String {
+    if replaceable {
+        format!(
+            "{path} exists. The generator does not write over a file. Choose another name, \
+             or replace the file."
+        )
+    } else {
+        format!("{path} exists. The generator does not write over a file. Choose another name.")
+    }
+}
+
+/// Not in the spec: an error of the dry run, in quotes, under the list (design D5).
+pub fn quoted(text: &str) -> String {
+    format!("\"{}\"", text.trim())
+}
+
+/// Not in the spec: a dry run that gave no document (design D2).
+pub fn dry_run_failed(reason: &str) -> String {
+    format!("The dry run gave no file list: \"{reason}\".")
+}
+
+/// Not in the spec: a result read from the output lines because the run gave no
+/// document (design D2).
+pub fn read_from_output(reason: &str) -> String {
+    format!("Read from the output: the package's answer was \"{reason}\".")
+}
+
+/// Not in the spec: why a run gave no document. serde's message for a malformed one,
+/// else how the run ended.
+pub fn no_run_document(error: &mortise_core::DataError, end: mortise_core::RunEnd) -> String {
+    use mortise_core::{DataError, RunEnd};
+    match (error, end) {
+        (DataError::Malformed(message), _) => message.clone(),
+        (DataError::Cut, _) => ANSWER_CUT.to_owned(),
+        (DataError::Missing, RunEnd::Exited { code: Some(0), .. }) => {
+            "nothing on standard output".to_owned()
+        }
+        (DataError::Missing, end) => ended_as(end),
+    }
+}
+
+/// How a command ended, in a reason: `exit code 1`.
+fn ended_as(end: mortise_core::RunEnd) -> String {
+    use mortise_core::RunEnd;
+    match end {
+        RunEnd::Exited {
+            code: Some(code), ..
+        } => format!("exit code {code}"),
+        RunEnd::Exited { code: None, .. } => "ended by a signal".to_owned(),
+        RunEnd::Stopped { limit: Some(_), .. } => "stopped at the time limit".to_owned(),
+        RunEnd::Stopped { limit: None, .. } => "stopped".to_owned(),
+    }
+}
 
 /// The error of a class name: `A model name starts with a letter and has no spaces.
 /// Write PaymentIntent, not "payment intent".` The example is the typed name as a

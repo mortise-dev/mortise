@@ -62,9 +62,8 @@ pub struct History {
 impl History {
     /// The history of the app in `app`. Nothing is created until `record`.
     pub fn open(data_dir: &Path, app: &Path) -> Self {
-        let key = format!("{:016x}", fnv1a(app.to_string_lossy().as_bytes()));
         Self {
-            dir: data_dir.join("runs").join(key),
+            dir: data_dir.join("runs").join(app_key(app)),
             app: app.to_owned(),
         }
     }
@@ -158,6 +157,12 @@ pub fn data_dir() -> Option<PathBuf> {
                 .to_owned(),
         ),
     }
+}
+
+/// The name Mortise's data folder gives the app in `app`: the same for the
+/// history of runs and for the cache of generators.
+pub(crate) fn app_key(app: &Path) -> String {
+    format!("{:016x}", fnv1a(app.to_string_lossy().as_bytes()))
 }
 
 /// FNV-1a, 64 bits. It is stable across releases and needs no crate.

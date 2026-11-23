@@ -11,6 +11,7 @@ use eframe::egui::{Key, Modifiers, Role};
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT as _, Queryable as _};
 use mortise_app::app::MortiseApp;
+use mortise_app::runner_view::AppRuns;
 use mortise_core::RunnerKind;
 use mortise_core::history::{Ended, Entry, History};
 
@@ -310,4 +311,25 @@ fn a_command_that_does_not_start_offers_the_settings_of_php() {
             .as_deref(),
         Some("mortise-no-such-php artisan")
     );
+}
+
+#[test]
+fn the_end_of_a_run_gives_standard_output_apart() {
+    let root = common::fixture("shop-api");
+    let php = mortise_core::PhpSettings {
+        runner: Some(RunnerKind::Custom { line: fake("") }),
+        ..Default::default()
+    };
+    let args = ["module:lang", "Checkout", "--json"]
+        .map(String::from)
+        .to_vec();
+    let mut runs = AppRuns::open(None, &root);
+    runs.start(&mortise_core::Runs::new(), &root, &php, args);
+    runs.wait(Instant::now() + Duration::from_secs(10));
+    let ended = runs.ended().expect("the run ended");
+    let (lines, stdout) = (ended.lines, ended.stdout);
+    // The drawer shows both streams; standard output holds the document alone.
+    assert!(lines.iter().any(|line| line.contains("Checking languages")));
+    assert_eq!(stdout.len(), 1);
+    assert!(stdout[0].starts_with(r#"{"modules":"#), "{stdout:?}");
 }

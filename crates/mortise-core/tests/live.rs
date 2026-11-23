@@ -6,7 +6,10 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, channel};
 use std::time::{Duration, Instant};
 
-use mortise_core::{AppSnapshot, LiveApp, LiveState, ModuleState, ReadError, ReadOptions};
+use mortise_core::{
+    AppSnapshot, LiveApp, LiveState, ModuleMigrations, ModuleState, PackageData, RanMigration,
+    ReadError, ReadOptions,
+};
 
 fn fixture(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -307,6 +310,7 @@ fn other_options_are_read_with_at_once() {
     opened.live.set_options(ReadOptions {
         coverage_limit: 30,
         coverage_report: None,
+        ..ReadOptions::default()
     });
     let app = opened.wait_for("the lower limit", |app| app.coverage_limit == 30);
     assert_eq!(app.findings.warnings(), 0);
@@ -320,6 +324,7 @@ fn other_options_are_read_with_at_once() {
     opened.live.set_options(ReadOptions {
         coverage_limit: 30,
         coverage_report: Some("other.xml".into()),
+        ..ReadOptions::default()
     });
     let app = opened.wait_for("the named report", |app| {
         app.coverage_report
@@ -328,6 +333,26 @@ fn other_options_are_read_with_at_once() {
     });
     assert_eq!(app.coverage().unwrap().percent(), Some(10));
     assert_eq!(app.findings.warnings(), 1);
+
+    // A migration state is kept in the snapshot, with the tables its ran migrations create.
+    let billing = ModuleMigrations {
+        ran: vec![RanMigration {
+            name: "2026_01_10_000000_create_invoices_table".into(),
+            batch: 1,
+        }],
+        ..ModuleMigrations::default()
+    };
+    opened.live.set_options(ReadOptions {
+        package: PackageData {
+            migrations: BTreeMap::from([("Billing".to_string(), billing)]),
+            ..PackageData::default()
+        },
+        ..ReadOptions::default()
+    });
+    let app = opened.wait_for("the migration state", |app| {
+        !app.package_data.migrations.is_empty()
+    });
+    assert_eq!(app.package_data.migrations["Billing"].tables, ["invoices"]);
 }
 
 #[test]

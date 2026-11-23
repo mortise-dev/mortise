@@ -247,6 +247,10 @@ struct Recording {
     exit: u8,
     stdout: String,
     stderr: String,
+    /// The folder of the scratch app, as the package printed it in paths. An old
+    /// recording has none.
+    #[serde(default)]
+    root: Option<String>,
 }
 
 /// The fake artisan.
@@ -260,7 +264,8 @@ struct Recording {
 /// `--version` prints the version with the number in green and ends with 0.
 /// `fail` prints the error of a stopped Docker service on stderr and ends with 1.
 /// `wait` sleeps for 60 seconds. `flood` prints 2 MiB of short lines on stderr and
-/// one line of 2 MiB with no newline on stdout, and ends with 0.
+/// one line of 2 MiB on stdout, and ends with 0. `long` prints one
+/// line of 70 000 bytes on stdout whose first 64 KiB read as the JSON document `{}`.
 /// `ask` asks for a name and ends with 1 when its input ends.
 /// `ticks` prints a line every 50 ms for 60 seconds, and ends when a write fails.
 /// `orphan` starts a copy of itself with `wait` on the same pipes, prints its pid
@@ -269,7 +274,9 @@ struct Recording {
 /// `orphan-quiet` is `orphan-wait` with a child that ignores SIGTERM and has
 /// closed its pipes, so only a kill of the group ends it.
 /// Any other words replay the recording in `fixtures/output` whose `args` they are,
-/// without `--no-interaction` and `--ansi`. With no recording, they are a command
+/// without `--no-interaction` and `--ansi`. When the recording has a `root`, every
+/// `root` in its output becomes the working folder, written with `/`, so the paths
+/// are those of the app the test runs in. With no recording, they are a command
 /// artisan does not know.
 pub fn fake_artisan_main() -> ExitCode {
     let mut words: Vec<String> = std::env::args().skip(1).collect();
@@ -343,7 +350,17 @@ fn fake_case(words: &[String]) -> ExitCode {
             let lines = "Laravel Framework 13.2.0\n".repeat(SIZE / 25);
             // A reader that stops reading would block one of these writes.
             let _ = std::io::stderr().lock().write_all(lines.as_bytes());
-            let _ = std::io::stdout().lock().write_all(&vec![b'x'; SIZE]);
+            // The line ends with a newline. A reader of a line without one waits for the
+            // end of the pipe, and on macOS another test's child can hold the pipe open:
+            // std marks a new pipe close-on-exec only after it made it, so a child that
+            // starts in between keeps a copy of its end.
+            let mut line = vec![b'x'; SIZE];
+            line.push(b'\n');
+            let _ = std::io::stdout().lock().write_all(&line);
+            ExitCode::SUCCESS
+        }
+        Some("long") => {
+            println!("{{}}{}x", " ".repeat(70_000));
             ExitCode::SUCCESS
         }
         Some("wait") => {
@@ -406,7 +423,7 @@ fn fake_case(words: &[String]) -> ExitCode {
 }
 
 /// Prints the recording whose `args` are `words` without `--no-interaction` and
-/// `--ansi`, and ends with its code.
+/// `--ansi`, with its `root` turned into the working folder, and ends with its code.
 fn replay(words: &[String]) -> ExitCode {
     let words: Vec<&str> = words
         .iter()
@@ -429,9 +446,21 @@ fn replay(words: &[String]) -> ExitCode {
             continue;
         };
         if recording.args == words {
-            let _ = std::io::stdout().write_all(recording.stdout.as_bytes());
+            let (stdout, stderr) = match recording.root.as_deref() {
+                Some(root) if !root.is_empty() => {
+                    let here = std::env::current_dir()
+                        .map(|folder| folder.to_string_lossy().replace('\\', "/"))
+                        .unwrap_or_default();
+                    (
+                        recording.stdout.replace(root, &here),
+                        recording.stderr.replace(root, &here),
+                    )
+                }
+                _ => (recording.stdout, recording.stderr),
+            };
+            let _ = std::io::stdout().write_all(stdout.as_bytes());
             let _ = std::io::stdout().flush();
-            let _ = std::io::stderr().write_all(recording.stderr.as_bytes());
+            let _ = std::io::stderr().write_all(stderr.as_bytes());
             return ExitCode::from(recording.exit);
         }
     }
