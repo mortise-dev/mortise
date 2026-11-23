@@ -119,9 +119,9 @@ struct OpenApp {
     package: PackageData,
     /// The read of package data that runs, if one does (design D3).
     reading: Option<PackageRead>,
-    /// Why the last read of the migration state gave nothing, with its target. The
-    /// state box says so; the state stays as it was (design D2).
-    migration_error: Option<(Target, String)>,
+    /// Why the last read of the migration state gave nothing, with its target and
+    /// connection. The state box says so; the state stays as it was (design D2).
+    migration_error: Option<actions_view::StateError>,
     /// The generators read from the app (P3, design D4).
     catalog: AppCatalog,
 }
@@ -1154,7 +1154,11 @@ impl MortiseApp {
         let status = match status {
             Ok(status) => status,
             Err(reason) => {
-                open.migration_error = Some((target, reason));
+                open.migration_error = Some(actions_view::StateError {
+                    target,
+                    connection: connection.trim().to_owned(),
+                    reason,
+                });
                 return;
             }
         };

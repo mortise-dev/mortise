@@ -731,12 +731,22 @@ fn the_migration_state_is_read_when_asked_and_forgotten_after_a_migrate() {
             "migrate-status --no-interaction --ansi Checkout --database=testing --json",
         )
         .unwrap();
+    // A failed read of that connection says so there only.
+    harness
+        .get_by_role_and_label(Role::Button, "Read migration state")
+        .click();
+    wait_for(&mut harness, "Mortise could not read the migration state");
     harness
         .get_by_role_and_label(Role::TextInput, "Database connection")
         .focus();
     harness.key_press_modifiers(Modifiers::COMMAND, Key::A);
     harness.key_press(Key::Backspace);
     harness.run_steps(3);
+    assert!(
+        harness
+            .query_by_label_contains("could not read the migration state")
+            .is_none()
+    );
 
     // A migrate forgets the state of its module, and no read follows it.
     select(&mut harness, "Migrate");

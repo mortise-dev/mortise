@@ -134,8 +134,17 @@ pub struct ActionsInputs<'a> {
     pub mac: bool,
     /// The target of the read of the migration state that runs, if one does (design D7).
     pub reading_state: Option<&'a Target>,
-    /// Why the last read of the migration state gave nothing, with its target.
-    pub state_error: Option<&'a (Target, String)>,
+    /// Why the last read of the migration state gave nothing.
+    pub state_error: Option<&'a StateError>,
+}
+
+/// Why a read of the migration state gave nothing (design D2, D7). The state box of
+/// the same target and connection says so.
+pub struct StateError {
+    pub target: Target,
+    /// The connection of the read: its `--database`, empty for the default.
+    pub connection: String,
+    pub reason: String,
 }
 
 /// The connection `action` runs on with `options`: its `--database`, or empty for
@@ -1042,8 +1051,13 @@ fn state_box(
         rows.push(StateRow::Text(strings::NOT_READ_YET.to_owned()));
     }
     // A read that gave nothing says why and keeps the state it had (design D2).
-    if let Some((_, reason)) = inputs.state_error.filter(|(failed, _)| failed == target) {
-        rows.push(StateRow::Text(strings::migration_state_failed(reason)));
+    if let Some(failed) = inputs
+        .state_error
+        .filter(|failed| failed.target == *target && failed.connection == connection)
+    {
+        rows.push(StateRow::Text(strings::migration_state_failed(
+            &failed.reason,
+        )));
     }
 
     // The sentences wrap; a migration is one line.

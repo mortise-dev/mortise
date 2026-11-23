@@ -592,6 +592,8 @@ accessible name and a 24 px target (`tests/accessibility.rs`).
 - On a 13.4 app the row detail of Run tests under "All modules" counts the tests of every module, on
   or off, as its panel and `module:test --all` do (`tests_counted`). Before 13.4 both count the modules
   that are on.
+- A failed read of the migration state keeps its target and connection. The state box shows its reason
+  only for the same target and connection: going back to another connection shows that one's state alone.
 
 ## Risks / Trade-offs
 
