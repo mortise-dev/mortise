@@ -426,6 +426,8 @@ accessible name and a 24 px target (`tests/accessibility.rs`).
   gives data and ships the generator (a name of `Catalog::v13_4`, `module:make` among them). The
   package honours `--dry-run` only when it adds the option itself, so an app's own generator runs as
   before 13.4: no dry run, no `--json`, its result read from the output.
+- `replace_words` gives `None` for a generator the package does not ship: it may call another
+  generator and pass `--force` on. The form and the result then offer "Open the existing file" only.
 
 ## Risks / Trade-offs
 

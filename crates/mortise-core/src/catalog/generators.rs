@@ -11,7 +11,7 @@ use std::sync::OnceLock;
 use serde::{Deserialize, Serialize};
 
 use crate::composer::Version;
-use crate::package::gives_data;
+use crate::package::{gives_data, ships};
 
 /// The artisan name of the generator of a new module.
 pub const MODULE_MAKE: &str = "module:make";
@@ -449,6 +449,8 @@ const MODEL_CALLS: [(&str, &str, &str, &str); 6] = [
 ///   factory too: it goes, and only the model's file is written.
 /// - A migration, `module:make-component` and `module:make`: `None`. A migration
 ///   gets a new date in its file name, so `--force` would not write the same file.
+/// - A generator the package does not ship (an app's own): `None`. It may call
+///   another generator and pass `--force` on, so it could write over more than `left`.
 ///
 /// These are names the package passes, not paths: the generator writes where the
 /// package says.
@@ -461,6 +463,9 @@ pub fn replace_words(
     package: &Version,
 ) -> Option<Vec<String>> {
     let generator = catalog.get(run.first()?)?;
+    if !ships(&generator.name) {
+        return None;
+    }
     match generator.name.as_str() {
         MAKE_MODEL => replace_from_model(catalog, generator, run, left, package),
         MODULE_MAKE | "module:make-component" | "module:make-migration" => None,
@@ -699,6 +704,7 @@ mod tests {
                 &[],
                 &[],
             ),
+            file("app:make-widget", "name"),
         ])
     }
 
@@ -975,6 +981,11 @@ mod tests {
         // A generator without `--force` cannot replace.
         assert_eq!(
             replace(&["module:make-test", "PostTest"], "PostTest.php"),
+            None
+        );
+        // An app's own generator may pass `--force` to the generators it calls.
+        assert_eq!(
+            replace(&["app:make-widget", "Widget", "Billing"], "Widget.php"),
             None
         );
 
