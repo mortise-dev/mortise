@@ -105,9 +105,11 @@ pub fn module_name_ok(name: &str) -> bool;
 ```
 
 `words` gives: the artisan name; the arguments in their order (the `module` argument from `module`; an
-array argument split on white space into one word each; an empty optional argument left out); then the
-options in their order: `--<name>` for a flag that is on, `--<name>=<value>` for a value, trimmed, left
-out when empty. Each value is one word, so nothing is split or read by a shell. Long names only, as S9.2
+array argument split on white space into one word each; an empty optional argument left out); then
+`--<name>` for each flag that is on, in the order of the options; then `--<name>=<value>` for each value,
+trimmed, left out when empty, in the order of the options. Flags come before values because S9.2 draws
+`--migration --policy --fillable=...`, while the package lists `fillable` between `controller` and
+`factory`. Each value is one word, so nothing is split or read by a shell. Long names only, as S9.2
 draws them. A flag or value the generator does not have is ignored.
 
 For `module:make-model`, `--all` stands in for the seven flags when all seven are on or `all` is on
@@ -166,6 +168,10 @@ pub fn replace_words(catalog: &Catalog, run: &[String], left: &str) -> Option<Ve
   `FactoryMakeCommand` writes for `<Model>` (task 14.2 reads it). The model file (`<Model>`, and not
   the factory) gives the run's words without the seven flags and `--all`, and with `--force`.
 - Anything else, and a migration: `None`. The result then offers "Open the existing file" only.
+
+The model makes its name studly (`Str::studly`) before it adds a suffix, so the comparison uses the
+studly name, and a call matches only when the run carried its flag or `--all`.
+`module:make-migration` gives `None` too: its file name gets a new date on each run.
 
 These are the names the package passes, not paths: Mortise never builds a file path. A wrong match
 cannot write elsewhere: the generator writes where the package says, and the dialog shows the line.

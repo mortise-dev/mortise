@@ -6,10 +6,10 @@
 
 ## 2. Core (14.1 sonnet, 14.2 opus, 14.3 sonnet, in parallel)
 
-- [ ] 2.1 (14.1) Write `crates/mortise-core/src/catalog/v13_3.json`: the 42 generators of 13.3.0 in the shape of P3 (D1), read from the package source at the tag `v13.3.0`. Verify it is valid JSON, has 42 entries sorted by name, and each entry's arguments and options match the source of its command
-- [ ] 2.2 (14.2) Add `catalog/generators.rs` with the types, `Catalog::from_json`, `v13_3`, `get`, `grouped`, `shipped_for` (D1), `Filled`, `words`, the name rules (D2) and `replace_words` (D4). Verify with the tests of D8, each rule once
-- [ ] 2.3 (14.3) Record the outputs of D8 into `fixtures/output/` from a scratch app with 13.3.0. Verify each file parses, its `args` are unique across the folder, and the fake artisan prints it
-- [ ] 2.4 (14.3) Add `output::generated_files` and `autoload_failed` (D3). Verify with tests on the recordings: created, left, replaced and the model run that left a file
+- [x] 2.1 (14.1) Write `crates/mortise-core/src/catalog/v13_3.json`: the 42 generators of 13.3.0 in the shape of P3 (D1), read from the package source at the tag `v13.3.0`. Verify it is valid JSON, has 42 entries sorted by name, and each entry's arguments and options match the source of its command
+- [x] 2.2 (14.2) Add `catalog/generators.rs` with the types, `Catalog::from_json`, `v13_3`, `get`, `grouped`, `shipped_for` (D1), `Filled`, `words`, the name rules (D2) and `replace_words` (D4). Verify with the tests of D8, each rule once
+- [x] 2.3 (14.3) Record the outputs of D8 into `fixtures/output/` from a scratch app with 13.3.0. Verify each file parses, its `args` are unique across the folder, and the fake artisan prints it
+- [x] 2.4 (14.3) Add `output::generated_files` and `autoload_failed` (D3). Verify with tests on the recordings: created, left, replaced and the model run that left a file
 
 ## 3. Interface (14.4 opus, after 2)
 
