@@ -1559,7 +1559,7 @@ impl MortiseApp {
         };
         let label = act.args.join(" ");
         if let RunEnd::Exited { code: Some(0), .. } = end {
-            if act.args.iter().any(|word| word == "--pretend") {
+            if mortise_core::has_option(&act.args, "--pretend") {
                 return;
             }
             let count = mortise_core::migration_count(lines);
@@ -1770,11 +1770,7 @@ impl MortiseApp {
         let done = matches!(end, RunEnd::Exited { code: Some(0), .. });
         // A run with `--json` gives its files in its answer (P5); without one they are
         // read from the lines, and the result says why (design D6).
-        let json = run
-            .args
-            .iter()
-            .take_while(|word| *word != "--")
-            .any(|word| word == "--json");
+        let json = mortise_core::has_option(&run.args, "--json");
         let answer = json.then(|| {
             mortise_core::whole_document::<mortise_core::GeneratorReport>(stdout, stdout_cut)
         });

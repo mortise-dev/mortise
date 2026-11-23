@@ -1586,7 +1586,7 @@ fn run_keys(mac: bool) -> String {
 /// The words a run carries: on a 13.4 app with `--json`, once, so that its result
 /// is read from its answer (design D6).
 fn run_words(app: &AppSnapshot, words: Vec<String>) -> Vec<String> {
-    if gives_data(&app.package) && !words.iter().any(|word| word == "--json") {
+    if gives_data(&app.package) {
         with_json(words)
     } else {
         words

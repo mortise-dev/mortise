@@ -68,12 +68,23 @@ pub fn whole_document<T: DeserializeOwned>(stdout: &[String], cut: bool) -> Resu
     document(stdout)
 }
 
-/// The artisan words with `--json`, before a `--` when the words hold one.
+/// True when the artisan words hold `option` before a `--`. A word after `--` is a
+/// name, such as a module named `--json`.
+pub fn has_option(words: &[String], option: &str) -> bool {
+    words
+        .iter()
+        .take_while(|word| *word != "--")
+        .any(|word| word == option)
+}
+
+/// The artisan words with `--json`, before a `--` when the words hold one. Words
+/// that hold it already stay as they are.
 pub fn with_json(words: Vec<String>) -> Vec<String> {
     with_flags(words, &["--json"])
 }
 
 /// The artisan words with `--dry-run --json`, before a `--` when the words hold one.
+/// A flag the words hold already is not added again.
 pub fn with_dry_run(words: Vec<String>) -> Vec<String> {
     with_flags(words, &["--dry-run", "--json"])
 }
@@ -83,7 +94,12 @@ fn with_flags(mut words: Vec<String>, flags: &[&str]) -> Vec<String> {
         .iter()
         .position(|word| word == "--")
         .unwrap_or(words.len());
-    words.splice(at..at, flags.iter().map(|flag| flag.to_string()));
+    let added: Vec<String> = flags
+        .iter()
+        .filter(|flag| !has_option(&words, flag))
+        .map(|flag| flag.to_string())
+        .collect();
+    words.splice(at..at, added);
     words
 }
 
@@ -459,6 +475,15 @@ mod tests {
         assert_eq!(
             with_dry_run(words(&["module:make", "--", "--force"])),
             words(&["module:make", "--dry-run", "--json", "--", "--force"])
+        );
+        // Once only, and a module named `--json` after `--` is not the option.
+        assert_eq!(
+            with_json(words(&["module:make-model", "Invoice", "--json"])),
+            words(&["module:make-model", "Invoice", "--json"])
+        );
+        assert_eq!(
+            with_json(words(&["module:make-model", "Invoice", "--", "--json"])),
+            words(&["module:make-model", "Invoice", "--json", "--", "--json"])
         );
     }
 
