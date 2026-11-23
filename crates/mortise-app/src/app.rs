@@ -3505,7 +3505,9 @@ fn system_reduces_motion() -> bool {
 }
 
 /// The toast of Run tests from the document of `module:test --json` on `target`
-/// (design D8), or `None` when the document has no counts.
+/// (design D8), or `None` when the document has no counts. A module that ran
+/// without counts, such as when PHPUnit stopped before its report, leaves the
+/// totals short: then there is no count either.
 fn tests_toast(report: &TestReport, target: &Target) -> Option<String> {
     let object = match target {
         Target::Module(name) => {
@@ -3523,6 +3525,13 @@ fn tests_toast(report: &TestReport, target: &Target) -> Option<String> {
             n => strings::modules(n),
         },
     };
+    if report
+        .modules
+        .iter()
+        .any(|module| module.ran && (module.passed.is_none() || module.failed.is_none()))
+    {
+        return None;
+    }
     let (passed, failed) = (report.passed?, report.failed?);
     if failed == 0 {
         return Some(strings::tests_passed(passed, &object));
@@ -3804,10 +3813,14 @@ mod tests {
             tests_toast(&recorded("module-test-fail"), &checkout).as_deref(),
             Some("1 of 1 test failed in Checkout.")
         );
+        let mut all = recorded("module-test-all");
         assert_eq!(
-            tests_toast(&recorded("module-test-all"), &Target::All).as_deref(),
+            tests_toast(&all, &Target::All).as_deref(),
             Some("1 of 2 tests failed in 3 modules.")
         );
+        // A module that ran without counts leaves the totals short: no count.
+        all.modules[1].passed = None;
+        assert_eq!(tests_toast(&all, &Target::All), None);
         let mut report = recorded("module-test-pass");
         report.modules[0].ran = false;
         assert_eq!(
