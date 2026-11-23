@@ -313,6 +313,9 @@ fn palette_and_settings() {
             std::thread::sleep(std::time::Duration::from_millis(20));
             harness.run_steps(2);
         }
+        // The pointer leaves the Test button, so that the image shows it at rest.
+        harness.hover_at(eframe::egui::pos2(1200.0, 780.0));
+        harness.run();
         shots.take(&mut harness, "s8.2-settings-php");
     }
 }
