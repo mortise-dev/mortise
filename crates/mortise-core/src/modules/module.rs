@@ -369,10 +369,19 @@ pub(crate) fn command_of(declared: &Declared, folder: &str) -> Option<String> {
 }
 
 /// The command a scheduled task runs when its target is `php artisan <name> ...`,
-/// the form the actuator writes for a task of `$schedule->command()`.
+/// the form the actuator writes for a task of `$schedule->command()`. An app that
+/// sets `ARTISAN_BINARY` gives its path in place of `artisan`, such as `./artisan`.
+///
+/// The actuator writes a task's description in the same place, so a description
+/// written in this form is read as the command it names.
 pub(crate) fn artisan_command(target: &str) -> Option<&str> {
     let mut words = target.split_whitespace();
-    if (words.next(), words.next()) != (Some("php"), Some("artisan")) {
+    let php = words.next() == Some("php");
+    let artisan = words
+        .next()
+        .and_then(|word| word.rsplit(['/', '\\']).next())
+        == Some("artisan");
+    if !(php && artisan) {
         return None;
     }
     words.next().map(|name| name.trim_matches(['\'', '"']))

@@ -43,13 +43,18 @@ folder.
   the rule and of the folder name `Commands`, which moves to `modules/kind.rs` beside `TESTS`.
 - **`artisan_command` lives in `modules/module.rs` too.** It is pure text and must build without the
   feature `actuator`, because `surface.rs` always builds. It accepts `php artisan <name> ...`, the one
-  form the actuator writes, and strips quotes around `<name>`. Anything else gives no command.
+  form the actuator writes, and strips quotes around `<name>`. The second word may be a path that ends in
+  `artisan`: an app that defines `ARTISAN_BINARY`, such as `./artisan`, gets that path in the target
+  (checked: source read of `Event::normalizeCommand` in laravel/framework 13). Anything else gives no
+  command.
 - **`module_of_task` is the one place.** It tries the class (as today), then the artisan command. The
   first module in the order of the snapshot (by name) wins when two declare the same command. When
   PKG-2 lands, its list is checked first in this function; nothing else changes.
 - **The surface scan uses `artisan_command` for the schedule of a command.** Before, a target matched
   when any word of it equalled the command name, so a description that named a command matched too. Now
-  the scan and the Module column agree on which task runs a command.
+  the scan and the Module column agree on which task runs a command. The app gives the scan only the
+  tasks of its module (`tasks_of`), so two modules that declare one command name do not both show its
+  schedule.
 
 ## Cost of reading command names
 
@@ -69,6 +74,14 @@ The fastest reads differ by less than 1.5 ms, inside the spread between runs of 
 change adds no file read and no parse: one pass over the declared classes already in memory.
 
 ## Risks / Trade-offs
+
+- [A described task whose description reads `php artisan <name>`] The actuator writes a description and a
+  command in the same `runnable.target`, with no kind beside it. Such a task is placed as the command it
+  names. PKG-2 settles it.
+- [A class that is not a command but has a `$signature` property] Its value counts as a command name, as
+  in the surface scan before this change. Telling it apart needs the parent class, through any chain of
+  base classes, which the parser does not resolve. A task is misplaced only when the app also schedules a
+  command of that exact name.
 
 - [A command registered under another name at run time, such as through `setName()` in a constructor]
   The read does not see it; the task stays "none". The surface scan has the same limit today.

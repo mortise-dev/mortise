@@ -30,6 +30,11 @@ of them in the order of the snapshot.
 - **WHEN** the target of a task is `php artisan billing:send-invoices --force` and Billing declares `billing:send-invoices`
 - **THEN** the task belongs to Billing
 
+#### Scenario: An app with its own artisan path
+
+- **WHEN** the app defines `ARTISAN_BINARY` as `./artisan`, the target of a task is `php ./artisan billing:send-invoices` and Billing declares `billing:send-invoices`
+- **THEN** the task belongs to Billing
+
 #### Scenario: A job
 
 - **WHEN** the target of a task is `Modules\Inventory\Jobs\SyncStock`
@@ -49,7 +54,7 @@ of them in the order of the snapshot.
 
 The Module column of scheduled tasks on the app Summary (S4.2), the scheduled tasks on a module's
 Summary (S4.3) and the schedule of a command in the public surface scan SHALL place a task with the rule
-above. A task that belongs to no module SHALL read "none" in the Module column.
+above. The public surface scan of a module SHALL be given only the tasks of that module. A task that belongs to no module SHALL read "none" in the Module column.
 
 #### Scenario: The app Summary and the module Summary agree
 

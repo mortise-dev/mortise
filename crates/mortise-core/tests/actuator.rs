@@ -414,6 +414,7 @@ fn routes_and_tasks_are_given_to_their_module() {
         "php artisan billing:send-invoices --force",
         "php artisan queue:prune-batches",
         "billing:send-invoices",
+        "php ./artisan billing:send-invoices",
     ] {
         task.target = target.to_owned();
         tasks.push(task.clone());
@@ -436,9 +437,10 @@ fn routes_and_tasks_are_given_to_their_module() {
             ("php artisan billing:send-invoices --force", Some("Billing")),
             ("php artisan queue:prune-batches", None),
             ("billing:send-invoices", None),
+            ("php ./artisan billing:send-invoices", Some("Billing")),
         ]
     );
-    assert_eq!(tasks_of(&app, "Billing", &tasks).len(), 2);
+    assert_eq!(tasks_of(&app, "Billing", &tasks).len(), 3);
 }
 
 fn wait_for(
