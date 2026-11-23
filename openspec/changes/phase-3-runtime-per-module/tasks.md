@@ -2,9 +2,9 @@
 
 ## 1. Core
 
-- [ ] 1.1 Add `runtime/modules.rs` with `ModuleRuntime`, `RuntimeByModule` and `by_module`, behind the feature `actuator`, re-exported from `lib.rs`. Verify with `cargo build -p mortise-core --no-default-features --features actuator` and without `actuator`
-- [ ] 1.2 Test `by_module` once on the recorded `fixtures/actuator/health.json`, served by `StubActuator` and read by the client: `module:blog:storage` belongs to `Blog` with the key `storage`; `Billing` and `Blog` read Up; `Legacy` has none; the app keeps its six components. Add the rank rule (Down, Out of service, Up, Unknown), an error of the `modules` component (Down with its sentence), an error for an unknown name, and an indicator of no module to the same test file. Verify with `cargo test -p mortise-core`
-- [ ] 1.3 `StubActuator::healthy()` adds the recorded `module:billing:gateway` and `modules` components. Verify with `cargo test --workspace`
+- [x] 1.1 Add `runtime/modules.rs` with `ModuleRuntime`, `RuntimeByModule` and `by_module`, behind the feature `actuator`, re-exported from `lib.rs`. Verify with `cargo build -p mortise-core --no-default-features --features actuator` and without `actuator`
+- [x] 1.2 Test `by_module` once on the recorded `fixtures/actuator/health.json`, served by `StubActuator` and read by the client: `module:blog:storage` belongs to `Blog` with the key `storage`; `Billing` and `Blog` read Up; `Legacy` has none; the app keeps its six components. Add the rank rule (Down, Out of service, Up, Unknown), an error of the `modules` component (Down with its sentence), an error for an unknown name, and an indicator of no module to the same test file. Verify with `cargo test -p mortise-core`
+- [x] 1.3 `StubActuator::healthy()` adds the recorded `module:billing:gateway` and `modules` components. Verify with `cargo test --workspace`
 
 ## 2. Index
 
@@ -20,13 +20,13 @@
 
 ## 4. Strings, images, deviations
 
-- [ ] 4.1 Interface text in the `strings.rs` of each feature. Images: the marks on two-line and one-line rows and on the strip, the module box, the module box with an error, light and dark. Run `UPDATE_SNAPSHOTS=1 cargo test -p mortise-app --test images` and look at each changed or new image
-- [ ] 4.2 Rows in `docs/deviations.md`: the strip width, the place of the module box, the module lines in the app box. Each says how it was checked
+- [x] 4.1 Interface text in the `strings.rs` of each feature. Images: the marks on two-line and one-line rows and on the strip, the module box, the module box with an error, light and dark. Run `UPDATE_SNAPSHOTS=1 cargo test -p mortise-app --test images` and look at each changed or new image
+- [x] 4.2 Rows in `docs/deviations.md`: the strip width, the place of the module box, the module lines in the app box. Each says how it was checked
 
 ## 5. Integration
 
-- [ ] 5.1 `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings` and `cargo test --workspace` pass on macOS. Windows and Linux through CI
-- [ ] 5.2 `openspec validate phase-3-runtime-per-module --strict` passes
+- [x] 5.1 `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings` and `cargo test --workspace` pass on macOS. Windows and Linux through CI
+- [x] 5.2 `openspec validate phase-3-runtime-per-module --strict` passes
 
 ## Workflow follow-up
 
