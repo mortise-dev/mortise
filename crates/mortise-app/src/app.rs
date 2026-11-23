@@ -116,6 +116,42 @@ struct OpenApp {
     /// The data the package gave in this session (P4, P8). It goes into every read
     /// of the app, so the snapshot holds it (design D7).
     package: PackageData,
+    /// The read of package data that runs, if one does (design D3).
+    reading: Option<PackageRead>,
+}
+
+impl OpenApp {
+    /// The label of the command that runs in the app, a run or a read. While one
+    /// runs, every run button of the app is off.
+    fn busy(&self) -> Option<&str> {
+        busy(&self.runs, self.reading.as_ref())
+    }
+}
+
+/// [`OpenApp::busy`] from its two fields, for code that borrows the others.
+fn busy<'a>(runs: &'a AppRuns, reading: Option<&'a PackageRead>) -> Option<&'a str> {
+    runs.running()
+        .or_else(|| reading.map(|read| read.label.as_str()))
+}
+
+/// A read of package data: a command that only gives data, whose result goes where
+/// the data is shown, not to the drawer (design D3).
+struct PackageRead {
+    read: mortise_core::Read,
+    /// The artisan words, for the tooltip of a busy app.
+    label: String,
+    purpose: ReadFor,
+}
+
+/// What a read is for.
+#[allow(dead_code)] // Each variant is started by the task of its data (15.3 to 15.5).
+enum ReadFor {
+    /// `module:generators --json` (P3, design D4).
+    Catalog,
+    /// A generator with `--dry-run --json` (P2, design D5): the words of the form.
+    DryRun { words: Vec<String> },
+    /// `module:migrate-status --json` (P4, design D7).
+    Migrations { target: Target },
 }
 
 /// A generator that runs, and what its end needs.
@@ -975,6 +1011,44 @@ impl MortiseApp {
         open.live.set_options(read_options(entry, &open.package));
     }
 
+    /// Starts a read of package data in the app at `index` (design D3). It does not
+    /// open the drawer. A read that cannot start ends at once with its error.
+    #[allow(dead_code)] // The tasks of P3, P2 and P4 start reads.
+    fn start_read(&mut self, index: usize, args: Vec<String>, purpose: ReadFor) {
+        let (Some(open), Some(entry)) = (self.apps.get(index), self.settings.apps.get(index))
+        else {
+            return;
+        };
+        if open.busy().is_some() {
+            return;
+        }
+        match mortise_core::Read::start(&self.runs, &entry.root, &entry.php, &args) {
+            Ok(read) => {
+                self.apps[index].reading = Some(PackageRead {
+                    read,
+                    label: args.join(" "),
+                    purpose,
+                });
+            }
+            Err(error) => self.read_ended(index, purpose, Err(error)),
+        }
+    }
+
+    /// What a read gave, or why it did not start (design D2, D3).
+    #[allow(clippy::needless_pass_by_value, unused_variables)] // Filled by 15.3 to 15.5.
+    fn read_ended(
+        &mut self,
+        index: usize,
+        purpose: ReadFor,
+        end: Result<mortise_core::ReadEnd, mortise_core::StartError>,
+    ) {
+        match purpose {
+            ReadFor::Catalog => {}
+            ReadFor::DryRun { .. } => {}
+            ReadFor::Migrations { .. } => {}
+        }
+    }
+
     // --- Runs ---
 
     /// Starts artisan with `args` in the app at `index`, through its current runner.
@@ -1016,11 +1090,11 @@ impl MortiseApp {
     /// its exact line is on screen; otherwise the drawer shows that line first.
     /// A line Mortise asked about before it ran asks again (design D2).
     fn run_again(&mut self, index: usize) {
-        let runner = self.settings.apps[index].php.runner.as_ref();
-        let runs = &mut self.apps[index].runs;
-        if runs.running().is_some() {
+        if self.apps[index].busy().is_some() {
             return;
         }
+        let runner = self.settings.apps[index].php.runner.as_ref();
+        let runs = &mut self.apps[index].runs;
         let Some(args) = runs.again(&mut self.runner, runner) else {
             return;
         };
@@ -1329,7 +1403,7 @@ impl MortiseApp {
 
     /// Starts the words of an action and keeps what it was, for the toast at its end.
     fn start_action(&mut self, index: usize, act: Act) {
-        if self.apps[index].runs.running().is_some() {
+        if self.apps[index].busy().is_some() {
             return;
         }
         let modules_on = self.snapshot(index).map_or(0, |app| {
@@ -1505,7 +1579,7 @@ impl MortiseApp {
 
     /// Starts a generator and keeps what it was, for its result at its end.
     fn start_generate(&mut self, index: usize, run: GenerateRun) {
-        if self.apps[index].runs.running().is_some() {
+        if self.apps[index].busy().is_some() {
             return;
         }
         let before: BTreeSet<String> = self.snapshot(index).map_or_else(BTreeSet::new, |app| {
@@ -2106,8 +2180,23 @@ impl eframe::App for MortiseApp {
                 }
             }
         }
+        let mut read = Vec::new();
+        for (index, open) in self.apps.iter_mut().enumerate() {
+            let Some(reading) = &mut open.reading else {
+                continue;
+            };
+            running = true;
+            if let Some(end) = reading.read.poll()
+                && let Some(reading) = open.reading.take()
+            {
+                read.push((index, reading.purpose, Ok(end)));
+            }
+        }
         for (index, act, modules_on) in ended {
             self.action_ended(index, &act, modules_on);
+        }
+        for (index, purpose, end) in read {
+            self.read_ended(index, purpose, end);
         }
         for (index, generating) in generated {
             self.generate_ended(index, generating);
@@ -2233,7 +2322,7 @@ impl eframe::App for MortiseApp {
                         app_url: app.as_ref().and_then(|app| app.app_url.clone()),
                         last: &mut open.last_answers,
                         php_test: &mut open.php_test,
-                        running: open.runs.running().map(strings::is_running),
+                        running: busy(&open.runs, open.reading.as_ref()).map(strings::is_running),
                     }
                 })
                 .collect();
@@ -2382,7 +2471,7 @@ impl eframe::App for MortiseApp {
                         actions_inputs: ActionsInputs {
                             app: entry.display_name(),
                             runner: entry.php.runner.as_ref(),
-                            busy: open.runs.running(),
+                            busy: busy(&open.runs, open.reading.as_ref()),
                             held,
                             keyboard: self.keyboard,
                             mac,
@@ -2391,7 +2480,7 @@ impl eframe::App for MortiseApp {
                         generate_inputs: GenerateInputs {
                             app: entry.display_name(),
                             runner: entry.php.runner.as_ref(),
-                            busy: open.runs.running(),
+                            busy: busy(&open.runs, open.reading.as_ref()),
                             held,
                             keyboard: self.keyboard,
                             mac,
@@ -2599,7 +2688,7 @@ impl eframe::App for MortiseApp {
                     if self
                         .apps
                         .get(index)
-                        .is_some_and(|open| open.runs.running().is_none())
+                        .is_some_and(|open| open.busy().is_none())
                     {
                         self.start_run(index, args);
                     }
@@ -2708,7 +2797,7 @@ impl eframe::App for MortiseApp {
                     }
                 }
                 // An app that runs a command stays: Remove is off until it ends.
-                SettingsAction::RemoveApp(index) if self.apps[index].runs.running().is_some() => {}
+                SettingsAction::RemoveApp(index) if self.apps[index].busy().is_some() => {}
                 SettingsAction::RemoveApp(index) => {
                     let name = self.settings.apps[index].display_name().to_owned();
                     let dialog = Dialog::new(
@@ -2755,10 +2844,16 @@ impl eframe::App for MortiseApp {
     fn on_exit(&mut self) {
         for open in &self.apps {
             open.runs.stop();
+            if let Some(reading) = &open.reading {
+                reading.read.stop();
+            }
         }
         let deadline = std::time::Instant::now() + mortise_core::STOP_WAIT;
         for open in &mut self.apps {
             open.runs.wait(deadline);
+            if let Some(reading) = &mut open.reading {
+                reading.read.wait(deadline);
+            }
         }
     }
 
@@ -2805,6 +2900,7 @@ fn open_app(ctx: &egui::Context, entry: &AppEntry, data_dir: Option<&Path>) -> O
         generate_run: None,
         select_new: None,
         package: PackageData::default(),
+        reading: None,
     }
 }
 
