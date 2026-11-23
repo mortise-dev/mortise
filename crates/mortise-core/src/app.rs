@@ -132,11 +132,12 @@ impl AppSnapshot {
     }
 
     /// The modules that carry a circle `name` is in without carrying it, by name. Empty
-    /// while "No circular use" is off, because then no circle is a finding.
+    /// while "No circular use" is off, because then no circle is a finding. A circle
+    /// through a module that is off is left out for the same reason.
     pub fn circles_counted_elsewhere<'a>(&'a self, name: &str) -> Vec<&'a str> {
         let mut carriers: Vec<&str> = Vec::new();
         if self.rules.no_circular_use {
-            for cycle in &self.cycles {
+            for cycle in self.cycles.iter().filter(|cycle| !cycle.off) {
                 let member = cycle.modules.iter().any(|module| module == name);
                 if member && cycle.carrier != name && !carriers.contains(&cycle.carrier.as_str()) {
                     carriers.push(&cycle.carrier);
