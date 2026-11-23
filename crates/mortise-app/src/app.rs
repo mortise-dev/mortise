@@ -1783,14 +1783,20 @@ impl MortiseApp {
         let answer = json.then(|| {
             mortise_core::whole_document::<mortise_core::GeneratorReport>(stdout, stdout_cut)
         });
-        // The modules folder of the app's layout places a path of a container (Sail).
-        let modules = self.snapshot(index).map_or_else(
+        // The modules folder of the app's layout and its modules place a path of a
+        // container (Sail).
+        let app = self.snapshot(index);
+        let modules = app.as_ref().map_or_else(
             || "Modules".to_owned(),
             |app| app.path_shown(&app.layout.modules_dir),
         );
+        let folders = app
+            .as_deref()
+            .map(crate::generate_view::module_folders)
+            .unwrap_or_default();
         let (mut files, autoload_failed, fallback) = match answer {
             Some(Ok(report)) => (
-                mortise_core::reported_files(&report, &root, &modules),
+                mortise_core::reported_files(&report, &root, &modules, &folders),
                 report.autoload_failed(),
                 None,
             ),
@@ -1806,7 +1812,7 @@ impl MortiseApp {
             .taken_out
             .iter()
             .map(|file| TakenOut {
-                path: mortise_core::app_relative(&root, &modules, &file.path)
+                path: mortise_core::app_relative(&root, &modules, &folders, &file.path)
                     .unwrap_or_else(|| file.path.clone()),
                 replace: file.replace.clone(),
             })

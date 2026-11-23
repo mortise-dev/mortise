@@ -466,6 +466,14 @@ fn file_name(path: &str) -> &str {
     path.rsplit(['/', '\\']).next().unwrap_or(path)
 }
 
+/// The folder names of the app's modules, which place a path of a container.
+pub fn module_folders(app: &AppSnapshot) -> Vec<&str> {
+    app.modules
+        .iter()
+        .filter_map(|module| module.dir.file_name()?.to_str())
+        .collect()
+}
+
 /// The words that write `path` again, left by a run of `words`, as `replace_words`
 /// gives them. Its guards read the runner's own options with the run's: a Custom
 /// line `php artisan --factory` gives the model its factory, and the package then
@@ -1922,7 +1930,8 @@ struct FilesShown {
 fn placed(app: &AppSnapshot, module: Option<&Module>, printed: &str) -> (String, String) {
     let outside = (String::new(), printed.to_owned());
     let modules_dir = app.path_shown(&app.layout.modules_dir);
-    let Some(relative) = app_relative(&app.root, &modules_dir, printed) else {
+    let Some(relative) = app_relative(&app.root, &modules_dir, &module_folders(app), printed)
+    else {
         return outside;
     };
     if let Some(module) = module {
