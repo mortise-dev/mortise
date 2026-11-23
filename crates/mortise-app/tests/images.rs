@@ -236,8 +236,8 @@ fn summary_and_findings() {
             .click();
         shots.take(&mut harness, "s4.3-summary-module");
         // S7.4: a tab of a later phase.
-        press(&mut harness, Key::Num3);
-        shots.take(&mut harness, "s7.4-generate");
+        press(&mut harness, Key::Num5);
+        shots.take(&mut harness, "s7.4-metrics");
         // S13.1: the index as a strip.
         press(&mut harness, Key::Num1);
         chord(&mut harness, Key::B);
@@ -539,6 +539,93 @@ fn type_name(harness: &mut Harness<'static, MortiseApp>, field: &str, text: &str
         .get_by_role_and_label(Role::TextInput, field)
         .type_text(text);
     rest(harness);
+}
+
+// --- The Generate tab (S9.1 to S9.6) ---
+
+/// Puts `text` in a field of the workspace, in place of what it holds.
+fn fill(harness: &mut Harness<'static, MortiseApp>, field: &str, text: &str) {
+    harness
+        .get_by_role_and_label(Role::TextInput, field)
+        .focus();
+    harness.run_steps(2);
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::A);
+    harness.key_press(Key::Backspace);
+    if !text.is_empty() {
+        harness
+            .get_by_role_and_label(Role::TextInput, field)
+            .type_text(text);
+    }
+    harness.run_steps(2);
+}
+
+fn click(harness: &mut Harness<'static, MortiseApp>, role: Role, label: &str) {
+    harness.get_by_role_and_label(role, label).click();
+    rest(harness);
+}
+
+/// The time of the run in the bar of the drawer, up to "Run again", whatever its width.
+fn time_of_run(harness: &Harness<'static, MortiseApp>) -> Vec<Part> {
+    let (min, max) = label_bounds(harness, ": Done in ");
+    let ((again, _), _) = bounds(harness, Role::Button, "Run again");
+    vec![(min, (again - 4.0, max.1))]
+}
+
+/// The whole window.
+const WINDOW: Part = ((0.0, 0.0), (1280.0, 800.0));
+
+#[test]
+fn generate() {
+    // One set of results for the test: both themes are compared when it ends.
+    let mut shots = Shots::new();
+    for (theme, name) in THEMES {
+        shots.theme = name;
+        // The fake artisan in the app folder, so that the lines read the same on every machine.
+        let desk = drawer_desk(theme, 1280.0, "", &[]);
+        let mut harness = desk.start();
+
+        // S9.1: the picker of Billing, with Model the current row.
+        select(&mut harness, "Billing");
+        harness.get_by_role_and_label(Role::Tab, "Generate").click();
+        rest(&mut harness);
+        shots.take(&mut harness, "s9.1-picker");
+
+        // S9.2: the model form, without the file list (deviation S44).
+        click(&mut harness, Role::ListBoxOption, "Model");
+        fill(&mut harness, "Model name", "PaymentIntent");
+        fill(
+            &mut harness,
+            "Fillable attributes",
+            "order_id,amount,currency,status",
+        );
+        click(&mut harness, Role::CheckBox, "Migration");
+        click(&mut harness, Role::CheckBox, "Policy");
+        shots.take(&mut harness, "s9.2-model-form");
+
+        // S9.5: created, with the toast. The time of the run is cut out.
+        click(&mut harness, Role::Button, "Create files");
+        wait_for(&mut harness, "Created 3 files in Billing.");
+        let masks = time_of_run(&harness);
+        shots.take_part_masked(&mut harness, "s9.5-created", WINDOW, &masks);
+
+        // S9.6: the policy existed and was left, then Replace asks with its line.
+        click(&mut harness, Role::Button, "Generate another");
+        fill(&mut harness, "Model name", "Invoice");
+        fill(&mut harness, "Fillable attributes", "");
+        click(&mut harness, Role::Button, "Create files");
+        wait_for(&mut harness, "Created 2 of 3 files in Billing.");
+        let masks = time_of_run(&harness);
+        shots.take_part_masked(&mut harness, "s9.6-left", WINDOW, &masks);
+        click(&mut harness, Role::Button, "Replace InvoicePolicy.php");
+        shots.take_part_masked(&mut harness, "s9.6-replace", WINDOW, &masks);
+        press(&mut harness, Key::Escape);
+
+        // S9.4: the new module form, from Ctrl N.
+        chord(&mut harness, Key::N);
+        fill(&mut harness, "Module names", "Loyalty");
+        click(&mut harness, Role::RadioButton, "API");
+        shots.take_part_masked(&mut harness, "s9.4-new-module", WINDOW, &masks);
+    }
 }
 
 // --- The runner drawer (S11.1) ---
