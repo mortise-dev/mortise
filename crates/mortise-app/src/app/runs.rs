@@ -6,9 +6,9 @@ use mortise_core::{Action, Ask, ModuleState, PackageData, RunEnd, Target};
 use super::{MortiseApp, PackageRead, Pending, ReadFor, place_of, read_options, words_target};
 use crate::actions::view::{self as actions_view, Act};
 use crate::generate::view::RunPlace;
+use crate::runner::strings;
 use crate::runner::view::{self as runner_view, DrawerAction, Shown};
 use crate::settings::view::Section;
-use crate::strings;
 use crate::ui::dialog::Dialog;
 use crate::ui::toast::ToastAction;
 
@@ -106,8 +106,8 @@ impl MortiseApp {
         let status = match end {
             Ok(end) => end
                 .document::<mortise_core::MigrationStatus>()
-                .map_err(|error| strings::no_document(&end, &error)),
-            Err(error) => Err(strings::start_reason(&error)),
+                .map_err(|error| crate::strings::no_document(&end, &error)),
+            Err(error) => Err(crate::strings::start_reason(&error)),
         };
         let modules_on: Vec<String> = self.snapshot(index).map_or_else(Vec::new, |app| {
             app.modules
