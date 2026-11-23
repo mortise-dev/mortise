@@ -8,10 +8,10 @@
 
 ## 2. Index
 
-- [ ] 2.1 Draw the runtime stroke mark 8 px left of the finding mark on two-line and one-line rows. The finding mark is unchanged. Verify in the image tests of task 4.1
-- [ ] 2.2 Widen the strip to 96 px while a row it shows has a runtime mark; `strip_width` takes that into account. Verify in the image tests of task 4.1
-- [ ] 2.3 Give each mark an accessible name and a tooltip. Verify with an assertion in the screen test that already builds the index with an environment, and with `tests/accessibility.rs`
-- [ ] 2.4 Assert in an existing app test that a Down module raises no pip on the rail. Verify with `cargo test -p mortise-app`
+- [x] 2.1 Draw the runtime stroke mark 8 px left of the finding mark on two-line and one-line rows. The finding mark is unchanged. Verify in the image tests of task 4.1
+- [x] 2.2 Widen the strip to 96 px while a row it shows has a runtime mark; `strip_width` takes that into account. Verify in the image tests of task 4.1
+- [x] 2.3 Give each mark an accessible name and a tooltip. Verify with an assertion in the screen test that already builds the index with an environment, and with `tests/accessibility.rs`
+- [x] 2.4 Assert in an existing app test that a Down module raises no pip on the rail. Verify with `cargo test -p mortise-app`
 
 ## 3. Summary
 
