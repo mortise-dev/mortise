@@ -3470,7 +3470,9 @@ fn system_reduces_motion() -> bool {
 /// The toast of Run tests from the document of `module:test --json` on `target`
 /// (design D8), or `None` when the document has no counts. A module that ran
 /// without counts, such as when PHPUnit stopped before its report, leaves the
-/// totals short: then there is no count either.
+/// totals short: then there is no count either. Nor is there when no test failed
+/// and the exit code says the run failed (a warning under `failOnWarning`): the
+/// count cannot say what failed.
 fn tests_toast(report: &TestReport, target: &Target) -> Option<String> {
     let object = match target {
         Target::Module(name) => {
@@ -3497,6 +3499,9 @@ fn tests_toast(report: &TestReport, target: &Target) -> Option<String> {
     }
     let (passed, failed) = (report.passed?, report.failed?);
     if failed == 0 {
+        if report.exit_code.is_some_and(|code| code != 0) {
+            return None;
+        }
         return Some(strings::tests_passed(passed, &object));
     }
     let total = passed + failed + report.skipped.unwrap_or(0);
@@ -3806,7 +3811,11 @@ mod tests {
             tests_toast(&all, &Target::All).as_deref(),
             Some("1 of 2 tests failed in 3 modules.")
         );
+        // No test failed and the run failed: the count cannot say why.
+        all.failed = Some(0);
+        assert_eq!(tests_toast(&all, &Target::All), None);
         // A module that ran without counts leaves the totals short: no count.
+        all.exit_code = Some(0);
         all.modules[1].passed = None;
         assert_eq!(tests_toast(&all, &Target::All), None);
         let mut report = recorded("module-test-pass");

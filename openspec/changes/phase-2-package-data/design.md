@@ -578,6 +578,9 @@ accessible name and a 24 px target (`tests/accessibility.rs`).
   (`PackageData::migrations_of_all`, cleared by any forget; `migrations_of_every`). `module:migrate --all`
   runs the modules that were not read too. With some modules read, the box reads "Not read for every
   module yet." (not in the spec) and offers the read of every module.
+- A test run whose document counts no failed test but whose exit code is not 0 (PHPUnit with
+  `failOnWarning`) gives no count toast: "1 test passed" would name a failed run. The toast of
+  milestone 12 applies.
 
 ## Risks / Trade-offs
 
