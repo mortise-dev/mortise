@@ -53,8 +53,8 @@ and `cargo test --workspace`.
 
 ## 7. Integration
 
-- [ ] 7.1 Add rows to `docs/deviations.md`: decision 2 (Mortise places a series itself until the package adds the `module` label), the states of the Metrics tab that the spec does not draw, and S6 (the Metrics tab no longer uses the S7.4 block). Say what was checked and that nothing ran on Windows or Linux
-- [ ] 7.2 Check the gate as the CI job `core-features` does: `RUSTFLAGS="-D warnings" cargo check -p mortise-core --lib --bins --no-default-features --features actuator --locked`, and the same with no feature
-- [ ] 7.3 Check the rules by search: `grep -rn "crate::metrics" crates/mortise-core/src/runtime` finds nothing; `grep -rn '"env"\|/env' crates/mortise-core/src/runtime crates/mortise-core/src/metrics` finds no request; no interface text of metrics is outside a `strings.rs`
-- [ ] 7.4 Run `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings` and `cargo test --workspace` on macOS; all pass. `python3 tools/third-party-licenses.py` changes nothing
-- [ ] 7.5 `openspec validate phase-3-reading-metrics --strict` passes
+- [x] 7.1 Add rows to `docs/deviations.md`: decision 2 (Mortise places a series itself until the package adds the `module` label), the states of the Metrics tab that the spec does not draw, and S6 (the Metrics tab no longer uses the S7.4 block). Say what was checked and that nothing ran on Windows or Linux
+- [x] 7.2 Check the gate as the CI job `core-features` does: `RUSTFLAGS="-D warnings" cargo check -p mortise-core --lib --bins --no-default-features --features actuator --locked`, and the same with no feature
+- [x] 7.3 Check the rules by search: `grep -rn "crate::metrics" crates/mortise-core/src/runtime` finds nothing; `grep -rn '"env"\|/env' crates/mortise-core/src/runtime crates/mortise-core/src/metrics` finds no request; no interface text of metrics is outside a `strings.rs`
+- [x] 7.4 Run `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings` and `cargo test --workspace` on macOS; all pass. `python3 tools/third-party-licenses.py` changes nothing
+- [x] 7.5 `openspec validate phase-3-reading-metrics --strict` passes
