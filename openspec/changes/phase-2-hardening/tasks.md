@@ -28,7 +28,7 @@
 
 ## 6. Docs (16.10 sonnet)
 
-- [ ] 6.1 Describe phase 2 in `README.md`; check S32 to S50 against the code, each with how it was checked
+- [x] 6.1 Describe phase 2 in `README.md`; check S32 to S50 against the code, each with how it was checked
 
 ## 7. Linux look (16.11 sonnet, only when the screen is unlocked)
 

@@ -15,8 +15,8 @@ This is optional. Mortise asks for `health`, `info`, `mappings` and `scheduledta
 for `env`. A token or a password goes to the credential store of the operating system and is
 never written to a file.
 
-Status: phase 1 (read only) and phase 2 (running the package's commands) are built. The plan of
-phase 1 is in `docs/plan/phase-1.md`. Where the build differs from the specification is in
+Status: phase 1 (read only) and phase 2 (running the package's commands) are built. The plans are
+`docs/plan/phase-1.md` and `docs/plan/phase-2.md`. Where the build differs from the specification is in
 `docs/deviations.md`.
 
 ## What it does
@@ -82,8 +82,9 @@ cargo test --workspace
 |---|---|
 | `crates/mortise-core/tests` | Reading an app, git, the file watcher, the actuator client against a local stub, the public surface scan |
 | `crates/mortise-app/tests` | The interface, run headless and asked by role and name, as a screen reader would |
-| `crates/mortise-app/tests/images.rs` | 54 screens in both themes against the images in `tests/snapshots`. macOS only |
+| `crates/mortise-app/tests/images.rs` | The screens in both themes against the images in `tests/snapshots`. macOS only |
 | `crates/mortise-app/tests/accessibility.rs` | Every control has a name and a target of 24 by 24 px |
+| `crates/mortise-core/tests/real_php.rs` | The package's commands in a real Laravel app. Ignored by default; a CI job that is not required runs them (see `AGENTS.md`) |
 
 After a change that is meant to be seen, make the images again and look at what changed:
 
