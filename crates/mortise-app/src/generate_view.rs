@@ -189,12 +189,23 @@ impl GenerateResult {
     }
 }
 
+/// Where a command of the app runs: its PHP runner and its working folder. A dry run
+/// lists the files of the app it ran in, so its list belongs to its place (design D5).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RunPlace {
+    pub runner: Option<RunnerKind>,
+    pub folder: Option<PathBuf>,
+}
+
 /// The file list of a dry run (P2, design D5), or why it gave none. It belongs to
-/// the words of the form it ran with: another line drops it.
+/// the words of the form it ran with: another line drops it. It belongs to the
+/// place it ran in too: another runner or working folder drops it.
 #[derive(Debug, Clone)]
 struct FileList {
     /// The words of the form, without `--dry-run --json`.
     words: Vec<String>,
+    /// Where the dry run ran.
+    place: RunPlace,
     /// The words the dry run ran with, before S9.3 took flags out.
     before: Vec<String>,
     listed: Result<GeneratorReport, String>,
@@ -308,10 +319,12 @@ impl GenerateState {
     /// that flag out of the form, and `--all` becomes the other six (S9.3); the list
     /// then belongs to the words without it. The factory is the exception: its flag
     /// stays, and the run leaves the file. A form that changed meanwhile drops it.
+    /// `place` is where the dry run started.
     pub fn take_files(
         &mut self,
         generator: &Generator,
         words: Vec<String>,
+        place: RunPlace,
         listed: Result<GeneratorReport, String>,
     ) {
         let module = self.module.clone().flatten();
@@ -351,6 +364,7 @@ impl GenerateState {
         }
         self.files = Some(FileList {
             words: generator.words(&self.filled, module.as_deref()),
+            place,
             before: words,
             listed,
             taken_out,
@@ -457,6 +471,8 @@ pub struct GenerateInputs<'a> {
     pub catalog_read: Option<CatalogRead<'a>>,
     /// How PHP runs for the app. Without it nothing can run.
     pub runner: Option<&'a RunnerKind>,
+    /// The working folder of the app's PHP settings, `None` for the app folder.
+    pub folder: Option<&'a Path>,
     /// The label of the command that runs in the app, if one does.
     pub busy: Option<&'a str>,
     /// The dry run of a form runs (design D5).
@@ -572,6 +588,14 @@ pub fn generate(
 ) -> Option<BoundaryAction> {
     let name = module.map(|module| module.name.as_str());
     state.follow(name, true);
+    // A list from another runner or working folder lists the files of another app.
+    let place = RunPlace {
+        runner: inputs.runner.cloned(),
+        folder: inputs.folder.map(Path::to_path_buf),
+    };
+    if state.files.as_ref().is_some_and(|list| list.place != place) {
+        state.files = None;
+    }
     let on_form = state.view == View::Form && !inputs.held;
     let run_key = on_form
         && ui.input_mut(|input| {

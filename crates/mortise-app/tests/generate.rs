@@ -419,6 +419,23 @@ fn a_dry_run_that_finds_the_factory_keeps_it_in_the_command() {
         .unwrap();
     assert!(!disabled(&harness, "Create the other 2 files"));
 
+    // The list belongs to the runner and the working folder it ran with: another
+    // working folder drops it.
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::K);
+    harness.run_steps(3);
+    harness
+        .get_by_role_and_label(Role::TextInput, "Search or run a command")
+        .type_text("php");
+    harness.run_steps(3);
+    click(&mut harness, Role::ListBoxOption, "Settings: PHP");
+    type_into(&mut harness, "Working folder", ".");
+    harness.key_press(Key::Escape);
+    harness.run_steps(3);
+    harness.key_press(Key::Escape);
+    harness.run_steps(3);
+    assert!(harness.query_by_label("4 files, 2 exist already").is_none());
+    harness.get_by_role_and_label(Role::Button, "List files");
+
     // A run that fails before it answers, with no file read: the form says why.
     run(&mut harness);
     wait_for(

@@ -22,7 +22,8 @@ use crate::chrome::{self, Chrome};
 use crate::dialog::{Answer, Dialog, Typed};
 use crate::draw::{self, Button, ButtonKind};
 use crate::generate_view::{
-    CatalogRead, GenerateAsk, GenerateInputs, GenerateResult, GenerateRun, GenerateState, TakenOut,
+    CatalogRead, GenerateAsk, GenerateInputs, GenerateResult, GenerateRun, GenerateState, RunPlace,
+    TakenOut,
 };
 use crate::index::{self, IndexRuntime, IndexState};
 use crate::palette::{self, Command, PaletteAction, PaletteState};
@@ -212,8 +213,9 @@ enum ReadFor {
     /// `module:generators --json` (P3, design D4), started while the app had this
     /// package version.
     Catalog { package: Version },
-    /// A generator with `--dry-run --json` (P2, design D5): the words of the form.
-    DryRun { words: Vec<String> },
+    /// A generator with `--dry-run --json` (P2, design D5): the words of the form,
+    /// and the runner and working folder it started with.
+    DryRun { words: Vec<String>, place: RunPlace },
     /// `module:migrate-status --json` (P4, design D7).
     Migrations { target: Target },
 }
@@ -1106,7 +1108,7 @@ impl MortiseApp {
     ) {
         match purpose {
             ReadFor::Catalog { package } => self.catalog_read(index, &package, end),
-            ReadFor::DryRun { words } => self.dry_run_read(index, words, end),
+            ReadFor::DryRun { words, place } => self.dry_run_read(index, words, place, end),
             ReadFor::Migrations { .. } => {}
         }
     }
@@ -1160,6 +1162,7 @@ impl MortiseApp {
         &mut self,
         index: usize,
         words: Vec<String>,
+        place: RunPlace,
         end: Result<mortise_core::ReadEnd, mortise_core::StartError>,
     ) {
         let Some(app) = self.snapshot(index) else {
@@ -1174,7 +1177,7 @@ impl MortiseApp {
         let open = &mut self.apps[index];
         let catalog = open.catalog.in_use(&app.package);
         if let Some(generator) = words.first().and_then(|name| catalog.get(name)) {
-            open.generate.take_files(generator, words, listed);
+            open.generate.take_files(generator, words, place, listed);
         }
     }
 
@@ -1679,7 +1682,12 @@ impl MortiseApp {
                 }
                 let args = mortise_core::with_dry_run(words.clone());
                 let words = words.clone();
-                self.start_read(index, args, ReadFor::DryRun { words });
+                let php = &self.settings.apps[index].php;
+                let place = RunPlace {
+                    runner: php.runner.clone(),
+                    folder: php.working_folder.clone(),
+                };
+                self.start_read(index, args, ReadFor::DryRun { words, place });
                 return;
             }
             GenerateAsk::Run(run) if run.generator != MODULE_MAKE || !forced(runner, &run.args) => {
@@ -2722,6 +2730,7 @@ impl eframe::App for MortiseApp {
                                 ),
                             ),
                             runner: entry.php.runner.as_ref(),
+                            folder: entry.php.working_folder.as_deref(),
                             busy: busy(&open.runs, open.reading.as_ref()),
                             listing: matches!(
                                 open.reading,
