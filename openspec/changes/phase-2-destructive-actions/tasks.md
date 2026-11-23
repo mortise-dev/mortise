@@ -6,7 +6,7 @@
 
 ## 2. Core (13.1 sonnet and 13.2 opus, in parallel)
 
-- [ ] 2.1 (13.1) Add `git::uncommitted` and `Module::uncommitted` (D1), read in `app.rs` with the churn. Verify with one test on a temporary repository: a changed, a staged, an untracked and an ignored file, an app in a subfolder of the repository, and `None` outside a repository
+- [x] 2.1 (13.1) Add `git::uncommitted` and `Module::uncommitted` (D1), read in `app.rs` with the churn. Verify with one test on a temporary repository: a changed, a staged, an untracked and an ignored file, an app in a subfolder of the repository, and `None` outside a repository
 - [ ] 2.2 (13.2) Record the six outputs of D9 from a scratch app with 13.3.0 into `fixtures/output/`. Verify each file parses, its `args` are unique across the folder, and the fake artisan prints it
 - [ ] 2.3 (13.2) Add the destructive lists, the targets each action takes, the drop options, the reset dry run, `Ask::name_to_type`, `typed_name_matches` and `Action::from_artisan` to `catalog/actions.rs` (D2). Verify with the tests D2 names, each rule once
 - [ ] 2.4 (13.2) Add `output::prohibited` and `migration_count` in place of `migrations_done` (D3), and move the toasts of migrate and roll back to it. Verify with tests on the recordings of 2.2: the prohibited reset is read as prohibited, a plain failure is not, reset and refresh give their counts
