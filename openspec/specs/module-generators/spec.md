@@ -124,9 +124,8 @@ the button MUST be off and Ctrl Enter MUST run nothing.
 
 ### Requirement: The result of a run
 When a generator run ends, the form SHALL keep its values and show the files it created, replaced, or
-left because they exist, with "Open" for each that exists. For an app with 13.4 or later the files MUST
-come from the run's JSON answer; when it is missing or malformed they come from the output lines and the
-result says so. A run that created all its files SHALL show the done toast "Created 3 files in Billing.".
+left because they exist, with "Open" for each that exists. A run that created all its files SHALL show
+the done toast "Created 3 files in Billing.".
 A run that left a file SHALL show the alert of S9.6, with "Open the existing file", and no toast while the
 result is on screen. The result MUST NOT come from the exit code.
 
@@ -137,6 +136,10 @@ result is on screen. The result MUST NOT come from the exit code.
 #### Scenario: A file existed
 - **WHEN** a model run prints that `InvoicePolicy.php` already exists
 - **THEN** its row reads "exists, left as it is" and the alert says it was left as it is
+
+### Requirement: The result reads the package's answer
+For an app with 13.4 or later, the files of a generator run MUST come from the run's JSON answer. When
+the answer is missing or malformed, they SHALL come from the output lines, and the result MUST say so.
 
 #### Scenario: The JSON answer
 - **WHEN** a generator run of a 13.4 app ends with a JSON answer that lists a file as `exists`
