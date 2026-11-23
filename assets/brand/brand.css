@@ -1,0 +1,89 @@
+/* Shared look of the README banner and the social preview.
+   Colours are the dark Slate tokens of docs/spec/tokens.html and the oak of the app icon. */
+
+@font-face { font-family: Asap; font-weight: 400; src: url(../fonts/asap/Asap-Regular.ttf); }
+@font-face { font-family: Asap; font-weight: 500; src: url(../fonts/asap/Asap-Medium.ttf); }
+@font-face { font-family: Asap; font-weight: 600; src: url(../fonts/asap/Asap-SemiBold.ttf); }
+@font-face { font-family: Asap; font-weight: 700; src: url(../fonts/asap/Asap-Bold.ttf); }
+@font-face { font-family: Inconsolata; font-weight: 500; src: url(../fonts/inconsolata/Inconsolata-Medium.ttf); }
+
+:root {
+  --frame: #0F1216;
+  --panel: #15191E;
+  --surface: #1D2229;
+  --ink: #E5EBF4;
+  --ink-2: #A1AEBE;
+  --ink-3: #8895A5;
+  --line: #2E353E;
+  --line-2: #657180;
+  --good: #84CC90;
+  --bad: #F28B7F;
+  --oak: #E2BF86;
+  --oak-deep: #C59855;
+}
+
+* { margin: 0; box-sizing: border-box; }
+
+html, body {
+  width: var(--w);
+  height: var(--h);
+  overflow: hidden;
+  background: var(--frame);
+  color: var(--ink);
+  font-family: Asap, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.stage {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse 60% 90% at 12% 50%, rgba(226, 191, 134, 0.13), transparent 70%),
+    radial-gradient(ellipse 70% 80% at 95% 40%, rgba(132, 204, 144, 0.06), transparent 70%),
+    var(--frame);
+}
+
+/* A faint joinery grid, fading out to the left. */
+.stage::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(var(--line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--line) 1px, transparent 1px);
+  background-size: 32px 32px;
+  opacity: 0.35;
+  mask-image: linear-gradient(90deg, transparent 15%, #000 70%);
+}
+
+.brand { display: flex; align-items: center; gap: 28px; position: relative; z-index: 2; }
+.brand img { display: block; filter: drop-shadow(0 18px 30px rgba(0, 0, 0, 0.45)); }
+.name { font-weight: 700; letter-spacing: -0.02em; line-height: 1; }
+.tagline { color: var(--ink-2); font-weight: 500; line-height: 1.3; }
+.tagline b { color: var(--ink); font-weight: 600; }
+
+.pills { display: flex; flex-wrap: wrap; gap: 10px; }
+.pill {
+  font-family: Inconsolata, monospace;
+  font-weight: 500;
+  color: var(--ink-2);
+  border: 1px solid var(--line-2);
+  background: rgba(29, 34, 41, 0.75);
+  border-radius: 4px;
+  padding: 5px 11px;
+  letter-spacing: 0.02em;
+}
+.pill i { font-style: normal; color: var(--oak); }
+
+/* The real app, from the image tests, in a window frame. */
+.shot {
+  position: absolute;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--line-2);
+  box-shadow: 0 40px 80px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(0, 0, 0, 0.6);
+  background: var(--panel);
+}
+.shot img { display: block; width: 100%; }
