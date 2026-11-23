@@ -266,7 +266,8 @@ impl Dialog {
                         false => response.request_focus(),
                     }
                 }
-                if response.clicked() && can_confirm {
+                // The name is checked again with what the field holds after this frame's keys.
+                if response.clicked() && can_confirm && self.can_confirm() {
                     answer = Some(Answer::Confirm);
                 }
             });
