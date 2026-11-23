@@ -129,6 +129,39 @@ pub fn migrate_status_args(target: &Target, database: &str) -> Vec<String> {
     with_json(words)
 }
 
+/// The migration state that a run of the artisan words `args` may have changed, when
+/// it ends, whatever its exit code (design D7): a migrate, roll back, reset, refresh
+/// or fresh that is not a dry run (`--pretend`). Every module for `--all`, for a fresh
+/// or for words that name no module; else the module the words name, the second word
+/// or the word after `--`. `None` for other words.
+pub fn migrations_changed_by(args: &[String]) -> Option<Target> {
+    const CHANGE: [&str; 5] = [
+        "module:migrate",
+        "module:migrate-rollback",
+        "module:migrate-reset",
+        "module:migrate-refresh",
+        "module:migrate-fresh",
+    ];
+    let command = args
+        .first()
+        .filter(|word| CHANGE.contains(&word.as_str()))?;
+    if has_option(args, "--pretend") {
+        return None;
+    }
+    let at = args.iter().position(|word| word == "--");
+    let options = &args[..at.unwrap_or(args.len())];
+    let module = match at {
+        Some(at) => args.get(at + 1),
+        None => options.get(1).filter(|word| !word.starts_with('-')),
+    };
+    match module {
+        Some(name) if command != "module:migrate-fresh" && !has_option(args, "--all") => {
+            Some(Target::Module(name.clone()))
+        }
+        _ => Some(Target::All),
+    }
+}
+
 fn with_flags(mut words: Vec<String>, flags: &[&str]) -> Vec<String> {
     let at = words
         .iter()
@@ -329,13 +362,22 @@ impl PackageData {
         (self.migration_connection == connection.trim()).then_some(&self.migrations)
     }
 
-    /// Forgets the migration state when it is of `connection`: a fresh dropped every
-    /// table there, also of the modules that are off, which a read with `--all` does
-    /// not list. A state of another connection stays.
-    pub fn forget_migrations(&mut self, connection: &str) {
-        if self.migration_connection == connection.trim() {
-            self.migrations.clear();
+    /// Forgets the migration state of `target`, whatever connection it was read for:
+    /// every module for [`Target::All`], else the module's entry, by name in any case.
+    /// A "no migrations table" answer goes too: the run may have made the table.
+    /// True when something was forgotten.
+    pub fn forget_migrations(&mut self, target: &Target) -> bool {
+        let before = (self.migrations.len(), self.migration_table);
+        match target {
+            Target::All => self.migrations.clear(),
+            Target::Module(name) => self
+                .migrations
+                .retain(|module, _| !module.eq_ignore_ascii_case(name)),
         }
+        if self.migration_table == Some(false) {
+            self.migration_table = None;
+        }
+        before != (self.migrations.len(), self.migration_table)
     }
 
     /// Takes in a state read of `target` on `connection`, read at `read_ms`. A read of
@@ -575,6 +617,35 @@ mod tests {
     }
 
     #[test]
+    fn a_migration_command_changes_the_state_of_its_target() {
+        let changed = |line: &[&str]| migrations_changed_by(&words(line));
+        let checkout = Some(Target::Module("Checkout".into()));
+        assert_eq!(
+            changed(&["module:migrate", "Checkout", "--database=testing"]),
+            checkout
+        );
+        assert_eq!(
+            changed(&["module:migrate-rollback", "--", "Checkout"]),
+            checkout
+        );
+        assert_eq!(
+            changed(&["module:migrate-refresh", "--all"]),
+            Some(Target::All)
+        );
+        assert_eq!(
+            changed(&["module:migrate-fresh", "--force"]),
+            Some(Target::All)
+        );
+        assert_eq!(
+            changed(&["module:migrate-reset", "--force"]),
+            Some(Target::All)
+        );
+        assert_eq!(changed(&["module:migrate", "Checkout", "--pretend"]), None);
+        assert_eq!(changed(&["module:migrate-status", "Checkout"]), None);
+        assert_eq!(changed(&["module:seed", "Checkout"]), None);
+    }
+
+    #[test]
     fn a_read_replaces_the_modules_it_holds() {
         let mut data = PackageData::default();
         let all: MigrationStatus = document(&stdout("module-migrate-status-all")).unwrap();
@@ -612,11 +683,11 @@ mod tests {
         data.merge_migrations(none.clone(), &Target::All, "", &["Checkout", "Loyalty"], 3);
         assert_eq!(data.migrations.keys().collect::<Vec<_>>(), ["Billing"]);
 
-        // A fresh of another connection keeps it; one of its own forgets it all.
-        data.forget_migrations("testing");
-        assert_eq!(data.migrations.len(), 1);
-        data.forget_migrations("");
-        assert!(data.migrations.is_empty());
+        // A run forgets its module whatever the connection, and a "no table" answer.
+        data.migration_table = Some(false);
+        assert!(data.forget_migrations(&Target::Module("billing".into())));
+        assert!(data.migrations.is_empty() && data.migration_table.is_none());
+        assert!(!data.forget_migrations(&Target::All));
 
         // The state is of one connection: a read of another replaces it all.
         assert!(data.migrations_for("testing").is_none());

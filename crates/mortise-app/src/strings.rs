@@ -2500,8 +2500,6 @@ pub const NOTHING_WAITING: &str = "Nothing waiting";
 pub const NOTHING_RAN_YET: &str = "Nothing ran";
 /// Not in the spec: the state box when the database has no migrations table.
 pub const NO_MIGRATIONS_TABLE: &str = "The database has no migrations table yet.";
-/// Not in the spec: the line before the read that follows a migration command.
-pub const READS_AGAIN_AFTER: &str = "After the run Mortise reads the state again:";
 
 /// `1 migration`, `9 migrations` (S10.1).
 pub fn migrations(n: usize) -> String {

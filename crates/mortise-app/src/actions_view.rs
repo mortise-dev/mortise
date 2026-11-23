@@ -16,7 +16,7 @@ use mortise_core::{
 
 use crate::boundary::BoundaryAction;
 use crate::draw::{self, Button, ButtonKind, Icon, ListNav, StampState};
-use crate::runner_view::{self, line_now};
+use crate::runner_view::line_now;
 use crate::strings;
 use crate::summary::alert_box;
 use crate::theme::{Face, Palette, Type, radius, size, ty};
@@ -118,10 +118,6 @@ pub struct Act {
     pub args: Vec<String>,
     /// The question Mortise asks before it starts them, if any.
     pub ask: Option<Ask>,
-    /// The read of the migration state that follows the run, with its target: only
-    /// when the panel showed "After the run Mortise reads the state again:" and the
-    /// whole line of that read in the last frame (design D7).
-    pub then_read: Option<(Target, Vec<String>)>,
 }
 
 /// What the tab needs besides the app and its own state.
@@ -179,36 +175,6 @@ fn migration_state<'a>(
 /// The migrations waiting in a state from [`migration_state`].
 fn waiting_count(read: &[(&Module, &ModuleMigrations)]) -> usize {
     read.iter().map(|(_, state)| state.waiting.len()).sum()
-}
-
-/// The target whose migration state Mortise reads again after `args` ran, when it
-/// was read in this session, and the words of that read: a migrate, roll back,
-/// reset, refresh or fresh that is not a dry run (design D7). A fresh reads every
-/// module. The read takes the run's `--database`.
-fn reads_state_after(args: &[String]) -> Option<(Target, Vec<String>)> {
-    let action = Action::from_artisan(args.first()?)?;
-    if !matches!(
-        action,
-        Action::Migrate
-            | Action::RollBack
-            | Action::ResetMigrations
-            | Action::RefreshMigrations
-            | Action::FreshMigrate
-    ) || Options::from_args(args).pretend
-    {
-        return None;
-    }
-    let all = args
-        .iter()
-        .take_while(|word| *word != "--")
-        .any(|word| word == "--all");
-    let target = if action == Action::FreshMigrate || all {
-        Target::All
-    } else {
-        Target::Module(runner_view::module_named(args)?)
-    };
-    let words = migrate_status_args(&target, &Options::from_args(args).database);
-    Some((target, words))
 }
 
 /// The modules that are on and use `name`, by name.
@@ -719,14 +685,12 @@ fn panel(
     let mut next_read_shown = None;
     let last_read = state.read_shown.take();
     if gives_data(&app.package) {
-        let pretend = action.options(target, true).pretend && state.options.pretend;
         let at = pos2(min.x, y + 12.0);
         let shown = StateShown {
             app,
             module,
             target,
             action,
-            pretend,
             read: read.as_deref(),
             last_read: last_read.as_deref(),
             connection: &connection,
@@ -854,16 +818,11 @@ fn panel(
             Plan::Refused { .. } | Plan::NoCommand => None,
         }
         .map(|(args, ask)| {
-            // A read follows only when its sentence and its line were on screen.
-            let then_read = reads_state_after(&args).filter(|(_, words)| {
-                app.package_data.migration_table.is_some() && last_read.as_ref() == Some(words)
-            });
             BoundaryAction::Act(Act {
                 action,
                 target: target.clone(),
                 args,
                 ask,
-                then_read,
             })
         });
     }
@@ -914,8 +873,6 @@ struct StateShown<'a> {
     module: Option<&'a Module>,
     target: &'a Target,
     action: Action,
-    /// The dry run is checked: no read follows the run.
-    pretend: bool,
     /// The state of the target, from [`migration_state`].
     read: Option<&'a [(&'a Module, &'a ModuleMigrations)]>,
     /// The words of the read whose line was whole on screen in the last frame.
@@ -952,11 +909,10 @@ fn clock(ms: i64) -> String {
 }
 
 /// The state box of Migrate, Roll back, Reset and Refresh (S10.1 to S10.4), with
-/// the button that reads the state and the line it runs (design D7). After a read
-/// in this session the line also says that a read follows the run. Fresh has no
-/// box, only that line. The button runs only a line that was whole on screen in
-/// the last frame. Returns the bottom, what was asked for and the words of the line
-/// when it is whole on screen in this frame, or `None` when the panel shows neither.
+/// the button that reads the state and the line it runs (design D7). The button
+/// runs only a line that was whole on screen in the last frame. Returns the bottom,
+/// what was asked for and the words of the line when it is whole on screen in this
+/// frame, or `None` when the panel has no box.
 fn state_box(
     ui: &Ui,
     pal: &Palette,
@@ -970,7 +926,6 @@ fn state_box(
         module,
         target,
         action,
-        pretend,
         read,
         last_read,
         connection,
@@ -979,37 +934,11 @@ fn state_box(
         Action::Migrate => strings::WAITING,
         Action::RollBack => strings::LAST_BATCH,
         Action::ResetMigrations | Action::RefreshMigrations => strings::RAN,
-        Action::FreshMigrate => "",
         _ => return None,
     };
     let args = migrate_status_args(target, connection);
     let line =
         line_now(inputs.runner, &args).unwrap_or_else(|| format!("php artisan {}", args.join(" ")));
-    // A read in this session: the run is followed by a read, unless it is a dry run.
-    let after = app.package_data.migration_table.is_some() && !pretend;
-    let hint = Type {
-        line: 16.0,
-        ..ty::SECONDARY
-    };
-    let after_line = |y: f32| {
-        let mut y = y;
-        if after {
-            let at = pos2(min.x, y);
-            y = draw::paragraph(ui, at, strings::READS_AGAIN_AFTER, hint, pal.ink_2, width)
-                .bottom()
-                + 4.0;
-        }
-        let code = draw::code_block(ui, pal, pos2(min.x, y), width, &line);
-        // Its text sits 12 px and 10 px inside the code block.
-        let whole = ui.clip_rect().contains_rect(code.shrink2(vec2(12.0, 10.0)));
-        (code.bottom(), whole.then(|| args.clone()))
-    };
-    if action == Action::FreshMigrate {
-        return after.then(|| {
-            let (bottom, whole) = after_line(min.y);
-            (bottom, None, whole)
-        });
-    }
 
     let all = module.is_none();
     let reading = inputs
@@ -1190,8 +1119,16 @@ fn state_box(
             pal.ink_2,
         );
     }
-    let (bottom, whole) = after_line(button_rect.bottom() + 8.0);
-    Some((bottom, asked, whole))
+    let code = draw::code_block(
+        ui,
+        pal,
+        pos2(min.x, button_rect.bottom() + 8.0),
+        width,
+        &line,
+    );
+    // Its text sits 12 px and 10 px inside the code block.
+    let whole = ui.clip_rect().contains_rect(code.shrink2(vec2(12.0, 10.0)));
+    Some((code.bottom(), asked, whole.then_some(args)))
 }
 
 /// A row of "What is lost": its name, in parts that are set in mono or not, and its

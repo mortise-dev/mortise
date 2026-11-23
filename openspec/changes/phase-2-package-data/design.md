@@ -251,12 +251,12 @@ pub struct PackageData {
     spec). For a module: `module:migrate-status <Module> --json`; for "All modules": `module:migrate-status
     --all --json`. The result merges into `migrations` by module (a module of the document replaces its
     entry; under `--all`, a module that is on and absent from the document is removed).
-  - After a read in this session, a migrate, roll back, reset, refresh or fresh started from the Actions
-    tab reads the state again when it ends, whatever its exit code, with the same target (fresh: `--all`)
-    and the run's `--database`. The state
-    box of those panels says so before the run: "After the run Mortise reads the state again:" and the
-    line (not in the spec). A dry run (`--pretend`) is not followed by a read. Seed and delete are not:
-    delete removes the module's entry.
+  - When a migrate, roll back, reset, refresh or fresh ends, from the Actions tab, a dialog, Run again or
+    the history, whatever its exit code, Mortise forgets the state it may have changed
+    (`package::migrations_changed_by`): every module for `--all`, a fresh or words without a module, else
+    the module's entry, whatever connection it was read for. No read follows: the box reads "Not read
+    yet." with "Read migration state" and its line again. A dry run (`--pretend`) and a seed forget
+    nothing. A delete that exits with 0 removes the module's entry.
   - "Read at 14:05" stands in the state box after a read (not in the spec).
 - **On screen** with a state for the module:
   - S10.1: "Waiting" with "1 migration" (the names in the box), the button "Migrate (1)", and the row
@@ -565,13 +565,21 @@ accessible name and a 24 px target (`tests/accessibility.rs`).
   end of every run (`after_run`) takes it in; a run from the panel gets that toast only, not a second one.
 - A module that ran with no counts (PHPUnit stopped before its report) gives no count toast: the totals
   would count it as 0. A failed run then gets the toast of milestone 12.
+- No read follows a migration command. The read after a run could use a runner changed during the run,
+  start when its sentence was cut off, and was skipped by Run again, which left an old state in place.
+  Now a migrate, roll back, reset, refresh or fresh that ends, from anywhere and whatever its exit code
+  (not a dry run), forgets the state it may have changed: all of it for `--all` or a fresh, else its
+  module's entry, whatever connection it was read for (`package::migrations_changed_by`,
+  `PackageData::forget_migrations`). A "no migrations table" answer goes with it. The box then reads
+  "Not read yet." as before any read. This replaces `then_read`, the sentence "After the run Mortise
+  reads the state again:" and the forget of a fresh by connection above.
 
 ## Risks / Trade-offs
 
 - [The user must press "List files" and "Read migration state"] → One more step than the spec draws.
   It follows the rule of `AGENTS.md`; the owner can change the rule later. Deviation rows record it.
-- [The migration state goes stale when the database changes outside Mortise] → It is read again after
-  each migration command Mortise runs, and "Read at" shows its age.
+- [The migration state goes stale when the database changes outside Mortise] → Each migration command
+  Mortise runs forgets the state it may have changed, and "Read at" shows its age.
 - [Tables come from the migration files] → A table built from a variable is not named. The panel then
   names fewer tables or none; the dry run of reset still prints the SQL.
 - [A long P3 line] → Measured in 15.2; the line limit of standard output grows only if needed.

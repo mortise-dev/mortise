@@ -645,7 +645,7 @@ fn delete_asks_for_the_name_and_selects_all_modules_when_it_ends() {
 }
 
 #[test]
-fn the_migration_state_is_read_when_asked_and_again_after_a_migrate() {
+fn the_migration_state_is_read_when_asked_and_forgotten_after_a_migrate() {
     let (desk, root) = desk("");
     common::package_version(&root, "v13.4.0");
     // The migration that ran in the recording creates a table.
@@ -709,39 +709,34 @@ fn the_migration_state_is_read_when_asked_and_again_after_a_migrate() {
     harness.key_press(Key::Backspace);
     harness.run_steps(3);
 
-    // After a read, a migrate is followed by a read of the same module.
+    // A migrate forgets the state of its module, and no read follows it.
     select(&mut harness, "Migrate");
-    harness.get_by_label("After the run Mortise reads the state again:");
-    let read_ms = |app: &MortiseApp| {
-        app.app().and_then(|app| {
-            app.package_data
-                .migrations
-                .get("Checkout")
-                .map(|state| state.read_ms)
-        })
+    let held = |app: &MortiseApp| {
+        app.app()
+            .is_some_and(|app| app.package_data.migrations.contains_key("Checkout"))
     };
-    let before = read_ms(harness.state()).unwrap();
     run(&mut harness);
     wait_for(&mut harness, "Migrated Checkout: 1 migration ran.");
-    common::wait_until(&mut harness, "the state is read again", |app| {
-        read_ms(app).is_some_and(|ms| ms > before)
-    });
-    assert_eq!(runs(&mut harness, &desk, &root), 1);
-
-    // Run again in the drawer shows no line of a read: none follows it.
-    let before = read_ms(harness.state());
-    harness
-        .get_by_role_and_label(Role::Button, "Run again")
-        .click();
-    let deadline = Instant::now() + Duration::from_secs(20);
-    while runs(&mut harness, &desk, &root) < 2 {
-        assert!(Instant::now() < deadline, "waited 20 s for the run again");
-    }
+    common::wait_until(&mut harness, "the state is forgotten", |app| !held(app));
     // A read would have ended within this second.
     let until = Instant::now() + Duration::from_secs(1);
     while Instant::now() < until {
         std::thread::sleep(Duration::from_millis(20));
         harness.run_steps(2);
     }
-    assert_eq!(read_ms(harness.state()), before);
+    assert!(!held(harness.state()));
+    harness.get_by_label("Not read yet.");
+    harness.get_by_role_and_label(Role::Button, "Read migration state");
+    assert_eq!(runs(&mut harness, &desk, &root), 1);
+
+    // Run again in the drawer forgets it too.
+    harness
+        .get_by_role_and_label(Role::Button, "Read migration state")
+        .click();
+    common::wait_until(&mut harness, "the state is read", held);
+    harness
+        .get_by_role_and_label(Role::Button, "Run again")
+        .click();
+    common::wait_until(&mut harness, "the state is forgotten", |app| !held(app));
+    assert_eq!(runs(&mut harness, &desk, &root), 2);
 }

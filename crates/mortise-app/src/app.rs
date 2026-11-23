@@ -1168,64 +1168,33 @@ impl MortiseApp {
         });
     }
 
-    /// After a run of the app at `index` ended, with these words (design D7): once
-    /// the migration state was read in this session, a migrate, roll back, reset,
-    /// refresh or fresh started from the Actions tab is followed by the read it
-    /// showed (`then_read`), whatever its exit code. Run again from the drawer or the
-    /// history shows no such line, so no read follows it. A delete forgets the state
-    /// of the module it deleted.
-    fn after_run(
-        &mut self,
-        index: usize,
-        args: &[String],
-        then_read: Option<(Target, Vec<String>)>,
-    ) {
+    /// After a run of the app at `index` ended, with these words, from wherever it
+    /// started (design D7). A migrate, roll back, reset, refresh or fresh, whatever its
+    /// exit code, forgets the migration state it may have changed: the box then reads
+    /// "Not read yet." again. A delete that exited with 0 forgets its module.
+    fn after_run(&mut self, index: usize, args: &[String]) {
         self.documents_ended(index, args);
         let Some(open) = self.apps.get(index) else {
             return;
         };
-        let deleted = match (destructive_words(args), open.runs.ended()) {
+        let forget = match (destructive_words(args), open.runs.ended()) {
             (
                 Some((Action::DeleteModule, Target::Module(name))),
                 Some(runner_view::RunOver {
                     end: RunEnd::Exited { code: Some(0), .. },
                     ..
                 }),
-            ) => Some(name),
-            _ => None,
+            ) => Some(Target::Module(name)),
+            _ => mortise_core::migrations_changed_by(args),
         };
-        if let Some(name) = deleted {
-            if open.package.migrations.contains_key(&name) {
-                self.set_package(index, |package| {
-                    package.migrations.remove(&name);
-                });
-            }
-            return;
-        }
-        // A fresh that ended, whatever its exit code, may have dropped every table of
-        // its connection: the state of that connection goes, also of the modules that
-        // are off, which the read after it does not list.
-        if let Some((Action::FreshMigrate, _)) = destructive_words(args) {
-            let connection = mortise_core::Options::from_args(args).database;
-            if open
-                .package
-                .migrations_for(&connection)
-                .is_some_and(|migrations| !migrations.is_empty())
-            {
-                self.set_package(index, |package| package.forget_migrations(&connection));
-            }
-        }
-        let Some(open) = self.apps.get(index) else {
+        let Some(target) = forget else {
             return;
         };
-        let gives = self
-            .snapshot(index)
-            .is_some_and(|app| mortise_core::gives_data(&app.package));
-        if !gives || open.package.migration_table.is_none() {
-            return;
-        }
-        if let Some((target, words)) = then_read {
-            self.read_migrations(index, target, words);
+        // The app is read again only when something goes.
+        if open.package.clone().forget_migrations(&target) {
+            self.set_package(index, |package| {
+                package.forget_migrations(&target);
+            });
         }
     }
 
@@ -1374,8 +1343,6 @@ impl MortiseApp {
                     target,
                     args,
                     ask: Some(ask),
-                    // Run again shows no line of a read: none follows.
-                    then_read: None,
                 };
                 self.act(index, act);
                 return;
@@ -2659,10 +2626,7 @@ impl eframe::App for MortiseApp {
             if was && open.runs.running().is_none() {
                 let action_run = open.action_run.take();
                 if let Some(args) = open.runs.args() {
-                    let then_read = action_run
-                        .as_ref()
-                        .and_then(|(act, _)| act.then_read.clone());
-                    finished.push((index, args.to_vec(), then_read));
+                    finished.push((index, args.to_vec()));
                 }
                 if let Some((act, modules_on)) = action_run {
                     ended.push((index, act, modules_on));
@@ -2699,9 +2663,8 @@ impl eframe::App for MortiseApp {
         for (index, generating) in generated {
             self.generate_ended(index, generating);
         }
-        // After the reads that ended, so that a read that follows a run can start.
-        for (index, args, then_read) in finished {
-            self.after_run(index, &args, then_read);
+        for (index, args) in finished {
+            self.after_run(index, &args);
         }
         if running {
             ctx.request_repaint_after(std::time::Duration::from_millis(100));
