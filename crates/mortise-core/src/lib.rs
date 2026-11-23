@@ -60,6 +60,10 @@ pub use rules::{RULES_FILE, Rules, RulesError, RulesSource};
 #[cfg(feature = "run")]
 pub use run::ansi;
 #[cfg(feature = "run")]
+pub use run::history;
+#[cfg(feature = "run")]
+pub use run::history::OUTPUT_LIMIT;
+#[cfg(feature = "run")]
 pub use run::{
     CommandLine, Detected, Failure, TEST_LIMIT, TestOutcome, detect, herd_config_dir, test_php,
 };

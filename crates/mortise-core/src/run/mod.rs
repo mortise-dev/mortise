@@ -9,6 +9,8 @@ pub mod ansi;
 mod detect;
 #[cfg(feature = "run")]
 pub use detect::{Detected, detect, herd_config_dir};
+#[cfg(feature = "run")]
+pub mod history;
 pub(crate) mod process;
 
 use std::path::{Path, PathBuf};
