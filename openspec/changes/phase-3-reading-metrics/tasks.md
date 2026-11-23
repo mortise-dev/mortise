@@ -47,9 +47,9 @@ and `cargo test --workspace`.
 
 ## 6. Images and measurement (20.7, Sonnet)
 
-- [ ] 6.1 Add images to `tests/images.rs` for S7.1, S7.2 and the table, light and dark, with the stepping clock. Remove `s7.4-metrics`. Run `UPDATE_SNAPSHOTS=1 cargo test -p mortise-app --test images` and look at each new and each changed image
-- [ ] 6.2 Add the controls of the Metrics tab to the sweep of `tests/accessibility.rs`, in the test that already walks the tabs. Verify with `cargo test -p mortise-app --test accessibility`
-- [ ] 6.3 Measure the generated answer of 4.6 in a release build: the time of `Reading::of`, and the peak size of the process with and without the read (`/usr/bin/time -l` on macOS). Write the numbers and the computer under "Measured" in `design.md`. They are within the budget of D8, or the lead is told
+- [x] 6.1 Add images to `tests/images.rs` for S7.1, S7.2 and the table, light and dark, with the stepping clock. Remove `s7.4-metrics`. Run `UPDATE_SNAPSHOTS=1 cargo test -p mortise-app --test images` and look at each new and each changed image
+- [x] 6.2 Add the controls of the Metrics tab to the sweep of `tests/accessibility.rs`, in the test that already walks the tabs. Verify with `cargo test -p mortise-app --test accessibility`
+- [x] 6.3 Measure the generated answer of 4.6 in a release build: the time of `Reading::of`, and the peak size of the process with and without the read (`/usr/bin/time -l` on macOS). Write the numbers and the computer under "Measured" in `design.md`. They are within the budget of D8, or the lead is told
 
 ## 7. Integration
 

@@ -11,12 +11,17 @@
 
 mod common;
 
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Duration;
+
 use common::Desk;
 use eframe::egui::{Key, Modifiers, Role, Theme};
 use egui_kittest::kittest::{NodeT as _, Queryable as _};
 use egui_kittest::{Harness, SnapshotOptions, SnapshotResults};
 use mortise_app::app::MortiseApp;
 use mortise_core::history::{Ended, Entry, History};
+use mortise_core::testing::{Reply, StubActuator};
 use mortise_core::{CommandLine, RunnerKind};
 
 const THEMES: [(Theme, &str); 2] = [(Theme::Light, "light"), (Theme::Dark, "dark")];
@@ -1119,4 +1124,105 @@ fn exit_time(harness: &Harness<'static, MortiseApp>) -> String {
                 .is_some_and(|number| number.parse::<f64>().is_ok())
         })
         .expect("the time of the run")
+}
+
+// --- The Metrics tab (S7.1, S7.2 and the plain table of milestone 20) ---
+
+/// The answer of `prometheus` when the counters stand at `n`: requests of Checkout and
+/// Billing, and jobs of Billing. The histograms have a total and a count, which is all
+/// the figures read.
+fn prometheus(n: u32) -> String {
+    let request = |method: &str, route: &str, count: u32| {
+        let labels = format!(
+            r#"http_request_method="{method}",http_response_status_code="200",http_route="{route}""#
+        );
+        format!(
+            "http_server_request_duration_seconds_bucket{{{labels},le=\"+Inf\"}} {count}\n\
+             http_server_request_duration_seconds_sum{{{labels}}} {}\n\
+             http_server_request_duration_seconds_count{{{labels}}} {count}\n",
+            f64::from(count) * 0.02
+        )
+    };
+    let job = |name: &str, count: u32| {
+        let labels = format!(r#"laravel_job_name="Modules\\Billing\\Jobs\\{name}""#);
+        format!(
+            "messaging_process_duration_seconds_bucket{{{labels},le=\"+Inf\"}} {count}\n\
+             messaging_process_duration_seconds_sum{{{labels}}} {}\n\
+             messaging_process_duration_seconds_count{{{labels}}} {count}\n",
+            f64::from(count) * 0.1
+        )
+    };
+    format!(
+        "# TYPE http_server_request_duration_seconds histogram\n{}{}{}\
+         # TYPE messaging_process_duration_seconds histogram\n{}{}",
+        request("GET", "/api/checkout/things/0", 100 + 30 * n),
+        request("GET", "/api/checkout/things/1", 40 + 12 * n),
+        request("GET", "/billing/things/2", 20 + 6 * n),
+        job("SendInvoice", 10 + 3 * n),
+        job("ChargeInvoice", 5 + 2 * n),
+    )
+}
+
+/// shop-api connected to the stub as "local", in a theme.
+fn connected(theme: Theme, stub: &StubActuator) -> (Desk, Harness<'static, MortiseApp>) {
+    let mut desk = Desk::new();
+    desk.theme = theme;
+    let root = desk.app("shop-api");
+    desk.knows(&[(&root, "SA")]);
+    desk.connect(&[common::environment("local", stub)]);
+    let mut harness = desk.start();
+    common::wait_for_answer(&mut harness);
+    (desk, harness)
+}
+
+#[test]
+fn the_metrics_tab() {
+    // One set of results for the test: both themes are compared when it ends.
+    let mut shots = Shots::new();
+    for (theme, name) in THEMES {
+        shots.theme = name;
+        // S7.1: no environment.
+        let (_desk, mut harness) = shop_api(theme);
+        press(&mut harness, Key::Num5);
+        shots.take(&mut harness, "s7.1-metrics-not-connected");
+
+        // S7.2: the links of the environment lack `prometheus`.
+        let stub = common::shop_api_actuator();
+        let (_desk, mut harness) = connected(theme, &stub);
+        press(&mut harness, Key::Num5);
+        wait_for(&mut harness, "Metrics are not exposed on local");
+        rest(&mut harness);
+        shots.take(&mut harness, "s7.2-metrics-not-exposed");
+
+        // The plain table: a read, then a second one 15 s later with more counted.
+        let stub = common::shop_api_actuator();
+        stub.expose(&["health", "info", "mappings", "scheduledtasks", "prometheus"]);
+        stub.set("/actuator/prometheus", Reply::ok(&prometheus(0)));
+        let calls = Arc::new(AtomicU64::new(0));
+        let mut desk = Desk::new();
+        desk.theme = theme;
+        desk.metrics_clock = Some(Arc::new(move || {
+            Duration::from_secs(15 * calls.fetch_add(1, Ordering::SeqCst))
+        }));
+        let root = desk.app("shop-api");
+        desk.knows(&[(&root, "SA")]);
+        desk.connect(&[common::environment("local", &stub)]);
+        let mut harness = desk.start();
+        common::wait_for_answer(&mut harness);
+        press(&mut harness, Key::Num5);
+        wait_for(&mut harness, "A rate needs two reads");
+        stub.set("/actuator/prometheus", Reply::ok(&prometheus(1)));
+        harness.key_press_modifiers(Modifiers::COMMAND, Key::R);
+        let deadline = std::time::Instant::now() + Duration::from_secs(20);
+        while harness
+            .query_by_label_contains("A rate needs two reads")
+            .is_some()
+        {
+            assert!(std::time::Instant::now() < deadline, "the second read");
+            std::thread::sleep(Duration::from_millis(20));
+            harness.run_steps(2);
+        }
+        rest(&mut harness);
+        shots.take(&mut harness, "s7.3-metrics-table");
+    }
 }

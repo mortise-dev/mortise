@@ -253,6 +253,8 @@ fn the_first_run_and_an_app_with_many_modules() {
     audit(&harness, "30 modules, Summary");
     press(&mut harness, Key::Num2);
     audit(&harness, "30 modules, the table of links");
+    press(&mut harness, Key::Num5);
+    audit(&harness, "Metrics, not connected");
 }
 
 #[test]
