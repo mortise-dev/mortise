@@ -22,7 +22,7 @@ use crate::chrome::{self, Chrome};
 use crate::dialog::{Answer, Dialog, Typed};
 use crate::draw::{self, Button, ButtonKind};
 use crate::generate_view::{
-    CatalogRead, GenerateAsk, GenerateInputs, GenerateResult, GenerateRun, GenerateState,
+    CatalogRead, GenerateAsk, GenerateInputs, GenerateResult, GenerateRun, GenerateState, TakenOut,
 };
 use crate::index::{self, IndexRuntime, IndexState};
 use crate::palette::{self, Command, PaletteAction, PaletteState};
@@ -1788,7 +1788,7 @@ impl MortiseApp {
             || "Modules".to_owned(),
             |app| app.path_shown(&app.layout.modules_dir),
         );
-        let (files, autoload_failed, fallback) = match answer {
+        let (mut files, autoload_failed, fallback) = match answer {
             Some(Ok(report)) => (
                 mortise_core::reported_files(&report, &root, &modules),
                 report.autoload_failed(),
@@ -1800,6 +1800,23 @@ impl MortiseApp {
                 answer.and_then(|answer| answer.err().map(|e| strings::no_run_document(&e, end))),
             ),
         };
+        // The files S9.3 took out of the command: the run left them, so its result
+        // lists them as left, each with its own Replace (design D5).
+        let taken_out: Vec<TakenOut> = run
+            .taken_out
+            .iter()
+            .map(|file| TakenOut {
+                path: mortise_core::app_relative(&root, &modules, &file.path)
+                    .unwrap_or_else(|| file.path.clone()),
+                replace: file.replace.clone(),
+            })
+            .collect();
+        if !files.is_empty() {
+            files.extend(taken_out.iter().map(|file| mortise_core::GeneratedFile {
+                path: file.path.clone(),
+                outcome: FileOutcome::Left,
+            }));
+        }
         let label = run.args.join(" ");
         let in_view = self.runner.shown == Shown::Open
             && self.current == Some(index)
@@ -1906,7 +1923,8 @@ impl MortiseApp {
         }
         if attached {
             let result = GenerateResult::new(run.module, run.args, files, false);
-            open.generate.show_result(result.read_from_output(fallback));
+            open.generate
+                .show_result(result.read_from_output(fallback).with_taken_out(taken_out));
         }
     }
 

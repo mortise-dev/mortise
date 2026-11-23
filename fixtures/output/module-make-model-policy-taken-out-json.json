@@ -1,0 +1,15 @@
+{
+  "command": "php artisan module:make-model Invoice Billing --migration --json --no-interaction --ansi",
+  "args": [
+    "module:make-model",
+    "Invoice",
+    "Billing",
+    "--migration",
+    "--json"
+  ],
+  "made_with": "nwidart/laravel-modules 13.4.0, laravel/framework 13.43.0, PHP 8.4.27, macOS",
+  "exit": 0,
+  "stdout": "{\"command\":\"module:make-model\",\"dry_run\":false,\"files\":[{\"path\":\"/tmp/scratch-app/Modules/Billing/app/Models/Invoice.php\",\"exists\":false,\"action\":\"create\",\"result\":\"created\"},{\"path\":\"/tmp/scratch-app/Modules/Billing/database/migrations/2026_11_23_123028_create_invoices_table.php\",\"exists\":false,\"action\":\"create\",\"result\":\"created\"}],\"errors\":[]}\n",
+  "stderr": "  Generating file Modules/Billing/app/Models/Invoice.php \u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m 0.37ms\u001b[39m \u001b[32;1mDONE\u001b[39;22m\n\n  \u001b[37;44m INFO \u001b[39;49m Creating migration...  \n\n  Generating file Modules/Billing/database/migrations/2026_11_23_123028_create_invoices_table.php \u001b[90m 0.22ms\u001b[39m \u001b[32;1mDONE\u001b[39;22m\n",
+  "root": "/tmp/scratch-app"
+}

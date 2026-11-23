@@ -437,6 +437,8 @@ accessible name and a 24 px target (`tests/accessibility.rs`).
   app folder, the path is read from its first `/<modules>/<Module>/` on, with `modules` the modules
   folder of the layout. A result offers no Open for a path it still cannot place and that does not
   exist on this computer.
+- A run carries the files S9.3 took out (`GenerateRun::taken_out`, with the words that replace each,
+  from the words before the flag went). Its result lists them as left, so "Replace <file>" stays.
 
 ## Risks / Trade-offs
 

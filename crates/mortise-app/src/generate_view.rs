@@ -86,6 +86,19 @@ pub struct GenerateRun {
     pub module: Option<String>,
     /// The artisan words, exactly as the line on screen shows them.
     pub args: Vec<String>,
+    /// The files whose flags S9.3 took out of the command: the run leaves them.
+    pub taken_out: Vec<TakenOut>,
+}
+
+/// A file that S9.3 took out of the command because it exists (design D5). The run
+/// leaves it as it is, and its result lists it with its own Replace.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TakenOut {
+    /// The path as the dry run printed it, or relative to the app once in a result.
+    pub path: String,
+    /// The words that write it with `--force`: `replace_words` on the words of the
+    /// form before its flag was taken out.
+    pub replace: Option<Vec<String>>,
 }
 
 /// What the tab asks the app for.
@@ -132,6 +145,8 @@ pub struct GenerateResult {
     pub autoload_failed: bool,
     /// Why the run gave no answer, when the files were read from its output (design D6).
     fallback: Option<String>,
+    /// The files S9.3 took out of the command, listed in `files` as left.
+    taken_out: Vec<TakenOut>,
     /// When it was first painted, in seconds of egui's clock.
     shown: Option<f64>,
 }
@@ -149,8 +164,16 @@ impl GenerateResult {
             files,
             autoload_failed,
             fallback: None,
+            taken_out: Vec::new(),
             shown: None,
         }
+    }
+
+    /// The files S9.3 took out of the run's command, which `files` lists as left. Each
+    /// Replace of them runs its own words.
+    pub fn with_taken_out(mut self, taken_out: Vec<TakenOut>) -> Self {
+        self.taken_out = taken_out;
+        self
     }
 
     /// The result read from the output lines, because the run gave no answer: why.
@@ -172,6 +195,8 @@ impl GenerateResult {
 struct FileList {
     /// The words of the form, without `--dry-run --json`.
     words: Vec<String>,
+    /// The words the dry run ran with, before S9.3 took flags out.
+    before: Vec<String>,
     listed: Result<GeneratorReport, String>,
     /// The flags of the model form taken out because their file exists (S9.3).
     taken_out: Vec<&'static str>,
@@ -298,9 +323,43 @@ impl GenerateState {
         }
         self.files = Some(FileList {
             words: generator.words(&self.filled, module.as_deref()),
+            before: words,
             listed,
             taken_out,
         });
+    }
+
+    /// The files of the list for `words` whose flags S9.3 took out, with the words
+    /// that replace each (design D5).
+    fn taken_out_files(
+        &self,
+        words: &[String],
+        catalog: &Catalog,
+        package: &mortise_core::Version,
+    ) -> Vec<TakenOut> {
+        let Some(list) = self.files_for(words) else {
+            return Vec::new();
+        };
+        let Ok(report) = &list.listed else {
+            return Vec::new();
+        };
+        let model = self
+            .filled
+            .arguments
+            .get("model")
+            .map_or("", |model| model.trim());
+        report
+            .files
+            .iter()
+            .filter(|file| file.action == FileAction::Keep)
+            .filter(|file| {
+                model_flag_of(model, &file.path).is_some_and(|flag| list.taken_out.contains(&flag))
+            })
+            .map(|file| TakenOut {
+                path: file.path.clone(),
+                replace: replace_words(catalog, &list.before, &file.path, package),
+            })
+            .collect()
     }
 
     /// Drops the file list: a run starts that writes files.
@@ -1758,6 +1817,7 @@ fn command(
             generator: generator.name.clone(),
             module: name.clone(),
             args: run_args.clone(),
+            taken_out: state.taken_out_files(&words, inputs.catalog, &app.package),
         })));
     }
     // A line cut off by the scroll area is not on screen, so Ctrl Enter does not
@@ -1812,6 +1872,7 @@ fn command(
                     generator: replace_args.first().cloned().unwrap_or_default(),
                     module: name,
                     args: run_words(app, replace_args),
+                    taken_out: Vec::new(),
                 },
             }));
         }
@@ -2428,7 +2489,15 @@ fn result_view(
     let Some(first_left) = left.first() else {
         return (y - 12.0, asked);
     };
-    let words = replace_words(inputs.catalog, &result.args, &first_left.path, &app.package);
+    // A file S9.3 took out has the words of the form before its flag went.
+    let words = match result
+        .taken_out
+        .iter()
+        .find(|file| file.path == first_left.path)
+    {
+        Some(file) => file.replace.clone(),
+        None => replace_words(inputs.catalog, &result.args, &first_left.path, &app.package),
+    };
     let name = file_name(&first_left.path);
     let mut bottom = y - 12.0;
     if let Some(words) = words {
@@ -2448,6 +2517,7 @@ fn result_view(
                     generator: words.first().cloned().unwrap_or_default(),
                     module: result.module.clone(),
                     args: run_words(app, words),
+                    taken_out: Vec::new(),
                 },
             }));
         }

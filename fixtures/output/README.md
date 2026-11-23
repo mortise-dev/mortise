@@ -12,7 +12,8 @@ The recordings were made with no agent variables in the environment, because `la
 The `--json` commands of 13.4.0 were recorded with the app as it is described in `made_with`, with modules Billing and Checkout.
 `module-migrate-status-no-table.json` was recorded before any migration ran, on an empty SQLite file.
 `module-make-model-policy-exists-*.json` were recorded after `module:make-policy InvoicePolicy Billing`.
-`module-make-model-factory-exists-dry-run.json` was recorded later, in another scratch app with the same versions, after `module:make-policy InvoicePolicy Billing` and `module:make-factory Invoice Billing`.
-The script that recorded it wrote the folder of that app as `/tmp/scratch-app`, in `root` and in the output.
+`module-make-model-factory-exists-dry-run.json` and `module-make-model-policy-taken-out-json.json` were recorded later, in another scratch app with the same versions.
+`module-make-model-policy-taken-out-json.json` ran after `module:make-policy InvoicePolicy Billing`, and `module-make-model-factory-exists-dry-run.json` after it and `module:make-factory Invoice Billing`.
+The script that recorded them wrote the folder of that app as `/tmp/scratch-app`, in `root` and in the output.
 `module-test-fail.json` ran a test that fails on purpose, and `module-test-all.json` ran with that test in place.
 The output of `module:generators --json` is one line of 48552 bytes (48553 with the newline), under the 64 KiB line limit of standard output.
