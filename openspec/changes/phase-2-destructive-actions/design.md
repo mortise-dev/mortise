@@ -53,8 +53,9 @@ through the existing `git()` helper (no lock, no prompt, no file system monitor,
 dropped). Each NUL-separated entry is `XY <path>` from the top; it counts once for the folder it is
 under. A folder with no entry gets 0.
 
-`None` when git cannot tell: a folder outside the repository, a folder that git lists as one entry
-(a submodule or a nested repository, whose files the outer status does not list), or when git fails.
+`None` when git cannot tell: a folder outside the repository, a folder in a repository of its own
+(a `.git` in the folder or above it below the top, such as a submodule, whose files the outer status
+does not list even with `ignore = all`), a folder that git lists as one entry, or when git fails.
 
 `Module` gets `pub uncommitted: Option<u32>`, and the screen says "Mortise cannot tell whether these
 files are in git." for `None`. It is read in `app.rs` with the churn, in the background thread that
@@ -96,7 +97,9 @@ thread every frame or need its own cache; the snapshot already has both.
 - `refuses(action, context) -> bool`: the four in production, and delete when `Context::
   modules_folder_assumed` is true. Mortise then could not read `paths.modules` from
   `config/modules.php` and shows the package default, while the package may delete another folder
-  of the same name. `plan` gives `Refused` for both.
+  of the same name. `plan` gives `Refused` for both. The layout reads a key as assumed also when a
+  part of its path only PHP knows (`'paths' => $paths`, or an array with a spread), not only when the
+  key's own value does (`ConfigValue::lookup`).
 
 Tests, once each, in `catalog/actions.rs`: the destructive lists; the four rows of the plan table for
 targets they do not take; the reset dry run row; the word order with both drop flags; `asks_again` of a
@@ -165,7 +168,7 @@ delete with the modules folder assumed "Mortise cannot read where shop-api keeps
 package could delete another folder. Copy the command and run it where you can check the folder."
 (not in the spec).
 
-Ctrl Enter takes the line only when the whole line was inside the visible part of the tab in the last
+Ctrl Enter takes the line only when its whole text was inside the visible part of the tab in the last
 frame: a line cut off by the scroll area does not count as on screen.
 
 Ctrl Enter on a destructive panel does what the run button does: it opens the dialog. The only line that
@@ -198,11 +201,14 @@ fallbacks: no table list, "Reset migrations" and "Refresh migrations" without a 
   opens the strongest dialog of D6 for those exact words. When Mortise now refuses the action (D2), it
   opens the Actions tab on that action with the options of those words (`Options::from_args`) and runs
   nothing. Other lines keep the plain dialog of milestone 12.
-- Confirm checks the refusal again: the app can turn to production while a dialog is open. A refused
-  action then opens its panel as above instead of running. "Dry run" of a dialog sets the panel's
+- Confirm checks the refusal again, from the app's files: the snapshot can be a moment old when the
+  app turns to production while a dialog is open. `read_app_env` and, for a delete, `read_layout` are
+  read at that moment; a modules folder that differs from the snapshot's counts as assumed. Without a
+  snapshot nothing runs. A refused action then opens its panel as above instead of running. "Dry run" of a dialog sets the panel's
   options from the words the dialog asked about, then checks `pretend`.
-- Enter never presses the red button of a danger dialog, with any modifier: egui presses a focused
-  button on Enter whatever the modifiers are.
+- A danger dialog drops every Enter key event at the start of its frame, with any modifier and
+  wherever focus is: egui presses a focused button on Enter whatever the modifiers are, and Tab can
+  move focus to the red button in the same frame. Space and a click still press it; Esc cancels.
 - Toasts in `action_ended`, code 0, not a dry run: "Reset the migrations of Checkout: 9 rolled back.",
   "Refreshed the migrations of Checkout: 9 ran again.", "Dropped all tables of shop-api and migrated 7
   modules.", "Deleted the module Checkout.". With a count of 0: "…: nothing to roll back." and "…:

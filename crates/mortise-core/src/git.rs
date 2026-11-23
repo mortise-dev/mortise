@@ -167,11 +167,20 @@ pub(crate) fn uncommitted(root: &Path, dirs: &[PathBuf]) -> Vec<Option<u32>> {
         return unknown;
     };
     // Each folder relative to the top of the repository, with `/`, as git prints
-    // the paths of a status.
+    // the paths of a status. A folder in a repository of its own, such as a
+    // submodule, has a `.git` in it or above it below the top: this status does not
+    // list its files.
     let relative: Vec<Option<String>> = dirs
         .iter()
         .map(|dir| {
             let dir = std::fs::canonicalize(dir).ok()?;
+            let nested = dir
+                .ancestors()
+                .take_while(|folder| *folder != top)
+                .any(|folder| folder.join(".git").exists());
+            if nested {
+                return None;
+            }
             let parts: Vec<String> = dir
                 .strip_prefix(&top)
                 .ok()?

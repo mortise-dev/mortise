@@ -1191,12 +1191,31 @@ impl MortiseApp {
         })
     }
 
-    /// True when Mortise does not run `action` in the app at `index` now.
+    /// True when Mortise does not run `action` in the app at `index` now. The
+    /// snapshot can be a moment old, so `APP_ENV` and, for a delete, the modules
+    /// folder are read again from the app's files. Without a snapshot nothing runs.
     fn refused(&self, index: usize, action: Action) -> bool {
-        let name = self.settings.apps[index].display_name();
-        self.snapshot(index)
-            .and_then(|app| actions_view::refusal(&app, name, action))
-            .is_some()
+        let entry = &self.settings.apps[index];
+        let Some(app) = self.snapshot(index) else {
+            return true;
+        };
+        if actions_view::refusal(&app, entry.display_name(), action).is_some() {
+            return true;
+        }
+        if !action.is_destructive() {
+            return false;
+        }
+        let layout = mortise_core::read_layout(&entry.root);
+        let context = mortise_core::Context {
+            production: mortise_core::read_app_env(&entry.root).as_deref() == Some("production"),
+            users_on: &[],
+            // A folder that moved since the dialog showed it is not the one it named.
+            modules_folder_assumed: layout
+                .assumed
+                .contains(&mortise_core::LayoutKey::ModulesFolder)
+                || layout.modules_dir != app.layout.modules_dir,
+        };
+        mortise_core::refuses(action, &context)
     }
 
     /// Opens the Actions tab of the app at `index` on `action` with the options of

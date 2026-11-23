@@ -97,6 +97,23 @@ impl Dialog {
             .backdrop_color(pal.scrim)
             .area(area)
             .show(ui.ctx(), |ui| {
+                // Enter never presses the red button (S10.5), with any modifier and
+                // wherever focus is or moves in this frame: egui presses a focused
+                // button on Enter, and Tab can move focus to it in the same frame.
+                // Space and a click do.
+                if self.danger {
+                    ui.input_mut(|input| {
+                        input.events.retain(|event| {
+                            !matches!(
+                                event,
+                                Event::Key {
+                                    key: Key::Enter,
+                                    ..
+                                }
+                            )
+                        });
+                    });
+                }
                 let text_w = size::DIALOG_W - 34.0;
                 let body = draw::galley_wrapped(ui, &self.body, ty::BODY, pal.ink_2, text_w);
                 // The parts under the body, each 10 px below the one before.
@@ -252,24 +269,6 @@ impl Dialog {
                 let quiet = cancel.show(ui, pal, egui::pos2(cancel_x, y), keyboard);
                 if quiet.clicked() {
                     answer = Some(Answer::Cancel);
-                }
-                // Enter never presses the red button, also when it has focus (S10.5).
-                // Space and a click do.
-                let confirm_id = confirm.id(ui);
-                if self.danger && ui.memory(|memory| memory.has_focus(confirm_id)) {
-                    // With any modifier: egui presses a focused button on Enter whatever
-                    // the modifiers are, and Ctrl Enter opened the dialog.
-                    ui.input_mut(|input| {
-                        input.events.retain(|event| {
-                            !matches!(
-                                event,
-                                Event::Key {
-                                    key: Key::Enter,
-                                    ..
-                                }
-                            )
-                        });
-                    });
                 }
                 let response = confirm.show(ui, pal, egui::pos2(confirm_x, y), keyboard);
                 if opened {

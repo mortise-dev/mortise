@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use crate::php::{ConfigValue, read_config};
+use crate::php::{ConfigValue, Lookup, read_config};
 
 /// A setting of `config/modules.php` that Mortise needs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -54,6 +54,12 @@ pub struct Layout {
     pub assumed: Vec<LayoutKey>,
 }
 
+/// Reads the layout of the app in `root` from `config/modules.php` now, without
+/// the rest of the app. A confirmation checks it again just before a delete.
+pub fn read_layout(root: &Path) -> Layout {
+    Layout::read(root).0
+}
+
 impl Layout {
     /// Reads the layout of the app in `root`, and gives the config it came from.
     /// A missing config file means the package defaults.
@@ -89,11 +95,12 @@ impl Layout {
         // so a missing nested key is not the default at run time. Mortise still uses the
         // default here: it is what the package's own fallbacks do for the modules folder,
         // and for the rest there is nothing better to show.
-        let mut text = |path: &[&str], key: LayoutKey, target: &mut String| match config.at(path) {
-            Some(ConfigValue::Str(value)) => *target = value.clone(),
-            Some(_) => layout.assumed.push(key),
-            None => {}
-        };
+        let mut text =
+            |path: &[&str], key: LayoutKey, target: &mut String| match config.lookup(path) {
+                Lookup::Found(ConfigValue::Str(value)) => *target = value.clone(),
+                Lookup::Found(_) | Lookup::Unresolved => layout.assumed.push(key),
+                Lookup::Missing => {}
+            };
         text(&["namespace"], LayoutKey::Namespace, &mut layout.namespace);
         text(
             &["paths", "app_folder"],
@@ -102,16 +109,17 @@ impl Layout {
         );
         text(&["activator"], LayoutKey::Activator, &mut layout.activator);
 
-        let mut path = |path: &[&str], key: LayoutKey, target: &mut PathBuf| match config.at(path) {
-            Some(ConfigValue::BasePath(relative)) => *target = root.join(relative),
-            // A plain string is a path as PHP would see it: absolute, or relative to
-            // wherever PHP runs. Only the absolute form can be followed from here.
-            Some(ConfigValue::Str(value)) if Path::new(value).is_absolute() => {
-                *target = PathBuf::from(value);
-            }
-            Some(_) => layout.assumed.push(key),
-            None => {}
-        };
+        let mut path =
+            |path: &[&str], key: LayoutKey, target: &mut PathBuf| match config.lookup(path) {
+                Lookup::Found(ConfigValue::BasePath(relative)) => *target = root.join(relative),
+                // A plain string is a path as PHP would see it: absolute, or relative to
+                // wherever PHP runs. Only the absolute form can be followed from here.
+                Lookup::Found(ConfigValue::Str(value)) if Path::new(value).is_absolute() => {
+                    *target = PathBuf::from(value);
+                }
+                Lookup::Found(_) | Lookup::Unresolved => layout.assumed.push(key),
+                Lookup::Missing => {}
+            };
         path(
             &["paths", "modules"],
             LayoutKey::ModulesFolder,
@@ -207,6 +215,19 @@ mod tests {
         let (layout, _) = Layout::read(app.path());
         assert_eq!(layout.modules_dir, app.path().join("Modules"));
         assert_eq!(layout.assumed, vec![LayoutKey::ModulesFolder]);
+
+        // A part of the path that only PHP knows: the modules folder could be anywhere.
+        for config in [
+            "<?php return ['paths' => $paths];",
+            "<?php return ['paths' => [...$paths]];",
+        ] {
+            let app = app_with_config(Some(config));
+            let (layout, _) = Layout::read(app.path());
+            assert!(
+                layout.assumed.contains(&LayoutKey::ModulesFolder),
+                "{config}"
+            );
+        }
     }
 
     #[test]

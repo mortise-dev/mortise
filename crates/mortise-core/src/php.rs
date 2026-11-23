@@ -53,6 +53,42 @@ impl ConfigValue {
     pub(crate) fn at(&self, path: &[&str]) -> Option<&ConfigValue> {
         path.iter().try_fold(self, |value, key| value.get(key))
     }
+
+    /// The value at a path of string keys, or whether it is missing or cannot be
+    /// known without PHP: a part of the path is not an array, or an array that lacks
+    /// the key has a spread or a computed key that could hold it.
+    pub(crate) fn lookup(&self, path: &[&str]) -> Lookup<'_> {
+        let mut value = self;
+        for key in path {
+            let ConfigValue::Array(items) = value else {
+                return Lookup::Unresolved;
+            };
+            match value.get(key) {
+                Some(next) => value = next,
+                None => {
+                    let open = items.iter().any(|(k, v)| match k {
+                        Some(k) => *k == ConfigValue::Unknown,
+                        None => *v == ConfigValue::Unknown,
+                    });
+                    return match open {
+                        true => Lookup::Unresolved,
+                        false => Lookup::Missing,
+                    };
+                }
+            }
+        }
+        Lookup::Found(value)
+    }
+}
+
+/// What a path of keys gives in a config value.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) enum Lookup<'a> {
+    Found(&'a ConfigValue),
+    /// No such key: the package default holds.
+    Missing,
+    /// Only PHP can tell.
+    Unresolved,
 }
 
 /// Reads the array a PHP config file returns.

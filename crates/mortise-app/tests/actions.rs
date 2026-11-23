@@ -539,6 +539,14 @@ fn delete_asks_for_the_name_and_selects_all_modules_when_it_ends() {
         harness.key_press_modifiers(modifiers, Key::Enter);
         harness.run_steps(2);
     }
+    // Tab from Cancel to the red button and Enter in one frame.
+    harness
+        .get_by_role_and_label(Role::Button, "Cancel")
+        .focus();
+    harness.run_steps(2);
+    harness.key_press(Key::Tab);
+    harness.key_press(Key::Enter);
+    harness.run_steps(2);
     harness.get_by_role_and_label(Role::Heading, "Delete the module Checkout?");
     assert_eq!(runs(&mut harness, &desk, &root), 0);
 
@@ -562,18 +570,20 @@ fn delete_asks_for_the_name_and_selects_all_modules_when_it_ends() {
     assert!(!confirm(&harness));
     type_in(&mut harness, field, "Checkout");
 
-    // The app turns to production while the dialog is open: the confirmation no
-    // longer runs; the panel says why and keeps the line to copy.
+    // The app turns to production while the dialog is open, and the user confirms
+    // before Mortise reads the app again: the confirmation reads `.env` itself and
+    // does not run. The panel says why and keeps the line to copy.
     std::fs::write(root.join(".env"), "APP_ENV=production\n").unwrap();
-    common::wait_until(&mut harness, "the app reports production", |app| {
-        app.app()
-            .is_some_and(|app| app.app_env.as_deref() == Some("production"))
-    });
     harness
         .get_all_by_role_and_label(Role::Button, "Delete module")
         .last()
         .unwrap()
         .click();
+    harness.run_steps(3);
+    common::wait_until(&mut harness, "the app reports production", |app| {
+        app.app()
+            .is_some_and(|app| app.app_env.as_deref() == Some("production"))
+    });
     harness.run_steps(3);
     harness.get_by_label(
         "shop-api reports the environment production. Mortise does not run this command \

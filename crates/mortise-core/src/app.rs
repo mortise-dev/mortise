@@ -205,6 +205,12 @@ pub enum ReadError {
     },
 }
 
+/// `APP_ENV` from the `.env` file of the app in `root`, read now. A confirmation
+/// checks it again just before a destructive command starts.
+pub fn read_app_env(root: &Path) -> Option<String> {
+    read_env(root).1
+}
+
 /// `APP_URL` and `APP_ENV` from the `.env` file of the app, in one read.
 /// No other line is looked at.
 fn read_env(root: &Path) -> (Option<String>, Option<String>) {

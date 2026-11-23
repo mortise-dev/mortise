@@ -709,8 +709,10 @@ fn panel(
             })
         });
     }
-    // A line cut off by the scroll area is not on screen, so Ctrl Enter does not take it.
-    state.last_shown = shown_args.filter(|_| ui.clip_rect().contains_rect(code));
+    // A line cut off by the scroll area is not on screen, so Ctrl Enter does not take
+    // it. Its text sits 12 px and 10 px inside the code block.
+    let text = code.shrink2(vec2(12.0, 10.0));
+    state.last_shown = shown_args.filter(|_| ui.clip_rect().contains_rect(text));
     // Dry run checks the option and runs nothing (deviation S38). In production
     // reset runs nothing at all (S10.4 d).
     if matches!(action, Action::RollBack | Action::ResetMigrations) {
