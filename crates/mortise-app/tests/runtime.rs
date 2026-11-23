@@ -52,6 +52,9 @@ fn the_summary_shows_what_the_running_app_reports() {
     harness.get_by_label("38 MB now, 41 MB peak, limit 512 MB");
     // One "Up" for the status and one for each component.
     assert_eq!(harness.get_all_by_label("Up").count(), 6);
+    // What belongs to a module is in the module's Summary, and Billing is up.
+    assert!(harness.query_by_label("module:billing:gateway").is_none());
+    assert!(harness.query_by_label("modules").is_none());
 
     // Routes by module, counted by the namespace of the action.
     harness.get_by_role_and_label(Role::Heading, "Routes by module");
@@ -111,7 +114,7 @@ fn a_module_shows_its_routes_and_its_tasks() {
             .query_by_role_and_label(Role::Heading, "Scheduled tasks")
             .is_none()
     );
-    // The runtime box belongs to the app, not to a module.
+    // Checkout has no indicator of its own, so no runtime box.
     assert!(
         harness
             .query_by_role_and_label(Role::Heading, "Runtime on local")
@@ -126,6 +129,16 @@ fn a_module_shows_its_routes_and_its_tasks() {
     harness.get_by_label("1 task");
     harness.get_by_label(r"Modules\Inventory\Jobs\SyncStock");
     harness.get_by_label("9 (6 API, 3 web)");
+
+    // Billing has an indicator: its runtime box, named by key.
+    harness
+        .get_by_role_and_label(Role::ListBoxOption, "Billing")
+        .click();
+    harness.run_steps(3);
+    harness.get_by_role_and_label(Role::Heading, "Runtime on local");
+    harness.get_by_label("Status of Billing");
+    harness.get_by_label("gateway");
+    harness.get_by_label("provider fake, latencyMs 12");
 }
 
 #[test]
@@ -334,37 +347,41 @@ fn refused_credentials_are_not_authorized() {
 fn hidden_components_name_the_setting_that_hides_them() {
     let stub = shop_api_actuator();
     stub.set("/actuator/health", Reply::ok(r#"{"status":"UP"}"#));
-    let (_desk, harness) = connected(&stub);
+    let (_desk, mut harness) = connected(&stub);
     harness.get_by_label_contains(
         "Components are hidden. The app shows them only when health.show_details allows it",
     );
     assert!(harness.query_by_label("ping").is_none());
+
+    // Without components no module has a status.
+    harness
+        .get_by_role_and_label(Role::ListBoxOption, "Billing")
+        .click();
+    harness.run_steps(3);
+    assert!(harness.query_by_label("Status of Billing").is_none());
 }
 
 #[test]
 fn a_long_detail_stops_short_of_its_component_name() {
     let stub = shop_api_actuator();
-    // What an app's own check of its modules can say: one detail per module.
-    let modules = (1..=30)
-        .map(|n| format!(r#""Module{n}":{{"enabled":true}}"#))
+    // What an app's own check of its queues can say: one detail per queue.
+    let queues = (1..=30)
+        .map(|n| format!(r#""Queue{n}":{{"size":0}}"#))
         .collect::<Vec<_>>()
         .join(",");
     stub.set(
         "/actuator/health",
         Reply::ok(&format!(
             r#"{{"status":"UP","components":{{"ping":{{"status":"UP"}},
-            "modules":{{"status":"UP","details":{{{modules}}}}}}}}}"#
+            "queues":{{"status":"UP","details":{{{queues}}}}}}}}}"#
         )),
     );
     let (_desk, harness) = connected(&stub);
 
-    let name = harness.get_by_label("modules").rect();
+    let name = harness.get_by_label("queues").rect();
     // The label holds the whole detail, for a screen reader.
     let detail = harness
-        .get_by(|node| {
-            node.value()
-                .is_some_and(|text| text.starts_with("Module1 "))
-        })
+        .get_by(|node| node.value().is_some_and(|text| text.starts_with("Queue1 ")))
         .rect();
     assert!(
         detail.left() > name.right(),
@@ -381,14 +398,31 @@ fn an_app_that_is_down_quotes_the_failing_component() {
             503,
             r#"{"status":"DOWN","components":{"ping":{"status":"UP"},"readinessState":{"status":"UP"},
             "db":{"status":"DOWN","details":{"error":"Illuminate\\Database\\QueryException: SQLSTATE[HY000] [2002] Connection refused."}},
-            "cache":{"status":"UP","details":{"store":"redis"}}}}"#,
+            "cache":{"status":"UP","details":{"store":"redis"}},
+            "module:billing:gateway":{"status":"DOWN"},
+            "modules":{"status":"DOWN","details":{"modules":{"Billing":{"enabled":true},
+            "Ghost":{"enabled":true,"error":"Enabled in the status store, not found on disk."}}}}}}"#,
         ),
     );
     let (_desk, harness) = connected(&stub);
 
     assert_eq!(harness.get_all_by_label("Down on local").count(), 2);
-    // The status and the component.
-    assert_eq!(harness.get_all_by_label("Down").count(), 2);
+    // The status, the components, and the line of Billing, which is down.
+    let downs: Vec<f32> = harness
+        .get_all_by_label("Down")
+        .map(|node| node.rect().center().y)
+        .collect();
+    assert_eq!(downs.len(), 4);
+    assert!(
+        harness
+            .get_all_by_role_and_label(Role::Label, "Billing")
+            .any(|node| downs
+                .iter()
+                .any(|y| (node.rect().center().y - y).abs() < 2.0)),
+        "no line of Billing with the Down mark"
+    );
+    // An error for a module the files do not have stays with the app.
+    harness.get_by_label("Ghost: Enabled in the status store, not found on disk.");
     harness.get_by_label("db");
     // The detail is the app's own text, and nothing is added to it.
     harness.get_by_label(
