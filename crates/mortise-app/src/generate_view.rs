@@ -189,17 +189,45 @@ impl GenerateResult {
     }
 }
 
+/// Where a command of the app runs: its PHP runner and its working folder. A dry run
+/// lists the files of the app it ran in, so its list belongs to its place (design D5).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RunPlace {
+    pub runner: Option<RunnerKind>,
+    pub folder: Option<PathBuf>,
+}
+
 /// The file list of a dry run (P2, design D5), or why it gave none. It belongs to
-/// the words of the form it ran with: another line drops it.
+/// the words of the form it ran with: another line drops it. It belongs to the
+/// place it ran in too: another runner or working folder drops it.
 #[derive(Debug, Clone)]
 struct FileList {
     /// The words of the form, without `--dry-run --json`.
     words: Vec<String>,
+    /// Where the dry run ran.
+    place: RunPlace,
     /// The words the dry run ran with, before S9.3 took flags out.
     before: Vec<String>,
     listed: Result<GeneratorReport, String>,
     /// The flags of the model form taken out because their file exists (S9.3).
     taken_out: Vec<&'static str>,
+}
+
+impl FileList {
+    /// The flags of the model form whose files exist: those taken out, and the
+    /// factory's, which stays in the command (S9.3).
+    fn existing(&self, model: &str) -> Vec<&'static str> {
+        let mut flags = self.taken_out.clone();
+        let factory = self.listed.as_ref().is_ok_and(|report| {
+            report.files.iter().any(|file| {
+                file.action == FileAction::Keep && model_flag_of(model, &file.path) == Some(FACTORY)
+            })
+        });
+        if factory {
+            flags.push(FACTORY);
+        }
+        flags
+    }
 }
 
 /// What the Generate tab keeps for an open app, in memory.
@@ -213,6 +241,9 @@ pub struct GenerateState {
     current: Option<String>,
     /// The generator of the form, by artisan name.
     pub generator: String,
+    /// The generator takes a module argument. One without (an app's own) writes no
+    /// file through a module word, so its form may stay under "All modules".
+    takes_module: bool,
     /// What the form holds. It stays while the module changes.
     pub filled: Filled,
     /// The words the form showed in the last frame it was drawn. Ctrl Enter runs
@@ -236,12 +267,14 @@ pub struct GenerateState {
 
 impl GenerateState {
     /// The form of `generator`, with focus in its name field. Another generator
-    /// starts with an empty form.
-    pub fn open_form(&mut self, generator: &str) {
+    /// starts with an empty form. `takes_module` is false for a generator without a
+    /// module argument.
+    pub fn open_form(&mut self, generator: &str, takes_module: bool) {
         if self.generator != generator {
             self.generator = generator.to_owned();
             self.filled = Filled::default();
         }
+        self.takes_module = takes_module;
         self.view = View::Form;
         self.result = None;
         self.last_shown = None;
@@ -257,7 +290,8 @@ impl GenerateState {
 
     /// Called every frame for the app on screen. Another module drops the result,
     /// which names its module; the form and its values stay (design D5). A form
-    /// needs its scope: a file generator a module, `module:make` "All modules".
+    /// needs its scope: a file generator a module, `module:make` "All modules". A
+    /// generator without a module argument opens under either.
     /// `shown` is false while the tab is not on screen, and then no line counts as shown.
     pub fn follow(&mut self, module: Option<&str>, shown: bool) {
         if self.module.as_ref().map(Option::as_deref) != Some(module) {
@@ -266,7 +300,12 @@ impl GenerateState {
             }
             self.module = Some(module.map(str::to_owned));
         }
-        if self.view == View::Form && module.is_none() != (self.generator == MODULE_MAKE) {
+        let out_of_scope = if self.generator == MODULE_MAKE {
+            module.is_some()
+        } else {
+            module.is_none() && self.takes_module
+        };
+        if self.view == View::Form && out_of_scope {
             self.view = View::Picker;
         }
         if !shown {
@@ -280,10 +319,12 @@ impl GenerateState {
     /// that flag out of the form, and `--all` becomes the other six (S9.3); the list
     /// then belongs to the words without it. The factory is the exception: its flag
     /// stays, and the run leaves the file. A form that changed meanwhile drops it.
+    /// `place` is where the dry run started.
     pub fn take_files(
         &mut self,
         generator: &Generator,
         words: Vec<String>,
+        place: RunPlace,
         listed: Result<GeneratorReport, String>,
     ) {
         let module = self.module.clone().flatten();
@@ -323,6 +364,7 @@ impl GenerateState {
         }
         self.files = Some(FileList {
             words: generator.words(&self.filled, module.as_deref()),
+            place,
             before: words,
             listed,
             taken_out,
@@ -334,7 +376,7 @@ impl GenerateState {
     fn taken_out_files(
         &self,
         words: &[String],
-        catalog: &Catalog,
+        inputs: &GenerateInputs<'_>,
         package: &mortise_core::Version,
     ) -> Vec<TakenOut> {
         let Some(list) = self.files_for(words) else {
@@ -357,7 +399,7 @@ impl GenerateState {
             })
             .map(|file| TakenOut {
                 path: file.path.clone(),
-                replace: replace_words(catalog, &list.before, &file.path, package),
+                replace: replace_for(inputs, &list.before, &file.path, package),
             })
             .collect()
     }
@@ -429,6 +471,8 @@ pub struct GenerateInputs<'a> {
     pub catalog_read: Option<CatalogRead<'a>>,
     /// How PHP runs for the app. Without it nothing can run.
     pub runner: Option<&'a RunnerKind>,
+    /// The working folder of the app's PHP settings, `None` for the app folder.
+    pub folder: Option<&'a Path>,
     /// The label of the command that runs in the app, if one does.
     pub busy: Option<&'a str>,
     /// The dry run of a form runs (design D5).
@@ -444,7 +488,9 @@ pub struct GenerateInputs<'a> {
 pub fn title(state: &GenerateState, module: Option<&Module>, app: &str) -> String {
     match module {
         Some(module) => strings::generate_in(&module.name),
-        None if state.view == View::Form => strings::new_module_in(app),
+        None if state.view == View::Form && state.generator == MODULE_MAKE => {
+            strings::new_module_in(app)
+        }
         // Not in the spec.
         None => strings::generate_in(app),
     }
@@ -464,6 +510,49 @@ pub fn file_path(root: &Path, printed: &str) -> PathBuf {
 /// The part of a path after the last `/` or `\`.
 fn file_name(path: &str) -> &str {
     path.rsplit(['/', '\\']).next().unwrap_or(path)
+}
+
+/// True when the generator takes a module argument: a form for it needs a module.
+pub fn takes_module(generator: &Generator) -> bool {
+    generator
+        .arguments
+        .iter()
+        .any(|argument| argument.name == "module")
+}
+
+/// The folder names of the app's modules, which place a path of a container.
+pub fn module_folders(app: &AppSnapshot) -> Vec<&str> {
+    app.modules
+        .iter()
+        .filter_map(|module| module.dir.file_name()?.to_str())
+        .collect()
+}
+
+/// The words that write `path` again, left by a run of `words`, as `replace_words`
+/// gives them. Its guards read the runner's own options with the run's: a Custom
+/// line `php artisan --factory` gives the model its factory, and the package then
+/// passes `--force` to the factory too (design D6).
+fn replace_for(
+    inputs: &GenerateInputs<'_>,
+    words: &[String],
+    path: &str,
+    package: &mortise_core::Version,
+) -> Option<Vec<String>> {
+    let options = inputs
+        .runner
+        .map(RunnerKind::prefix)
+        .unwrap_or_default()
+        .into_iter()
+        .skip(1)
+        .filter(|word| word.starts_with('-'));
+    let end = words
+        .iter()
+        .position(|word| word == "--")
+        .unwrap_or(words.len());
+    let mut effective = words.to_vec();
+    effective.splice(end..end, options);
+    replace_words(inputs.catalog, &effective, path, package)?;
+    replace_words(inputs.catalog, words, path, package)
 }
 
 /// A path as the output prints it, relative to the folder of `module` when it is
@@ -499,6 +588,14 @@ pub fn generate(
 ) -> Option<BoundaryAction> {
     let name = module.map(|module| module.name.as_str());
     state.follow(name, true);
+    // A list from another runner or working folder lists the files of another app.
+    let place = RunPlace {
+        runner: inputs.runner.cloned(),
+        folder: inputs.folder.map(Path::to_path_buf),
+    };
+    if state.files.as_ref().is_some_and(|list| list.place != place) {
+        state.files = None;
+    }
     let on_form = state.view == View::Form && !inputs.held;
     let run_key = on_form
         && ui.input_mut(|input| {
@@ -771,7 +868,7 @@ fn picker(
         if generator.name == MODULE_MAKE {
             return Some(BoundaryAction::Generate(GenerateAsk::NewModule));
         }
-        state.open_form(&generator.name);
+        state.open_form(&generator.name, takes_module(generator));
         ui.ctx().request_repaint();
         None
     });
@@ -1047,14 +1144,15 @@ fn form(
         }
         let at = pos2(min.x, bottom + 12.0);
         if generator.name == MAKE_MODEL {
-            // The flags the file list took out, while it belongs to the form's words.
+            // The flags whose files exist, while the list belongs to the form's words.
             let words = generator.words(&state.filled, module.map(|m| m.name.as_str()));
-            let taken = state
+            let model = state.filled.arguments.get("model").map_or("", |m| m.trim());
+            let exists = state
                 .files_for(&words)
-                .map(|list| list.taken_out.clone())
+                .map(|list| list.existing(model))
                 .unwrap_or_default();
             model_fields(
-                ui, pal, at, col_w, generator, state, &taken, focus_name, inputs,
+                ui, pal, at, col_w, generator, state, &exists, focus_name, inputs,
             )
         } else {
             generator_fields(ui, pal, at, col_w, generator, state, focus_name, inputs)
@@ -1412,7 +1510,7 @@ fn model_fields(
     width: f32,
     generator: &Generator,
     state: &mut GenerateState,
-    taken: &[&str],
+    exists: &[&str],
     focus_name: bool,
     inputs: &GenerateInputs<'_>,
 ) -> f32 {
@@ -1466,7 +1564,7 @@ fn model_fields(
             )
         };
         let mut clicked = false;
-        let exists = taken.contains(flag);
+        let exists = exists.contains(flag);
         let row = flag_box(
             ui,
             pal,
@@ -1809,7 +1907,7 @@ fn command(
             generator: generator.name.clone(),
             module: name.clone(),
             args: run_args.clone(),
-            taken_out: state.taken_out_files(&words, inputs.catalog, &app.package),
+            taken_out: state.taken_out_files(&words, inputs, &app.package),
         })));
     }
     // A line cut off by the scroll area is not on screen, so Ctrl Enter does not
@@ -1840,12 +1938,10 @@ fn command(
         }));
     }
     // The generator's own file exists: Replace writes it again, after the dialog of S9.6.
-    let replace = files.replace.as_deref().and_then(|path| {
-        Some((
-            path,
-            replace_words(inputs.catalog, &words, path, &app.package)?,
-        ))
-    });
+    let replace = files
+        .replace
+        .as_deref()
+        .and_then(|path| Some((path, replace_for(inputs, &words, path, &app.package)?)));
     if let Some((path, replace_args)) = replace {
         let file = file_name(path);
         let label = strings::replace_file(file);
@@ -1897,7 +1993,8 @@ struct FilesShown {
 fn placed(app: &AppSnapshot, module: Option<&Module>, printed: &str) -> (String, String) {
     let outside = (String::new(), printed.to_owned());
     let modules_dir = app.path_shown(&app.layout.modules_dir);
-    let Some(relative) = app_relative(&app.root, &modules_dir, printed) else {
+    let Some(relative) = app_relative(&app.root, &modules_dir, &module_folders(app), printed)
+    else {
         return outside;
     };
     if let Some(module) = module {
@@ -2036,7 +2133,7 @@ fn files_this_creates(
         y = sentence(y, &strings::factory_kept(&shown(file)), pal.ink_2);
     }
     for file in &own {
-        let replaceable = replace_words(inputs.catalog, words, &file.path, &app.package).is_some();
+        let replaceable = replace_for(inputs, words, &file.path, &app.package).is_some();
         let text = strings::own_file_exists(&shown(file), replaceable);
         y = sentence(y, &text, pal.bad);
     }
@@ -2407,9 +2504,28 @@ fn result_view(
                 pal.ink_2,
             );
         } else {
+            // A file the run left has its own Replace, not only the first (S9.6).
+            let words = (file.outcome == FileOutcome::Left)
+                .then(|| left_replace(&result, inputs, app, &file.path))
+                .flatten();
+            let mut word_right = right;
+            if let Some(words) = words {
+                let replace_said = strings::replace_file(&shown);
+                let replace = Button {
+                    label: strings::REPLACE,
+                    small: true,
+                    said: Some(&replace_said),
+                    ..Default::default()
+                };
+                let at = pos2(right - replace.width(ui), mid - replace.height() / 2.0);
+                if replace.show(ui, pal, at, inputs.keyboard).clicked() {
+                    asked = Some(replace_asked(app, &result, &file.path, words));
+                }
+                word_right = at.x - 8.0;
+            }
             draw::paint_text(
                 ui,
-                pos2(right, mid),
+                pos2(word_right, mid),
                 Align2::RIGHT_CENTER,
                 state_word,
                 ty::SECONDARY,
@@ -2483,15 +2599,7 @@ fn result_view(
     let Some(first_left) = left.first() else {
         return (y - 12.0, asked);
     };
-    // A file S9.3 took out has the words of the form before its flag went.
-    let words = match result
-        .taken_out
-        .iter()
-        .find(|file| file.path == first_left.path)
-    {
-        Some(file) => file.replace.clone(),
-        None => replace_words(inputs.catalog, &result.args, &first_left.path, &app.package),
-    };
+    let words = left_replace(&result, inputs, app, &first_left.path);
     let name = file_name(&first_left.path);
     let mut bottom = y - 12.0;
     if let Some(words) = words {
@@ -2505,15 +2613,7 @@ fn result_view(
         x = response.rect.right() + 8.0;
         bottom = response.rect.bottom();
         if response.clicked() {
-            asked = Some(BoundaryAction::Generate(GenerateAsk::Replace {
-                file: name.to_owned(),
-                run: GenerateRun {
-                    generator: words.first().cloned().unwrap_or_default(),
-                    module: result.module.clone(),
-                    args: run_words(app, words),
-                    taken_out: Vec::new(),
-                },
-            }));
+            asked = Some(replace_asked(app, &result, &first_left.path, words));
         }
     }
     if !openable(app, &first_left.path) {
@@ -2528,6 +2628,38 @@ fn result_view(
         asked = Some(open_file_asked(app, &first_left.path));
     }
     (response.rect.bottom(), asked)
+}
+
+/// The words that write a file the run left again. A file S9.3 took out has the
+/// words of the form before its flag went.
+fn left_replace(
+    result: &GenerateResult,
+    inputs: &GenerateInputs<'_>,
+    app: &AppSnapshot,
+    path: &str,
+) -> Option<Vec<String>> {
+    match result.taken_out.iter().find(|file| file.path == path) {
+        Some(file) => file.replace.clone(),
+        None => replace_for(inputs, &result.args, path, &app.package),
+    }
+}
+
+/// Replace of a file the run left: the dialog of S9.6 asks first.
+fn replace_asked(
+    app: &AppSnapshot,
+    result: &GenerateResult,
+    path: &str,
+    words: Vec<String>,
+) -> BoundaryAction {
+    BoundaryAction::Generate(GenerateAsk::Replace {
+        file: file_name(path).to_owned(),
+        run: GenerateRun {
+            generator: words.first().cloned().unwrap_or_default(),
+            module: result.module.clone(),
+            args: run_words(app, words),
+            taken_out: Vec::new(),
+        },
+    })
 }
 
 /// True when a file of a result opens on this computer: a path under the app folder,

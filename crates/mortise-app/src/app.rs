@@ -22,7 +22,8 @@ use crate::chrome::{self, Chrome};
 use crate::dialog::{Answer, Dialog, Typed};
 use crate::draw::{self, Button, ButtonKind};
 use crate::generate_view::{
-    CatalogRead, GenerateAsk, GenerateInputs, GenerateResult, GenerateRun, GenerateState, TakenOut,
+    CatalogRead, GenerateAsk, GenerateInputs, GenerateResult, GenerateRun, GenerateState, RunPlace,
+    TakenOut,
 };
 use crate::index::{self, IndexRuntime, IndexState};
 use crate::palette::{self, Command, PaletteAction, PaletteState};
@@ -215,8 +216,9 @@ enum ReadFor {
     /// `module:generators --json` (P3, design D4), started while the app had this
     /// package version.
     Catalog { package: Version },
-    /// A generator with `--dry-run --json` (P2, design D5): the words of the form.
-    DryRun { words: Vec<String> },
+    /// A generator with `--dry-run --json` (P2, design D5): the words of the form,
+    /// and the runner and working folder it started with.
+    DryRun { words: Vec<String>, place: RunPlace },
     /// `module:migrate-status --json` (P4, design D7).
     Migrations { target: Target },
 }
@@ -1108,7 +1110,7 @@ impl MortiseApp {
     ) {
         match purpose {
             ReadFor::Catalog { package } => self.catalog_read(index, &package, end),
-            ReadFor::DryRun { words } => self.dry_run_read(index, words, end),
+            ReadFor::DryRun { words, place } => self.dry_run_read(index, words, place, end),
             ReadFor::Migrations { target } => self.migrations_read(index, target, end),
         }
     }
@@ -1242,6 +1244,7 @@ impl MortiseApp {
         &mut self,
         index: usize,
         words: Vec<String>,
+        place: RunPlace,
         end: Result<mortise_core::ReadEnd, mortise_core::StartError>,
     ) {
         let Some(app) = self.snapshot(index) else {
@@ -1256,7 +1259,7 @@ impl MortiseApp {
         let open = &mut self.apps[index];
         let catalog = open.catalog.in_use(&app.package);
         if let Some(generator) = words.first().and_then(|name| catalog.get(name)) {
-            open.generate.take_files(generator, words, listed);
+            open.generate.take_files(generator, words, place, listed);
         }
     }
 
@@ -1784,6 +1787,14 @@ impl MortiseApp {
         let Some(current) = self.current else {
             return;
         };
+        // A generator without a module argument opens under "All modules" too.
+        let takes_module = self.snapshot(current).is_none_or(|app| {
+            self.apps[current]
+                .catalog
+                .in_use(&app.package)
+                .get(generator)
+                .is_none_or(crate::generate_view::takes_module)
+        });
         let open = &mut self.apps[current];
         open.selection = match module {
             Some(name) if generator != MODULE_MAKE => Selection::Module(name),
@@ -1791,7 +1802,7 @@ impl MortiseApp {
         };
         open.tab = Tab::Generate;
         open.findings_open = false;
-        open.generate.open_form(generator);
+        open.generate.open_form(generator, takes_module);
         self.adding = None;
         self.settings_open = None;
         self.reveal_next = true;
@@ -1828,7 +1839,12 @@ impl MortiseApp {
                 }
                 let args = mortise_core::with_dry_run(words.clone());
                 let words = words.clone();
-                self.start_read(index, args, ReadFor::DryRun { words });
+                let php = &self.settings.apps[index].php;
+                let place = RunPlace {
+                    runner: php.runner.clone(),
+                    folder: php.working_folder.clone(),
+                };
+                self.start_read(index, args, ReadFor::DryRun { words, place });
                 return;
             }
             GenerateAsk::Run(run) if run.generator != MODULE_MAKE || !forced(runner, &run.args) => {
@@ -1940,14 +1956,20 @@ impl MortiseApp {
         let answer = json.then(|| {
             mortise_core::whole_document::<mortise_core::GeneratorReport>(stdout, stdout_cut)
         });
-        // The modules folder of the app's layout places a path of a container (Sail).
-        let modules = self.snapshot(index).map_or_else(
+        // The modules folder of the app's layout and its modules place a path of a
+        // container (Sail).
+        let app = self.snapshot(index);
+        let modules = app.as_ref().map_or_else(
             || "Modules".to_owned(),
             |app| app.path_shown(&app.layout.modules_dir),
         );
+        let folders = app
+            .as_deref()
+            .map(crate::generate_view::module_folders)
+            .unwrap_or_default();
         let (mut files, autoload_failed, fallback) = match answer {
             Some(Ok(report)) => (
-                mortise_core::reported_files(&report, &root, &modules),
+                mortise_core::reported_files(&report, &root, &modules, &folders),
                 report.autoload_failed(),
                 None,
             ),
@@ -1963,7 +1985,7 @@ impl MortiseApp {
             .taken_out
             .iter()
             .map(|file| TakenOut {
-                path: mortise_core::app_relative(&root, &modules, &file.path)
+                path: mortise_core::app_relative(&root, &modules, &folders, &file.path)
                     .unwrap_or_else(|| file.path.clone()),
                 replace: file.replace.clone(),
             })
@@ -2880,6 +2902,7 @@ impl eframe::App for MortiseApp {
                                 ),
                             ),
                             runner: entry.php.runner.as_ref(),
+                            folder: entry.php.working_folder.as_deref(),
                             busy: busy(&open.runs, open.reading.as_ref()),
                             listing: matches!(
                                 open.reading,

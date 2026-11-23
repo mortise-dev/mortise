@@ -384,7 +384,12 @@ fn a_dry_run_that_finds_the_policy_takes_it_out_of_the_command() {
     run(&mut harness);
     wait_for(&mut harness, "Created 2 of 3 files in Billing.");
     harness.get_by_label("app/Policies/InvoicePolicy.php, exists, left as it is");
-    click(&mut harness, Role::Button, "Replace InvoicePolicy.php");
+    // Each left row has its own Replace; the one under the alert is the first's.
+    click(
+        &mut harness,
+        Role::Button,
+        "Replace app/Policies/InvoicePolicy.php",
+    );
     harness
         .query_by_label_contains(
             "module:make-policy --no-interaction --ansi InvoicePolicy Billing --force --json",
@@ -404,6 +409,7 @@ fn a_dry_run_that_finds_the_factory_keeps_it_in_the_command() {
     // button counts the files the run writes.
     let factory = harness.get_by_role_and_label(Role::CheckBox, "Factory");
     assert_eq!(factory.accesskit_node().toggled(), Some(Toggled::True));
+    harness.get_by_label("Factory exists");
     harness.get_by_label(
         "database/factories/InvoiceFactory.php exists. The model uses its factory, so the \
          factory stays in the command. The run leaves the file as it is.",
@@ -412,6 +418,23 @@ fn a_dry_run_that_finds_the_factory_keeps_it_in_the_command() {
         .query_by_label_contains("Invoice Billing --factory --migration --json")
         .unwrap();
     assert!(!disabled(&harness, "Create the other 2 files"));
+
+    // The list belongs to the runner and the working folder it ran with: another
+    // working folder drops it.
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::K);
+    harness.run_steps(3);
+    harness
+        .get_by_role_and_label(Role::TextInput, "Search or run a command")
+        .type_text("php");
+    harness.run_steps(3);
+    click(&mut harness, Role::ListBoxOption, "Settings: PHP");
+    type_into(&mut harness, "Working folder", ".");
+    harness.key_press(Key::Escape);
+    harness.run_steps(3);
+    harness.key_press(Key::Escape);
+    harness.run_steps(3);
+    assert!(harness.query_by_label("4 files, 2 exist already").is_none());
+    harness.get_by_role_and_label(Role::Button, "List files");
 
     // A run that fails before it answers, with no file read: the form says why.
     run(&mut harness);

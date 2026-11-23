@@ -10,6 +10,7 @@ use mortise_app::app::{MortiseApp, Selection};
 use mortise_app::palette;
 use mortise_app::workspace::Tab;
 use mortise_core::history::History;
+use mortise_core::{Catalog, MODULE_MAKE, Version, catalog_cache};
 
 /// The rows of the palette. Rows of the rail and the index are behind it.
 fn palette_rows(harness: &Harness<'static, MortiseApp>) -> Vec<String> {
@@ -364,4 +365,33 @@ fn a_generator_row_opens_its_form_and_runs_nothing() {
             .get_by_role_and_label(Role::TextInput, "Model name")
             .is_focused()
     );
+}
+
+#[test]
+fn a_recent_generator_without_a_module_argument_opens_under_all_modules() {
+    let desk = Desk::new();
+    let root = desk.app("shop-api");
+    common::package_version(&root, "v13.4.0");
+    desk.knows(&[(&root, "SA")]);
+    // An app's own generator, read from the app, that takes no module.
+    let mut catalog = Catalog::v13_4().clone();
+    let mut widget = catalog.get(MODULE_MAKE).unwrap().clone();
+    widget.name = "app:make-widget".to_owned();
+    catalog.generators.push(widget);
+    let version = Version {
+        raw: "v13.4.0".to_owned(),
+        alias: None,
+    };
+    catalog_cache::store(&desk.data_dir(), &root, &version, &catalog, 0).unwrap();
+    common::ran(&desk, &root, &[("app:make-widget Widget", 2)]);
+    let mut harness = desk.start();
+
+    open_palette(&mut harness);
+    harness
+        .get_by_role_and_label(Role::ListBoxOption, "app:make-widget")
+        .click();
+    harness.run_steps(3);
+    assert_eq!(harness.state().selection(), Selection::All);
+    harness.get_by_role_and_label(Role::Heading, "Generate in shop-api");
+    harness.get_by_role_and_label(Role::TextInput, "app:make-widget name");
 }
