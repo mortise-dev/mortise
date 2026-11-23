@@ -20,7 +20,7 @@
 ## 4. Package data in the screens (after 3; 4.1, 4.3, 4.4, 4.5 in parallel; 4.2 after 4.1)
 
 - [x] 4.1 (15.3 opus) P3: `catalog/v13_4.json` from the recording, `Catalog::shipped`, the read of the app's generators with its line, the cache, the picker lines, "Other" (D4). Test in `tests/generate.rs`
-- [ ] 4.2 (15.4 opus) P2 and P5: "List files", the file list of S9.2 and S9.4, S9.3, the counted buttons, the own-file case (D5); `--json` runs and their result with the fallback (D6). Test against the fake artisan, with the app unchanged after a dry run
+- [x] 4.2 (15.4 opus) P2 and P5: "List files", the file list of S9.2 and S9.4, S9.3, the counted buttons, the own-file case (D5); `--json` runs and their result with the fallback (D6). Test against the fake artisan, with the app unchanged after a dry run
 - [ ] 4.3 (15.5 opus) P4: the state box and its reads, the read after a migration command, S10.1 to S10.5 with counts, migrations and tables, S4.3 (D7). Test in `tests/actions.rs`
 - [ ] 4.4 (15.6 opus) P7: `module:test` in `plan` with `--filter` and `--parallel`, the panel and the toasts (D8). Test the plan once in core, the toast once in `tests/actions.rs`
 - [ ] 4.5 (15.7 opus) P8 and To do: `module:lang --json`, the report into `PackageData`, the check, the warnings and the To do group in Findings and the Summary (D9). Test the findings once in core, the wiring once in `tests/findings.rs`

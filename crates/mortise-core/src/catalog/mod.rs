@@ -15,5 +15,5 @@ pub use actions::{
 };
 pub use generators::{
     Argument, Catalog, Filled, Generator, GeneratorOption, Group, MODULE_MAKE, NameRule,
-    class_name_ok, module_name_ok, replace_words, shipped_mark,
+    class_name_ok, model_flag_of, module_name_ok, replace_words, shipped_mark,
 };

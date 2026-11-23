@@ -10,9 +10,14 @@
 //! file. A `FAIL` is followed by an error line `File : <path> already exists.`
 //! when the file is there. `module:make` prints `composer dump-autoload failed.`
 //! when the autoload step fails.
+//!
+//! From 13.4.0 on a generator run with `--json` gives its files as a document
+//! ([`GeneratorReport`]); [`reported_files`] reads it into the same rows.
 
 use std::collections::BTreeSet;
+use std::path::Path;
 
+use crate::package::{FileResult, GeneratorReport};
 use crate::run::ansi::plain;
 
 /// The migration at which a run failed.
@@ -140,6 +145,46 @@ pub fn generated_files(lines: &[String], force: bool) -> Vec<GeneratedFile> {
         }
     }
     files
+}
+
+/// The files of a generator run from its document (P5), in write order. The folder
+/// that `module:make --force` deletes is not a file. A path is made relative to the
+/// app folder `root`, as the output lines print it; a path outside stays as printed.
+pub fn reported_files(report: &GeneratorReport, root: &Path) -> Vec<GeneratedFile> {
+    report
+        .files
+        .iter()
+        .filter_map(|file| {
+            let outcome = match file.result? {
+                FileResult::Created => FileOutcome::Created,
+                FileResult::Replaced => FileOutcome::Replaced,
+                FileResult::Exists => FileOutcome::Left,
+                FileResult::Failed => FileOutcome::Failed,
+                FileResult::Deleted => return None,
+            };
+            let path = app_relative(root, &file.path).unwrap_or_else(|| file.path.clone());
+            Some(GeneratedFile { path, outcome })
+        })
+        .collect()
+}
+
+/// A path the package printed, relative to the app folder `root` with `/` between its
+/// parts, or `None` when it is outside. The package prints absolute paths with `/` on
+/// every platform, from the real folder of the app, so `root` is compared as given and
+/// with its links resolved.
+pub fn app_relative(root: &Path, printed: &str) -> Option<String> {
+    let printed = printed.replace('\\', "/");
+    [Some(root.to_path_buf()), root.canonicalize().ok()]
+        .into_iter()
+        .flatten()
+        .find_map(|root| {
+            let root = root.to_string_lossy().replace('\\', "/");
+            // A resolved path on Windows starts with `\\?\`.
+            let root = root.strip_prefix("//?/").unwrap_or(&root);
+            let rest = printed.strip_prefix(root.trim_end_matches('/'))?;
+            let rest = rest.strip_prefix('/')?;
+            (!rest.is_empty()).then(|| rest.to_owned())
+        })
 }
 
 /// True when the output says that `composer dump-autoload` failed.
@@ -356,6 +401,44 @@ mod tests {
                 "Modules/Billing/app/Policies/InvoicePolicy.php".to_string(),
                 FileOutcome::Replaced
             )]
+        );
+    }
+
+    #[test]
+    fn a_report_gives_the_files_relative_to_the_app() {
+        let root = Path::new("/tmp/scratch-app");
+        let read = |name: &str| {
+            let report: GeneratorReport = crate::package::document(&recording(name)).unwrap();
+            reported_files(&report, root)
+                .into_iter()
+                .map(|file| (file.path, file.outcome))
+                .collect::<Vec<_>>()
+        };
+        let created = read("module-make-model-json");
+        assert_eq!(
+            created[0],
+            (
+                "Modules/Billing/app/Models/PaymentIntent.php".to_string(),
+                FileOutcome::Created
+            )
+        );
+        assert!(
+            created
+                .iter()
+                .all(|(_, outcome)| *outcome == FileOutcome::Created)
+        );
+        // The answer says the policy exists, as the lines do.
+        let left = read("module-make-model-policy-exists-json");
+        assert_eq!(
+            left[2],
+            (
+                "Modules/Billing/app/Policies/InvoicePolicy.php".to_string(),
+                FileOutcome::Left
+            )
+        );
+        assert_eq!(
+            app_relative(Path::new("/tmp/other"), "/tmp/scratch-app/x.php"),
+            None
         );
     }
 

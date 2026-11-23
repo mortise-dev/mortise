@@ -1105,7 +1105,7 @@ impl MortiseApp {
     ) {
         match purpose {
             ReadFor::Catalog => self.catalog_read(index, end),
-            ReadFor::DryRun { .. } => {}
+            ReadFor::DryRun { words } => self.dry_run_read(index, words, end),
             ReadFor::Migrations { .. } => {}
         }
     }
@@ -1147,6 +1147,30 @@ impl MortiseApp {
                 catalog.read = None;
                 catalog.error = Some(reason);
             }
+        }
+    }
+
+    /// The end of a dry run of a form (design D5): the file list for its words, or
+    /// why it gave none. The exit code does not matter: a kept file exits 1 with a
+    /// whole document.
+    fn dry_run_read(
+        &mut self,
+        index: usize,
+        words: Vec<String>,
+        end: Result<mortise_core::ReadEnd, mortise_core::StartError>,
+    ) {
+        let Some(app) = self.snapshot(index) else {
+            return;
+        };
+        let listed = match &end {
+            Ok(end) => mortise_core::document::<mortise_core::GeneratorReport>(&end.stdout)
+                .map_err(|error| strings::no_document(end, &error)),
+            Err(error) => Err(strings::start_reason(error)),
+        };
+        let open = &mut self.apps[index];
+        let catalog = open.catalog.in_use(&app.package);
+        if let Some(generator) = words.first().and_then(|name| catalog.get(name)) {
+            open.generate.take_files(generator, words, listed);
         }
     }
 
@@ -1627,6 +1651,12 @@ impl MortiseApp {
                 self.start_read(index, words, ReadFor::Catalog);
                 return;
             }
+            GenerateAsk::ListFiles { words } => {
+                let args = mortise_core::with_dry_run(words.clone());
+                let words = words.clone();
+                self.start_read(index, args, ReadFor::DryRun { words });
+                return;
+            }
             GenerateAsk::Run(run) if run.generator != MODULE_MAKE || !forced(runner, &run.args) => {
                 None
             }
@@ -1667,7 +1697,9 @@ impl MortiseApp {
         };
         let run = match ask {
             GenerateAsk::Run(run) | GenerateAsk::Replace { run, .. } => run,
-            GenerateAsk::NewModule | GenerateAsk::ReadCatalog => return,
+            GenerateAsk::NewModule | GenerateAsk::ReadCatalog | GenerateAsk::ListFiles { .. } => {
+                return;
+            }
         };
         let Some(dialog) = dialog else {
             self.start_generate(index, run);
@@ -1698,6 +1730,7 @@ impl MortiseApp {
         self.start_run(index, run.args.clone());
         let open = &mut self.apps[index];
         open.select_new = None;
+        open.generate.drop_files();
         let form = open.generate.form();
         open.generate_run = open.runs.running().is_some().then_some(Generating {
             run,
@@ -1716,12 +1749,31 @@ impl MortiseApp {
             forced,
             form,
         } = generating;
-        let Some((end, lines, _)) = self.apps[index].runs.ended() else {
+        let root = self.settings.apps[index].root.clone();
+        let Some((end, lines, stdout)) = self.apps[index].runs.ended() else {
             return;
         };
         let done = matches!(end, RunEnd::Exited { code: Some(0), .. });
-        let files = mortise_core::generated_files(lines, forced);
-        let autoload_failed = mortise_core::autoload_failed(lines);
+        // A run with `--json` gives its files in its answer (P5); without one they are
+        // read from the lines, and the result says why (design D6).
+        let json = run
+            .args
+            .iter()
+            .take_while(|word| *word != "--")
+            .any(|word| word == "--json");
+        let answer = json.then(|| mortise_core::document::<mortise_core::GeneratorReport>(stdout));
+        let (files, autoload_failed, fallback) = match answer {
+            Some(Ok(report)) => (
+                mortise_core::reported_files(&report, &root),
+                report.autoload_failed(),
+                None,
+            ),
+            answer => (
+                mortise_core::generated_files(lines, forced),
+                mortise_core::autoload_failed(lines),
+                answer.and_then(|answer| answer.err().map(|e| strings::no_run_document(&e, end))),
+            ),
+        };
         let label = run.args.join(" ");
         let in_view = self.runner.shown == Shown::Open
             && self.current == Some(index)
@@ -1733,7 +1785,6 @@ impl MortiseApp {
         let failed_toast = |text: String, root: PathBuf| {
             Toast::failed(text).with_action(strings::SHOW_OUTPUT, ToastAction::ShowOutput(root))
         };
-        let root = self.settings.apps[index].root.clone();
         let open = &mut self.apps[index];
 
         if run.generator == MODULE_MAKE {
@@ -1819,8 +1870,8 @@ impl MortiseApp {
             self.toast = Some(toast);
         }
         if attached {
-            open.generate
-                .show_result(GenerateResult::new(run.module, run.args, files, false));
+            let result = GenerateResult::new(run.module, run.args, files, false);
+            open.generate.show_result(result.read_from_output(fallback));
         }
     }
 
@@ -2604,6 +2655,13 @@ impl eframe::App for MortiseApp {
                             ),
                             runner: entry.php.runner.as_ref(),
                             busy: busy(&open.runs, open.reading.as_ref()),
+                            listing: matches!(
+                                open.reading,
+                                Some(PackageRead {
+                                    purpose: ReadFor::DryRun { .. },
+                                    ..
+                                })
+                            ),
                             held,
                             keyboard: self.keyboard,
                             mac,

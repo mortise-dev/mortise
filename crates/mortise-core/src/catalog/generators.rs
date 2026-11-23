@@ -490,14 +490,11 @@ fn replace_from_model(
         return Some(with_force(&words));
     }
 
-    let (_, command, name_suffix, _) =
-        MODEL_CALLS
-            .iter()
-            .find(|(flag, _, name_suffix, file_suffix)| {
-                let passed = format!("{model}{name_suffix}");
-                (all || options.contains(&format!("--{flag}").as_str()))
-                    && stem == format!("{}{file_suffix}", file_name(&passed))
-            })?;
+    let flag = model_flag_of(&model, left)?;
+    if !(all || options.contains(&format!("--{flag}").as_str())) {
+        return None;
+    }
+    let (_, command, name_suffix, _) = MODEL_CALLS.iter().find(|(call, ..)| *call == flag)?;
     let call = catalog.get(command)?;
     if !call.flag("force") {
         return None;
@@ -512,6 +509,21 @@ fn replace_from_model(
         values: BTreeMap::new(),
     };
     Some(call.words(&filled, module))
+}
+
+/// The flag of `module:make-model` whose call writes the file at `path`, for the
+/// model typed as `model`: `policy` for `<Model>Policy.php`. `None` for the model's
+/// own file, for a migration, whose file name carries the time, and for any other file.
+pub fn model_flag_of(model: &str, path: &str) -> Option<&'static str> {
+    let stem = file_name(path).strip_suffix(".php")?;
+    let model = studly(model);
+    MODEL_CALLS
+        .iter()
+        .find(|(_, _, name_suffix, file_suffix)| {
+            let passed = format!("{model}{name_suffix}");
+            stem == format!("{}{file_suffix}", file_name(&passed))
+        })
+        .map(|(flag, ..)| *flag)
 }
 
 /// The option words and the argument words of a run, after its artisan name.
@@ -869,6 +881,32 @@ mod tests {
             };
             assert!(std::ptr::eq(Catalog::shipped(&version), catalog), "{raw}");
         }
+    }
+
+    #[test]
+    fn a_models_flag_is_found_by_the_file_its_call_writes() {
+        let flag = |model: &str, path: &str| model_flag_of(model, path);
+        let policies = "Modules/Billing/app/Policies";
+        assert_eq!(
+            flag(
+                "payment_intent",
+                &format!("{policies}/PaymentIntentPolicy.php")
+            ),
+            Some("policy")
+        );
+        assert_eq!(flag("Invoice", "InvoiceFactory.php"), Some("factory"));
+        assert_eq!(flag("Invoice", "InvoiceSeeder.php"), Some("seed"));
+        assert_eq!(
+            flag("Admin/Invoice", "InvoiceController.php"),
+            Some("controller")
+        );
+        // The model's own file, a migration and another model's file have no flag.
+        assert_eq!(flag("Invoice", "Invoice.php"), None);
+        assert_eq!(
+            flag("Invoice", "2026_11_23_120000_create_invoices_table.php"),
+            None
+        );
+        assert_eq!(flag("Invoice", "PaymentPolicy.php"), None);
     }
 
     #[test]

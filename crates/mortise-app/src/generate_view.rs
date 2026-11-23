@@ -1,19 +1,22 @@
-//! The Generate tab (S9.1, S9.2, S9.4 to S9.6): the picker of the package's
-//! generators, the form of one generator with the exact line its button starts,
-//! and the result of a run, read from its output.
+//! The Generate tab (S9.1 to S9.6): the picker of the package's generators, the
+//! form of one generator with the exact line its button starts, the file list of
+//! its dry run on a 13.4 app, and the result of a run, read from its answer or its
+//! output.
 //!
 //! Nothing here starts a process. The tab hands the app a [`GenerateAsk`] with the
 //! words on screen; the app asks first where the rules say so, then starts them.
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use eframe::egui::{
     self, Align2, Color32, FontId, Key, KeyboardShortcut, Modifiers, Pos2, Rect, RichText, Role,
     ScrollArea, Sense, Ui, UiBuilder, Vec2, WidgetInfo, pos2, vec2,
 };
 use mortise_core::{
-    AppSnapshot, Catalog, FileOutcome, Filled, GeneratedFile, Generator, Group, MODULE_MAKE,
-    Module, NameRule, RunnerKind, Severity, replace_words, shipped_mark,
+    AppSnapshot, Catalog, FileAction, FileOutcome, Filled, GeneratedFile, Generator,
+    GeneratorReport, Group, MODULE_MAKE, Module, NameRule, ReportedFile, RunnerKind, Severity,
+    app_relative, gives_data, model_flag_of, replace_words, shipped_mark, with_dry_run, with_json,
 };
 
 use crate::boundary::BoundaryAction;
@@ -93,6 +96,8 @@ pub enum GenerateAsk {
     NewModule,
     /// Read the generators of the app: `module:generators --json` (design D4).
     ReadCatalog,
+    /// The dry run of the form: these words with `--dry-run --json` (design D5).
+    ListFiles { words: Vec<String> },
 }
 
 /// The artisan words of the read of the app's generators (P3).
@@ -122,6 +127,8 @@ pub struct GenerateResult {
     pub files: Vec<GeneratedFile>,
     /// `module:make` says that `composer dump-autoload` failed.
     pub autoload_failed: bool,
+    /// Why the run gave no answer, when the files were read from its output (design D6).
+    fallback: Option<String>,
     /// When it was first painted, in seconds of egui's clock.
     shown: Option<f64>,
 }
@@ -138,8 +145,15 @@ impl GenerateResult {
             args,
             files,
             autoload_failed,
+            fallback: None,
             shown: None,
         }
+    }
+
+    /// The result read from the output lines, because the run gave no answer: why.
+    pub fn read_from_output(mut self, reason: Option<String>) -> Self {
+        self.fallback = reason;
+        self
     }
 
     fn written(&self) -> impl Iterator<Item = &GeneratedFile> {
@@ -147,6 +161,17 @@ impl GenerateResult {
             .iter()
             .filter(|file| matches!(file.outcome, FileOutcome::Created | FileOutcome::Replaced))
     }
+}
+
+/// The file list of a dry run (P2, design D5), or why it gave none. It belongs to
+/// the words of the form it ran with: another line drops it.
+#[derive(Debug, Clone)]
+struct FileList {
+    /// The words of the form, without `--dry-run --json`.
+    words: Vec<String>,
+    listed: Result<GeneratorReport, String>,
+    /// The flags of the model form taken out because their file exists (S9.3).
+    taken_out: Vec<&'static str>,
 }
 
 /// What the Generate tab keeps for an open app, in memory.
@@ -167,6 +192,8 @@ pub struct GenerateState {
     last_shown: Option<Vec<String>>,
     /// The result of the last run, in place of the line and its buttons.
     pub result: Option<GenerateResult>,
+    /// The file list of the last dry run, or why it gave none.
+    files: Option<FileList>,
     /// The module the tab was drawn for last: `None` until it is first drawn.
     module: Option<Option<String>>,
     focus_filter: bool,
@@ -215,8 +242,66 @@ impl GenerateState {
         }
     }
 
-    /// A result to show, read from the output of the run that just ended.
+    /// Takes the end of the dry run of `words`, the words of the form of `generator`
+    /// (design D5). On the model form a file that exists and that a flag writes takes
+    /// that flag out of the form, and `--all` becomes the other six (S9.3); the list
+    /// then belongs to the words without it. A form that changed meanwhile drops it.
+    pub fn take_files(
+        &mut self,
+        generator: &Generator,
+        words: Vec<String>,
+        listed: Result<GeneratorReport, String>,
+    ) {
+        let module = self.module.clone().flatten();
+        if self.generator != generator.name
+            || generator.words(&self.filled, module.as_deref()) != words
+        {
+            return;
+        }
+        let mut taken_out = Vec::new();
+        if let Ok(report) = &listed
+            && generator.name == MAKE_MODEL
+        {
+            let model = self
+                .filled
+                .arguments
+                .get("model")
+                .cloned()
+                .unwrap_or_default();
+            let flags = &mut self.filled.flags;
+            for file in report.files.iter().filter(|f| f.action == FileAction::Keep) {
+                let Some(flag) = model_flag_of(model.trim(), &file.path) else {
+                    continue;
+                };
+                if flags.remove("all") || MODEL_CALLS.iter().all(|call| flags.contains(*call)) {
+                    flags.extend(MODEL_CALLS.iter().map(|call| call.to_string()));
+                }
+                if flags.remove(flag) {
+                    taken_out.push(flag);
+                }
+            }
+        }
+        self.files = Some(FileList {
+            words: generator.words(&self.filled, module.as_deref()),
+            listed,
+            taken_out,
+        });
+    }
+
+    /// Drops the file list: a run starts that writes files.
+    pub fn drop_files(&mut self) {
+        self.files = None;
+    }
+
+    /// The file list of the form whose words are `words`, if one is kept for them.
+    fn files_for(&self, words: &[String]) -> Option<&FileList> {
+        self.files.as_ref().filter(|list| list.words == words)
+    }
+
+    /// A result to show, read from the output of the run that just ended. The file
+    /// list of the dry run before it is gone: the run wrote its files.
     pub fn show_result(&mut self, result: GenerateResult) {
+        self.files = None;
         self.focus_result = !result.autoload_failed
             && result
                 .files
@@ -271,6 +356,8 @@ pub struct GenerateInputs<'a> {
     pub runner: Option<&'a RunnerKind>,
     /// The label of the command that runs in the app, if one does.
     pub busy: Option<&'a str>,
+    /// The dry run of a form runs (design D5).
+    pub listing: bool,
     /// A dialog or the palette holds the keys.
     pub held: bool,
     pub keyboard: bool,
@@ -877,7 +964,15 @@ fn form(
         }
         let at = pos2(min.x, bottom + 12.0);
         if generator.name == MAKE_MODEL {
-            model_fields(ui, pal, at, col_w, generator, state, focus_name, inputs)
+            // The flags the file list took out, while it belongs to the form's words.
+            let words = generator.words(&state.filled, module.map(|m| m.name.as_str()));
+            let taken = state
+                .files_for(&words)
+                .map(|list| list.taken_out.clone())
+                .unwrap_or_default();
+            model_fields(
+                ui, pal, at, col_w, generator, state, &taken, focus_name, inputs,
+            )
         } else {
             generator_fields(ui, pal, at, col_w, generator, state, focus_name, inputs)
         }
@@ -899,7 +994,7 @@ fn form(
         bottom
     } else {
         let (bottom, line_asked) = command(
-            ui, pal, right, col_w, generator, module, state, inputs, run_key, copy_key,
+            ui, pal, right, col_w, app, generator, module, state, inputs, run_key, copy_key,
         );
         asked = asked.or(line_asked);
         bottom
@@ -1032,8 +1127,8 @@ impl Field<'_> {
     }
 }
 
-/// A checkbox with its flag after it in dim mono. Returns its row, and switches `on`
-/// when it was clicked.
+/// A checkbox with its flag after it in dim mono, and "exists" before the flag when
+/// the dry run found its file (S9.3). Returns its row, and switches `on` when it was clicked.
 #[expect(clippy::too_many_arguments)]
 fn flag_box(
     ui: &Ui,
@@ -1042,16 +1137,30 @@ fn flag_box(
     label: &str,
     flag: &str,
     on: bool,
+    exists: bool,
     keyboard: bool,
     clicked: &mut bool,
 ) -> Rect {
     let response = draw::checkbox(ui, pal, min, label, on, false, keyboard);
     *clicked = response.clicked();
     let rect = response.rect;
+    let mut right = rect.right();
+    if exists {
+        let mark = draw::paint_text(
+            ui,
+            pos2(right + 5.0, rect.center().y),
+            Align2::LEFT_CENTER,
+            strings::EXISTS,
+            ty::SECONDARY,
+            pal.warn,
+        );
+        draw::announce(ui, mark, Role::Label, &strings::flag_exists(label));
+        right = mark.right();
+    }
     if !flag.is_empty() {
         draw::label(
             ui,
-            pos2(rect.right() + 5.0, rect.center().y),
+            pos2(right + 5.0, rect.center().y),
             Align2::LEFT_CENTER,
             flag,
             ty::PATH,
@@ -1195,6 +1304,7 @@ fn generator_fields(
                 described(&option.description),
                 &flag,
                 on,
+                false,
                 inputs.keyboard,
                 &mut clicked,
             );
@@ -1208,7 +1318,8 @@ fn generator_fields(
     y - 12.0
 }
 
-/// The form of `module:make-model` as S9.2 draws it.
+/// The form of `module:make-model` as S9.2 draws it. `taken` holds the flags whose
+/// file exists, marked "exists" (S9.3).
 #[expect(clippy::too_many_arguments)]
 fn model_fields(
     ui: &mut Ui,
@@ -1217,6 +1328,7 @@ fn model_fields(
     width: f32,
     generator: &Generator,
     state: &mut GenerateState,
+    taken: &[&str],
     focus_name: bool,
     inputs: &GenerateInputs<'_>,
 ) -> f32 {
@@ -1270,7 +1382,18 @@ fn model_fields(
             )
         };
         let mut clicked = false;
-        let row = flag_box(ui, pal, at, label, &short, on, keyboard, &mut clicked);
+        let exists = taken.contains(flag);
+        let row = flag_box(
+            ui,
+            pal,
+            at,
+            label,
+            &short,
+            on,
+            exists,
+            keyboard,
+            &mut clicked,
+        );
         rows = rows.max(row.bottom());
         if !clicked {
             continue;
@@ -1302,6 +1425,7 @@ fn model_fields(
         strings::USE_ATTRIBUTES,
         "--attributes",
         on,
+        false,
         keyboard,
         &mut clicked,
     );
@@ -1387,6 +1511,7 @@ fn new_module_fields(
             label,
             flag,
             on,
+            false,
             keyboard,
             &mut clicked,
         );
@@ -1435,7 +1560,17 @@ fn run_keys(mac: bool) -> String {
     format!("{} Enter", strings::command_key(mac))
 }
 
-/// "Command", the line the run button starts, the sentence of the files, and the
+/// The words a run carries: on a 13.4 app with `--json`, once, so that its result
+/// is read from its answer (design D6).
+fn run_words(app: &AppSnapshot, words: Vec<String>) -> Vec<String> {
+    if gives_data(&app.package) && !words.iter().any(|word| word == "--json") {
+        with_json(words)
+    } else {
+        words
+    }
+}
+
+/// "Command", the line the run button starts, the files it creates, and the
 /// buttons. Returns its bottom and what was asked for.
 #[expect(clippy::too_many_arguments)]
 fn command(
@@ -1443,6 +1578,7 @@ fn command(
     pal: &Palette,
     min: Pos2,
     width: f32,
+    app: &AppSnapshot,
     generator: &Generator,
     module: Option<&Module>,
     state: &mut GenerateState,
@@ -1451,9 +1587,15 @@ fn command(
     copy_key: bool,
 ) -> (f32, Option<BoundaryAction>) {
     let name = module.map(|module| module.name.clone());
+    // The words of the form, and the words that run: on a 13.4 app with `--json`.
     let words = generator.words(&state.filled, name.as_deref());
-    let line = line_now(inputs.runner, &words)
-        .unwrap_or_else(|| format!("php artisan {}", words.join(" ")));
+    // The file list belongs to the words it ran with: a change of the line drops it.
+    if state.files.as_ref().is_some_and(|list| list.words != words) {
+        state.files = None;
+    }
+    let run_args = run_words(app, words.clone());
+    let line = line_now(inputs.runner, &run_args)
+        .unwrap_or_else(|| format!("php artisan {}", run_args.join(" ")));
     let label = draw::label(
         ui,
         min,
@@ -1465,18 +1607,29 @@ fn command(
     let code_at = pos2(min.x, label.top() + ty::LABEL.line + 4.0);
     let code = draw::code_block(ui, pal, code_at, width, &line);
 
-    // Without the dry run (P2) the files are listed after the run (deviation S44).
-    let mut y = code.bottom() + 8.0;
-    y = draw::paragraph(
-        ui,
-        pos2(min.x, y),
-        strings::FILES_AFTER_THE_RUN,
-        HINT,
-        pal.ink_2,
-        width,
-    )
-    .bottom();
     let new_module = generator.name == MODULE_MAKE;
+    let ready = names_ok(generator, &state.filled);
+    let mut y = code.bottom() + 8.0;
+    let mut files = None;
+    if gives_data(&app.package) {
+        let at = pos2(min.x, y + 4.0);
+        let shown = files_this_creates(
+            ui, pal, at, width, app, module, generator, &words, state, inputs, ready,
+        );
+        y = shown.bottom;
+        files = Some(shown);
+    } else {
+        // Without the dry run (P2) the files are listed after the run (deviation S44).
+        y = draw::paragraph(
+            ui,
+            pos2(min.x, y),
+            strings::FILES_AFTER_THE_RUN,
+            HINT,
+            pal.ink_2,
+            width,
+        )
+        .bottom();
+    }
     if new_module {
         y = draw::paragraph(
             ui,
@@ -1509,10 +1662,10 @@ fn command(
     }
 
     let force = new_module && state.filled.flags.contains("force");
-    let ready = names_ok(generator, &state.filled);
+    let blocked = files.as_ref().is_some_and(|files| files.blocked);
     // The button and Ctrl Enter run only the line that was whole on screen in the
     // last frame (deviation S40's rule).
-    let shown = state.last_shown.as_ref() == Some(&words);
+    let shown = state.last_shown.as_ref() == Some(&run_args);
     let off = if let Some(label) = inputs.busy {
         Some(strings::is_running(label))
     } else if line_now(inputs.runner, &[]).is_none() {
@@ -1523,12 +1676,13 @@ fn command(
         None
     };
     let keys = run_keys(inputs.mac);
+    let create = match files.as_ref().and_then(|files| files.create.clone()) {
+        _ if new_module => strings::CREATE_MODULE.to_owned(),
+        Some(create) => create,
+        None => strings::CREATE_FILES.to_owned(),
+    };
     let run = Button {
-        label: if new_module {
-            strings::CREATE_MODULE
-        } else {
-            strings::CREATE_FILES
-        },
+        label: &create,
         // Replace the module loses files: the red outline, and it asks first.
         kind: if force {
             ButtonKind::Danger
@@ -1536,42 +1690,413 @@ fn command(
             ButtonKind::Primary
         },
         keys: Some(&keys),
-        disabled: off.is_some() || !ready,
+        disabled: off.is_some() || !ready || blocked,
         ..Default::default()
     };
     let y = y + 12.0;
     let response = run.show(ui, pal, pos2(min.x, y), inputs.keyboard);
-    let x = response.rect.right() + 8.0;
+    let mut x = response.rect.right() + 8.0;
     let pressed = response.clicked() || run_key;
     if let Some(tip) = &off {
         draw::tooltip(response, pal, tip);
     }
     let mut asked = None;
-    if pressed && off.is_none() && ready {
+    if pressed && off.is_none() && ready && !blocked {
         asked = Some(BoundaryAction::Generate(GenerateAsk::Run(GenerateRun {
             generator: generator.name.clone(),
-            module: name,
-            args: words.clone(),
+            module: name.clone(),
+            args: run_args.clone(),
         })));
     }
     // A line cut off by the scroll area is not on screen, so Ctrl Enter does not
     // take it. Its text sits 12 px and 10 px inside the code block.
     let text = code.shrink2(vec2(12.0, 10.0));
-    state.last_shown = ui.clip_rect().contains_rect(text).then_some(words);
+    state.last_shown = ui.clip_rect().contains_rect(text).then_some(run_args);
 
     let copy = Button {
         label: strings::COPY_COMMAND,
         ..Default::default()
     };
     let response = copy.show(ui, pal, pos2(x, y), inputs.keyboard);
-    let bottom = response.rect.bottom();
+    x = response.rect.right() + 8.0;
+    let mut bottom = response.rect.bottom();
     if response.clicked() || copy_key {
         asked = Some(BoundaryAction::Copy {
             text: line,
             said: strings::COPIED_COMMAND,
         });
     }
+
+    let Some(files) = files else {
+        return (bottom, asked);
+    };
+    if files.list {
+        asked = Some(BoundaryAction::Generate(GenerateAsk::ListFiles {
+            words: words.clone(),
+        }));
+    }
+    // The generator's own file exists: Replace writes it again, after the dialog of S9.6.
+    let replace = files
+        .replace
+        .as_deref()
+        .and_then(|path| Some((path, replace_words(inputs.catalog, &words, path)?)));
+    if let Some((path, replace_args)) = replace {
+        let file = file_name(path);
+        let label = strings::replace_file(file);
+        let button = Button {
+            label: &label,
+            kind: ButtonKind::Danger,
+            disabled: off.is_some(),
+            ..Default::default()
+        };
+        let response = button.show(ui, pal, pos2(x, y), inputs.keyboard);
+        bottom = bottom.max(response.rect.bottom());
+        if response.clicked() && off.is_none() {
+            asked = Some(BoundaryAction::Generate(GenerateAsk::Replace {
+                file: file.to_owned(),
+                run: GenerateRun {
+                    generator: replace_args.first().cloned().unwrap_or_default(),
+                    module: name,
+                    args: run_words(app, replace_args),
+                },
+            }));
+        }
+        if let Some(tip) = &off {
+            draw::tooltip(response, pal, tip);
+        }
+    }
     (bottom, asked)
+}
+
+/// What "Files this creates" gives the buttons under it.
+struct FilesShown {
+    bottom: f32,
+    /// The label of the primary button, when the list counts its files.
+    create: Option<String>,
+    /// A file of the generator's own exists: the primary button is off.
+    blocked: bool,
+    /// The path of that file as printed, for "Replace <file>".
+    replace: Option<String>,
+    /// "List files" was pressed.
+    list: bool,
+}
+
+/// The folder a printed path is shown under, and the rest of it: under the module
+/// folder for a file generator (`Modules/Billing/`), under the folder of its module
+/// for `module:make` (`Modules/Loyalty/`). A path outside both is shown as printed,
+/// under no folder.
+fn placed(app: &AppSnapshot, module: Option<&Module>, printed: &str) -> (String, String) {
+    let outside = (String::new(), printed.to_owned());
+    let Some(relative) = app_relative(&app.root, printed) else {
+        return outside;
+    };
+    if let Some(module) = module {
+        let folder = format!("{}/", app.path_shown(&module.dir));
+        return match relative.strip_prefix(&folder) {
+            Some(rest) => (folder, rest.to_owned()),
+            None => outside,
+        };
+    }
+    let modules = format!("{}/", app.path_shown(&app.layout.modules_dir));
+    match relative
+        .strip_prefix(&modules)
+        .and_then(|inner| inner.split_once('/'))
+    {
+        Some((name, rest)) => (format!("{modules}{name}/"), rest.to_owned()),
+        None => (String::new(), relative),
+    }
+}
+
+/// A file of the list under its folder.
+struct ListRow<'a> {
+    /// The folder under the root, with its last `/`, or empty.
+    folder: String,
+    name: String,
+    file: &'a ReportedFile,
+}
+
+/// "Files this creates" on a 13.4 app (S9.2 to S9.4, design D5): before a dry run
+/// "List files" with its line; after it the files by folder, their head, what
+/// exists, and the errors of the package.
+#[expect(clippy::too_many_arguments)]
+fn files_this_creates(
+    ui: &Ui,
+    pal: &Palette,
+    min: Pos2,
+    width: f32,
+    app: &AppSnapshot,
+    module: Option<&Module>,
+    generator: &Generator,
+    words: &[String],
+    state: &GenerateState,
+    inputs: &GenerateInputs<'_>,
+    ready: bool,
+) -> FilesShown {
+    let list = state.files_for(words);
+    let Some((report, taken_out)) = list.and_then(|list| {
+        let report = list.listed.as_ref().ok()?;
+        Some((report, &list.taken_out))
+    }) else {
+        return list_files(ui, pal, min, width, words, list, inputs, ready);
+    };
+    let new_module = generator.name == MODULE_MAKE;
+    // A `delete` entry is the folder that `module:make --force` deletes, not a file.
+    let files: Vec<&ReportedFile> = report
+        .files
+        .iter()
+        .filter(|file| file.action != FileAction::Delete)
+        .collect();
+    let model = state
+        .filled
+        .arguments
+        .get("model")
+        .map_or("", |model| model.trim());
+    let taken = |file: &ReportedFile| {
+        generator.name == MAKE_MODEL
+            && file.action == FileAction::Keep
+            && model_flag_of(model, &file.path).is_some_and(|flag| taken_out.contains(&flag))
+    };
+    let own: Vec<&ReportedFile> = files
+        .iter()
+        .copied()
+        .filter(|file| file.action == FileAction::Keep && !taken(file))
+        .collect();
+    let taken_count = files.iter().filter(|file| taken(file)).count();
+
+    // The rows by root folder, in the order the roots come; in a root, the files at
+    // its top first, then by folder.
+    let mut roots: Vec<(String, Vec<ListRow>)> = Vec::new();
+    for file in &files {
+        let (root, rest) = placed(app, module, &file.path);
+        let (folder, name) = match rest.rsplit_once('/') {
+            Some((folder, name)) => (format!("{folder}/"), name.to_owned()),
+            None => (String::new(), rest),
+        };
+        let row = ListRow { folder, name, file };
+        match roots.iter_mut().find(|(known, _)| *known == root) {
+            Some((_, rows)) => rows.push(row),
+            None => roots.push((root, vec![row])),
+        }
+    }
+    for (_, rows) in &mut roots {
+        rows.sort_by(|a, b| a.folder.cmp(&b.folder));
+    }
+
+    let head = if new_module {
+        let heads: Vec<String> = roots
+            .iter()
+            .filter(|(root, _)| !root.is_empty())
+            .map(|(root, _)| {
+                let folder = root.trim_end_matches('/');
+                let count = app
+                    .modules
+                    .iter()
+                    .find(|module| app.path_shown(&module.dir) == folder)
+                    .map(|module| module.files);
+                strings::module_folder_head(folder, count)
+            })
+            .collect();
+        heads.join(", ")
+    } else {
+        let exist = files.iter().filter(|file| file.exists).count();
+        strings::files_head(files.len(), exist)
+    };
+    let top = field_label(ui, pal, min, strings::FILES_THIS_CREATES, &head);
+    let mut y = file_tree(ui, pal, pos2(min.x, top), width, &roots);
+
+    // What exists, then the errors other than the one of a file that exists.
+    let sentence = |y: f32, text: &str, color: Color32| {
+        draw::paragraph(ui, pos2(min.x, y + 6.0), text, HINT, color, width).bottom()
+    };
+    let shown = |file: &ReportedFile| placed(app, module, &file.path).1;
+    for file in files.iter().filter(|file| taken(file)) {
+        let flag = model_flag_of(model, &file.path).unwrap_or_default();
+        let text = strings::taken_out(&shown(file), strings::model_call_kind(flag));
+        y = sentence(y, &text, pal.ink_2);
+    }
+    for file in &own {
+        y = sentence(y, &strings::own_file_exists(&shown(file)), pal.bad);
+    }
+    for error in &report.errors {
+        let error = error.trim();
+        if !(error.starts_with("File : ") && error.ends_with(" already exists.")) {
+            y = sentence(y, &strings::quoted(error), pal.bad);
+        }
+    }
+
+    let create = if !own.is_empty() || files.is_empty() {
+        None
+    } else if taken_count > 0 {
+        Some(strings::create_other_files(files.len() - taken_count))
+    } else {
+        Some(strings::create_n_files(files.len()))
+    };
+    FilesShown {
+        bottom: y,
+        create,
+        blocked: !own.is_empty(),
+        replace: own.first().map(|file| file.path.clone()),
+        list: false,
+    }
+}
+
+/// "List files" with "Reading" beside it while the dry run runs, the line it runs
+/// under it, and why the last dry run of these words gave no list. Returns its
+/// bottom and whether the button was pressed.
+#[expect(clippy::too_many_arguments)]
+fn list_files(
+    ui: &Ui,
+    pal: &Palette,
+    min: Pos2,
+    width: f32,
+    words: &[String],
+    list: Option<&FileList>,
+    inputs: &GenerateInputs<'_>,
+    ready: bool,
+) -> FilesShown {
+    let top = field_label(ui, pal, min, strings::FILES_THIS_CREATES, "");
+    let off = if let Some(label) = inputs.busy {
+        Some(strings::is_running(label))
+    } else if line_now(inputs.runner, &[]).is_none() {
+        Some(strings::choose_php(inputs.app))
+    } else {
+        None
+    };
+    let button = Button {
+        label: strings::LIST_FILES,
+        disabled: off.is_some() || !ready,
+        ..Default::default()
+    };
+    let response = button.show(ui, pal, pos2(min.x, top), inputs.keyboard);
+    let mid = response.rect.center().y;
+    let right = response.rect.right();
+    let pressed = response.clicked() && off.is_none() && ready;
+    if let Some(tip) = &off {
+        draw::tooltip(response, pal, tip);
+    }
+    if inputs.listing {
+        draw::label(
+            ui,
+            pos2(right + 10.0, mid),
+            Align2::LEFT_CENTER,
+            strings::READING,
+            ty::SECONDARY,
+            pal.ink_2,
+        );
+    }
+    let dry_run = with_dry_run(words.to_vec());
+    let line = line_now(inputs.runner, &dry_run)
+        .unwrap_or_else(|| format!("php artisan {}", dry_run.join(" ")));
+    let code = draw::code_block(
+        ui,
+        pal,
+        pos2(min.x, top + button.height() + 6.0),
+        width,
+        &line,
+    );
+    let mut y = code.bottom() + 6.0;
+    if let Some(Err(reason)) = list.map(|list| &list.listed) {
+        let text = strings::dry_run_failed(reason);
+        y = draw::paragraph(ui, pos2(min.x, y), &text, HINT, pal.bad, width).bottom() + 2.0;
+    }
+    let bottom = draw::paragraph(
+        ui,
+        pos2(min.x, y),
+        strings::FILES_AFTER_THE_RUN,
+        HINT,
+        pal.ink_2,
+        width,
+    )
+    .bottom();
+    FilesShown {
+        bottom,
+        create: None,
+        blocked: false,
+        replace: None,
+        list: pressed,
+    }
+}
+
+/// A line of the tree of a file list.
+enum TreeLine<'a> {
+    /// A root folder: `Modules/Billing/`.
+    Root(&'a str),
+    /// A file under its root, laid out.
+    File(&'a ListRow<'a>, Arc<egui::Galley>),
+}
+
+/// The tree of a file list in a box: each root folder, then its files, the folder
+/// in dim mono before the name, with "exists" at the right. Returns its bottom.
+fn file_tree(
+    ui: &Ui,
+    pal: &Palette,
+    min: Pos2,
+    width: f32,
+    roots: &[(String, Vec<ListRow>)],
+) -> f32 {
+    const ROW_H: f32 = 22.0;
+    const PAD: f32 = 6.0;
+    const ROOT_X: f32 = 12.0;
+    const FILE_X: f32 = 26.0;
+    let exists_w = draw::galley(ui, strings::EXISTS, ty::SECONDARY, pal.warn)
+        .size()
+        .x
+        + 12.0;
+    let mut lines = Vec::new();
+    for (root, rows) in roots {
+        let indent = if root.is_empty() {
+            ROOT_X
+        } else {
+            lines.push((ROOT_X, TreeLine::Root(root)));
+            FILE_X
+        };
+        for row in rows {
+            let parts = [
+                (row.folder.as_str(), PATH, pal.ink_2),
+                (row.name.as_str(), PATH, pal.ink),
+            ];
+            let galley = draw::rich_galley(ui, &parts, width - indent - exists_w - 12.0);
+            lines.push((indent, TreeLine::File(row, galley)));
+        }
+    }
+    let height_of = |line: &TreeLine| match line {
+        TreeLine::Root(_) => ROW_H,
+        TreeLine::File(_, galley) => (galley.size().y + 7.0).max(ROW_H),
+    };
+    let height = PAD * 2.0 + lines.iter().map(|(_, line)| height_of(line)).sum::<f32>();
+    let rect = Rect::from_min_size(min, vec2(width, height));
+    draw::outlined(ui, rect, radius::CONTROL, pal.surface, pal.line_2);
+    let mut y = rect.top() + PAD;
+    for (indent, line) in &lines {
+        let h = height_of(line);
+        let mid = y + h / 2.0;
+        let at = pos2(rect.left() + indent, mid);
+        y += h;
+        let (row, galley) = match line {
+            TreeLine::Root(root) => {
+                draw::label(ui, at, Align2::LEFT_CENTER, root, PATH, pal.ink_2);
+                continue;
+            }
+            TreeLine::File(row, galley) => (row, galley),
+        };
+        let path = format!("{}{}", row.folder, row.name);
+        let text = draw::paint_galley(ui, at, Align2::LEFT_CENTER, galley.clone());
+        if !row.file.exists {
+            draw::announce(ui, text, Role::Label, &path);
+            continue;
+        }
+        draw::paint_text(
+            ui,
+            pos2(rect.right() - 12.0, mid),
+            Align2::RIGHT_CENTER,
+            strings::EXISTS,
+            ty::SECONDARY,
+            pal.warn,
+        );
+        let said = format!("{path}, {}", strings::EXISTS);
+        draw::announce(ui, text, Role::Label, &said);
+    }
+    rect.bottom()
 }
 
 // ---------------------------------------------------------------------------
@@ -1775,6 +2300,11 @@ fn result_view(
         let at = pos2(min.x, y + 12.0);
         y = alert_box(ui, pal, at, width, Severity::Problem, "", &text, None, true).0;
     }
+    // Read from the lines: the run gave no answer, and the result says why (design D6).
+    if let Some(reason) = &result.fallback {
+        let text = strings::read_from_output(reason);
+        y = draw::paragraph(ui, pos2(min.x, y + 8.0), &text, HINT, pal.ink_2, width).bottom();
+    }
 
     // What to do next.
     let y = y + 12.0;
@@ -1835,7 +2365,7 @@ fn result_view(
                 run: GenerateRun {
                     generator: words.first().cloned().unwrap_or_default(),
                     module: result.module.clone(),
-                    args: words,
+                    args: run_words(app, words),
                 },
             }));
         }
