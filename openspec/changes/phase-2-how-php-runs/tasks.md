@@ -17,7 +17,7 @@
 
 ## 4. Test
 
-- [ ] 4.1 Add the fake artisan binary and `testing::fake_artisan_main()` (D13), `process::capture` (D9, with the `PATH` folders) and `test_php` with `TestOutcome` and `Failure` (D12). Verify with `crates/mortise-core/tests/run.rs`: answered without colour codes, exited with the stderr line, not found, timed out, no command
+- [x] 4.1 Add the fake artisan binary and `testing::fake_artisan_main()` (D13), `process::capture` (D9, with the `PATH` folders) and `test_php` with `TestOutcome` and `Failure` (D12). Verify with `crates/mortise-core/tests/run.rs`: answered without colour codes, exited with the stderr line, not found, timed out, no command
 
 ## 5. Screens
 

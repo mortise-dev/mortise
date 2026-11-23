@@ -1,6 +1,7 @@
 //! Reads a Laravel app that uses `nwidart/laravel-modules` from its files.
 //!
-//! Nothing here draws, runs PHP or writes into the app folder. The entry point is
+//! Nothing here draws or writes into the app folder. It runs PHP only when asked,
+//! with the `run` feature (see [`test_php`]). The entry point is
 //! [`read_app`], which turns a folder into an [`AppSnapshot`]: plain data that an
 //! interface, a command line tool or a service can show.
 
@@ -57,7 +58,9 @@ pub use matcher::fuzzy;
 pub use module::{KindCount, Manifest, Module, ModuleState, Progress, ReadCache};
 pub use rules::{RULES_FILE, Rules, RulesError, RulesSource};
 #[cfg(feature = "run")]
-pub use run::{CommandLine, Detected, detect, herd_config_dir};
+pub use run::{
+    CommandLine, Detected, Failure, TEST_LIMIT, TestOutcome, detect, herd_config_dir, test_php,
+};
 pub use run::{PhpSettings, RunnerKind};
 #[cfg(feature = "actuator")]
 pub use runtime::{

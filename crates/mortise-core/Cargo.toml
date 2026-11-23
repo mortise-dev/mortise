@@ -39,6 +39,12 @@ serde_json.workspace = true
 tempfile.workspace = true
 thiserror.workspace = true
 
+# The artisan of the tests (`tests/run.rs`). Not part of a build without `testing`.
+[[bin]]
+name = "fake-artisan"
+path = "src/bin/fake-artisan.rs"
+required-features = ["testing"]
+
 [dev-dependencies]
 mortise-core = { path = ".", features = ["testing"] }
 

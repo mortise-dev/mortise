@@ -1,6 +1,7 @@
 //! How PHP runs for an app: the kind of runner, the command line, and starting it.
 //!
 //! A command line is a program and a list of arguments. It never goes through a shell.
+//! With the `run` feature, [`test_php`] runs `artisan --version` through a runner.
 
 #[cfg(feature = "run")]
 mod detect;
@@ -163,6 +164,101 @@ impl CommandLine {
     fn words(&self) -> impl Iterator<Item = &str> {
         std::iter::once(self.program.as_str()).chain(self.args.iter().map(String::as_str))
     }
+}
+
+/// How long "Test" waits for `artisan --version` before it stops it.
+#[cfg(feature = "run")]
+pub const TEST_LIMIT: Duration = Duration::from_secs(20);
+
+/// What came of a test of the runner of an app.
+#[cfg(feature = "run")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TestOutcome {
+    /// The program ended with code 0. The first line it printed, without colour codes.
+    Answered(String),
+    Failed(Failure),
+}
+
+/// Why a test failed. The interface writes the text; this is data only.
+#[cfg(feature = "run")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Failure {
+    /// The runner gives no program: an empty Custom line.
+    NoCommand,
+    /// The system found no program by that name.
+    NotFound { program: String },
+    /// The program did not start for another reason, with the message of the system.
+    NotStarted { program: String, message: String },
+    /// The program ended with another code, or by a signal (`None`). The first line
+    /// of stderr that is not empty, else of stdout, else empty; without colour codes.
+    Exited { code: Option<i32>, line: String },
+    /// The program ran longer than the limit, in whole seconds, and was stopped.
+    TimedOut { seconds: u64 },
+}
+
+/// Runs `artisan --version` through `runner` in `folder`, for at most `limit`.
+/// It blocks, so an interface calls it off its drawing thread.
+#[cfg(feature = "run")]
+pub fn test_php(runner: &RunnerKind, folder: &Path, limit: Duration) -> TestOutcome {
+    let Some(line) = CommandLine::artisan(runner, &["--version"]) else {
+        return TestOutcome::Failed(Failure::NoCommand);
+    };
+    let captured = match process::capture(&line, folder, limit) {
+        Ok(captured) => captured,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return TestOutcome::Failed(Failure::NotFound {
+                program: line.program,
+            });
+        }
+        Err(error) => {
+            return TestOutcome::Failed(Failure::NotStarted {
+                program: line.program,
+                message: error.to_string(),
+            });
+        }
+    };
+    let first = |lines: &[String]| {
+        lines
+            .iter()
+            .map(|text| plain(text))
+            .find(|text| !text.trim().is_empty())
+    };
+    if captured.timed_out {
+        TestOutcome::Failed(Failure::TimedOut {
+            seconds: limit.as_secs(),
+        })
+    } else if captured.code == Some(0) {
+        TestOutcome::Answered(first(&captured.stdout).unwrap_or_default())
+    } else {
+        let line = first(&captured.stderr)
+            .or_else(|| first(&captured.stdout))
+            .unwrap_or_default();
+        TestOutcome::Failed(Failure::Exited {
+            code: captured.code,
+            line,
+        })
+    }
+}
+
+/// `text` without its escape sequences `ESC [ ... final byte` (colours, mostly).
+#[cfg(feature = "run")]
+fn plain(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut letters = text.chars().peekable();
+    while let Some(letter) = letters.next() {
+        if letter == '\u{1b}' && letters.peek() == Some(&'[') {
+            letters.next();
+            // Parameter and intermediate bytes run up to a final byte in `@` to `~`.
+            for letter in letters.by_ref() {
+                if ('@'..='~').contains(&letter) {
+                    break;
+                }
+            }
+        } else {
+            out.push(letter);
+        }
+    }
+    out
 }
 
 /// Whether a word can stand without quotes: not empty, and only ASCII letters,
