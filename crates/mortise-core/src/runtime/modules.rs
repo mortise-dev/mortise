@@ -34,6 +34,9 @@ pub struct RuntimeByModule {
     pub app: Vec<Component>,
     /// The modules that have a status, in the order of the app's modules.
     pub modules: Vec<ModuleRuntime>,
+    /// The errors the `modules` component gives for names that are no module of the
+    /// app: each name, in the app's case, with its sentence.
+    pub elsewhere: Vec<(String, String)>,
 }
 
 impl RuntimeByModule {
@@ -62,30 +65,35 @@ fn indicator_name(name: &str) -> Option<(&str, &str)> {
 
 /// The errors of the `modules` component: the name of each module it reports, in its
 /// own case, with the sentence. The detail is the JSON text of an object.
-fn errors(component: &Component) -> Vec<(String, String)> {
-    let Some(Value::Object(modules)) = component
-        .details
-        .iter()
-        .find(|(key, _)| key == MODULES)
-        .and_then(|(_, text)| serde_json::from_str(text).ok())
-    else {
-        return Vec::new();
+///
+/// `None` when the component is not the list of laravel-modules: its one detail is
+/// not `modules` with an object. That is a check that failed, with the exception as
+/// its `error`, or a component of the app's own under that name.
+fn errors(component: &Component) -> Option<Vec<(String, String)>> {
+    let [(key, text)] = component.details.as_slice() else {
+        return None;
     };
-    modules
-        .into_iter()
-        .filter_map(|(name, module)| {
-            let error = module.get("error")?.as_str()?.to_owned();
-            Some((name, error))
-        })
-        .collect()
+    let Ok(Value::Object(modules)) = serde_json::from_str(text) else {
+        return None;
+    };
+    (key == MODULES).then(|| {
+        modules
+            .into_iter()
+            .filter_map(|(name, module)| {
+                let error = module.get("error")?.as_str()?.to_owned();
+                Some((name, error))
+            })
+            .collect()
+    })
 }
 
 /// Splits the components of an answer between the app and its modules.
 ///
 /// An indicator `module:{name}:{key}` belongs to the module whose name, in ASCII lower
 /// case, is `{name}`: PHP's `strtolower` changes ASCII only. The `modules` component
-/// leaves the app's list. Only an error it gives for a name that is no module of the
-/// app keeps it there, with those errors as its details.
+/// of laravel-modules leaves the app's list; an error it gives for a name that is no
+/// module of the app goes to `elsewhere`. A component named `modules` of another shape
+/// stays the app's.
 pub fn by_module(app: &AppSnapshot, components: &[Component]) -> RuntimeByModule {
     let lower: Vec<String> = app
         .modules
@@ -97,20 +105,17 @@ pub fn by_module(app: &AppSnapshot, components: &[Component]) -> RuntimeByModule
     let mut indicators: Vec<Vec<Component>> = vec![Vec::new(); app.modules.len()];
     let mut errors_of: Vec<Option<String>> = vec![None; app.modules.len()];
     let mut own = Vec::new();
+    let mut elsewhere = Vec::new();
     for component in components {
-        if component.name == MODULES {
-            let mut elsewhere = Vec::new();
-            for (name, error) in errors(component) {
+        if let Some(errors) = (component.name == MODULES)
+            .then(|| errors(component))
+            .flatten()
+        {
+            for (name, error) in errors {
                 match position(&name.to_ascii_lowercase()) {
                     Some(at) => errors_of[at] = Some(error),
                     None => elsewhere.push((name, error)),
                 }
-            }
-            if !elsewhere.is_empty() {
-                own.push(Component {
-                    details: elsewhere,
-                    ..component.clone()
-                });
             }
             continue;
         }
@@ -148,5 +153,9 @@ pub fn by_module(app: &AppSnapshot, components: &[Component]) -> RuntimeByModule
             })
         })
         .collect();
-    RuntimeByModule { app: own, modules }
+    RuntimeByModule {
+        app: own,
+        modules,
+        elsewhere,
+    }
 }

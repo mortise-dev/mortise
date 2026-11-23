@@ -38,13 +38,6 @@ pub fn status_of(module: &str) -> String {
     format!("Status of {module}")
 }
 
-/// Not in the spec: an error the `modules` component gives for a name that is no
-/// module of the app, in the app box.
-/// `Ghost: Enabled in the status store, not found on disk.`
-pub fn module_error(module: &str, error: &str) -> String {
-    format!("{module}: {error}")
-}
-
 pub fn cannot_reach(environment: &str, url: &str, reason: &str) -> String {
     format!(
         "Cannot reach {environment}. No answer from {url}: {reason}. Start the app, or correct \

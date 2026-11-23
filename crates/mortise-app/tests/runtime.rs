@@ -405,14 +405,15 @@ fn an_app_that_is_down_quotes_the_failing_component() {
             "db":{"status":"DOWN","details":{"error":"Illuminate\\Database\\QueryException: SQLSTATE[HY000] [2002] Connection refused."}},
             "cache":{"status":"UP","details":{"store":"redis"}},
             "module:billing:gateway":{"status":"DOWN"},
+            "module:billing:db":{"status":"UP","details":{"replicaLag":12}},
             "modules":{"status":"DOWN","details":{"modules":{"Billing":{"enabled":true},
             "Ghost":{"enabled":true,"error":"Enabled in the status store, not found on disk."}}}}}}"#,
         ),
     );
-    let (_desk, harness) = connected(&stub);
+    let (_desk, mut harness) = connected(&stub);
 
     assert_eq!(harness.get_all_by_label("Down on local").count(), 2);
-    // The status, the components, and the line of Billing, which is down.
+    // The status, db, and the lines of Billing and Ghost, which are down.
     let downs: Vec<f32> = harness
         .get_all_by_label("Down")
         .map(|node| node.rect().center().y)
@@ -426,8 +427,9 @@ fn an_app_that_is_down_quotes_the_failing_component() {
                 .any(|y| (node.rect().center().y - y).abs() < 2.0)),
         "no line of Billing with the Down mark"
     );
-    // An error for a module the files do not have stays with the app.
-    harness.get_by_label("Ghost: Enabled in the status store, not found on disk.");
+    // An error for a module the files do not have stays with the app, apart.
+    harness.get_by_label("Ghost");
+    harness.get_by_label("Enabled in the status store, not found on disk.");
     harness.get_by_label("db");
     // The detail is the app's own text, and nothing is added to it.
     harness.get_by_label(
@@ -438,6 +440,16 @@ fn an_app_that_is_down_quotes_the_failing_component() {
     harness.get_by_label("3 up");
     // A 503 is an answer: routes and tasks are still shown.
     harness.get_by_label("106 routes, read from local");
+
+    // In the box of Billing each indicator has its line, the one that is up too,
+    // with its details as the app wrote them: `db` is the module's check, not the app's.
+    harness
+        .get_by_role_and_label(Role::ListBoxOption, "Billing")
+        .click();
+    harness.run_steps(3);
+    harness.get_by_label("gateway");
+    harness.get_by_label("db");
+    harness.get_by_label("replicaLag 12");
 }
 
 #[test]

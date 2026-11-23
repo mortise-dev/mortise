@@ -63,9 +63,12 @@ impl RuntimeByModule { pub fn of(&self, module: &str) -> Option<&ModuleRuntime>;
   default order, decision 4). An error makes it Down. No indicator and no error: no entry.
 - The `modules` detail is parsed from its JSON text with `serde_json`, which the core already uses.
   `Component` does not change, so `actuator.rs` does not either.
-- The `modules` component leaves `app` unless it gives an error for a name that is no module of the
-  app. Then it stays with only those errors as details, `(name, error)`, so the app box can say it.
-  An indicator `module:x:y` whose `x` is no module stays in `app` under its full name.
+- The `modules` component leaves `app` when its one detail is `modules` with an object: the list of
+  laravel-modules. Any other shape stays in `app`: a check that failed (Down with `error`, no list)
+  or a component of the app's own under that name. An error the list gives for a name that is no
+  module of the app goes to `RuntimeByModule::elsewhere`, apart from the details, so a module named
+  `error` cannot pass for the exception of the check. An indicator `module:x:y` whose `x` is no
+  module stays in `app` under its full name.
 - Alternative: split the components in `actuator.rs` when `health` is read. Rejected: the client does
   not know the app's modules, and it is the file milestone 20 edits.
 
@@ -104,13 +107,16 @@ touch that layout. Recorded as a deviation row.
 Its items reuse `runtime_box`'s parts in `runtime/view.rs`: a heading "Runtime on {environment}" with
 the environment switch, a line "Status of {module}" with the mark, the word and "checked 8 s ago", the
 error of the `modules` component as quoted code when there is one, then the indicators through
-`component_items`, named by key. The box is drawn only when `RuntimeByModule::of` finds the module.
+`component_items`, named by key. Each indicator has its own line, also when some are not up, and its
+details read as the app wrote them: a key such as `db` or `cache` does not take the wording of the
+app's component of that name. The box is drawn only when `RuntimeByModule::of` finds the module.
 
 ### The app box
 
 `items` lists `by_module(..).app` instead of `runtime.components`. After the components, each module
 that is not Up has one line: its name (not mono) and its status mark and word. A Down app then always
-names what is down. Not in the spec; recorded with the other rows.
+names what is down. Each name of `elsewhere` has a line with Down, then its sentence quoted. Not in
+the spec; recorded with the other rows.
 
 ### The stub
 

@@ -528,6 +528,7 @@ fn a_module_takes_its_worst_indicator_and_the_error_of_the_modules_component() {
         "modules":{"status":"DOWN","details":{"modules":{
             "Billing":{"enabled":true},
             "Legacy":{"enabled":true,"error":"Enabled in the status store, not found on disk."},
+            "error":{"enabled":true,"error":"Enabled in the status store, not found on disk."},
             "Ghost":{"enabled":true,"error":"Enabled in the status store, not found on disk."}}}}}}"#;
     let split = by_module(&recorded_app(), &components_of(health));
 
@@ -543,17 +544,21 @@ fn a_module_takes_its_worst_indicator_and_the_error_of_the_modules_component() {
         Some("Enabled in the status store, not found on disk.")
     );
 
-    // An indicator of no module stays the app's, under its full name. The modules
-    // component stays with the error of the name that is no module only.
+    // An indicator of no module stays the app's, under its full name. The errors of
+    // names that are no module are kept apart, even a module named "error".
     let own: Vec<&str> = split.app.iter().map(|c| c.name.as_str()).collect();
-    assert_eq!(own, ["db", "module:ghost:x", "modules"]);
-    assert_eq!(
-        split.app[2].details,
-        [(
-            "Ghost".to_owned(),
-            "Enabled in the status store, not found on disk.".to_owned()
-        )]
-    );
+    assert_eq!(own, ["db", "module:ghost:x"]);
+    let elsewhere: Vec<&str> = split.elsewhere.iter().map(|(n, _)| n.as_str()).collect();
+    assert_eq!(elsewhere, ["error", "Ghost"]);
+
+    // A modules check that failed has no list: it stays the app's, with its exception.
+    let failed = r#"{"status":"DOWN","components":{"module:billing:gateway":{"status":"UP"},
+        "modules":{"status":"DOWN","details":{"error":"RuntimeException: no status store"}}}}"#;
+    let split = by_module(&recorded_app(), &components_of(failed));
+    assert_eq!(split.app.len(), 1);
+    assert_eq!(split.app[0].name, "modules");
+    assert_eq!(split.app[0].details[0].0, "error");
+    assert_eq!(split.of("Billing").unwrap().status, Status::Up);
 }
 
 fn wait_for(

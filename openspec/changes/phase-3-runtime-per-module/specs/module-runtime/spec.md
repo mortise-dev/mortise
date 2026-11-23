@@ -44,7 +44,7 @@ When the `modules` component lists a module with an `error`, that module SHALL r
 - **THEN** `Billing` reads Down with the sentence "Enabled in the status store, not found on disk."
 
 ### Requirement: Module components leave the components of the app
-The components of the app SHALL NOT include an indicator that belongs to a module or the `modules` component. An error the `modules` component gives for a name that is no module of the app SHALL stay with the app's components.
+The components of the app SHALL NOT include an indicator that belongs to a module or the `modules` component. An error the `modules` component gives for a name that is no module of the app SHALL stay in the app box, apart from the components. A `modules` component that does not carry the list of modules SHALL stay a component of the app.
 
 #### Scenario: The app box of a 13.4 app
 - **WHEN** `health` lists `db`, `cache`, `module:billing:gateway` and `modules`, and the app has a module `Billing`
@@ -56,7 +56,11 @@ The components of the app SHALL NOT include an indicator that belongs to a modul
 
 #### Scenario: An error for a module the files do not have
 - **WHEN** the `modules` component lists `Ghost` with an error and the app has no module `Ghost`
-- **THEN** the runtime box of the app keeps the `modules` component with that error
+- **THEN** the runtime box of the app has a line for `Ghost` with the Down mark and the error
+
+#### Scenario: The modules check failed
+- **WHEN** the `modules` component is Down with an `error` detail and no list of modules
+- **THEN** the runtime box of the app keeps the `modules` component with its error
 
 ### Requirement: The status follows what each environment answers
 The runtime status of the modules SHALL come from the last answer of the chosen environment only. It SHALL NOT depend on the package version in `composer.lock`. Without an answer, with hidden components, or with no module component, no module SHALL have a runtime status.
@@ -92,11 +96,15 @@ The pip on a rail tile SHALL count findings of the kind problem only. A module t
 - **THEN** the tile of the app on the rail has no pip
 
 ### Requirement: The Summary of a module shows its runtime box
-The Summary of a module that has a runtime status SHALL show a runtime box: the status of the module with when it was checked, the error of the `modules` component when there is one, then the module's own indicators by key with their status and details. A module with no runtime status SHALL have no runtime box.
+The Summary of a module that has a runtime status SHALL show a runtime box: the status of the module with when it was checked, the error of the `modules` component when there is one, then each of the module's own indicators on its own line, by key, with its status and its details as the app wrote them. A module with no runtime status SHALL have no runtime box.
 
 #### Scenario: A module with an indicator
 - **WHEN** `Billing` has `module:billing:gateway` Up with the details `provider fake` and `latencyMs 12`
 - **THEN** the Summary of `Billing` has a runtime box with the line "Status of Billing" Up, and a line `gateway` Up
+
+#### Scenario: Indicators with mixed statuses
+- **WHEN** `module:billing:gateway` is Down and `module:billing:db` is Up with the detail `replicaLag 12`
+- **THEN** the runtime box of `Billing` has a line for `gateway` and a line for `db` with `replicaLag 12`
 
 #### Scenario: A module with no indicator
 - **WHEN** `Legacy` has no runtime status
