@@ -529,30 +529,25 @@ pub fn module_folders(app: &AppSnapshot) -> Vec<&str> {
 }
 
 /// The words that write `path` again, left by a run of `words`, as `replace_words`
-/// gives them. Its guards read the runner's own options with the run's: a Custom
-/// line `php artisan --factory` gives the model its factory, and the package then
-/// passes `--force` to the factory too (design D6).
+/// gives them. The runner's own options, before a `--` in its line, go with every
+/// command: a Custom line `php artisan --policy` gives the model its policy, and
+/// the package then passes `--force` to the policy too (design D6).
 fn replace_for(
     inputs: &GenerateInputs<'_>,
     words: &[String],
     path: &str,
     package: &mortise_core::Version,
 ) -> Option<Vec<String>> {
-    let options = inputs
+    let runner: Vec<String> = inputs
         .runner
         .map(RunnerKind::prefix)
         .unwrap_or_default()
         .into_iter()
         .skip(1)
-        .filter(|word| word.starts_with('-'));
-    let end = words
-        .iter()
-        .position(|word| word == "--")
-        .unwrap_or(words.len());
-    let mut effective = words.to_vec();
-    effective.splice(end..end, options);
-    replace_words(inputs.catalog, &effective, path, package)?;
-    replace_words(inputs.catalog, words, path, package)
+        .take_while(|word| word != "--")
+        .filter(|word| word.starts_with('-'))
+        .collect();
+    replace_words(inputs.catalog, words, &runner, path, package)
 }
 
 /// A path as the output prints it, relative to the folder of `module` when it is

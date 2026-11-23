@@ -473,10 +473,17 @@ const MODEL_CALLS: [(&str, &str, &str, &str); 6] = [
 /// These are names the package passes, not paths: the generator writes where the
 /// package says.
 ///
+/// `runner` holds the option words of the runner's own line, before a `--` (a
+/// Custom line `php artisan --policy` gives `--policy`). They go with every command,
+/// and a replacement cannot take them out: they count as options of the run. From
+/// 13.4 on, a runner word that sets any option of `module:make-model` but `--json`
+/// gives the model's own file `None`, as the model would pass `--force` on to a call.
+///
 /// `package` is the app's package version.
 pub fn replace_words(
     catalog: &Catalog,
     run: &[String],
+    runner: &[String],
     left: &str,
     package: &Version,
 ) -> Option<Vec<String>> {
@@ -485,7 +492,7 @@ pub fn replace_words(
         return None;
     }
     match generator.name.as_str() {
-        MAKE_MODEL => replace_from_model(catalog, generator, run, left, package),
+        MAKE_MODEL => replace_from_model(catalog, generator, run, runner, left, package),
         MODULE_MAKE | "module:make-component" | "module:make-migration" => None,
         _ => generator.flag("force").then(|| with_force(run)),
     }
@@ -495,11 +502,13 @@ fn replace_from_model(
     catalog: &Catalog,
     model_generator: &Generator,
     run: &[String],
+    runner: &[String],
     left: &str,
     package: &Version,
 ) -> Option<Vec<String>> {
     let stem = file_name(left).strip_suffix(".php")?;
-    let (options, arguments) = split_run(run);
+    let (mut options, arguments) = split_run(run);
+    options.extend(runner.iter().map(String::as_str));
     let model = studly(arguments.first()?);
     let module = arguments.get(1).map(|module| module.as_str());
     let all = turns_on(model_generator, &options, "all");
@@ -514,6 +523,11 @@ fn replace_from_model(
         // and without the flag the model loses its factory: no Replace.
         let factory = all || turns_on(model_generator, &options, "factory");
         if factory && !released_before_13_4(package) {
+            return None;
+        }
+        // A runner word stays in the command: from 13.4 on, a call it turns on
+        // gets `--force` from the model.
+        if !released_before_13_4(package) && sets_an_option(model_generator, runner) {
             return None;
         }
         // Only a word before `--` is a flag: a module named `--factory` stays.
@@ -572,6 +586,30 @@ fn turns_on(generator: &Generator, options: &[&str], name: &str) -> bool {
                 .filter(|group| !group.starts_with('-'))
                 .zip(shortcut)
                 .is_some_and(|(group, shortcut)| group.contains(shortcut))
+    })
+}
+
+/// True when one of `words` sets an option of `generator` other than `--json`:
+/// `--name` or `--name=value`, or a group of short options that holds a shortcut,
+/// such as `-p` or `-mp`.
+fn sets_an_option(generator: &Generator, words: &[String]) -> bool {
+    let options = || {
+        generator
+            .options
+            .iter()
+            .filter(|option| option.name != "json")
+    };
+    words.iter().any(|word| match word.strip_prefix("--") {
+        Some(long) => {
+            let name = long.split_once('=').map_or(long, |(name, _)| name);
+            options().any(|option| option.name == name)
+        }
+        None => word.strip_prefix('-').is_some_and(|group| {
+            options()
+                .filter_map(|option| option.shortcut.as_deref())
+                .filter(|shortcut| !shortcut.is_empty())
+                .any(|shortcut| group.contains(shortcut))
+        }),
     })
 }
 
@@ -1017,7 +1055,8 @@ mod tests {
             alias: None,
         };
         let v13_3 = version("13.3.0");
-        let replace = |run: &[&str], left: &str| replace_words(&catalog, &words(run), left, &v13_3);
+        let replace =
+            |run: &[&str], left: &str| replace_words(&catalog, &words(run), &[], left, &v13_3);
 
         // One generator: its words and `--force`, before a `--`.
         assert_eq!(
@@ -1120,7 +1159,7 @@ mod tests {
             .collect();
         for raw in ["13.4.0", "dev-master"] {
             let replace =
-                |run: &[&str]| replace_words(&catalog, &words(run), model_file, &version(raw));
+                |run: &[&str]| replace_words(&catalog, &words(run), &[], model_file, &version(raw));
             assert_eq!(replace(&run), None, "{raw}");
             assert_eq!(
                 replace(&[MAKE_MODEL, "Invoice", "Billing", "--all"]),
@@ -1152,18 +1191,23 @@ mod tests {
                 "{raw}"
             );
         }
-        // A runner's own words count with the run's: the shortcut `-f` in a group is
-        // the factory too.
+        // A runner's own words stay in the command: from 13.4 on, one that sets an
+        // option of the model (the shortcut `-f` in a group, or `--policy`) gives
+        // the model's file no Replace. Docker's `-T` is no option of the model.
         let v13_4 = version("13.4.0");
-        assert_eq!(
+        let invoice = words(&[MAKE_MODEL, "Invoice", "Billing"]);
+        let by_runner = |runner: &[&str]| {
             replace_words(
                 Catalog::v13_4(),
-                &words(&[MAKE_MODEL, "Invoice", "Billing", "-T", "-mf"]),
+                &invoice,
+                &words(runner),
                 model_file,
-                &v13_4
-            ),
-            None
-        );
+                &v13_4,
+            )
+        };
+        assert_eq!(by_runner(&["-T", "-mf"]), None);
+        assert_eq!(by_runner(&["--policy"]), None);
+        assert!(by_runner(&["-T"]).is_some());
         // A call the run did not make, and a migration, get nothing.
         assert_eq!(replace(&run, "InvoiceController.php"), None);
         assert_eq!(
