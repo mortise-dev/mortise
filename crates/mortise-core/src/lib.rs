@@ -11,6 +11,8 @@ mod boundary;
 mod editor;
 mod findings;
 mod generate;
+#[cfg(feature = "actuator")]
+mod metrics;
 mod modules;
 mod package;
 mod palette;
