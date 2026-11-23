@@ -295,12 +295,14 @@ fn bare(word: &str, more: &[char]) -> bool {
 }
 
 /// The line for POSIX `sh`. A word that is not bare goes in single quotes, and a
-/// `'` inside becomes `'\''`.
+/// `'` inside becomes `'\''`. A program with `=` is quoted too: `sh` reads
+/// `a=b cmd` as an assignment.
 #[cfg(feature = "run")]
 fn posix(line: &CommandLine) -> String {
     line.words()
-        .map(|word| {
-            if bare(word, &[]) {
+        .enumerate()
+        .map(|(at, word)| {
+            if bare(word, &[]) && (at > 0 || !word.contains('=')) {
                 word.to_string()
             } else {
                 format!("'{}'", word.replace('\'', r"'\''"))
@@ -475,6 +477,7 @@ mod tests {
                 &["php", "a,b", "@x", "%PATH%", "a;b", "a*"],
                 "php 'a,b' '@x' '%PATH%' 'a;b' 'a*'",
             ),
+            (&["bin/a=b", "x=y"], "'bin/a=b' x=y"),
         ] {
             assert_eq!(posix(&line(words)), shown);
         }
