@@ -251,8 +251,9 @@ pub struct PackageData {
     spec). For a module: `module:migrate-status <Module> --json`; for "All modules": `module:migrate-status
     --all --json`. The result merges into `migrations` by module (a module of the document replaces its
     entry; under `--all`, a module that is on and absent from the document is removed).
-  - After a read in this session, a migrate, roll back, reset, refresh or fresh started from Mortise reads
-    the state again when it ends, whatever its exit code, with the same target (fresh: `--all`). The state
+  - After a read in this session, a migrate, roll back, reset, refresh or fresh started from the Actions
+    tab reads the state again when it ends, whatever its exit code, with the same target (fresh: `--all`)
+    and the run's `--database`. The state
     box of those panels says so before the run: "After the run Mortise reads the state again:" and the
     line (not in the spec). A dry run (`--pretend`) is not followed by a read. Seed and delete are not:
     delete removes the module's entry.
@@ -367,9 +368,9 @@ accessible name and a 24 px target (`tests/accessibility.rs`).
   stand under the state box. After a read in this session the line has "After the run Mortise reads the
   state again:" above it, so the one line serves both. Fresh has no box: after a read its panel shows
   that sentence and the line under "What is lost".
-- "A read in this session" is `PackageData::migration_table` being set. The app looks at the words of
-  every run that ends (`AppRuns::args`), so Run again from the drawer is followed by a read too. A delete
-  forgets the module's state only when it exits with 0.
+- "A read in this session" is `PackageData::migration_table` being set. A delete forgets the module's
+  state only when it exits with 0. (After review: only a run started from the Actions tab is followed by
+  a read; Run again from the drawer or the history is not.)
 - The box of Reset and Refresh is titled "Ran" and lists the migrations that ran (not in the spec).
   Without a waiting migration the button reads "Migrate", and the box "Nothing waiting"; without a ran
   one the box reads "Nothing ran" (not in the spec).
@@ -543,6 +544,27 @@ accessible name and a 24 px target (`tests/accessibility.rs`).
 - After a list, "List files again" beside its head drops the list and gives back its flags. "List files"
   and the line of its dry run come back, so a file that changed gets a fresh answer for the same form.
   The button runs nothing itself: the line of the dry run is not on screen beside the list.
+- "Read migration state" and "Read again" run only a line that was whole on screen in the last frame,
+  as the run buttons do (S37). Otherwise they are off with "Scroll up to see the whole command first.".
+- Only a run started from the Actions tab, or from its dialogs, is followed by a read of the state: there
+  "After the run Mortise reads the state again:" and the whole line of that read were on screen. `Act`
+  carries that read (`then_read`). Run again from the drawer or the history shows no such line and starts
+  no read.
+- The state is of one connection: `PackageData::migration_connection` (empty for the default). A read
+  takes the panel's `--database` (`module:migrate-status Checkout --database=testing --json`), and a read
+  of another connection replaces the whole state. A panel shows the counts, lists and tables only for
+  the connection its line runs on; otherwise its box reads "Not read for this connection." (not in the
+  spec) and offers the read for it. The read after a run takes the run's `--database`. S4.3, the Summary
+  and the To do list of Findings show the state of the default connection only.
+- The roll back, reset and refresh dialogs list at most six migrations or tables, then "and 24 more" (not
+  in the spec), so the dialog and its buttons fit in a window 600 px high.
+- A fresh that ends, whatever its exit code, forgets the state of its connection before the read after
+  it: a module that is off keeps no migrations or tables the fresh dropped.
+- Every run of `module:lang --json` or `module:test --json` that ends gives its document, also from Run
+  again or the history: the report goes into `PackageData`, and the tests get their count toast. The
+  end of every run (`after_run`) takes it in; a run from the panel gets that toast only, not a second one.
+- A module that ran with no counts (PHPUnit stopped before its report) gives no count toast: the totals
+  would count it as 0. A failed run then gets the toast of milestone 12.
 
 ## Risks / Trade-offs
 
