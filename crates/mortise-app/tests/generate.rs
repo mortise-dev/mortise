@@ -378,6 +378,16 @@ fn a_dry_run_that_finds_the_policy_takes_it_out_of_the_command() {
         .unwrap();
     assert!(harness.query_by_label_contains("--policy").is_none());
     assert!(!disabled(&harness, "Create the other 2 files"));
+    // Another name drops the list, and the flag it took out comes back.
+    type_into(&mut harness, "Model name", "Receipt");
+    let policy = harness.get_by_role_and_label(Role::CheckBox, "Policy");
+    assert_eq!(policy.accesskit_node().toggled(), Some(Toggled::True));
+    harness
+        .query_by_label_contains("Receipt Billing --migration --policy --json")
+        .unwrap();
+    type_into(&mut harness, "Model name", "Invoice");
+    click(&mut harness, Role::Button, "List files");
+    wait_for(&mut harness, "3 files, 1 exists already");
 
     // The result lists the policy as left, and Replace writes it with the words of
     // the form before the flag went.
@@ -449,6 +459,18 @@ fn a_dry_run_that_finds_the_factory_keeps_it_in_the_command() {
 #[test]
 fn a_policy_that_exists_is_left_and_replace_asks_then_runs_force() {
     let (desk, root) = desk();
+    // The fake ends once the gate file exists, so that the replacement holds the app.
+    let gate = desk.path().join("gate");
+    let mut settings = desk.saved();
+    settings.apps[0].php.runner = Some(RunnerKind::Custom {
+        line: format!(
+            "\"{}\" gate \"{}\"",
+            env!("CARGO_BIN_EXE_app-fake-artisan"),
+            gate.display()
+        ),
+    });
+    settings.save(&desk.settings_path()).unwrap();
+    std::fs::write(&gate, "").unwrap();
     let mut harness = desk.start();
     generate_in(&mut harness, "Billing");
     click(&mut harness, Role::ListBoxOption, "Model");
@@ -483,7 +505,12 @@ fn a_policy_that_exists_is_left_and_replace_asks_then_runs_force() {
             .is_focused()
     );
     assert_eq!(ran(&mut harness, &desk, &root).len(), 1);
+    std::fs::remove_file(&gate).unwrap();
     click(&mut harness, Role::Button, "Replace file");
+    // While the replacement runs, no Replace of the result starts another.
+    assert!(disabled(&harness, "Replace InvoicePolicy.php"));
+    assert!(disabled(&harness, "Replace app/Policies/InvoicePolicy.php"));
+    std::fs::write(&gate, "").unwrap();
     wait_for(&mut harness, "Replaced 1 file in Billing.");
     // The row of the policy changes in the result; the other rows stay.
     harness.get_by_role_and_label(Role::Heading, "Created in Billing");

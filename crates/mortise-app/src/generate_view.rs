@@ -381,9 +381,18 @@ impl GenerateState {
     }
 
     /// Drops a file list that ran in another place than `place`: it lists the files
-    /// of another app. The flags S9.3 took out for it come back into the form.
+    /// of another app.
     fn drop_files_of_another_place(&mut self, place: &RunPlace) {
-        let Some(list) = self.files.take_if(|list| list.place != *place) else {
+        if self.files.as_ref().is_some_and(|list| list.place != *place) {
+            self.drop_list();
+        }
+    }
+
+    /// Drops the file list of the form, whose words or place changed. The flags S9.3
+    /// took out for it are the list's, not the user's: they come back into the form,
+    /// with `all` when S9.3 took it.
+    fn drop_list(&mut self) {
+        let Some(list) = self.files.take() else {
             return;
         };
         if list.before.first() != Some(&self.generator) {
@@ -455,25 +464,39 @@ impl GenerateState {
         self.result = Some(result);
     }
 
-    /// Takes the end of a Replace of the left row `row` of the result on screen: the
-    /// row gets what the run did to its file, and the other rows stay as they are,
-    /// with their Replace. A run that read no file leaves the row. Returns false when
-    /// the result holds no such row.
-    pub fn replace_row(&mut self, row: &str, files: &[GeneratedFile]) -> bool {
-        let Some(left) = self.result.as_mut().and_then(|result| {
+    /// Takes the end of a Replace of the left row `row` of the result on screen. A
+    /// file of the run whose path is the row's gives the row its outcome. A file of
+    /// another path, such as one the app's generator paths now place elsewhere, gets a
+    /// row of its own, and `row` stays as it was. The other rows stay, with their
+    /// Replace. A run that read no file leaves the rows and shows `fallback`, why it
+    /// gave no answer. Returns false when the result holds no such row.
+    pub fn replace_row(
+        &mut self,
+        row: &str,
+        files: &[GeneratedFile],
+        fallback: Option<String>,
+    ) -> bool {
+        let Some(result) = self.result.as_mut().filter(|result| {
             result
                 .files
-                .iter_mut()
-                .find(|file| file.path == row && file.outcome == FileOutcome::Left)
+                .iter()
+                .any(|file| file.path == row && file.outcome == FileOutcome::Left)
         }) else {
             return false;
         };
-        let done = match files {
-            [only] => Some(only),
-            files => files.iter().find(|file| file.path == row),
-        };
-        if let Some(done) = done {
-            left.outcome = done.outcome;
+        let same = |a: &str, b: &str| a.replace('\\', "/") == b.replace('\\', "/");
+        for done in files {
+            match result
+                .files
+                .iter_mut()
+                .find(|file| same(&file.path, &done.path))
+            {
+                Some(file) => file.outcome = done.outcome,
+                None => result.files.push(done.clone()),
+            }
+        }
+        if fallback.is_some() {
+            result.fallback = fallback;
         }
         true
     }
@@ -590,6 +613,25 @@ pub fn module_folders(app: &AppSnapshot) -> Vec<&str> {
     app.modules
         .iter()
         .filter_map(|module| module.dir.file_name()?.to_str())
+        .collect()
+}
+
+/// The modules a run writes in, which place a path of a container first: those
+/// that `module:make` asks for, else the folder of the run's own module `module`.
+pub fn run_modules(
+    app: Option<&AppSnapshot>,
+    generator: &str,
+    module: Option<&str>,
+    words: &[String],
+) -> Vec<String> {
+    if generator == MODULE_MAKE {
+        return typed_names(words);
+    }
+    app.zip(module)
+        .and_then(|(app, name)| app.modules.iter().find(|known| known.name == name))
+        .and_then(|module| module.dir.file_name()?.to_str())
+        .map(str::to_owned)
+        .into_iter()
         .collect()
 }
 
@@ -1830,10 +1872,12 @@ fn command(
 ) -> (f32, Option<BoundaryAction>) {
     let name = module.map(|module| module.name.clone());
     // The words of the form, and the words that run: on a 13.4 app with `--json`.
-    let words = generator.words(&state.filled, name.as_deref());
-    // The file list belongs to the words it ran with: a change of the line drops it.
+    let mut words = generator.words(&state.filled, name.as_deref());
+    // The file list belongs to the words it ran with: a change of the line drops it,
+    // and gives back the flags it took out.
     if state.files.as_ref().is_some_and(|list| list.words != words) {
-        state.files = None;
+        state.drop_list();
+        words = generator.words(&state.filled, name.as_deref());
     }
     let run_args = run_words(app, words.clone());
     let line = line_now(inputs.runner, &run_args)
@@ -2077,7 +2121,7 @@ fn writes<'a>(generator: &str, files: &[&'a ReportedFile]) -> Writes<'a> {
 /// folder for a file generator (`Modules/Billing/`), under the folder of its module
 /// for `module:make` (`Modules/Loyalty/`). A path outside both is shown as printed,
 /// under no folder.
-/// `asked` holds the modules `module:make` asks for, which place a path first.
+/// `asked` holds the modules the run writes in, which place a path first.
 fn placed(
     app: &AppSnapshot,
     module: Option<&Module>,
@@ -2141,11 +2185,12 @@ fn files_this_creates(
         return list_files(ui, pal, min, width, words, list, inputs, ready, shown);
     };
     let new_module = generator.name == MODULE_MAKE;
-    let asked = if new_module {
-        typed_names(words)
-    } else {
-        Vec::new()
-    };
+    let asked = run_modules(
+        Some(app),
+        &generator.name,
+        module.map(|module| module.name.as_str()),
+        words,
+    );
     let asked: Vec<&str> = asked.iter().map(String::as_str).collect();
     // A `delete` entry is the folder that `module:make --force` deletes, not a file.
     let files: Vec<&ReportedFile> = report
@@ -2424,6 +2469,8 @@ fn result_view(
     inputs: &GenerateInputs<'_>,
 ) -> (f32, Option<BoundaryAction>) {
     let now = ui.input(|input| input.time);
+    // Replace is off while a run or read holds the app, as the other run buttons are.
+    let busy = inputs.busy.map(strings::is_running);
     let Some(shown) = state.result.as_mut().map(|result| &mut result.shown) else {
         return (min.y, None);
     };
@@ -2645,11 +2692,16 @@ fn result_view(
                     label: strings::REPLACE,
                     small: true,
                     said: Some(&replace_said),
+                    disabled: busy.is_some(),
                     ..Default::default()
                 };
                 let at = pos2(right - replace.width(ui), mid - replace.height() / 2.0);
-                if replace.show(ui, pal, at, inputs.keyboard).clicked() {
+                let response = replace.show(ui, pal, at, inputs.keyboard);
+                if response.clicked() && busy.is_none() {
                     asked = Some(replace_asked(app, &result, &file.path, words));
+                }
+                if let Some(tip) = &busy {
+                    draw::tooltip(response, pal, tip);
                 }
                 word_right = at.x - 8.0;
             }
@@ -2737,13 +2789,17 @@ fn result_view(
         let replace = Button {
             label: &label,
             kind: ButtonKind::Danger,
+            disabled: busy.is_some(),
             ..Default::default()
         };
         let response = replace.show(ui, pal, pos2(x, y), inputs.keyboard);
         x = response.rect.right() + 8.0;
         bottom = response.rect.bottom();
-        if response.clicked() {
+        if response.clicked() && busy.is_none() {
             asked = Some(replace_asked(app, &result, &first_left.path, words));
+        }
+        if let Some(tip) = &busy {
+            draw::tooltip(response, pal, tip);
         }
     }
     if !openable(app, &first_left.path) {
@@ -2833,6 +2889,50 @@ fn mark_rect(right: f32, mid: f32) -> Rect {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_replace_updates_only_the_row_of_its_path() {
+        let file = |path: &str, outcome| GeneratedFile {
+            path: path.to_owned(),
+            outcome,
+        };
+        let model = "Modules/Billing/app/Models/Invoice.php";
+        let policy = "Modules/Billing/app/Policies/InvoicePolicy.php";
+        let mut state = GenerateState {
+            result: Some(GenerateResult::new(
+                Some("Billing".to_owned()),
+                Vec::new(),
+                vec![
+                    file(model, FileOutcome::Created),
+                    file(policy, FileOutcome::Left),
+                ],
+                false,
+            )),
+            ..Default::default()
+        };
+        // The app's policy path changed since the result: the replacement wrote
+        // another file, which gets its own row; the left row keeps its Replace.
+        let moved = "Modules/Billing/app/Auth/InvoicePolicy.php";
+        assert!(state.replace_row(policy, &[file(moved, FileOutcome::Replaced)], None));
+        // A replacement that read no file keeps the rows and says why.
+        assert!(state.replace_row(policy, &[], Some("no answer".to_owned())));
+        let result = state.result.as_ref().unwrap();
+        assert_eq!(
+            result.files,
+            [
+                file(model, FileOutcome::Created),
+                file(policy, FileOutcome::Left),
+                file(moved, FileOutcome::Replaced),
+            ]
+        );
+        assert_eq!(result.fallback.as_deref(), Some("no answer"));
+        // A file of the row's own path updates the row.
+        assert!(state.replace_row(policy, &[file(policy, FileOutcome::Replaced)], None));
+        assert_eq!(
+            state.result.unwrap().files[1],
+            file(policy, FileOutcome::Replaced)
+        );
+    }
 
     #[test]
     fn only_the_generator_s_own_file_stops_create() {

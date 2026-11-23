@@ -523,6 +523,18 @@ accessible name and a 24 px target (`tests/accessibility.rs`).
 - `app_relative(root, modules, names, folders, printed)` places a path of a container by the modules
   that `module:make` asks for first, then by the app's modules, then by the last `/<modules>/`.
 - A row of a result keeps room for its state and its button before its path wraps.
+- A path of a container is read from the first `/<modules>/<Module>/` of the modules the run writes in:
+  its own module, or those `module:make` asks for. Then from the first of the app's modules, then from
+  the last `/<modules>/`. A class name that repeats the module's part
+  (`.../Models/Admin/Modules/Billing/Invoice.php`) keeps its prefix.
+- A Replace of a left row updates the row only with a file of the row's own path. A file of another path,
+  such as one the app's generator paths now place elsewhere, gets a row of its own, and the left row
+  stays with its Replace. A Replace that read no file keeps the rows and shows "Read from the output:
+  ..." under the result.
+- Every Replace of a result, on a row or under the alert, is off while a run or read holds the app, with
+  "<command> is running", as the run buttons are.
+- The flags S9.3 takes out belong to the file list, not to the user's choice. Every drop of the list for
+  a change of the words (another name, another flag) or of the place gives them back, with `all`.
 
 ## Risks / Trade-offs
 
