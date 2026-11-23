@@ -26,6 +26,8 @@ use std::thread::JoinHandle;
 use std::time::{Duration, Instant, SystemTime};
 
 #[cfg(feature = "run")]
+use super::history::OUTPUT_LIMIT;
+#[cfg(feature = "run")]
 use super::{CommandLine, Failure, PhpSettings};
 
 /// A command with no standard input and, on Windows, no console window.
@@ -65,11 +67,6 @@ const STOP_GRACE: Duration = Duration::from_secs(3);
 #[cfg(feature = "run")]
 const KEEP: usize = 64 * 1024;
 
-/// The most text a run sends, in bytes, newlines counted. Past it the run sends
-/// [`RunEvent::Cut`] once and drops the later lines.
-#[cfg(feature = "run")]
-pub const OUTPUT_LIMIT: usize = 1_000_000;
-
 /// The pipe a line came from.
 #[cfg(feature = "run")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -93,35 +90,9 @@ impl Runs {
     }
 
     /// Starts artisan with `args` through the runner of `php`, in `php.folder(app)`,
-    /// for at most `php.time_limit()`. A second start in the same app is refused
-    /// while the first runs.
-    pub fn start(&self, app: &Path, php: &PhpSettings, args: &[String]) -> Result<Run, StartError> {
-        self.start_for(app, php, args, php.time_limit())
-    }
-
-    /// As [`Runs::start`], with `limit` in place of the time limit of `php`. The
-    /// settings count whole minutes, which a test cannot wait for.
-    #[cfg(feature = "testing")]
-    pub fn start_with_limit(
-        &self,
-        app: &Path,
-        php: &PhpSettings,
-        args: &[String],
-        limit: Duration,
-    ) -> Result<Run, StartError> {
-        self.start_for(app, php, args, limit)
-    }
-
-    /// The label of the command that runs in `app`, if one does.
-    pub fn running(&self, app: &Path) -> Option<String> {
-        self.lock().get(app).cloned()
-    }
-
-    fn lock(&self) -> MutexGuard<'_, BTreeMap<PathBuf, String>> {
-        self.running.lock().unwrap_or_else(PoisonError::into_inner)
-    }
-
-    fn start_for(
+    /// for at most `limit`, which is `php.time_limit()` for a user's run. A second
+    /// start in the same app is refused while the first runs.
+    pub fn start(
         &self,
         app: &Path,
         php: &PhpSettings,
@@ -176,6 +147,15 @@ impl Runs {
             events,
             stop,
         })
+    }
+
+    /// The label of the command that runs in `app`, if one does.
+    pub fn running(&self, app: &Path) -> Option<String> {
+        self.lock().get(app).cloned()
+    }
+
+    fn lock(&self) -> MutexGuard<'_, BTreeMap<PathBuf, String>> {
+        self.running.lock().unwrap_or_else(PoisonError::into_inner)
     }
 }
 
@@ -289,7 +269,7 @@ fn label(args: &[String]) -> String {
 
 /// The failure of a program that did not start.
 #[cfg(feature = "run")]
-fn not_started(error: std::io::Error, program: &str) -> Failure {
+pub(crate) fn not_started(error: std::io::Error, program: &str) -> Failure {
     if error.kind() == std::io::ErrorKind::NotFound {
         Failure::NotFound {
             program: program.to_owned(),

@@ -37,8 +37,10 @@ pub enum Stream { Out, Err }
 pub struct Runs { /* Arc<Mutex<BTreeMap<PathBuf, String>>>: app folder to the running label */ }
 impl Runs {
     pub fn new() -> Self;                                    // also Default
-    /// Starts `args` through the runner of `php` in `php.folder(app)`, with `php.time_limit()`.
-    pub fn start(&self, app: &Path, php: &PhpSettings, args: &[String]) -> Result<Run, StartError>;
+    /// Starts `args` through the runner of `php` in `php.folder(app)`, for at most `limit`.
+    /// The app passes `php.time_limit()`; a test passes milliseconds.
+    pub fn start(&self, app: &Path, php: &PhpSettings, args: &[String], limit: Duration)
+        -> Result<Run, StartError>;
     /// The label of the command that runs in `app`, if one does.
     pub fn running(&self, app: &Path) -> Option<String>;
 }
@@ -64,7 +66,7 @@ pub enum RunEnd {
     Exited { code: Option<i32>, elapsed: Duration },     // code None: ended by a signal Mortise did not send
     Stopped { elapsed: Duration, limit: Option<Duration> }, // limit Some: the time limit stopped it
 }
-pub const OUTPUT_LIMIT: usize = 1_000_000;   // bytes of text kept per run, newlines counted
+pub const OUTPUT_LIMIT: usize = 1_000_000;   // in history.rs; bytes kept per run, newlines counted
 ```
 
 `label` is the `args` joined with one space, each word quoted by the quoting of `CommandLine::display`

@@ -121,7 +121,7 @@ fn words(words: &[&str]) -> Vec<String> {
 /// Starts `args` in the app through the fake with the words `before`.
 fn start(before: &str, args: &[&str], limit: Duration) -> Run {
     Runs::new()
-        .start_with_limit(app(), &php(before), &words(args), limit)
+        .start(app(), &php(before), &words(args), limit)
         .unwrap()
 }
 
@@ -236,16 +236,25 @@ fn a_flood_is_cut_once() {
 fn one_run_per_app() {
     let runs = Runs::new();
     let other = app().join("src");
-    let first = runs.start(app(), &php(""), &words(&["wait"])).unwrap();
+    let first = runs
+        .start(app(), &php(""), &words(&["wait"]), TEST_LIMIT)
+        .unwrap();
     assert_eq!(runs.running(app()).as_deref(), Some("wait"));
-    let busy = runs.start(app(), &php(""), &words(&["module:make", "Blog"]));
+    let busy = runs.start(
+        app(),
+        &php(""),
+        &words(&["module:make", "Blog"]),
+        TEST_LIMIT,
+    );
     assert_eq!(
         busy.unwrap_err(),
         StartError::Busy {
             command: "wait".into()
         }
     );
-    let second = runs.start(&other, &php(""), &words(&["wait"])).unwrap();
+    let second = runs
+        .start(&other, &php(""), &words(&["wait"]), TEST_LIMIT)
+        .unwrap();
     for run in [&first, &second] {
         run.stop();
         until_end(run, Duration::from_secs(5));

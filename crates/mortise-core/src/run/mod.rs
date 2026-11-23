@@ -13,7 +13,7 @@ pub use detect::{Detected, detect, herd_config_dir};
 pub mod history;
 pub(crate) mod process;
 #[cfg(feature = "run")]
-pub use process::{OUTPUT_LIMIT, Run, RunEnd, RunEvent, Runs, StartError, Stream, stop_asks_first};
+pub use process::{Run, RunEnd, RunEvent, Runs, StartError, Stream, stop_asks_first};
 
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -234,17 +234,7 @@ pub fn test_php(runner: &RunnerKind, folder: &Path, limit: Duration) -> TestOutc
     }
     let captured = match process::capture(&line, folder, limit) {
         Ok(captured) => captured,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            return TestOutcome::Failed(Failure::NotFound {
-                program: line.program,
-            });
-        }
-        Err(error) => {
-            return TestOutcome::Failed(Failure::NotStarted {
-                program: line.program,
-                message: error.to_string(),
-            });
-        }
+        Err(error) => return TestOutcome::Failed(process::not_started(error, &line.program)),
     };
     let first = |lines: &[String]| {
         lines
