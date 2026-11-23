@@ -5,7 +5,7 @@ mod common;
 use common::{Desk, shop_api, wait_until};
 use eframe::egui::{Key, Modifiers, Role, vec2};
 use egui_kittest::kittest::{NodeT as _, Queryable as _};
-use mortise_core::Settings;
+use mortise_core::{RunnerKind, Settings};
 
 const COMMAND_ALT: Modifiers = Modifiers {
     alt: true,
@@ -202,6 +202,73 @@ fn a_folder_that_is_not_a_laravel_app_cannot_be_added() {
         .click();
     harness.run();
     assert!(!harness.state().is_adding());
+}
+
+#[test]
+fn an_app_whose_php_does_not_answer_is_added_read_only() {
+    let desk = Desk::new();
+    desk.picks
+        .borrow_mut()
+        .push_back(desk.app("booking-engine"));
+    let mut harness = desk.start();
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::O);
+    harness.run();
+    // Nothing in the folder points to a runner: Herd is shown, and the hint says so.
+    harness.get_by_label("Not found: Herd, Sail, a compose file.");
+    let command = harness.get_by_role_and_label(Role::TextInput, "Run PHP with");
+    assert_eq!(
+        command.accesskit_node().value().as_deref(),
+        Some("herd php artisan")
+    );
+
+    harness
+        .get_by_role_and_label(Role::RadioButton, "Custom")
+        .click();
+    harness.run();
+    harness
+        .get_by_role_and_label(Role::TextInput, "Run PHP with")
+        .focus();
+    harness.run();
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::A);
+    harness
+        .get_by_role_and_label(Role::TextInput, "Run PHP with")
+        .type_text("mortise-no-such-php artisan");
+    harness.run();
+    harness
+        .get_by_role_and_label(Role::Button, "Test how PHP runs")
+        .click();
+    let failed = "mortise-no-such-php did not answer: \"mortise-no-such-php: command not found\".";
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while harness.query_by_label_contains(failed).is_none() {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "waited 10 s for: {failed}"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        harness.run_steps(2);
+    }
+
+    // The app can still be added, and it keeps the runner the field shows.
+    harness
+        .get_by_role_and_label(Role::Button, "Add booking-engine, read only")
+        .click();
+    wait_until(&mut harness, "the new app is read", |app| {
+        app.app().is_some()
+    });
+    assert_eq!(
+        desk.saved().apps[0].php.runner,
+        Some(RunnerKind::Custom {
+            line: "mortise-no-such-php artisan".to_owned()
+        })
+    );
+    // Settings shows the test of the add panel as the last test of the app.
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::Comma);
+    harness.run();
+    harness
+        .get_by_role_and_label(Role::ListBoxOption, "PHP")
+        .click();
+    harness.run();
+    harness.get_by_label("No answer: mortise-no-such-php: command not found");
 }
 
 #[test]

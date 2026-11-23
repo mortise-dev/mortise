@@ -46,6 +46,8 @@ eframe = { version = "0.37.0", default-features = false, features = [
     "x11",
 ] }
 egui_kittest = { version = "0.37.0", features = ["eframe", "snapshot", "wgpu"] }
+# The image tests crop a part of the window. The same version as egui_kittest.
+image = { version = "0.25.10", default-features = false }
 winit = "0.30"
 
 [workspace.lints.rust]

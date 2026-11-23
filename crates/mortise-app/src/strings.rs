@@ -55,6 +55,11 @@ pub fn add_named(name: &str) -> String {
     format!("Add {name}")
 }
 
+/// `Add booking-engine, read only`: the add button after the test of PHP failed (`b.addro`).
+pub fn add_read_only(name: &str) -> String {
+    format!("Add {name}, read only")
+}
+
 /// Not in the spec: the button of an app that is already in Mortise.
 pub fn open_named(name: &str) -> String {
     format!("Open {name}")

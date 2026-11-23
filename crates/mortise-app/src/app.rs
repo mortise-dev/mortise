@@ -10,7 +10,8 @@ use mortise_core::{
     propose_monogram, read_app_cached,
 };
 use mortise_core::{
-    Environment, LiveRuntime, ReadOptions, Rules, RuntimeState, Secret, Secrets, ThemeChoice,
+    Environment, LiveRuntime, ReadOptions, Rules, RunnerKind, RuntimeState, Secret, Secrets,
+    ThemeChoice,
 };
 
 use crate::add::{self, AddAction, AddPanel, Checked};
@@ -506,12 +507,18 @@ impl MortiseApp {
         let Some(AddPanel {
             checked: Some(Checked::Found(app)),
             runtime,
+            php,
             ..
         }) = self.adding.take()
         else {
             return;
         };
         let index = self.settings.add(&app);
+        // Add saves the runner the field shows (design D8), read from its text in
+        // case the field still has focus.
+        if let Some(form) = &php {
+            self.settings.apps[index].php.runner = Some(RunnerKind::from_line(&form.line));
+        }
         // Runtime is optional: without a base URL the app is added without it.
         if let Some(form) = runtime.filter(|form| !form.base_url.trim().is_empty()) {
             let environment = form.environment();
@@ -522,7 +529,10 @@ impl MortiseApp {
             entry.environment = Some(environment.name.clone());
             entry.environments.push(environment);
         }
-        self.apps.push(open_app(ctx, &self.settings.apps[index]));
+        let mut open = open_app(ctx, &self.settings.apps[index]);
+        // The last test is kept in memory, as Settings shows it.
+        open.php_test = php.as_ref().and_then(|form| form.last().cloned());
+        self.apps.push(open);
         self.settings_open = None;
         self.select_app(index);
         self.save();
@@ -1211,7 +1221,7 @@ impl MortiseApp {
                 }
             }
             // What was found is used only while it belongs to the path in the field.
-            AddAction::Add | AddAction::Open(_) | AddAction::Test
+            AddAction::Add | AddAction::Open(_) | AddAction::Test | AddAction::TestPhp
                 if !self.adding.as_ref().is_some_and(AddPanel::is_current) => {}
             AddAction::Add => self.add_found(ctx),
             AddAction::Open(index) => {
@@ -1230,6 +1240,17 @@ impl MortiseApp {
                 {
                     let secret = (!form.secret.is_empty()).then(|| form.secret.clone());
                     form.start_test(secret, ctx);
+                }
+            }
+            // The add panel has no working folder: the test starts in the app folder.
+            AddAction::TestPhp => {
+                if let Some(AddPanel {
+                    checked: Some(Checked::Found(app)),
+                    php: Some(form),
+                    ..
+                }) = &mut self.adding
+                {
+                    form.start_test(app.root.clone(), ctx);
                 }
             }
         }
