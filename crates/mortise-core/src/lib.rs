@@ -23,6 +23,7 @@ mod matcher;
 mod module;
 mod php;
 mod rules;
+mod run;
 #[cfg(feature = "actuator")]
 mod runtime;
 mod secrets;
