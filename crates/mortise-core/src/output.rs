@@ -62,9 +62,10 @@ fn running_module(line: &str) -> Option<&str> {
 
 /// The name and the last word of a migration line. The line starts, after
 /// spaces, with a name of the form `dddd_dd_dd_dddddd_`, and ends with `DONE`
-/// or `FAIL`.
+/// or `FAIL`. A rollback puts `Rollback: ` before the name.
 fn migration_line(line: &str) -> Option<(&str, &str)> {
     let line = line.trim();
+    let line = line.strip_prefix("Rollback: ").unwrap_or(line);
     let name = line.split(' ').next()?;
     let end = line.rsplit(' ').next()?;
     const SHAPE: &[u8] = b"dddd_dd_dd_dddddd_";
@@ -115,6 +116,7 @@ mod tests {
         let lines = recording("module-migrate-one-migration");
         assert_eq!(migrations_done(&lines), 1);
         assert_eq!(failed_migration(&lines), None);
+        assert_eq!(migrations_done(&recording("module-migrate-rollback")), 1);
     }
 
     #[test]

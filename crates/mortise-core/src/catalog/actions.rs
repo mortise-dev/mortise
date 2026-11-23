@@ -133,10 +133,12 @@ impl Action {
         })
     }
 
-    /// The options the action takes.
-    pub fn options(self) -> OptionSet {
+    /// The options the action takes on `target`. Migrate of all modules takes
+    /// no database, as S10.2 f draws it.
+    pub fn options(self, target: &Target) -> OptionSet {
+        let all = *target == Target::All;
         let (pretend, seed, database, class) = match self {
-            Action::Migrate => (true, true, true, false),
+            Action::Migrate => (true, true, !all, false),
             Action::RollBack => (true, false, false, false),
             Action::Seed => (false, false, true, true),
             Action::ResetMigrations => (true, false, true, false),
@@ -188,7 +190,7 @@ pub fn plan(action: Action, target: &Target, options: &Options, context: &Contex
         Target::Module(name) => name.clone(),
         Target::All => "--all".to_string(),
     });
-    let set = action.options();
+    let set = action.options(target);
     let pretend = set.pretend && options.pretend;
     if pretend {
         args.push("--pretend".to_string());
@@ -503,6 +505,15 @@ mod tests {
                     "--database=testing",
                     "--force",
                 ]),
+            }
+        );
+
+        // Migrate of all modules takes no database.
+        assert_eq!(
+            plan(Action::Migrate, &Target::All, &options, &production),
+            Plan::Ask {
+                ask: Ask::Production,
+                args: words(&["module:migrate", "--all", "--pretend", "--seed", "--force"]),
             }
         );
 
