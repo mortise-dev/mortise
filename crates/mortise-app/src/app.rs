@@ -209,8 +209,9 @@ struct PackageRead {
 /// What a read is for.
 #[allow(dead_code)] // Each variant is started by the task of its data (15.3 to 15.5).
 enum ReadFor {
-    /// `module:generators --json` (P3, design D4).
-    Catalog,
+    /// `module:generators --json` (P3, design D4), started while the app had this
+    /// package version.
+    Catalog { package: Version },
     /// A generator with `--dry-run --json` (P2, design D5): the words of the form.
     DryRun { words: Vec<String> },
     /// `module:migrate-status --json` (P4, design D7).
@@ -1104,7 +1105,7 @@ impl MortiseApp {
         end: Result<mortise_core::ReadEnd, mortise_core::StartError>,
     ) {
         match purpose {
-            ReadFor::Catalog => self.catalog_read(index, end),
+            ReadFor::Catalog { package } => self.catalog_read(index, &package, end),
             ReadFor::DryRun { words } => self.dry_run_read(index, words, end),
             ReadFor::Migrations { .. } => {}
         }
@@ -1112,14 +1113,21 @@ impl MortiseApp {
 
     /// The end of `module:generators --json` (design D4): the catalog replaces the
     /// shipped one for the app and goes into the cache, or the picker says why not.
+    /// `package` is the version the app had when the read started. When the app's
+    /// version changed meanwhile, the answer may be of either version: it is dropped,
+    /// and the picker shows the shipped catalog of the new version.
     fn catalog_read(
         &mut self,
         index: usize,
+        package: &Version,
         end: Result<mortise_core::ReadEnd, mortise_core::StartError>,
     ) {
         let Some(app) = self.snapshot(index) else {
             return;
         };
+        if app.package.raw != package.raw {
+            return;
+        }
         let root = self.settings.apps[index].root.clone();
         let read = match &end {
             Ok(end) => mortise_core::document::<Catalog>(&end.stdout)
@@ -1132,15 +1140,9 @@ impl MortiseApp {
                 let read_ms = jiff::Timestamp::now().as_millisecond();
                 if let Some(dir) = &self.data_dir {
                     // A cache that cannot be written leaves the read for this session.
-                    let _ = mortise_core::catalog_cache::store(
-                        dir,
-                        &root,
-                        &app.package,
-                        &read,
-                        read_ms,
-                    );
+                    let _ = mortise_core::catalog_cache::store(dir, &root, package, &read, read_ms);
                 }
-                catalog.read = Some((read, read_ms, app.package.raw.clone()));
+                catalog.read = Some((read, read_ms, package.raw.clone()));
                 catalog.error = None;
             }
             Err(reason) => {
@@ -1648,7 +1650,11 @@ impl MortiseApp {
             GenerateAsk::NewModule => return,
             GenerateAsk::ReadCatalog => {
                 let words = crate::generate_view::read_catalog_words();
-                self.start_read(index, words, ReadFor::Catalog);
+                let Some(app) = self.snapshot(index) else {
+                    return;
+                };
+                let package = app.package.clone();
+                self.start_read(index, words, ReadFor::Catalog { package });
                 return;
             }
             GenerateAsk::ListFiles { words } => {
@@ -2648,7 +2654,7 @@ impl eframe::App for MortiseApp {
                                 matches!(
                                     open.reading,
                                     Some(PackageRead {
-                                        purpose: ReadFor::Catalog,
+                                        purpose: ReadFor::Catalog { .. },
                                         ..
                                     })
                                 ),
