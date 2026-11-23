@@ -154,10 +154,11 @@ fn files(dir: &Path) -> BTreeMap<PathBuf, Vec<u8>> {
 fn two_reads_give_a_figure_for_every_module_and_write_nothing() {
     let stub = StubActuator::recorded();
     let mut desk = Desk::new();
-    // Each read is 15 s after the one before, whenever it comes.
-    let calls = Arc::new(AtomicU64::new(0));
+    // The clock of the reads moves when the test moves it.
+    let now = Arc::new(AtomicU64::new(0));
+    let clock = Arc::clone(&now);
     desk.metrics_clock = Some(Arc::new(move || {
-        Duration::from_secs(15 * calls.fetch_add(1, Ordering::SeqCst))
+        Duration::from_secs(clock.load(Ordering::SeqCst))
     }));
     let root = desk.app("shop-api");
     desk.knows(&[(&root, "SA")]);
@@ -182,7 +183,8 @@ fn two_reads_give_a_figure_for_every_module_and_write_nothing() {
         2 * rows
     );
 
-    // The second read, asked for at once.
+    // The second read, 15 s later, asked for at once.
+    now.store(15, Ordering::SeqCst);
     harness.key_press_modifiers(Modifiers::COMMAND, Key::R);
     wait_while(&mut harness, "the second read", |harness| {
         harness.query_by_label(ONE_READ).is_some()

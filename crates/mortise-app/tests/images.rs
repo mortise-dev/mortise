@@ -1289,11 +1289,12 @@ fn the_metrics_tab() {
         let stub = common::shop_api_actuator();
         stub.expose(&["health", "info", "mappings", "scheduledtasks", "prometheus"]);
         stub.set("/actuator/prometheus", Reply::ok(&prometheus(0)));
-        let calls = Arc::new(AtomicU64::new(0));
+        let now = Arc::new(AtomicU64::new(0));
+        let clock = Arc::clone(&now);
         let mut desk = Desk::new();
         desk.theme = theme;
         desk.metrics_clock = Some(Arc::new(move || {
-            Duration::from_secs(15 * calls.fetch_add(1, Ordering::SeqCst))
+            Duration::from_secs(clock.load(Ordering::SeqCst))
         }));
         let root = desk.app("shop-api");
         desk.knows(&[(&root, "SA")]);
@@ -1303,6 +1304,7 @@ fn the_metrics_tab() {
         press(&mut harness, Key::Num5);
         wait_for(&mut harness, "A rate needs two reads");
         stub.set("/actuator/prometheus", Reply::ok(&prometheus(1)));
+        now.store(15, Ordering::SeqCst);
         harness.key_press_modifiers(Modifiers::COMMAND, Key::R);
         let deadline = std::time::Instant::now() + Duration::from_secs(20);
         while harness

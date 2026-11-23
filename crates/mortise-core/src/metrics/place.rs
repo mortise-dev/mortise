@@ -92,7 +92,7 @@ impl<'a> Placing<'a> {
 mod tests {
     use std::path::Path;
     use std::sync::Arc;
-    use std::sync::atomic::{AtomicU32, Ordering};
+    use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::Duration;
 
     use super::*;
@@ -123,12 +123,14 @@ mod tests {
         app.modules.push(blog);
         let mappings: serde_json::Value = serde_json::from_str(&recorded("mappings.json")).unwrap();
         let routes: Vec<Route> = serde_json::from_value(mappings["routes"].clone()).unwrap();
-        let reads = Arc::new(AtomicU32::new(0));
+        let now = Arc::new(AtomicU64::new(0));
+        let clock = Arc::clone(&now);
         let metrics = LiveMetrics::with_clock(Arc::new(move || {
-            Duration::from_secs(15) * reads.fetch_add(1, Ordering::Relaxed)
+            Duration::from_secs(clock.load(Ordering::Relaxed))
         }));
         let mut sink = metrics.sink();
         sink(Ok(recorded("prometheus-quiet.txt")));
+        now.store(15, Ordering::Relaxed);
         sink(Ok(recorded("prometheus-busy.txt")));
 
         let figures = metrics.figures(&app, Some(&routes), LAST_MINUTE);
@@ -170,6 +172,10 @@ mod tests {
             .map(|(_, rates)| rates.requests_per_minute)
             .sum();
         assert_eq!(placed + figures.outside.requests_per_minute, counted * 4.0);
+
+        // Rates are old once the newest read is older than a gap: the tab waits for a fresh read.
+        now.store(15 + 46, Ordering::Relaxed);
+        assert_eq!(metrics.state().last, None);
 
         // A read with no metrics ends a read and adds nothing.
         sink(Err(NoMetrics::Off));

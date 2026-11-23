@@ -35,6 +35,9 @@ const FIXED: usize = 3;
 /// The most numbers one read keeps: `FIXED` and one per bound, for each series. A reading over it is
 /// refused. The 60 module app of design D1 keeps 660 × 17 = 11,220.
 const MAX_ROW: usize = 32_768;
+/// The most bytes of identity the store keeps: for each series, its labels and the strings of its
+/// subject. A reading over it is refused as one over `MAX_ROW` is.
+const MAX_KEY_BYTES: usize = 4 * 1024 * 1024;
 
 /// What a series is about, as the answer says it. Not a module.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -54,8 +57,24 @@ pub(crate) enum Subject {
     Database { module: String },
 }
 
+impl Subject {
+    /// The bytes of its strings.
+    fn bytes(&self) -> usize {
+        let len = |text: &Option<String>| text.as_deref().map_or(0, str::len);
+        match self {
+            Subject::Request {
+                module,
+                route,
+                method,
+            } => len(module) + len(route) + method.len(),
+            Subject::Job { module, class } => len(module) + class.len(),
+            Subject::Database { module } => module.len(),
+        }
+    }
+}
+
 /// The counters of one series, or what a subject grew by. All are counts or seconds, so all are
-/// `f64`.
+/// `f64`. In a [`Reading`], a counter the answer did not give is NaN: it is absent.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub(crate) struct Cell {
     /// `_count`.
@@ -77,7 +96,19 @@ pub(crate) struct Reading {
     pub series: HashMap<(Subject, String), Cell>,
 }
 
-/// A reading that would make a read keep more than `MAX_ROW` numbers.
+impl Cell {
+    /// A cell of a reading before any line of its series: every counter is absent.
+    fn absent() -> Self {
+        Self {
+            count: f64::NAN,
+            errors: f64::NAN,
+            sum: f64::NAN,
+            buckets: Vec::new(),
+        }
+    }
+}
+
+/// A reading that would make a read keep more than `MAX_ROW` numbers or `MAX_KEY_BYTES` bytes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct TooMany;
 
@@ -94,18 +125,31 @@ fn series_key(labels: &mut [(&str, Cow<'_, str>)]) -> String {
     key
 }
 
-/// `true` when `series` with `bounds` need more than `MAX_ROW` numbers.
-fn over(series: usize, bounds: usize) -> bool {
-    series.saturating_mul(FIXED + bounds) > MAX_ROW
+/// `true` when `series` with `bounds` need more than `MAX_ROW` numbers, or their identity more than
+/// `MAX_KEY_BYTES` bytes.
+fn over(series: usize, bounds: usize, bytes: usize) -> bool {
+    series.saturating_mul(FIXED + bounds) > MAX_ROW || bytes > MAX_KEY_BYTES
+}
+
+/// Adds `value` to a counter of a reading. An absent counter starts at `value`.
+fn put(counter: &mut f64, value: f64) {
+    *counter = if counter.is_nan() {
+        value
+    } else {
+        *counter + value
+    };
 }
 
 impl Reading {
     /// Folds an answer. Runs on the worker thread.
     ///
     /// A `+Inf` bucket is dropped: it equals the count. An empty `module` label counts as no label.
-    /// An answer over `MAX_ROW` numbers is refused before the reading grows past it.
+    /// A counter with no line, as a `_sum` that could not be read, is absent (NaN).
+    /// An answer over `MAX_ROW` numbers or `MAX_KEY_BYTES` bytes is refused before the reading grows
+    /// past it.
     pub(crate) fn of(text: &str) -> Result<Reading, TooMany> {
         let mut reading = Reading::default();
+        let mut bytes = 0;
         // The index of each bound in `reading.bounds`, by its bits. `0.0` and `-0.0` are one bound.
         let mut bound_at: HashMap<u64, usize> = HashMap::new();
         for mut sample in samples(text) {
@@ -150,31 +194,31 @@ impl Reading {
                 .and_then(|status| status.parse::<u16>().ok())
                 .is_some_and(|status| (500..600).contains(&status));
             let key = series_key(&mut sample.labels);
+            let size = subject.bytes() + key.len();
             let mut series = reading.series.len();
             let cell = match reading.series.entry((subject, key)) {
                 Entry::Occupied(cell) => cell.into_mut(),
                 Entry::Vacant(cell) => {
                     series += 1;
-                    if over(series, reading.bounds.len()) {
+                    bytes += size;
+                    if over(series, reading.bounds.len(), bytes) {
                         return Err(TooMany);
                     }
-                    cell.insert(Cell::default())
+                    cell.insert(Cell::absent())
                 }
             };
             match sample.part {
                 Part::Count => {
-                    cell.count += sample.value;
-                    if error {
-                        cell.errors += sample.value;
-                    }
+                    put(&mut cell.count, sample.value);
+                    put(&mut cell.errors, if error { sample.value } else { 0.0 });
                 }
-                Part::Sum => cell.sum += sample.value,
+                Part::Sum => put(&mut cell.sum, sample.value),
                 Part::Bucket(bound) => {
                     let bits = if bound == 0.0 { 0.0f64 } else { bound }.to_bits();
                     let at = match bound_at.get(&bits) {
                         Some(&at) => at,
                         None => {
-                            if over(series, reading.bounds.len() + 1) {
+                            if over(series, reading.bounds.len() + 1, bytes) {
                                 return Err(TooMany);
                             }
                             reading.bounds.push(bound);
@@ -183,9 +227,9 @@ impl Reading {
                         }
                     };
                     if cell.buckets.len() <= at {
-                        cell.buckets.resize(at + 1, 0.0);
+                        cell.buckets.resize(at + 1, f64::NAN);
                     }
-                    cell.buckets[at] += sample.value;
+                    put(&mut cell.buckets[at], sample.value);
                 }
                 Part::Value => {}
             }
@@ -226,6 +270,8 @@ impl Read {
 /// The counters of one series at the last read that held it.
 #[derive(Debug)]
 struct Base {
+    /// A counter that is not known is NaN: it was absent, or absent when the base was last set
+    /// over a reset.
     counters: Vec<f64>,
     /// The run of that read. A base of an older run is stale: the series was missing when the run
     /// started, so what it grew by in the gap is not known.
@@ -276,8 +322,9 @@ impl MetricsStore {
 
     /// Adds a read taken at `at`, a time since any fixed start.
     ///
-    /// A reading that would make the store keep more than `MAX_ROW` numbers per read, counting
-    /// every series of the kept reads, is refused as a whole and changes nothing.
+    /// What `at` makes too old is dropped first. Then a reading that would make the store keep more
+    /// than `MAX_ROW` numbers per read or `MAX_KEY_BYTES` bytes, counting every series of the kept
+    /// reads, is refused as a whole and adds nothing.
     pub(crate) fn push(&mut self, at: Duration, reading: Reading) -> Result<(), TooMany> {
         let Reading { bounds, series } = reading;
         let renewed = !bounds.is_empty() && !self.bounds.is_empty() && bounds != self.bounds;
@@ -286,18 +333,22 @@ impl MetricsStore {
         } else {
             bounds.len()
         };
-        let kept = if renewed {
-            series.len()
-        } else {
-            let known = |(subject, labels): &(Subject, String)| {
-                self.index
-                    .get(subject)
-                    .is_some_and(|&column| self.columns[column].bases.contains_key(labels))
-            };
-            let bases: usize = self.columns.iter().map(|kept| kept.bases.len()).sum();
-            bases + series.keys().filter(|key| !known(key)).count()
-        };
-        if over(kept, width) {
+        // Other bounds empty the store, so only the reading counts.
+        let (mut kept, mut bytes) = (0, 0);
+        if !renewed {
+            if self.fine.back().is_some_and(|newest| at <= newest.at) {
+                return Ok(());
+            }
+            self.expire(at);
+            (kept, bytes) = self.retained();
+        }
+        for (subject, labels) in series.keys() {
+            if renewed || !self.holds(subject, labels) {
+                kept += 1;
+                bytes += subject.bytes() + labels.len();
+            }
+        }
+        if over(kept, width, bytes) {
             return Err(TooMany);
         }
         if !bounds.is_empty() && bounds != self.bounds {
@@ -310,19 +361,21 @@ impl MetricsStore {
                 };
             }
         }
-        let previous = match self.fine.back() {
-            Some(previous) if at <= previous.at => return Ok(()),
-            previous => previous.map(|previous| (previous.at, previous.covered)),
-        };
-        let first = previous.is_none_or(|(before, _)| at - before > self.every * GAP_PACES);
+        let previous = self
+            .fine
+            .back()
+            .map(|previous| (previous.at, previous.covered, previous.starts_run));
+        let first = previous.is_none_or(|(before, ..)| at - before > self.every * GAP_PACES);
         let covered = match previous {
-            Some((before, covered)) if !first => covered + (at - before),
-            Some((_, covered)) => covered,
+            Some((before, covered, _)) if !first => covered + (at - before),
+            Some((_, covered, _)) => covered,
             None => Duration::ZERO,
         };
         // One read per pace in the fine part: a read in the step of the one before takes its place.
-        // Totals only grow, so the dropped read is not needed for a figure.
-        let replaces = previous.is_some_and(|(before, _)| self.step(before) == self.step(at));
+        // Totals only grow, so the dropped read is not needed for a figure. A read that starts a
+        // run is never replaced: the second read of a run always gives a rate.
+        let replaces = previous
+            .is_some_and(|(before, _, starts)| !starts && self.step(before) == self.step(at));
         let mut totals = if replaces {
             self.fine.pop_back().map(|read| read.totals)
         } else {
@@ -348,30 +401,37 @@ impl MetricsStore {
             let bases = &mut self.columns[column].bases;
             match bases.get_mut(&labels) {
                 Some(base) => {
-                    // A stale base and a reset add nothing. On the first read of a run, every base
-                    // is stale.
-                    if base.run == run
-                        && counters
-                            .iter()
-                            .zip(&base.counters)
-                            .all(|(now, base)| now >= base)
-                    {
+                    // Only counters known in both reads are compared and added.
+                    let reset = counters
+                        .iter()
+                        .zip(&base.counters)
+                        .any(|(now, base)| now < base);
+                    // A stale base and a reset add nothing, and every counter is set. On the first
+                    // read of a run, every base is stale.
+                    if base.run == run && !reset {
                         add(
                             &mut totals[row],
                             counters
                                 .iter()
                                 .zip(&base.counters)
-                                .map(|(now, base)| now - base),
+                                .map(|(now, base)| or_zero(now - base)),
                         );
+                        // An absent counter keeps its base.
+                        for (base, now) in base.counters.iter_mut().zip(&counters) {
+                            if !now.is_nan() {
+                                *base = *now;
+                            }
+                        }
+                    } else {
+                        base.counters.copy_from_slice(&counters);
                     }
-                    base.counters.copy_from_slice(&counters);
                     base.run = run;
                     base.seen = at;
                 }
                 None => {
                     // A new series counts from zero, except on the first read of a run.
                     if !first {
-                        add(&mut totals[row], counters.iter().copied());
+                        add(&mut totals[row], counters.iter().copied().map(or_zero));
                     }
                     bases.insert(
                         labels,
@@ -391,9 +451,34 @@ impl MetricsStore {
             starts_run: first,
             totals,
         });
-        self.thin(at);
-        self.drop_gone();
         Ok(())
+    }
+
+    /// `true` when a read taken at `now` would not start a run: the newest kept read is at most a
+    /// gap older. Before that, its rates are not the rates of now.
+    fn fresh(&self, now: Duration) -> bool {
+        self.fine
+            .back()
+            .is_some_and(|newest| now.saturating_sub(newest.at) <= self.every * GAP_PACES)
+    }
+
+    /// `true` when a base of the series is kept.
+    fn holds(&self, subject: &Subject, labels: &str) -> bool {
+        self.index
+            .get(subject)
+            .is_some_and(|&column| self.columns[column].bases.contains_key(labels))
+    }
+
+    /// The series the store keeps, and the bytes of their identity: per series, its labels and
+    /// the strings of its subject.
+    fn retained(&self) -> (usize, usize) {
+        self.columns.iter().fold((0, 0), |(series, bytes), column| {
+            let labels: usize = column.bases.keys().map(String::len).sum();
+            (
+                series + column.bases.len(),
+                bytes + column.bases.len() * column.subject.bytes() + labels,
+            )
+        })
     }
 
     /// How many reads are kept.
@@ -469,7 +554,7 @@ impl MetricsStore {
             .iter_mut()
             .flat_map(|column| column.bases.values_mut())
         {
-            base.counters.resize(FIXED + added, 0.0);
+            base.counters.resize(FIXED + added, f64::NAN);
         }
     }
 
@@ -485,6 +570,18 @@ impl MetricsStore {
             bases: HashMap::new(),
         });
         column
+    }
+
+    /// Drops what a read at `newest`, later than every kept read, makes too old: reads, then the
+    /// series and the subjects that no kept read holds.
+    fn expire(&mut self, newest: Duration) {
+        self.thin(newest);
+        let oldest = self
+            .coarse
+            .front()
+            .or(self.fine.front())
+            .map_or(newest, |read| read.at);
+        self.drop_gone(oldest);
     }
 
     /// Moves reads out of the fine part, keeping the first of each step, and drops what is too old.
@@ -506,20 +603,13 @@ impl MetricsStore {
         {}
     }
 
-    /// Drops the series and the subjects that no kept read holds, and packs the rows.
+    /// Drops the series last held by a read before `oldest`, the subjects left with none, and packs
+    /// the rows.
     ///
     /// Such a subject did not change in the kept window and is not in the newest read.
     /// One that is in an older kept read stays, so it keeps its base (a load balancer can show
     /// one server per read).
-    fn drop_gone(&mut self) {
-        let Some(oldest) = self
-            .coarse
-            .front()
-            .or(self.fine.front())
-            .map(|read| read.at)
-        else {
-            return;
-        };
+    fn drop_gone(&mut self, oldest: Duration) {
         for column in &mut self.columns {
             column.bases.retain(|_, base| base.seen >= oldest);
         }
@@ -559,19 +649,39 @@ impl MetricsStore {
     }
 }
 
-/// Writes the counters of `cell` into `into`, one bucket per bound. A missing bucket is zero.
-/// `false` when a counter is negative or not finite: the store then ignores the series.
+/// Writes the counters of `cell` into `into`, one bucket per bound. A counter that is missing,
+/// negative or not finite is absent: NaN. `errors` is absent with `count`.
+/// `false` when every counter is absent: the store then ignores the series.
 fn fill(cell: &Cell, bounds: usize, into: &mut Vec<f64>) -> bool {
+    let known = |value: f64| {
+        if value.is_finite() && value >= 0.0 {
+            value
+        } else {
+            f64::NAN
+        }
+    };
+    let count = known(cell.count);
+    let errors = if count.is_nan() {
+        f64::NAN
+    } else {
+        known(cell.errors)
+    };
     into.clear();
-    into.extend([cell.count, cell.errors, cell.sum]);
+    into.extend([count, errors, known(cell.sum)]);
     into.extend(
         cell.buckets
             .iter()
             .copied()
-            .chain(std::iter::repeat(0.0))
-            .take(bounds),
+            .chain(std::iter::repeat(f64::NAN))
+            .take(bounds)
+            .map(known),
     );
-    into.iter().all(|value| value.is_finite() && *value >= 0.0)
+    into.iter().any(|value| !value.is_nan())
+}
+
+/// An absent counter adds nothing.
+fn or_zero(value: f64) -> f64 {
+    if value.is_nan() { 0.0 } else { value }
 }
 
 fn add(totals: &mut [f64], by: impl Iterator<Item = f64>) {
@@ -588,7 +698,8 @@ pub type MetricsClock = Arc<dyn Fn() -> Duration + Send + Sync>;
 pub enum NotKept {
     /// The app gave no metrics.
     NoMetrics(NoMetrics),
-    /// The answer has more series than a read keeps. `limit` is the most numbers a read keeps.
+    /// The answer has more series, or longer labels, than a read keeps. `limit` is the most numbers
+    /// a read keeps.
     TooManySeries { limit: usize },
 }
 
@@ -601,7 +712,8 @@ impl From<TooMany> for NotKept {
 /// What the reads of an environment gave so far.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct MetricsState {
-    /// What the last read gave. `None` before the first read ends.
+    /// What the last read gave. `None` before the first read ends, and while the newest kept read
+    /// is older than a gap (3 paces): its rates are not the rates of now (design D9).
     pub last: Option<Result<(), NotKept>>,
     /// Goes up by one when a read ends.
     pub serial: u64,
@@ -653,7 +765,13 @@ impl LiveMetrics {
     }
 
     pub fn state(&self) -> MetricsState {
-        self.lock().1.clone()
+        let now = (self.clock)();
+        let shared = self.lock();
+        let mut state = shared.1.clone();
+        if state.last == Some(Ok(())) && !shared.0.fresh(now) {
+            state.last = None;
+        }
+        state
     }
 
     /// The figures per module over the last `span`, placed by `app` and `routes`.
@@ -799,6 +917,24 @@ mod tests {
             .push(secs(15), schemes(1, 110, [scheme_label, route_label]))
             .unwrap();
         assert_eq!(grew(&store, PACE, &route("/")), Some(count(10.0)));
+
+        // A counter missing from a read adds nothing and keeps its base. It is no reset: the count
+        // still adds what it grew by.
+        let timed = |count: u32, sum: Option<f64>| {
+            let labels = "{http_request_method=\"GET\",http_route=\"/\"}";
+            let mut text =
+                format!("# TYPE {REQUESTS} histogram\n{REQUESTS}_count{labels} {count}\n");
+            if let Some(sum) = sum {
+                text.push_str(&format!("{REQUESTS}_sum{labels} {sum}\n"));
+            }
+            Reading::of(&text).unwrap()
+        };
+        let mut store = MetricsStore::new(PACE);
+        store.push(secs(0), timed(10, Some(5.0))).unwrap();
+        store.push(secs(15), timed(12, None)).unwrap();
+        assert_eq!(grew(&store, PACE, &route("/")), Some(cell(2.0, 0.0)));
+        store.push(secs(30), timed(14, Some(7.0))).unwrap();
+        assert_eq!(grew(&store, WINDOW, &route("/")), Some(cell(4.0, 2.0)));
     }
 
     #[test]
@@ -978,6 +1114,19 @@ mod tests {
         }
         let change = store.change(secs(60)).expect("a change");
         assert_eq!(change.cells[0].1.count, change.covered.as_secs_f64());
+
+        // The read that starts a run is never replaced: after a gap, two reads 1 s apart, in one
+        // step, give a rate.
+        let after = burst + secs(7_300);
+        for n in 0..2 {
+            let reading = reading(&[(route("/"), count(total + 7_200.0 + n as f64))]);
+            store.push(after + secs(n), reading).unwrap();
+        }
+        assert_eq!(
+            store.change(secs(60)).map(|change| change.covered),
+            Some(secs(1))
+        );
+        assert!(store.len() <= 520);
         assert!(started.elapsed() < secs(1), "took {:?}", started.elapsed());
     }
 
@@ -1004,9 +1153,28 @@ mod tests {
         store
             .push(secs(0), Reading::of(&jobs(0..half)).unwrap())
             .unwrap();
-        let other = Reading::of(&jobs(half..2 * half)).unwrap();
-        assert_eq!(store.push(secs(15), other), Err(TooMany));
+        let other = || Reading::of(&jobs(half..2 * half)).unwrap();
+        assert_eq!(store.push(secs(15), other()), Err(TooMany));
         assert_eq!(store.len(), 1);
+        // Series that no kept read holds count for nothing: once the read of the first half is a
+        // day old, the other half fits.
+        assert_eq!(store.push(WINDOW + secs(15), other()), Ok(()));
+        assert_eq!(store.len(), 1);
+
+        // Long labels count too: the labels and the subject of each series.
+        let named = |name: String| {
+            Reading::of(&format!(
+                "# TYPE {JOBS} histogram\n{JOBS}_count{{laravel_job_name=\"{name}\"}} 1\n"
+            ))
+        };
+        assert_eq!(named("J".repeat(MAX_KEY_BYTES / 2)), Err(TooMany));
+        let mut store = MetricsStore::new(PACE);
+        let quarter = MAX_KEY_BYTES / 4;
+        store
+            .push(secs(0), named("A".repeat(quarter)).unwrap())
+            .unwrap();
+        let longer = named("B".repeat(quarter)).unwrap();
+        assert_eq!(store.push(secs(15), longer), Err(TooMany));
     }
 
     /// An answer of 60 modules of 10 routes and 60 jobs, in the shape of the recorded lines.
@@ -1078,7 +1246,7 @@ mod tests {
             assert!(cells.next().is_none());
             cell
         };
-        assert_eq!(of(&job), &count(14.0));
+        assert_eq!(of(&job).count, 14.0);
         let request = Subject::Request {
             module: None,
             route: Some("/module-7/route-0/{id}".to_owned()),
