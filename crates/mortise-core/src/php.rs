@@ -12,11 +12,12 @@ use mago_names::ResolvedNames;
 use mago_names::resolver::NameResolver;
 use mago_span::HasSpan;
 use mago_syntax::cst::{
-    Argument, ArrayElement, Attribute, AttributeList, Binary, BinaryOperator, Call, Class,
-    ClassConstantAccess, Enum, Expression, Extends, FunctionCall, Hint, Identifier, Implements,
-    Instantiation, Interface, Literal, LocalIdentifier, Method, Modifier, PartialArgument,
-    PropertyConcreteItem, Sequence, Statement, StaticMethodCall, StaticMethodPartialApplication,
-    StaticPropertyAccess, TokenSeparatedSequence, Trait, TraitUse, TriviaKind, Use, UseItems,
+    Argument, ArgumentList, ArrayElement, Attribute, AttributeList, Binary, BinaryOperator, Call,
+    Class, ClassConstantAccess, ClassLikeMemberSelector, Enum, Expression, Extends, FunctionCall,
+    Hint, Identifier, Implements, Instantiation, Interface, Literal, LocalIdentifier, Method,
+    MethodCall, Modifier, PartialArgument, PropertyConcreteItem, Sequence, Statement,
+    StaticMethodCall, StaticMethodPartialApplication, StaticPropertyAccess, TokenSeparatedSequence,
+    Trait, TraitUse, TriviaKind, Use, UseItems,
 };
 use mago_syntax::parser::{parse_file_content, parse_file_with_settings};
 use mago_syntax::settings::ParserSettings;
@@ -238,6 +239,88 @@ impl<'ast, 'arena> MutWalker<'ast, 'arena, ()> for TestCounter {
             && (name.value() == b"it" || name.value() == b"test")
         {
             self.calls += 1;
+        }
+    }
+}
+
+/// The tables a migration creates: the first argument of each `Schema::create(...)`
+/// and `Schema::connection(...)->create(...)` in its `up` method, when it is a string
+/// literal. In order, each once.
+pub(crate) fn created_tables(source: &str) -> Vec<String> {
+    let arena = LocalArena::new();
+    let program = parse_file_content(&arena, FileId::zero(), source.as_bytes());
+    let mut reader = TableReader::default();
+    reader.walk_program(program, &mut ());
+    reader.tables
+}
+
+#[derive(Default)]
+struct TableReader {
+    /// For each method the walk is in, whether it is `up`.
+    methods: Vec<bool>,
+    tables: Vec<String>,
+}
+
+impl TableReader {
+    fn in_up(&self) -> bool {
+        self.methods.last().copied().unwrap_or(false)
+    }
+
+    /// The table of a `create` call with these arguments.
+    fn create(&mut self, method: &ClassLikeMemberSelector<'_>, arguments: &ArgumentList<'_>) {
+        if !self.in_up() || !is_named(method, b"create") {
+            return;
+        }
+        let first = arguments
+            .arguments
+            .iter()
+            .next()
+            .and_then(|argument| match argument {
+                Argument::Positional(argument) => string_of(argument.value),
+                Argument::Named(_) => None,
+            });
+        if let Some(table) = first
+            && !self.tables.contains(&table)
+        {
+            self.tables.push(table);
+        }
+    }
+}
+
+/// Whether a method selector is the plain name `name`. PHP method names ignore case.
+fn is_named(method: &ClassLikeMemberSelector<'_>, name: &[u8]) -> bool {
+    matches!(method, ClassLikeMemberSelector::Identifier(identifier) if identifier.value.eq_ignore_ascii_case(name))
+}
+
+/// Whether an expression is the class `Schema`, by its last segment.
+fn is_schema(class: &Expression<'_>) -> bool {
+    matches!(class, Expression::Identifier(name) if name.last_segment() == b"Schema")
+}
+
+impl<'ast, 'arena> MutWalker<'ast, 'arena, ()> for TableReader {
+    fn walk_in_method(&mut self, method: &'ast Method<'arena>, _: &mut ()) {
+        self.methods
+            .push(method.name.value.eq_ignore_ascii_case(b"up"));
+    }
+
+    fn walk_out_method(&mut self, _: &'ast Method<'arena>, _: &mut ()) {
+        self.methods.pop();
+    }
+
+    // `Schema::create('orders', ...)`.
+    fn walk_in_static_method_call(&mut self, call: &'ast StaticMethodCall<'arena>, _: &mut ()) {
+        if is_schema(call.class) {
+            self.create(&call.method, &call.argument_list);
+        }
+    }
+
+    // `Schema::connection('reports')->create('orders', ...)`.
+    fn walk_in_method_call(&mut self, call: &'ast MethodCall<'arena>, _: &mut ()) {
+        if let Expression::Call(Call::StaticMethod(connection)) = call.object
+            && is_schema(connection.class)
+            && is_named(&connection.method, b"connection")
+        {
+            self.create(&call.method, &call.argument_list);
         }
     }
 }
@@ -545,6 +628,31 @@ impl<'ast, 'arena> MutWalker<'ast, 'arena, ()> for ClassReader<'_, 'arena> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_tables_of_a_migration_are_the_literals_its_up_method_creates() {
+        let source = r#"<?php
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('orders', function (Blueprint $table) {
+            $table->id();
+        });
+        Schema::connection('reports')->create('order_totals', fn ($table) => null);
+        Schema::create($this->table, fn ($table) => null);
+        \Illuminate\Support\Facades\Schema::create('orders', fn ($table) => null);
+        Schema::table('carts', fn ($table) => null);
+    }
+
+    public function down(): void
+    {
+        Schema::create('old_orders', fn ($table) => null);
+    }
+};
+"#;
+        assert_eq!(created_tables(source), ["orders", "order_totals"]);
+    }
 
     #[test]
     fn reads_the_name_of_a_console_command() {

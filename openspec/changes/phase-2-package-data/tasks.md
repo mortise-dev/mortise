@@ -13,9 +13,9 @@
 
 ## 3. Core groundwork (15.3a opus, after 2)
 
-- [ ] 3.1 Add `mortise_core::package`: `gives_data` (D1), `DataError` and `document` (D2), the document types of P2/P5, P4, P7 and P8, and `with_json`. Test the gate once and `document` on the recordings
-- [ ] 3.2 Add `run::Read` (D3) and keep standard output apart in `AppRuns`. Raise the line limit of standard output only if 2.1 measured a P3 line over 64 KiB
-- [ ] 3.3 Add `PackageData` to `ReadOptions` and `AppSnapshot` (D7) with the merge rules of a state read and a translation report, and `php::created_tables`. Test the merge and `created_tables` once each
+- [x] 3.1 Add `mortise_core::package`: `gives_data` (D1), `DataError` and `document` (D2), the document types of P2/P5, P4, P7 and P8, and `with_json`. Test the gate once and `document` on the recordings
+- [x] 3.2 Add `run::Read` (D3) and keep standard output apart in `AppRuns`. Raise the line limit of standard output only if 2.1 measured a P3 line over 64 KiB
+- [x] 3.3 Add `PackageData` to `ReadOptions` and `AppSnapshot` (D7) with the merge rules of a state read and a translation report, and `php::created_tables`. Test the merge and `created_tables` once each
 
 ## 4. Package data in the screens (after 3; 4.1, 4.3, 4.4, 4.5 in parallel; 4.2 after 4.1)
 

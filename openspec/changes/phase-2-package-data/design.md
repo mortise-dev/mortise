@@ -339,6 +339,23 @@ missing. The CI job's constraint `^13.3` already resolves to 13.4.0.
 Every sentence above is in `strings.rs`, marked "not in the spec" where it is. Each new control has an
 accessible name and a 24 px target (`tests/accessibility.rs`).
 
+### Changed while building 15.3a
+
+- The ran migration type is `RanMigration`: `Ran` is already the name of a recent run (`run::Ran`).
+- `migration_file` moves from `output` to `package`. The read of an app needs it, and that read
+  does not depend on the `run` feature.
+- `package::with_dry_run(words)` adds `--dry-run --json`, beside `with_json`.
+- `Read` also has `wait(deadline)` and `stop()`, so `on_exit` can stop a read as it stops a run.
+  It keeps no `cut` flag: a cut document does not parse, so it reads as `Malformed`.
+- `ReadEnd::error_line()` gives the last non-empty line of standard error as plain text. The app
+  writes "exit code N" when there is none, since that text belongs in `strings.rs`.
+- `LangReport` is both the document of P8 and the report in `PackageData::translations`. A merge
+  keeps its modules sorted by name.
+- `AppRuns::ended()` gives the end, the mixed output and the standard output lines.
+- The P3 line is 48552 bytes, under `KEEP`, so the line limits stay as they are.
+- The app's `read_options` passes an empty `PackageData` for now. The tasks of 4 keep the app's
+  data there, so that a change of settings does not drop it.
+
 ## Risks / Trade-offs
 
 - [The user must press "List files" and "Read migration state"] → One more step than the spec draws.

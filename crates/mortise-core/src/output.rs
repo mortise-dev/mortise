@@ -12,7 +12,6 @@
 //! when the autoload step fails.
 
 use std::collections::BTreeSet;
-use std::path::{Path, PathBuf};
 
 use crate::run::ansi::plain;
 
@@ -84,16 +83,6 @@ pub fn migration_count(lines: &[String]) -> MigrationCount {
         ran,
         rolled_back: rolled_back.len(),
     }
-}
-
-/// The file of a migration in the default folder of the package,
-/// `database/migrations`, when it exists.
-pub fn migration_file(module_dir: &Path, migration: &str) -> Option<PathBuf> {
-    let path = module_dir
-        .join("database")
-        .join("migrations")
-        .join(format!("{migration}.php"));
-    path.is_file().then_some(path)
 }
 
 /// What a generator run did with one file.
@@ -230,6 +219,8 @@ fn migration_name(name: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use std::path::Path;
+
     use super::*;
 
     const FIXTURES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../fixtures");
@@ -301,24 +292,6 @@ mod tests {
         let lines = recording("module-migrate-reset-prohibited");
         assert!(prohibited(&lines));
         assert_eq!(failed_migration(&lines), None);
-    }
-
-    #[test]
-    fn a_migration_file_is_found_only_when_it_exists() {
-        let billing = Path::new(FIXTURES).join("shop-api/Modules/Billing");
-        let name = "2026_01_10_000000_create_invoices_table";
-        assert_eq!(
-            migration_file(&billing, name),
-            Some(
-                billing
-                    .join("database/migrations")
-                    .join(format!("{name}.php"))
-            )
-        );
-        assert_eq!(
-            migration_file(&billing, "2026_01_11_000000_create_refunds_table"),
-            None
-        );
     }
 
     fn files(name: &str, force: bool) -> Vec<(String, FileOutcome)> {

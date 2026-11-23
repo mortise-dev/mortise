@@ -25,6 +25,7 @@ mod matcher;
 mod module;
 #[cfg(feature = "run")]
 mod output;
+mod package;
 mod php;
 mod rules;
 mod run;
@@ -68,7 +69,13 @@ pub use module::{KindCount, Manifest, Module, ModuleState, Progress, ReadCache};
 #[cfg(feature = "run")]
 pub use output::{
     FailedMigration, FileOutcome, GeneratedFile, MigrationCount, autoload_failed, failed_migration,
-    generated_files, migration_count, migration_file, prohibited,
+    generated_files, migration_count, prohibited,
+};
+pub use package::{
+    DataError, FileAction, FileResult, GeneratorReport, LangModule, LangReport, Locale,
+    MigrationRow, MigrationStatus, ModuleMigrations, ModuleStatus, ModuleTests, PackageData,
+    RanMigration, ReportedFile, TestReport, document, gives_data, migration_file, with_dry_run,
+    with_json,
 };
 pub use rules::{RULES_FILE, Rules, RulesError, RulesSource};
 #[cfg(feature = "run")]
@@ -79,8 +86,8 @@ pub use run::history;
 pub use run::history::OUTPUT_LIMIT;
 #[cfg(feature = "run")]
 pub use run::{
-    CommandLine, Detected, Failure, Ran, RecentRun, Run, RunEnd, RunEvent, Runs, STOP_WAIT,
-    StartError, Stream, TEST_LIMIT, TestOutcome, detect, herd_config_dir, recent_runs,
+    CommandLine, Detected, Failure, Ran, Read, ReadEnd, RecentRun, Run, RunEnd, RunEvent, Runs,
+    STOP_WAIT, StartError, Stream, TEST_LIMIT, TestOutcome, detect, herd_config_dir, recent_runs,
     stop_asks_first, test_php,
 };
 pub use run::{PhpSettings, RunnerKind};

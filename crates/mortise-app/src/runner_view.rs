@@ -18,7 +18,7 @@ use mortise_core::ansi::{self, Span, Style};
 use mortise_core::history::{Ended, Entry, History};
 use mortise_core::{
     AppSnapshot, CommandLine, FailedMigration, PhpSettings, Run, RunEnd, RunEvent, RunnerKind,
-    Runs, StartError,
+    Runs, StartError, Stream,
 };
 
 use crate::draw::{self, Icon, ListNav};
@@ -177,6 +177,8 @@ struct Current {
     /// start, the line Run again would run. None when the runner gives no line.
     line: Option<String>,
     output: Output,
+    /// The lines of standard output alone. They are in `output` too.
+    stdout: Vec<String>,
     cut: bool,
     state: State,
     /// Started through Sail or Docker: a stop reaches `docker` only.
@@ -266,6 +268,7 @@ impl AppRuns {
                 args,
                 line: Some(run.line.display()),
                 output: Output::default(),
+                stdout: Vec::new(),
                 cut: false,
                 container,
                 started_ms: run
@@ -282,6 +285,7 @@ impl AppRuns {
                 line: line_now(php.runner.as_ref(), &args),
                 args,
                 output: Output::default(),
+                stdout: Vec::new(),
                 cut: false,
                 container,
                 started_ms: now_ms,
@@ -330,7 +334,12 @@ impl AppRuns {
         let mut ended = None;
         for event in events {
             match event {
-                RunEvent::Line { text, .. } => current.output.push(text),
+                RunEvent::Line { stream, text } => {
+                    if stream == Stream::Out {
+                        current.stdout.push(text.clone());
+                    }
+                    current.output.push(text);
+                }
                 RunEvent::Cut => current.cut = true,
                 RunEvent::Ended(end) => ended = Some(end),
             }
@@ -397,14 +406,16 @@ impl AppRuns {
         self.read_history();
     }
 
-    /// How the run on screen ended and its output, once it has ended.
-    pub fn ended(&self) -> Option<(RunEnd, &[String])> {
+    /// How the run on screen ended, its output and its lines of standard output
+    /// alone, once it has ended.
+    pub fn ended(&self) -> Option<(RunEnd, &[String], &[String])> {
         match &self.current {
             Some(Current {
                 state: State::Ended(end),
                 output,
+                stdout,
                 ..
-            }) => Some((*end, &output.lines)),
+            }) => Some((*end, &output.lines, stdout)),
             _ => None,
         }
     }

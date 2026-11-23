@@ -1331,7 +1331,7 @@ impl MortiseApp {
     /// and Check translations get none when they succeed. A failure gets one only when
     /// the drawer does not show it.
     fn action_ended(&mut self, index: usize, act: &Act, modules_on: usize) {
-        let Some((end, lines)) = self.apps[index].runs.ended() else {
+        let Some((end, lines, _)) = self.apps[index].runs.ended() else {
             return;
         };
         let object = match &act.target {
@@ -1520,7 +1520,7 @@ impl MortiseApp {
             forced,
             form,
         } = generating;
-        let Some((end, lines)) = self.apps[index].runs.ended() else {
+        let Some((end, lines, _)) = self.apps[index].runs.ended() else {
             return;
         };
         let done = matches!(end, RunEnd::Exited { code: Some(0), .. });
@@ -2981,6 +2981,7 @@ fn read_options(entry: &AppEntry) -> ReadOptions {
     ReadOptions {
         coverage_limit: entry.coverage_limit,
         coverage_report: entry.coverage_report.as_ref().map(PathBuf::from),
+        ..ReadOptions::default()
     }
 }
 
