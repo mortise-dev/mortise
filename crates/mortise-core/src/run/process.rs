@@ -42,6 +42,11 @@ const TICK: Duration = Duration::from_millis(50);
 #[cfg(feature = "run")]
 const GRACE: Duration = Duration::from_millis(250);
 
+/// The most text kept of one stream, and of one line, in bytes. A newline counts
+/// as one byte, so a flood of empty lines is bounded too.
+#[cfg(feature = "run")]
+const KEEP: usize = 64 * 1024;
+
 /// The pipe a line came from.
 #[cfg(feature = "run")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -201,6 +206,8 @@ fn extra_folders(home: Option<&Path>) -> Vec<PathBuf> {
 }
 
 /// Reads `pipe` line by line on a thread of its own and sends each line with `stream`.
+/// A line is cut at [`KEEP`] bytes. Once the lines pass [`KEEP`] bytes in all, the
+/// rest is read and dropped, so the program never blocks on a full pipe.
 /// The thread ends when the pipe closes or nobody listens any more.
 #[cfg(feature = "run")]
 fn read_lines(
@@ -212,14 +219,27 @@ fn read_lines(
     std::thread::spawn(move || {
         let mut reader = BufReader::new(pipe);
         let mut bytes = Vec::new();
+        let mut kept = 0;
         loop {
             bytes.clear();
-            match reader.read_until(b'\n', &mut bytes) {
+            // `take` bounds the buffer when a stream has no newline.
+            match reader
+                .by_ref()
+                .take(KEEP as u64)
+                .read_until(b'\n', &mut bytes)
+            {
                 Ok(0) | Err(_) => return,
-                Ok(_) => {}
+                Ok(read) => kept += read,
+            }
+            if kept > KEEP {
+                let _ = std::io::copy(&mut reader, &mut std::io::sink());
+                return;
             }
             if bytes.last() == Some(&b'\n') {
                 bytes.pop();
+            } else if bytes.len() == KEEP {
+                // An error shows again at the next read, which ends the thread.
+                let _ = skip_line(&mut reader);
             }
             if bytes.last() == Some(&b'\r') {
                 bytes.pop();
@@ -230,6 +250,31 @@ fn read_lines(
             }
         }
     });
+}
+
+/// Reads and drops the rest of a line, up to and with its newline.
+#[cfg(feature = "run")]
+fn skip_line(reader: &mut impl BufRead) -> std::io::Result<()> {
+    loop {
+        let buffer = match reader.fill_buf() {
+            Ok(buffer) => buffer,
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(error) => return Err(error),
+        };
+        if buffer.is_empty() {
+            return Ok(());
+        }
+        match buffer.iter().position(|byte| *byte == b'\n') {
+            Some(at) => {
+                reader.consume(at + 1);
+                return Ok(());
+            }
+            None => {
+                let read = buffer.len();
+                reader.consume(read);
+            }
+        }
+    }
 }
 
 #[cfg(all(test, feature = "run"))]

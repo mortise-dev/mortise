@@ -240,7 +240,9 @@ fn serve(mut stream: TcpStream, routes: &Mutex<Routes>) {
 ///
 /// `--version` prints the version with the number in green and ends with 0.
 /// `fail` prints the error of a stopped Docker service on stderr and ends with 1.
-/// `wait` sleeps for 60 seconds. Anything else is a command artisan does not know.
+/// `wait` sleeps for 60 seconds. `flood` prints 2 MiB of short lines on stderr and
+/// one line of 2 MiB with no newline on stdout, and ends with 0.
+/// Anything else is a command artisan does not know.
 pub fn fake_artisan_main() -> ExitCode {
     match std::env::args().nth(1).as_deref() {
         Some("--version") => {
@@ -250,6 +252,14 @@ pub fn fake_artisan_main() -> ExitCode {
         Some("fail") => {
             eprintln!("service \"app\" is not running");
             ExitCode::from(1)
+        }
+        Some("flood") => {
+            const SIZE: usize = 2 * 1024 * 1024;
+            let lines = "Laravel Framework 13.2.0\n".repeat(SIZE / 25);
+            // A reader that stops reading would block one of these writes.
+            let _ = std::io::stderr().lock().write_all(lines.as_bytes());
+            let _ = std::io::stdout().lock().write_all(&vec![b'x'; SIZE]);
+            ExitCode::SUCCESS
         }
         Some("wait") => {
             std::thread::sleep(Duration::from_secs(60));

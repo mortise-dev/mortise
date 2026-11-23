@@ -26,6 +26,21 @@ fn answered_without_colour_codes() {
 }
 
 #[test]
+fn answered_with_a_bounded_line_when_flooded() {
+    let started = Instant::now();
+    let outcome = test(&fake("flood"), TEST_LIMIT);
+    let TestOutcome::Answered(line) = outcome else {
+        panic!("{outcome:?}");
+    };
+    assert!(
+        line.len() <= 64 * 1024 && line.starts_with('x'),
+        "{}",
+        line.len()
+    );
+    assert!(started.elapsed() < Duration::from_secs(10));
+}
+
+#[test]
 fn exited_with_the_line_of_stderr() {
     assert_eq!(
         test(&fake("fail"), TEST_LIMIT),
