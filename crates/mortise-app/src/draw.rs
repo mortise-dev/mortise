@@ -198,6 +198,10 @@ pub enum Icon {
     Migrate,
     /// Tests: two ticks and two lines.
     Test,
+    /// A closed group: it opens to the right.
+    ChevronRight,
+    /// An open group.
+    ChevronDown,
 }
 
 /// One stroke of an icon: points on the 16 px grid.
@@ -339,6 +343,9 @@ impl Icon {
             open(&[[8.75, 10.9], [14.25, 10.9]]),
         ];
 
+        const CHEVRON_RIGHT: &[Path] = &[open(&[[6.0, 3.5], [10.5, 8.0], [6.0, 12.5]])];
+        const CHEVRON_DOWN: &[Path] = &[open(&[[3.5, 6.0], [8.0, 10.5], [12.5, 6.0]])];
+
         match self {
             Icon::Search => SEARCH,
             Icon::Settings => SETTINGS,
@@ -358,6 +365,8 @@ impl Icon {
             Icon::Stop => STOP,
             Icon::Migrate => MIGRATE,
             Icon::Test => TEST,
+            Icon::ChevronRight => CHEVRON_RIGHT,
+            Icon::ChevronDown => CHEVRON_DOWN,
         }
     }
 }
@@ -718,6 +727,11 @@ impl Button<'_> {
         (self.padding() * 2.0 + icon + label + keys).ceil()
     }
 
+    /// The id of the button in `ui`: the same in every frame it is drawn there.
+    pub fn id(&self, ui: &Ui) -> eframe::egui::Id {
+        ui.scope_id().with(("button", self.label, self.said))
+    }
+
     /// Paints the button with its top left at `min`. `keyboard` is true while the
     /// keyboard is in use: the focus ring shows only then.
     pub fn show(&self, ui: &Ui, pal: &Palette, min: Pos2, keyboard: bool) -> Response {
@@ -728,11 +742,7 @@ impl Button<'_> {
             Sense::click()
         };
         // A small button is drawn 22 px high; its target is 24 px.
-        let response = ui.interact(
-            hit_target(rect),
-            ui.scope_id().with(("button", self.label, self.said)),
-            sense,
-        );
+        let response = ui.interact(hit_target(rect), self.id(ui), sense);
         let said = self.said.unwrap_or(self.label);
         response.widget_info(|| WidgetInfo::labeled(Role::Button, !self.disabled, said));
 

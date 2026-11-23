@@ -110,7 +110,7 @@ fn the_workbench_and_its_tabs() {
     audit(&harness, "Summary of a module, with routes");
     press(&mut harness, Key::Num4);
     audit(&harness, "Actions of a module, Migrate");
-    for action in ["Roll back", "Seed"] {
+    for action in ["Roll back", "Seed", "Destructive", "Delete module"] {
         harness
             .get_by_role_and_label(Role::ListBoxOption, action)
             .click();

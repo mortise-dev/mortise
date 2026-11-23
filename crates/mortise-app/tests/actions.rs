@@ -1,6 +1,7 @@
-//! The Actions tab (S10.1 to S10.3) against the fake artisan: the line on screen is
-//! the line that runs, the questions of the confirmation table, the toasts, and the
-//! sentence of a migration that failed.
+//! The Actions tab (S10.1 to S10.5) against the fake artisan: the line on screen is
+//! the line that runs, the questions of the confirmation table, the closed group of
+//! the destructive actions and their dialogs, the toasts, and the sentence of a
+//! migration that failed.
 
 mod common;
 
@@ -251,6 +252,27 @@ fn production_asks_and_the_line_carries_force() {
         .get_by_role_and_label(Role::Button, "Cancel")
         .click();
     harness.run_steps(3);
+
+    // A destructive action does not run in production: its line can only be copied.
+    select(&mut harness, "Destructive");
+    select(&mut harness, "Reset migrations");
+    harness.get_by_label(
+        "shop-api reports the environment production. Mortise does not run this command \
+         there. Copy it and run it where you can watch the database.",
+    );
+    let button = harness.get_by_role_and_label(Role::Button, "Reset migrations");
+    assert!(button.accesskit_node().is_disabled());
+    run(&mut harness);
+    assert!(
+        harness
+            .query_by_role_and_label(Role::Heading, "Reset the migrations of Checkout?")
+            .is_none()
+    );
+    harness
+        .get_by_role_and_label(Role::Button, "Copy command")
+        .click();
+    harness.run_steps(3);
+    harness.get_by_label("Copied the command.");
     assert_eq!(runs(&mut harness, &desk, &root), 0);
 }
 
@@ -370,4 +392,75 @@ fn a_run_turns_every_run_button_off() {
         .get_by_role_and_label(Role::Button, "Stop command")
         .click();
     wait_for(&mut harness, "Stopped after");
+}
+
+/// True while a row of this name is in the list.
+fn listed(harness: &Harness<'static, MortiseApp>, row: &str) -> bool {
+    harness
+        .query_by_role_and_label(Role::ListBoxOption, row)
+        .is_some()
+}
+
+#[test]
+fn the_destructive_group_opens_with_its_keys_and_a_reset_dry_run_runs_at_once() {
+    let (desk, root) = desk("");
+    let mut harness = desk.start();
+    actions_of(&mut harness, "Checkout");
+    // Closed when the tab opens.
+    assert!(!listed(&harness, "Reset migrations"));
+    let group = harness.get_by_role_and_label(Role::ListBoxOption, "Destructive");
+    assert_eq!(group.accesskit_node().data().is_expanded(), Some(false));
+
+    // J stops at the row of the group, Enter opens it, and J moves on into it.
+    select(&mut harness, "Check translations");
+    harness
+        .get_by_role_and_label(Role::ListBoxOption, "Check translations")
+        .focus();
+    harness.run_steps(2);
+    harness.key_press(Key::J);
+    harness.run_steps(3);
+    assert!(
+        harness
+            .get_by_role_and_label(Role::ListBoxOption, "Destructive")
+            .is_focused()
+    );
+    harness.key_press(Key::Enter);
+    harness.run_steps(3);
+    harness.get_by_label("Dropping all tables is under \"All modules\".");
+    harness.key_press(Key::J);
+    harness.run_steps(3);
+    harness.get_by_role_and_label(Role::Heading, "Reset the migrations of Checkout");
+
+    // Dry run checks the option, and a dry run of reset runs without a question.
+    harness
+        .get_by_role_and_label(Role::Button, "Dry run")
+        .click();
+    harness.run_steps(3);
+    // The drawer is collapsed before the output comes: Laravel marks the SQL of a
+    // dry run with "⇂", which the bundled mono font does not have.
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::Enter);
+    harness.run_steps(1);
+    harness.key_press_modifiers(Modifiers::CTRL, Key::Backtick);
+    harness.run_steps(3);
+    assert!(
+        harness
+            .query_by_role_and_label(Role::Heading, "Reset the migrations of Checkout?")
+            .is_none()
+    );
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while History::open(&desk.data_dir(), &root).entries().is_empty() {
+        assert!(Instant::now() < deadline, "the dry run did not end");
+        std::thread::sleep(Duration::from_millis(20));
+        harness.run_steps(2);
+    }
+    let entries = History::open(&desk.data_dir(), &root).entries();
+    assert_eq!(
+        entries[0].args,
+        ["module:migrate-reset", "Checkout", "--pretend"]
+    );
+
+    // Another module closes the group, and its own group is closed.
+    select(&mut harness, "Billing");
+    assert!(!listed(&harness, "Delete module"));
+    harness.get_by_role_and_label(Role::Heading, "Migrate Billing");
 }

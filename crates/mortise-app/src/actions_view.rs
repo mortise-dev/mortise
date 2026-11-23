@@ -6,8 +6,8 @@
 //! on screen; the app asks first where the rules say so, then starts them.
 
 use eframe::egui::{
-    Align2, Key, KeyboardShortcut, Modifiers, Pos2, Rect, Role, Ui, UiBuilder, Vec2, WidgetInfo,
-    pos2, vec2,
+    Align2, Color32, Key, KeyboardShortcut, Modifiers, Pos2, Rect, Role, ScrollArea, Sense, Ui,
+    UiBuilder, Vec2, WidgetInfo, pos2, vec2,
 };
 use mortise_core::{
     Action, AppSnapshot, Ask, Context, Module, ModuleState, OptionSet, Options, Plan, RunnerKind,
@@ -19,7 +19,7 @@ use crate::draw::{self, Button, ButtonKind, Icon, ListNav};
 use crate::runner_view::line_now;
 use crate::strings;
 use crate::summary::alert_box;
-use crate::theme::{Palette, Type, radius, size, ty};
+use crate::theme::{Face, Palette, Type, radius, size, ty};
 
 /// The list of actions is 250 px wide (S10.1).
 const LIST_W: f32 = 250.0;
@@ -40,6 +40,11 @@ pub struct ActionsState {
     /// The words the panel showed in the last frame it was drawn. Ctrl Enter runs
     /// only these, so a key never runs a line that was not on screen.
     last_shown: Option<Vec<String>>,
+    /// The group "Destructive" is open (S10.4).
+    destructive_open: bool,
+    /// The row of the group is the current row of the list. The panel keeps the
+    /// action that was selected before.
+    on_group: bool,
 }
 
 impl Default for ActionsState {
@@ -49,30 +54,51 @@ impl Default for ActionsState {
             action: Action::Migrate,
             options: Options::default(),
             last_shown: None,
+            destructive_open: false,
+            on_group: false,
         }
     }
 }
 
 impl ActionsState {
-    /// The tab of `target` with `action` selected and no option set.
+    /// The tab of `target` with `action` selected and no option set. The group
+    /// "Destructive" is open when `action` is in it (design D5).
     pub fn on(target: Target, action: Action) -> Self {
         Self {
             target: Some(target),
             action,
             options: Options::default(),
             last_shown: None,
+            destructive_open: action.is_destructive(),
+            on_group: false,
         }
+    }
+
+    /// True when the tab is on `action` of `target`.
+    pub fn shows(&self, target: &Target, action: Action) -> bool {
+        self.target.as_ref() == Some(target) && self.action == action
     }
 
     /// Called every frame for the app on screen: another module, or "All modules",
     /// starts the options again on Migrate (design D4). `shown` is false while the
-    /// Actions tab is not on screen, and then no line counts as shown.
+    /// Actions tab is not on screen, and then no line counts as shown and the group
+    /// "Destructive" closes (design D5).
     pub fn follow(&mut self, target: Target, shown: bool) {
         if self.target.as_ref() != Some(&target) {
             *self = Self::on(target, Action::Migrate);
         }
         if !shown {
             self.last_shown = None;
+            self.on_group = false;
+            self.close_group();
+        }
+    }
+
+    /// Closes the group "Destructive". An action of it that was selected goes back to Migrate.
+    fn close_group(&mut self) {
+        self.destructive_open = false;
+        if self.action.is_destructive() {
+            self.action = Action::Migrate;
         }
     }
 }
@@ -140,17 +166,26 @@ pub fn actions(
     let target = module.map_or(Target::All, |module| Target::Module(module.name.clone()));
     // Another module, or another app: the options start again on Migrate (D4).
     state.follow(target.clone(), true);
-    let list: Vec<Action> = match module {
+    let everyday: Vec<Action> = match module {
         Some(module) => Action::for_module(module.state != ModuleState::Off).to_vec(),
         None => Action::for_all().to_vec(),
     };
+    let destructive = Action::destructive(&target);
     // A module turned on or off while its tab is open keeps the row of that action.
-    if !list.contains(&state.action) {
+    let listed = everyday.contains(&state.action)
+        || (state.destructive_open && destructive.contains(&state.action));
+    if !listed {
         state.action = match state.action {
             Action::TurnOff => Action::TurnOn,
             Action::TurnOn => Action::TurnOff,
             _ => Action::Migrate,
         };
+    }
+    // The everyday actions, the row of the group, then the group's actions while it is open.
+    let mut rows: Vec<Row> = everyday.into_iter().map(Row::Action).collect();
+    rows.push(Row::Group);
+    if state.destructive_open {
+        rows.extend(destructive.iter().copied().map(Row::Action));
     }
 
     let run_key = !inputs.held
@@ -159,26 +194,53 @@ pub fn actions(
         });
 
     let mut asked = None;
+    let salt = module.map_or("all", |module| module.name.as_str());
     ui.scope_builder(UiBuilder::new().max_rect(body), |ui| {
-        let left = body.left() + 16.0;
-        let top = body.top() + 14.0;
-        action_list(ui, pal, pos2(left, top), app, module, &list, state, inputs);
-        let panel_x = left + LIST_W + 14.0;
-        let panel_w = (body.right() - 16.0 - panel_x).max(200.0);
-        asked = panel(
-            ui,
-            pal,
-            pos2(panel_x, top),
-            panel_w,
-            app,
-            module,
-            &target,
-            state,
-            inputs,
-            run_key,
-        );
+        // A tall panel scrolls, for a low window or an open drawer.
+        ScrollArea::vertical()
+            .id_salt(("actions", salt))
+            .auto_shrink(false)
+            .show(ui, |ui| {
+                let origin = ui.cursor().min;
+                let width = ui.available_width();
+                let left = origin.x + 16.0;
+                let top = origin.y + 14.0;
+                let list_bottom =
+                    action_list(ui, pal, pos2(left, top), app, module, &rows, state, inputs);
+                let panel_x = left + LIST_W + 14.0;
+                let panel_w = (origin.x + width - 16.0 - panel_x).max(200.0);
+                let (bottom, panel_asked) = panel(
+                    ui,
+                    pal,
+                    pos2(panel_x, top),
+                    panel_w,
+                    app,
+                    module,
+                    &target,
+                    state,
+                    inputs,
+                    run_key,
+                );
+                asked = panel_asked;
+                // Tell the scroll area how high the content is.
+                ui.allocate_rect(
+                    Rect::from_min_max(
+                        origin,
+                        pos2(origin.x + width, list_bottom.max(bottom) + 16.0),
+                    ),
+                    Sense::hover(),
+                );
+            });
     });
     asked
+}
+
+/// A row of the list of actions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Row {
+    Action(Action),
+    /// The row of the group "Destructive", which opens and closes it.
+    Group,
 }
 
 /// The detail on the right of a row of the list (design D4, without the migration state).
@@ -217,11 +279,15 @@ fn detail(action: Action, app: &AppSnapshot, module: Option<&Module>) -> Detail 
         (Action::Migrate, _) => Detail::Text(strings::files(u64::from(total(&kind("Migrations"))))),
         (Action::Seed, _) => Detail::Text(strings::seeders(total(&kind("Seeders")))),
         (Action::RunTests, _) => Detail::Text(strings::tests(total(&|module| module.tests))),
+        // Reset and refresh have none: "9 ran" needs the migration state (deviation S42).
+        (Action::DeleteModule, _) => Detail::Text(strings::files(module.map_or(0, |m| m.files))),
         _ => Detail::None,
     }
 }
 
 /// The list of actions: one stop in the Tab order, J and K or the arrows move it.
+/// The row of the group is a stop too; Enter or a click opens or closes the group.
+/// Returns the bottom of the list.
 #[expect(clippy::too_many_arguments)]
 fn action_list(
     ui: &Ui,
@@ -229,59 +295,131 @@ fn action_list(
     min: Pos2,
     app: &AppSnapshot,
     module: Option<&Module>,
-    list: &[Action],
+    rows: &[Row],
     state: &mut ActionsState,
     inputs: &ActionsInputs<'_>,
-) {
+) -> f32 {
     let all = module.is_none();
-    let mut selected = list
-        .iter()
-        .position(|action| *action == state.action)
-        .unwrap_or(0);
-    let nav = ListNav::over(ui, "actions", list.len(), &mut selected);
-    state.action = list[selected];
+    let group = rows.iter().position(|row| *row == Row::Group).unwrap_or(0);
+    let mut selected = if state.on_group {
+        group
+    } else {
+        rows.iter()
+            .position(|row| *row == Row::Action(state.action))
+            .unwrap_or(0)
+    };
+    let nav = ListNav::over(ui, "actions", rows.len(), &mut selected);
+    match rows[selected] {
+        Row::Action(action) => {
+            state.action = action;
+            state.on_group = false;
+        }
+        Row::Group => state.on_group = true,
+    }
 
-    let height = list.len() as f32 * (ROW_H + 1.0) + 1.0;
+    // For a module, the open group ends with the line about dropping all tables.
+    let note = (!all && state.destructive_open).then(|| {
+        let width = LIST_W - 2.0 - 25.0 - 10.0;
+        draw::galley_wrapped(ui, strings::FRESH_IS_UNDER_ALL, NOTE, pal.ink_2, width)
+    });
+    let note_h = note
+        .as_ref()
+        .map_or(0.0, |galley| 6.0 + galley.size().y + 7.0);
+    let height = rows.len() as f32 * (ROW_H + 1.0) + 1.0 + note_h;
     let outline = Rect::from_min_size(min, vec2(LIST_W, height));
     draw::outlined(ui, outline, radius::CONTROL, pal.surface, pal.line_2);
-    for (row, action) in list.iter().enumerate() {
+    let mut toggled = false;
+    for (index, row) in rows.iter().enumerate() {
         let rect = Rect::from_min_size(
-            pos2(min.x + 1.0, min.y + 1.0 + row as f32 * (ROW_H + 1.0)),
+            pos2(min.x + 1.0, min.y + 1.0 + index as f32 * (ROW_H + 1.0)),
             vec2(LIST_W - 2.0, ROW_H),
         );
-        let on = row == selected;
-        let label = strings::action_row(*action, all);
-        let response = ui.interact(rect, nav.id(row), nav.sense(row));
+        let on = index == selected;
+        let in_group = matches!(row, Row::Action(action) if action.is_destructive());
+        let label = match row {
+            Row::Action(action) => strings::action_row(*action, all),
+            Row::Group => strings::DESTRUCTIVE,
+        };
+        let response = ui.interact(rect, nav.id(index), nav.sense(index));
         response.widget_info(|| WidgetInfo::selected(Role::ListBoxOption, true, on, label));
-        if response.clicked() {
-            state.action = *action;
+        if *row == Row::Group {
+            let open = state.destructive_open;
+            ui.ctx()
+                .accesskit_node_builder(response.id, |node| node.set_expanded(open));
         }
-        nav.after(ui, row, &response);
+        if response.clicked() {
+            match row {
+                Row::Action(action) => {
+                    state.action = *action;
+                    state.on_group = false;
+                }
+                Row::Group => toggled = true,
+            }
+        }
+        nav.after(ui, index, &response);
 
+        let last = index + 1 == rows.len() && note.is_none();
+        if *row == Row::Group && !on {
+            ui.painter().rect_filled(rect, 0, pal.panel);
+        }
         if on {
             ui.painter().rect_filled(rect, 0, pal.well);
             draw::hline(ui, rect.left()..rect.right(), rect.top() - 1.0, pal.line_2);
             draw::hline(ui, rect.left()..rect.right(), rect.bottom(), pal.line_2);
-            draw::peg(ui, pal, rect);
+            // The peg of a row of the group stands under its chevron (S10.4).
+            let peg_row = if in_group {
+                Rect::from_min_max(pos2(rect.left() + 10.0, rect.top()), rect.max)
+            } else {
+                rect
+            };
+            draw::peg(ui, pal, peg_row);
         } else {
             if response.hovered() {
                 ui.painter().rect_filled(rect, 0, pal.well);
             }
-            if row + 1 < list.len() {
+            if *row == Row::Group {
+                draw::hline(ui, rect.left()..rect.right(), rect.top() - 1.0, pal.line_2);
+            }
+            if !last {
                 draw::hline(ui, rect.left()..rect.right(), rect.bottom(), pal.line);
             }
         }
         let mid = rect.center().y;
+        let mut text_x = rect.left() + 13.0;
+        if in_group {
+            text_x = rect.left() + 25.0;
+        }
+        let label_type = if *row == Row::Group {
+            ty::BODY.with_face(Face::Sans600)
+        } else {
+            ty::BODY
+        };
+        if *row == Row::Group {
+            let chevron = if state.destructive_open {
+                Icon::ChevronDown
+            } else {
+                Icon::ChevronRight
+            };
+            let side = 11.0;
+            let at = Rect::from_min_size(pos2(text_x, mid - side / 2.0), Vec2::splat(side));
+            draw::icon(ui, at, chevron, pal.ink);
+            text_x += side + 6.0;
+        }
         draw::paint_text(
             ui,
-            pos2(rect.left() + 13.0, mid),
+            pos2(text_x, mid),
             Align2::LEFT_CENTER,
             label,
-            ty::BODY,
+            label_type,
             pal.ink,
         );
         let right = rect.right() - 10.0;
-        match detail(*action, app, module) {
+        let detail = match row {
+            Row::Action(action) => detail(*action, app, module),
+            Row::Group if state.destructive_open => Detail::Text(strings::GROUP_OPEN.to_owned()),
+            Row::Group => Detail::Text(strings::GROUP_CLOSED.to_owned()),
+        };
+        match detail {
             Detail::None => {}
             Detail::On => {
                 let text = draw::paint_text(
@@ -322,7 +460,35 @@ fn action_list(
             draw::focus_ring(ui, pal, rect.shrink(1.0), radius::STAMP);
         }
     }
+    if let Some(galley) = note {
+        let top = min.y + 1.0 + rows.len() as f32 * (ROW_H + 1.0);
+        let said = galley.text().to_owned();
+        let at = draw::paint_galley(
+            ui,
+            pos2(min.x + 1.0 + 25.0, top + 6.0),
+            Align2::LEFT_TOP,
+            galley,
+        );
+        draw::announce(ui, at, Role::Label, &said);
+    }
+    // Enter or a click on the row of the group opens or closes it.
+    if toggled {
+        state.on_group = true;
+        if state.destructive_open {
+            state.close_group();
+        } else {
+            state.destructive_open = true;
+        }
+        ui.ctx().request_repaint();
+    }
+    outline.bottom()
 }
+
+/// The dim line under the group of a module.
+const NOTE: Type = Type {
+    line: 16.0,
+    ..ty::SECONDARY
+};
 
 /// A state mark of 12 px whose right edge is at `right`.
 fn mark_rect(right: f32, mid: f32) -> Rect {
@@ -335,7 +501,7 @@ fn mark_rect(right: f32, mid: f32) -> Rect {
     )
 }
 
-/// The panel of the selected action. Returns what its buttons asked for.
+/// The panel of the selected action. Returns its bottom and what its buttons asked for.
 #[expect(clippy::too_many_arguments)]
 fn panel(
     ui: &mut Ui,
@@ -348,17 +514,28 @@ fn panel(
     state: &mut ActionsState,
     inputs: &ActionsInputs<'_>,
     run_key: bool,
-) -> Option<BoundaryAction> {
+) -> (f32, Option<BoundaryAction>) {
     let action = state.action;
+    let destructive = action.is_destructive();
     let name = module.map(|module| module.name.as_str());
     let users = name.map(|name| users_on(app, name)).unwrap_or_default();
     let context = Context {
         production: production(app),
         users_on: &users,
     };
+    // The line the run button starts, as the options stood at the end of the last frame.
+    // It is planned again below, after the options have changed in this frame.
+    let refused = matches!(
+        plan(action, target, &state.options, &context),
+        Plan::Refused { .. }
+    );
 
     // The title and the sentence.
-    let title = strings::action_title(action, name);
+    let title = if destructive {
+        strings::destructive_title(action, name.unwrap_or_default(), inputs.app)
+    } else {
+        strings::action_title(action, name)
+    };
     let title_rect = draw::paint_text(
         ui,
         min,
@@ -386,6 +563,16 @@ fn panel(
         let at = pos2(min.x, y + 12.0);
         y = alert_box(ui, pal, at, width, Severity::Warning, "", &text, None, true).0;
     }
+    // Production: a destructive action only shows its line (S10.4 d).
+    let production_text = refused.then(|| strings::production_refused(inputs.app));
+    if let Some(text) = &production_text {
+        let at = pos2(min.x, y + 12.0);
+        y = alert_box(ui, pal, at, width, Severity::Warning, "", text, None, true).0;
+    }
+    if destructive {
+        let rows = lost_rows(action, app, module);
+        y = lost_box(ui, pal, pos2(min.x, y + 12.0), width, &rows);
+    }
     y = options(
         ui,
         pal,
@@ -397,13 +584,25 @@ fn panel(
         &mut state.options,
         inputs.keyboard,
     );
+    let hint = Type {
+        line: 16.0,
+        ..ty::SECONDARY
+    };
     if action == Action::RollBack {
         let at = pos2(min.x, y + 4.0);
-        let hint = Type {
-            line: 16.0,
-            ..ty::SECONDARY
-        };
         y = draw::paragraph(ui, at, strings::ROLL_BACK_HINT, hint, pal.ink_2, width).bottom();
+    }
+    // Delete: what stays, and the modules that will break (S10.4 b).
+    if action == Action::DeleteModule
+        && let Some(name) = name
+    {
+        let mut text = strings::stays(name);
+        if !users.is_empty() {
+            let names: Vec<&str> = users.iter().map(String::as_str).collect();
+            text = format!("{text} {}", strings::will_break(&names, name));
+        }
+        let at = pos2(min.x, y + 6.0);
+        y = draw::paragraph(ui, at, &text, hint, pal.ink_2, width).bottom();
     }
 
     // The line the run button starts, after the options have changed in this frame.
@@ -434,9 +633,12 @@ fn panel(
         None => tests_line(ui, pal, code_at, width, name),
     };
 
-    // The buttons: run, a dry run for Roll back, and copy.
+    // The buttons: run, a dry run for Roll back and Reset, and copy.
+    let refused = matches!(planned, Plan::Refused { .. });
     let off = if line.is_none() {
         Some(strings::NO_TESTS_COMMAND.to_owned())
+    } else if refused {
+        Some(strings::production_refused(inputs.app))
     } else if let Some(label) = inputs.busy {
         Some(strings::is_running(label))
     } else if line_now(inputs.runner, &[]).is_none() {
@@ -447,7 +649,8 @@ fn panel(
     let keys = run_keys(inputs.mac);
     let run = Button {
         label: strings::action_button(action),
-        kind: if action == Action::RollBack {
+        // Roll back and the four of the group lose data: the red outline (S10.4).
+        kind: if action == Action::RollBack || destructive {
             ButtonKind::Danger
         } else {
             ButtonKind::Primary
@@ -486,10 +689,12 @@ fn panel(
         });
     }
     state.last_shown = shown_args;
-    // Dry run checks the option and runs nothing (deviation S38).
-    if action == Action::RollBack {
+    // Dry run checks the option and runs nothing (deviation S38). In production
+    // reset runs nothing at all (S10.4 d).
+    if matches!(action, Action::RollBack | Action::ResetMigrations) {
         let dry = Button {
             label: strings::DRY_RUN,
+            disabled: refused,
             ..Default::default()
         };
         let response = dry.show(ui, pal, pos2(x, y), inputs.keyboard);
@@ -504,6 +709,7 @@ fn panel(
         ..Default::default()
     };
     let response = copy.show(ui, pal, pos2(x, y), inputs.keyboard);
+    let bottom = response.rect.bottom();
     match line {
         Some(line) if response.clicked() => {
             asked = Some(BoundaryAction::Copy {
@@ -516,7 +722,164 @@ fn panel(
             draw::tooltip(response, pal, strings::NO_TESTS_COMMAND);
         }
     }
-    asked
+    (bottom, asked)
+}
+
+/// A row of "What is lost": its name, in parts that are set in mono or not, and its
+/// value on the right.
+struct Lost {
+    name: Vec<(String, bool)>,
+    value: String,
+}
+
+impl Lost {
+    fn new(name: impl Into<String>, value: impl Into<String>) -> Self {
+        Self {
+            name: vec![(name.into(), false)],
+            value: value.into(),
+        }
+    }
+
+    /// A name with a path in mono after its first words.
+    fn with_path(words: &str, path: String, value: impl Into<String>) -> Self {
+        Self {
+            name: vec![(words.to_owned(), false), (path, true)],
+            value: value.into(),
+        }
+    }
+}
+
+/// The rows of "What is lost" of a destructive action (design D5). Without the
+/// migration state the tables are not named or counted (deviation S42).
+fn lost_rows(action: Action, app: &AppSnapshot, module: Option<&Module>) -> Vec<Lost> {
+    let name = module.map_or("", |module| module.name.as_str());
+    match (action, module) {
+        (Action::ResetMigrations, _) => {
+            vec![Lost::new(
+                strings::reset_loses(name),
+                strings::WITH_ALL_ROWS,
+            )]
+        }
+        (Action::RefreshMigrations, _) => {
+            vec![Lost::new(
+                strings::refresh_loses(name),
+                strings::COME_BACK_EMPTY,
+            )]
+        }
+        (Action::FreshMigrate, _) => vec![
+            Lost::new(strings::FRESH_LOSES_TABLES, strings::WITH_ALL_ROWS),
+            Lost::new(strings::VIEWS_IF_CHOSEN, ""),
+            Lost::new(strings::TYPES_IF_CHOSEN, strings::POSTGRES_ONLY),
+        ],
+        (Action::DeleteModule, Some(module)) => {
+            let mut rows = vec![Lost::with_path(
+                strings::THE_FOLDER,
+                app.path_shown(&module.dir),
+                strings::files_and_lines(module.files, module.lines),
+            )];
+            // Left out when git has nothing to lose; said when git cannot tell.
+            match module.uncommitted {
+                Some(0) => {}
+                Some(n) => rows.push(Lost::new(
+                    strings::UNCOMMITTED_CHANGES,
+                    strings::files(u64::from(n)),
+                )),
+                None => rows.push(Lost::new(strings::CANNOT_TELL_GIT, "")),
+            }
+            if let Some(file) = statuses_file(app) {
+                rows.push(Lost::with_path(strings::ITS_LINE_IN, file, ""));
+            }
+            rows
+        }
+        _ => Vec::new(),
+    }
+}
+
+/// The file that keeps which modules are on, as the user writes it, when the app
+/// keeps it in a file. The package's delete removes the module's line from it.
+pub fn statuses_file(app: &AppSnapshot) -> Option<String> {
+    (app.layout.activator == "file").then(|| app.path_shown(&app.layout.statuses_file))
+}
+
+/// The box "What is lost", with "cannot be undone" on the right (S10.4). Returns its bottom.
+fn lost_box(ui: &Ui, pal: &Palette, min: Pos2, width: f32, rows: &[Lost]) -> f32 {
+    let height = 41.0 + rows.len() as f32 * size::LIST_LINE_H + 8.0;
+    let rect = Rect::from_min_size(min, vec2(width, height));
+    let mut y = draw::box_head(ui, pal, rect, strings::WHAT_IS_LOST, "");
+    let mid = rect.top() + 1.0 + 8.0 + 9.0;
+    let text = draw::paint_text(
+        ui,
+        pos2(rect.right() - 13.0, mid),
+        Align2::RIGHT_CENTER,
+        strings::CANNOT_BE_UNDONE,
+        ty::LABEL,
+        pal.bad,
+    );
+    draw::announce(ui, text, Role::Label, strings::CANNOT_BE_UNDONE);
+    draw::mark_bad(ui, mark_rect(text.left() - 5.0, mid), pal.bad, pal.surface);
+    // A path in a row shares the line of the row, so that both stand on one baseline.
+    let mono = Type {
+        size: 11.5,
+        line: ty::BODY.line,
+        ..ty::CODE
+    };
+    for (index, row) in rows.iter().enumerate() {
+        let mid = y + size::LIST_LINE_H / 2.0;
+        let value = draw::paint_text(
+            ui,
+            pos2(rect.right() - 13.0, mid),
+            Align2::RIGHT_CENTER,
+            &row.value,
+            ty::BODY,
+            pal.ink_2,
+        );
+        let parts: Vec<(&str, Type, Color32)> = row
+            .name
+            .iter()
+            .map(|(text, is_mono)| {
+                let part_type = if *is_mono { mono } else { ty::BODY };
+                (text.as_str(), part_type, pal.ink)
+            })
+            .collect();
+        let room = (value.left() - 12.0 - (rect.left() + 13.0)).max(40.0);
+        let mut galley = draw::rich_galley(ui, &parts, f32::INFINITY);
+        // A name too long for its row ends in an ellipsis, on one line.
+        if galley.size().x > room {
+            let mut job = eframe::egui::text::LayoutJob::default();
+            for (text, part_type, color) in &parts {
+                job.append(text, 0.0, part_type.format(*color));
+            }
+            job.wrap = eframe::egui::text::TextWrapping::truncate_at_width(room);
+            galley = ui.painter().layout_job(job);
+        }
+        let said = row
+            .name
+            .iter()
+            .map(|(text, _)| text.as_str())
+            .collect::<String>();
+        let at = draw::paint_galley(
+            ui,
+            pos2(rect.left() + 13.0, mid),
+            Align2::LEFT_CENTER,
+            galley,
+        );
+        let said = if row.value.is_empty() {
+            said
+        } else {
+            format!("{said}, {}", row.value)
+        };
+        draw::announce(ui, at, Role::Label, &said);
+        if index + 1 < rows.len() {
+            draw::hline(
+                ui,
+                rect.left() + 13.0..rect.right() - 13.0,
+                y + size::LIST_LINE_H - 1.0,
+                pal.line,
+            );
+        }
+        y += size::LIST_LINE_H;
+    }
+    rect.bottom()
 }
 
 /// The sentence of Run tests: the count, the folder in mono, then the rest (S10.2 e).
@@ -598,8 +961,10 @@ fn options(
     let checks = [
         (set.pretend, strings::DRY_RUN_OPTION, "--pretend"),
         (set.seed, strings::SEED_AFTERWARDS, "--seed"),
+        (set.drop_views, strings::ALSO_DROP_VIEWS, "--drop-views"),
+        (set.drop_types, strings::ALSO_DROP_TYPES, "--drop-types"),
     ];
-    if set.pretend || set.seed {
+    if checks.iter().any(|(taken, _, _)| *taken) {
         y += 12.0;
         for (taken, label, flag) in checks {
             if !taken {
@@ -609,6 +974,8 @@ fn options(
             let off = flag == "--seed" && options.pretend;
             let value = match flag {
                 "--pretend" => &mut options.pretend,
+                "--drop-views" => &mut options.drop_views,
+                "--drop-types" => &mut options.drop_types,
                 _ => &mut options.seed,
             };
             let at = pos2(top.x, y);
