@@ -7,7 +7,7 @@
 use eframe::egui::{Align2, Color32, Pos2, Rect, Role, Ui, pos2, vec2};
 use mortise_core::{
     Answer, AppSnapshot, Component, Environment, Route, Runtime, RuntimeState, Status, Task,
-    module_of_task,
+    by_module, module_of_task,
 };
 
 use crate::runtime::strings;
@@ -175,9 +175,26 @@ fn item_height(ui: &Ui, item: &Item, width: f32) -> f32 {
     }
 }
 
+/// Whose components a box lists.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Of {
+    /// The app's own: known names get their own wording, and those that are up can
+    /// share one line.
+    App,
+    /// The indicators of a module, named by their key: each has its line, with its
+    /// details as the app wrote them, whatever its key.
+    Module,
+}
+
 /// The lines of the components. When all are up each has its line. When some are
-/// not, those come first and in full, and the rest share one line.
-fn component_items(ui: &Ui, pal: &Palette, components: &[Component], width: f32) -> Vec<Item> {
+/// not, those come first and in full, and for the app the rest share one line.
+fn component_items(
+    ui: &Ui,
+    pal: &Palette,
+    components: &[Component],
+    width: f32,
+    of: Of,
+) -> Vec<Item> {
     let dim = |text: String| Part::Text(text, ty::BODY, pal.ink_2);
     let line = |component: &Component, note: Option<String>| {
         let mut parts = Vec::new();
@@ -191,36 +208,50 @@ fn component_items(ui: &Ui, pal: &Palette, components: &[Component], width: f32)
             parts,
         }
     };
-    if components
-        .iter()
-        .all(|component| component.status == Status::Up)
-    {
-        return components
-            .iter()
-            .map(|component| line(component, Some(detail(component))))
-            .collect();
-    }
-
-    let mut items = Vec::new();
-    let (up, not_up): (Vec<&Component>, Vec<&Component>) = components
-        .iter()
-        .partition(|component| component.status == Status::Up);
-    for component in &not_up {
+    let not_up = |items: &mut Vec<Item>, component: &Component| {
         items.push(line(component, None));
         let error = component.details.iter().find(|(key, _)| key == "error");
         match (error, component.status) {
             // The detail is the app's own text, quoted.
+            // An indicator of a module keeps every detail it gives beside its error.
+            (Some(_), _) if of == Of::Module && component.details.len() > 1 => {
+                items.push(Item::Code(detail(component, of)));
+            }
             (Some((_, error)), _) => items.push(Item::Code(error.clone())),
-            (None, Status::OutOfService) => {
+            // The sentence about maintenance mode is for the app's own components.
+            (None, Status::OutOfService) if of == Of::App => {
                 items.push(Item::Text(strings::out_of_service(&component.name), true));
             }
             (None, _) => {
-                let detail = detail(component);
+                let detail = detail(component, of);
                 if !detail.is_empty() {
                     items.push(Item::Code(detail));
                 }
             }
         }
+    };
+    if of == Of::Module
+        || components
+            .iter()
+            .all(|component| component.status == Status::Up)
+    {
+        let mut items = Vec::new();
+        for component in components {
+            if component.status == Status::Up {
+                items.push(line(component, Some(detail(component, of))));
+            } else {
+                not_up(&mut items, component);
+            }
+        }
+        return items;
+    }
+
+    let mut items = Vec::new();
+    let (up, down): (Vec<&Component>, Vec<&Component>) = components
+        .iter()
+        .partition(|component| component.status == Status::Up);
+    for component in down {
+        not_up(&mut items, component);
     }
     if !up.is_empty() {
         // The names when they fit beside the count, else how many there are.
@@ -263,7 +294,7 @@ fn component_items(ui: &Ui, pal: &Palette, components: &[Component], width: f32)
 }
 
 /// What a component says beside its status, in the app's own words.
-fn detail(component: &Component) -> String {
+fn detail(component: &Component, of: Of) -> String {
     let get = |key: &str| {
         component
             .details
@@ -272,7 +303,12 @@ fn detail(component: &Component) -> String {
             .map(|(_, value)| value.as_str())
     };
     let number = |key: &str| get(key).and_then(|value| value.parse::<f64>().ok());
-    match component.name.as_str() {
+    let name = match of {
+        Of::App => component.name.as_str(),
+        // A key such as `db` names the module's own check, not the app's.
+        Of::Module => "",
+    };
+    match name {
         "diskSpace" => match (number("free"), number("total")) {
             (Some(free), Some(total)) => strings::disk(free, total),
             _ => String::new(),
@@ -288,7 +324,27 @@ fn detail(component: &Component) -> String {
     }
 }
 
-fn items(ui: &Ui, pal: &Palette, name: &str, view: &RuntimeView<'_>, width: f32) -> Vec<Item> {
+/// The status line at the top of a box: its state and a dim note at the right.
+fn status_line(pal: &Palette, name: String, brief: Option<Brief>, note: Option<String>) -> Item {
+    let mut parts: Vec<Part> = brief.into_iter().map(Part::State).collect();
+    if let Some(note) = note {
+        parts.push(Part::Text(note, ty::BODY, pal.ink_2));
+    }
+    Item::Line {
+        name,
+        mono: false,
+        parts,
+    }
+}
+
+fn items(
+    ui: &Ui,
+    pal: &Palette,
+    name: &str,
+    app: &AppSnapshot,
+    view: &RuntimeView<'_>,
+    width: f32,
+) -> Vec<Item> {
     let default = ButtonKind::Default;
     if !view.installed {
         // a. The package is not installed.
@@ -317,17 +373,7 @@ fn items(ui: &Ui, pal: &Palette, name: &str, view: &RuntimeView<'_>, width: f32)
         ];
     };
     let name = environment.name.as_str();
-    let status = |brief: Option<Brief>, note: Option<String>| {
-        let mut parts: Vec<Part> = brief.into_iter().map(Part::State).collect();
-        if let Some(note) = note {
-            parts.push(Part::Text(note, ty::BODY, pal.ink_2));
-        }
-        Item::Line {
-            name: strings::STATUS.to_owned(),
-            mono: false,
-            parts,
-        }
-    };
+    let status = |brief, note| status_line(pal, strings::STATUS.to_owned(), brief, note);
     let Some(answer) = view.state.answer.as_deref() else {
         return vec![status(None, Some(strings::ASKING.to_owned()))];
     };
@@ -394,7 +440,30 @@ fn items(ui: &Ui, pal: &Palette, name: &str, view: &RuntimeView<'_>, width: f32)
         view.checked().map(crate::strings::checked_ago),
     )];
     match &runtime.components {
-        Some(components) => items.extend(component_items(ui, pal, components, width)),
+        Some(components) => {
+            // The app's own components. Those of a module are in its own Summary.
+            let split = by_module(app, components);
+            items.extend(component_items(ui, pal, &split.app, width, Of::App));
+            // Not in the spec: each module that is not up, so that a Down app always
+            // names what is down.
+            for module in split.modules.iter().filter(|m| m.status != Status::Up) {
+                items.push(Item::Line {
+                    name: module.module.clone(),
+                    mono: false,
+                    parts: vec![Part::State(Brief::of_status(module.status))],
+                });
+            }
+            // Not in the spec: a module the app reports missing that its files do not
+            // have, with the app's sentence.
+            for (module, error) in &split.elsewhere {
+                items.push(Item::Line {
+                    name: module.clone(),
+                    mono: false,
+                    parts: vec![Part::State(Brief::of_status(Status::Down))],
+                });
+                items.push(Item::Code(error.clone()));
+            }
+        }
         // f. The app hides the details.
         None => items.push(Item::Text(strings::COMPONENTS_HIDDEN.to_owned(), true)),
     }
@@ -508,12 +577,70 @@ pub fn runtime_box(
     min: Pos2,
     width: f32,
     name: &str,
+    app: &AppSnapshot,
     view: &RuntimeView<'_>,
     keyboard: bool,
     paint: bool,
 ) -> (f32, Option<RuntimeAction>) {
+    let items = items(ui, pal, name, app, view, width - 2.0 * PAD);
+    paint_box(ui, pal, min, width, view, &items, keyboard, paint)
+}
+
+/// The runtime box of a module's Summary (S4.3): the status of the module, the error
+/// the app gives for it, then its own indicators by key. `None`, and nothing drawn,
+/// when the module has no status in the last answer of the chosen environment.
+/// Otherwise as [`runtime_box`].
+#[expect(clippy::too_many_arguments)]
+pub fn module_runtime_box(
+    ui: &Ui,
+    pal: &Palette,
+    min: Pos2,
+    width: f32,
+    app: &AppSnapshot,
+    module: &str,
+    view: &RuntimeView<'_>,
+    keyboard: bool,
+    paint: bool,
+) -> Option<(f32, Option<RuntimeAction>)> {
+    let components = view.runtime()?.components.as_deref()?;
+    let split = by_module(app, components);
+    let runtime = split.of(module)?;
     let inner = width - 2.0 * PAD;
-    let items = items(ui, pal, name, view, inner);
+    let mut items = vec![status_line(
+        pal,
+        strings::status_of(module),
+        Some(Brief::of_status(runtime.status)),
+        view.checked().map(crate::strings::checked_ago),
+    )];
+    if let Some(error) = &runtime.error {
+        // The app's own sentence, quoted.
+        items.push(Item::Code(error.clone()));
+    }
+    items.extend(component_items(
+        ui,
+        pal,
+        &runtime.indicators,
+        inner,
+        Of::Module,
+    ));
+    Some(paint_box(
+        ui, pal, min, width, view, &items, keyboard, paint,
+    ))
+}
+
+/// Paints a runtime box: the heading with the environment, then `items`.
+#[expect(clippy::too_many_arguments)]
+fn paint_box(
+    ui: &Ui,
+    pal: &Palette,
+    min: Pos2,
+    width: f32,
+    view: &RuntimeView<'_>,
+    items: &[Item],
+    keyboard: bool,
+    paint: bool,
+) -> (f32, Option<RuntimeAction>) {
+    let inner = width - 2.0 * PAD;
     // The switch between environments, when there is more than one.
     let switch = view.installed && view.environments.len() > 1;
     let height = head_height(switch)

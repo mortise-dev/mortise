@@ -4,7 +4,9 @@ use eframe::egui::{
     self, Align2, FontId, Rect, RichText, Role, ScrollArea, Sense, Stroke, StrokeKind, Ui,
     UiBuilder, Vec2, WidgetInfo, pos2, vec2,
 };
-use mortise_core::{ALL_CODE, AppSnapshot, FindingState, IndexRows, Module, ModuleState};
+use mortise_core::{
+    ALL_CODE, AppSnapshot, FindingState, IndexRows, Module, ModuleState, RuntimeByModule,
+};
 
 use crate::index::strings;
 use crate::runtime::view::Brief;
@@ -20,6 +22,8 @@ const STRIP_FOOT_H: f32 = 32.0;
 const LIST_PAD: f32 = 8.0;
 /// The room the sentence takes when the filter leaves no module.
 const NO_MATCH_H: f32 = 60.0;
+/// The gap between the runtime mark and the finding mark of a row: `.row .marks`.
+const MARKS_GAP: f32 = 8.0;
 
 /// The row of the index that is selected: the whole app or one module.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -59,6 +63,9 @@ pub struct IndexRuntime<'a> {
     pub environment: &'a str,
     /// How many seconds ago the app was asked.
     pub checked: Option<u64>,
+    /// What the app reports about each module. Empty without components or without
+    /// a module component.
+    pub modules: &'a RuntimeByModule,
 }
 
 /// What a row says at its right end.
@@ -129,6 +136,26 @@ struct Row<'a> {
     name: &'a str,
     meta: String,
     state: RowState,
+    /// The runtime mark, left of the finding mark, when the module has a status.
+    runtime: Option<RowRuntime>,
+}
+
+/// What the running app reports about the module of a row.
+struct RowRuntime {
+    brief: Brief,
+    /// What a screen reader says: `Billing: Down on production`.
+    said: String,
+    /// `Down on production, checked 8 s ago`
+    tooltip: String,
+}
+
+/// True when a row of these modules has a runtime mark.
+fn any_runtime(modules: &[&Module], runtime: Option<&RuntimeByModule>) -> bool {
+    runtime.is_some_and(|runtime| {
+        modules
+            .iter()
+            .any(|module| runtime.of(&module.name).is_some())
+    })
 }
 
 /// What the index asked for in a frame.
@@ -189,6 +216,7 @@ pub fn index(
             app.coverage().and_then(|coverage| coverage.percent()),
         ),
         state: RowState::Finding(all_state),
+        runtime: None,
     };
     let (head_bottom, foot_top) = if collapsed {
         // The strip: stamps and marks only, and the key that opens the index again.
@@ -268,6 +296,8 @@ pub fn index(
         .filter(|module| attention(app, module) < 2)
         .count();
     let pinned = compact && problems_first && !collapsed && needing > 0;
+    // The strip gives every row room for the runtime mark while one row has it.
+    let runtime_column = collapsed && any_runtime(&modules, runtime.map(|r| r.modules));
 
     ui.scope_builder(UiBuilder::new().max_rect(list), |ui| {
         ScrollArea::vertical()
@@ -288,6 +318,7 @@ pub fn index(
                         focused: selected && keyboard,
                         compact,
                         collapsed,
+                        runtime_column,
                     };
                     if index_row(ui, pal, row_rect, &row, look) {
                         *selection = row.selection;
@@ -304,7 +335,7 @@ pub fn index(
                     if pinned && i == needing {
                         ui.add_space(8.0);
                     }
-                    show(ui, module_row(app, module));
+                    show(ui, module_row(app, module, runtime));
                 }
                 if let Some(text) = &no_match {
                     let width = ui.available_width() - 14.0 - 13.0;
@@ -349,11 +380,19 @@ fn row_height(compact: bool) -> f32 {
     }
 }
 
-/// The width of the strip in an index `height` px high. When its rows do not fit,
-/// the track of the scrollbar is added at its right, so that the scrollbar does not
-/// cover the marks.
-pub fn strip_width(app: &AppSnapshot, filter: &str, rows: IndexRows, height: f32) -> f32 {
-    let modules = ordered(app, filter, false).len();
+/// The width of the strip in an index `height` px high. While a row it shows has a
+/// runtime mark, the strip is wider by that mark and its gap. When its rows do not
+/// fit, the track of the scrollbar is added at its right, so that the scrollbar does
+/// not cover the marks.
+pub fn strip_width(
+    app: &AppSnapshot,
+    filter: &str,
+    rows: IndexRows,
+    height: f32,
+    runtime: Option<&RuntimeByModule>,
+) -> f32 {
+    let shown = ordered(app, filter, false);
+    let modules = shown.len();
     let no_match = if !filter.trim().is_empty() && modules == 0 {
         NO_MATCH_H
     } else {
@@ -362,16 +401,39 @@ pub fn strip_width(app: &AppSnapshot, filter: &str, rows: IndexRows, height: f32
     // "All modules", then one row per module.
     let content =
         2.0 * LIST_PAD + (1 + modules) as f32 * row_height(is_compact(app, rows)) + no_match;
-    if content > height - STRIP_FOOT_H {
-        size::INDEX_STRIP_W + size::SCROLLBAR_W
+    let marks = if any_runtime(&shown, runtime) {
+        size::STATE_MARK + MARKS_GAP
     } else {
-        size::INDEX_STRIP_W
-    }
+        0.0
+    };
+    let track = if content > height - STRIP_FOOT_H {
+        size::SCROLLBAR_W
+    } else {
+        0.0
+    };
+    size::INDEX_STRIP_W + marks + track
 }
 
-/// The row of one module: its code, its name, its files and coverage, its state.
-fn module_row<'a>(app: &AppSnapshot, module: &'a Module) -> Row<'a> {
+/// The row of one module: its code, its name, its files and coverage, its state, and
+/// what the running app reports about it.
+fn module_row<'a>(
+    app: &AppSnapshot,
+    module: &'a Module,
+    runtime: Option<IndexRuntime<'_>>,
+) -> Row<'a> {
     let state = row_state(app, module);
+    let runtime = runtime.and_then(|runtime| {
+        let brief = Brief::of_status(runtime.modules.of(&module.name)?.status);
+        Some(RowRuntime {
+            brief,
+            said: strings::module_runtime(&module.name, brief.word, runtime.environment),
+            tooltip: crate::strings::runtime_tooltip(
+                brief.word,
+                runtime.environment,
+                runtime.checked,
+            ),
+        })
+    });
     let coverage = module.coverage.and_then(|coverage| coverage.percent());
     Row {
         selection: Selection::Module(module.name.clone()),
@@ -390,6 +452,7 @@ fn module_row<'a>(app: &AppSnapshot, module: &'a Module) -> Row<'a> {
         } else {
             state
         },
+        runtime,
     }
 }
 
@@ -462,6 +525,7 @@ fn head(
         brief,
         environment,
         checked,
+        ..
     }) = runtime
     {
         runtime_h = 20.0;
@@ -570,6 +634,8 @@ struct RowLook {
     compact: bool,
     /// The index is a strip: the stamp and the mark only.
     collapsed: bool,
+    /// The strip has room for a runtime mark left of the finding mark.
+    runtime_column: bool,
 }
 
 /// Paints one row (C7). Returns true when it was clicked.
@@ -617,7 +683,9 @@ fn index_row(ui: &Ui, pal: &Palette, rect: Rect, row: &Row<'_>, look: RowLook) -
     let stamp = draw::stamp(ui, pal, stamp_min, row.code, stamp_state);
 
     // The state at the right end: a mark, and a word or a number where there is room.
-    let marks_right = if look.collapsed {
+    let marks_right = if look.runtime_column {
+        stamp.right() + 5.0 + size::STATE_MARK + MARKS_GAP + size::STATE_MARK
+    } else if look.collapsed {
         stamp.right() + 5.0 + size::STATE_MARK
     } else {
         rect.right() - 1.0 - 12.0
@@ -656,9 +724,24 @@ fn index_row(ui: &Ui, pal: &Palette, rect: Rect, row: &Row<'_>, look: RowLook) -
         RowState::None => {}
     }
 
+    // The runtime mark: a stroke, 8 px left of the finding mark, announced on its own.
+    let mut marks_left = mark.left();
+    let mut on_runtime = false;
+    if let Some(runtime) = &row.runtime {
+        let at = Rect::from_min_size(
+            pos2(mark.left() - MARKS_GAP - size::STATE_MARK, mark.top()),
+            Vec2::splat(size::STATE_MARK),
+        );
+        draw::runtime_mark(ui, at, runtime.brief.mark, runtime.brief.tone.color(pal));
+        let said = draw::announce(ui, at, Role::Label, &runtime.said);
+        on_runtime = said.hovered();
+        draw::tooltip(said, pal, &runtime.tooltip);
+        marks_left = at.left();
+    }
+
     if !look.collapsed {
         let text_left = rect.left() + 15.0 + 36.0 + 9.0;
-        let text_w = (mark.left() - 9.0 - text_left).max(0.0);
+        let text_w = (marks_left - 9.0 - text_left).max(0.0);
         let name_type = if off {
             ty::ROW_NAME.with_face(Face::Sans500)
         } else {
@@ -708,7 +791,8 @@ fn index_row(ui: &Ui, pal: &Palette, rect: Rect, row: &Row<'_>, look: RowLook) -
     }
 
     let clicked = response.clicked();
-    if look.collapsed {
+    // In the strip the name is the tooltip of the row, unless the runtime mark has its own.
+    if look.collapsed && !on_runtime {
         draw::tooltip(response, pal, row.name);
     }
     clicked

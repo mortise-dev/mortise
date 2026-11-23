@@ -681,9 +681,38 @@ impl eframe::App for MortiseApp {
             let open = &mut self.apps[current];
             match open.live.state() {
                 LiveState::Ready(app) => {
+                    let entry = &self.settings.apps[current];
+                    let runtime = RuntimeView {
+                        installed: app.actuator.is_some(),
+                        environments: &entry.environments,
+                        chosen: entry.chosen_environment(),
+                        state: open
+                            .runtime
+                            .as_ref()
+                            .map(|connected| connected.live.state())
+                            .unwrap_or_default(),
+                    };
+                    // What the app reports about each module, for the marks of the index.
+                    let modules = runtime
+                        .runtime()
+                        .and_then(|answered| answered.components.as_deref())
+                        .map(|components| mortise_core::by_module(&app, components))
+                        .unwrap_or_default();
+                    let index_runtime = runtime.brief().map(|brief| IndexRuntime {
+                        brief: brief.for_header(),
+                        environment: runtime.environment(),
+                        checked: runtime.checked(),
+                        modules: &modules,
+                    });
                     let rows = self.settings.general.index_rows;
                     let index_w = if index_collapsed {
-                        index::strip_width(&app, &open.filter, rows, rest.height())
+                        index::strip_width(
+                            &app,
+                            &open.filter,
+                            rows,
+                            rest.height(),
+                            index_runtime.map(|runtime| runtime.modules),
+                        )
                     } else {
                         index_w
                     };
@@ -701,18 +730,7 @@ impl eframe::App for MortiseApp {
                     if open.selection != Selection::All || open.tab != Tab::Summary {
                         open.findings_open = false;
                     }
-                    let entry = &self.settings.apps[current];
                     let held = self.dialog.is_some() || self.palette.is_some();
-                    let runtime = RuntimeView {
-                        installed: app.actuator.is_some(),
-                        environments: &entry.environments,
-                        chosen: entry.chosen_environment(),
-                        state: open
-                            .runtime
-                            .as_ref()
-                            .map(|connected| connected.live.state())
-                            .unwrap_or_default(),
-                    };
                     // "checked 8 s ago" counts on while the box is on screen.
                     if runtime.brief().is_some() {
                         ctx.request_repaint_after(std::time::Duration::from_secs(1));
@@ -728,11 +746,7 @@ impl eframe::App for MortiseApp {
                         rows,
                         mac,
                         name: entry.display_name(),
-                        runtime: runtime.brief().map(|brief| IndexRuntime {
-                            brief: brief.for_header(),
-                            environment: runtime.environment(),
-                            checked: runtime.checked(),
-                        }),
+                        runtime: index_runtime,
                     };
                     let index_asked = index::index(ui, pal, index_rect, &app, state);
                     toggle_order = index_asked.toggle_order;

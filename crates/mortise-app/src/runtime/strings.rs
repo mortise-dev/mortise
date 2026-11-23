@@ -33,6 +33,11 @@ pub fn runtime_on(environment: &str) -> String {
     format!("Runtime on {environment}")
 }
 
+/// `Status of Checkout`: the first line of the runtime box of a module.
+pub fn status_of(module: &str) -> String {
+    format!("Status of {module}")
+}
+
 pub fn cannot_reach(environment: &str, url: &str, reason: &str) -> String {
     format!(
         "Cannot reach {environment}. No answer from {url}: {reason}. Start the app, or correct \

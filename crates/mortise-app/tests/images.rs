@@ -17,6 +17,7 @@ use egui_kittest::kittest::{NodeT as _, Queryable as _};
 use egui_kittest::{Harness, SnapshotOptions, SnapshotResults};
 use mortise_app::app::MortiseApp;
 use mortise_core::history::{Ended, Entry, History};
+use mortise_core::testing::Reply;
 use mortise_core::{CommandLine, RunnerKind};
 
 const THEMES: [(Theme, &str); 2] = [(Theme::Light, "light"), (Theme::Dark, "dark")];
@@ -349,6 +350,54 @@ fn many_modules() {
 }
 
 #[test]
+fn runtime_per_module() {
+    use mortise_core::testing::{Reply, StubActuator};
+    // S3.1, the sixth drawing: each module reports its own indicator, and Billing is down.
+    let stub = StubActuator::healthy();
+    stub.set(
+        "/actuator/health",
+        Reply::status(
+            503,
+            r#"{"status":"DOWN","components":{"ping":{"status":"UP"},"db":{"status":"UP"},
+            "module:catalog:search":{"status":"UP"},"module:checkout:payments":{"status":"UP"},
+            "module:users:directory":{"status":"UP"},"module:shipping:carrier":{"status":"UP"},
+            "module:inventory:stock":{"status":"UP"},"module:notifications:mail":{"status":"UP"},
+            "module:billing:gateway":{"status":"DOWN","details":{"error":"Connection refused."}}}}"#,
+        ),
+    );
+    // The index column only: the Summary says when the app was checked.
+    let index = |width: f64| ((52.0, 34.0), (52.0 + width, 800.0));
+    // One set of results for the test: both themes are compared when it ends.
+    let mut shots = Shots::new();
+    for (theme, name) in THEMES {
+        shots.theme = name;
+        for rows in [
+            mortise_core::IndexRows::TwoLines,
+            mortise_core::IndexRows::OneLine,
+        ] {
+            let mut desk = Desk::new();
+            desk.theme = theme;
+            let root = desk.app("shop-api");
+            desk.knows(&[(&root, "SA")]);
+            desk.connect(&[common::environment("local", &stub)]);
+            let mut settings = desk.saved();
+            settings.general.index_rows = rows;
+            settings.save(&desk.settings_path()).unwrap();
+            let mut harness = desk.start();
+            common::wait_for_answer(&mut harness);
+            if rows == mortise_core::IndexRows::OneLine {
+                shots.take_part(&mut harness, "s3.1-index-runtime-one-line", index(264.0));
+            } else {
+                shots.take_part(&mut harness, "s3.1-index-runtime", index(264.0));
+                // S13.1: the strip, wider by the runtime mark and its gap.
+                chord(&mut harness, Key::B);
+                shots.take_part(&mut harness, "s13.1-index-strip-runtime", index(96.0));
+            }
+        }
+    }
+}
+
+#[test]
 fn palette_and_settings() {
     // One set of results for the test: both themes are compared when it ends.
     let mut shots = Shots::new();
@@ -458,6 +507,49 @@ fn an_app_without_the_actuator() {
         desk.knows(&[(&root, "SA")]);
         let mut harness = desk.start();
         shots.take(&mut harness, "s6.5a-not-installed");
+    }
+}
+
+#[test]
+fn the_runtime_box_of_a_module() {
+    // Billing enabled and missing on disk, as the modules component of 13.4 says it.
+    let missing = r#"{"status":"DOWN","components":{"ping":{"status":"UP"},
+        "modules":{"status":"DOWN","details":{"modules":{"Billing":{"enabled":true,
+        "error":"Enabled in the status store, not found on disk."}}}}}}"#;
+    // One set of results for the test: both themes are compared when it ends.
+    let mut shots = Shots::new();
+    for (theme, name) in THEMES {
+        shots.theme = name;
+        // S4.3: the runtime box of Billing, up, then down with the app's sentence.
+        for (screen, health) in [
+            ("s4.3-module-runtime", None),
+            ("s4.3-module-runtime-error", Some(missing)),
+        ] {
+            let stub = common::shop_api_actuator();
+            if let Some(health) = health {
+                stub.set("/actuator/health", Reply::status(503, health));
+            }
+            let mut desk = Desk::new();
+            desk.theme = theme;
+            let root = desk.app("shop-api");
+            desk.knows(&[(&root, "SA")]);
+            desk.connect(&[common::environment("local", &stub)]);
+            let mut harness = desk.start();
+            common::wait_for_answer(&mut harness);
+            select(&mut harness, "Billing");
+            // The box, from its heading to the box of scheduled tasks under it. A
+            // heading is 18 px under the top of its box, and boxes are 12 px apart.
+            let mid = |(min, max): Part| (min.1 + max.1) / 2.0;
+            let heading = bounds(&harness, Role::Heading, "Runtime on local");
+            let next = bounds(&harness, Role::Heading, "Scheduled tasks");
+            // The time of the answer is cut out, in the colour outside the box.
+            let checked = label_bounds(&harness, "checked ");
+            let part = (
+                (heading.0.0 - 13.0 - 8.0, mid(heading) - 18.0 - 8.0),
+                (checked.1.0 + 13.0 + 8.0, mid(next) - 18.0 - 12.0 + 8.0),
+            );
+            shots.take_part_masked(&mut harness, screen, part, &[checked]);
+        }
     }
 }
 
