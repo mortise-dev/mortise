@@ -1,0 +1,11 @@
+{
+  "command": "php artisan module:migrate Shipping --no-interaction --ansi",
+  "args": [
+    "module:migrate",
+    "Shipping"
+  ],
+  "made_with": "nwidart/laravel-modules 13.3.0, laravel/framework 13.43.0, PHP 8.4.27, macOS",
+  "exit": 1,
+  "stdout": "  Running Migration \u001b[36;1mShipping\u001b[39;22m Module \u001b[90m..........................................\u001b[39m  \n\n  \u001b[37;44m INFO \u001b[39;49m Running migrations.  \n\n  2026_11_22_140500_add_tracking_code_to_shipments_table \u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m 2.26ms\u001b[39m \u001b[31;1mFAIL\u001b[39;22m\n\n  \u001b[41;1m Illuminate\\Database\\QueryException \u001b[49;22m\n\n\u001b[39;1m  SQLSTATE[HY000]: General error: 1 duplicate column name: tracking_code (Connection: sqlite, Database: /private/tmp/claude-501/m12scratch/app/database/database.sqlite, SQL: alter table \"shipments\" add column \"tracking_code\" varchar)\u001b[39;22m\n\n  at \u001b[32mvendor/laravel/framework/src/Illuminate/Database/Connection.php\u001b[39m:\u001b[32m864\u001b[39m\n    860▕             $exceptionType = ($isUniqueConstraintError = $this->isUniqueConstraintError($e))\n    861▕                 ? UniqueConstraintViolationException::class\n    862▕                 : QueryException::class;\n    863▕ \n  ➜ 864▕             $exception = new $exceptionType(\n    865▕                 $this->getNameWithReadWriteType(),\n    866▕                 $query,\n    867▕                 $this->prepareBindings($bindings),\n    868▕                 $e,\n\n      \u001b[2m+9 vendor frames \u001b[22m\n\n  \u001b[33m10  \u001b[39m\u001b[39;1mModules/Shipping/database/migrations/2026_11_22_140500_add_tracking_code_to_shipments_table.php\u001b[39;22m:\u001b[39;1m11\u001b[39;22m\n  \u001b[90m    Illuminate\\Support\\Facades\\Facade::__callStatic(\"table\")\u001b[39m\n      \u001b[2m+39 vendor frames \u001b[22m\n\n  \u001b[33m50  \u001b[39m\u001b[39;1martisan\u001b[39;22m:\u001b[39;1m16\u001b[39;22m\n  \u001b[90m    Illuminate\\Foundation\\Application::handleCommand(Object(Symfony\\Component\\Console\\Input\\ArgvInput))\u001b[39m\n\n",
+  "stderr": ""
+}

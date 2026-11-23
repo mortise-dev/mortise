@@ -3,8 +3,9 @@
 use eframe::egui::{
     Align2, Color32, Key, Modifiers, Pos2, Rect, Role, Ui, Vec2, WidgetInfo, pos2, vec2,
 };
-use mortise_core::AppSnapshot;
+use mortise_core::{Action, AppSnapshot};
 
+use crate::actions_view::{self, ActionsInputs, ActionsState};
 use crate::app::Selection;
 use crate::boundary::{self, BoundaryAction, BoundaryState};
 use crate::draw::{self, Button, ButtonKind, Icon, StampState};
@@ -66,15 +67,9 @@ impl Tab {
                  preview before anything is written. It needs PHP and a newer \
                  nwidart/laravel-modules, and arrives in a later release of Mortise.",
             )),
-            // The spec gives the text of Generate and says Actions and Metrics use the
-            // same block. These two are written to match it.
-            Tab::Actions => Some((
-                Icon::Run,
-                "Actions are not in this version",
-                "Actions run the package's commands for a module: turn it on or off, migrate, \
-                 roll back, seed and run its tests, with the output on screen. They need PHP \
-                 and a newer nwidart/laravel-modules, and arrive in a later release of Mortise.",
-            )),
+            Tab::Actions => None,
+            // The spec gives the text of Generate and says Metrics uses the same block.
+            // This one is written to match it.
             Tab::Metrics => Some((
                 Icon::Metrics,
                 "Metrics are not in this version",
@@ -103,6 +98,9 @@ pub struct WorkState<'a> {
     /// What a scan of the public surface takes from the running app.
     pub surface: SurfaceInputs<'a>,
     pub mac: bool,
+    /// What the Actions tab keeps, and what it needs.
+    pub actions: &'a mut ActionsState,
+    pub actions_inputs: ActionsInputs<'a>,
 }
 
 /// Returns what was asked for in the workspace, such as a module to select in the index.
@@ -194,10 +192,23 @@ pub fn workspace(
         );
     }
 
-    // The action of the header comes before the tabs in the Tab order, so that the
-    // first control after the tab row is the first control of the tab.
+    // The actions of the header come before the tabs in the Tab order, so that the
+    // first control after the tab row is the first control of the tab. The Actions
+    // tab shows the key that runs instead (S10.1).
     let mut header_action = None;
-    if let Some(module) = module {
+    if *tab == Tab::Actions {
+        let keys = actions_view::run_keys(state.mac);
+        let mid = head.top() + 12.0 + ty::TITLE.line / 2.0;
+        let cap = draw::keycap(ui, pal, pos2(head.right() - 16.0, mid), &keys);
+        draw::label(
+            ui,
+            pos2(cap.left() - 6.0, mid),
+            Align2::RIGHT_CENTER,
+            strings::RUN_WITH,
+            ty::SECONDARY,
+            pal.ink_2,
+        );
+    } else if let Some(module) = module {
         let said = strings::open_module_in_editor(&module.name);
         let open = Button {
             label: "Open in editor",
@@ -205,12 +216,38 @@ pub fn workspace(
             said: Some(&said),
             ..Default::default()
         };
-        let at = pos2(head.right() - 16.0 - open.width(ui), head.top() + 12.0);
-        if open.show(ui, pal, at, state.keyboard).clicked() {
-            header_action = Some(BoundaryAction::OpenInEditor {
-                path: module.dir.clone(),
-                line: 1,
-            });
+        let tests = Button {
+            label: strings::action_button(Action::RunTests),
+            small: true,
+            icon: Some(Icon::Test),
+            ..Default::default()
+        };
+        let migrate = Button {
+            label: strings::action_button(Action::Migrate),
+            kind: ButtonKind::Primary,
+            small: true,
+            icon: Some(Icon::Migrate),
+            ..Default::default()
+        };
+        let y = head.top() + 12.0;
+        let open_x = head.right() - 16.0 - open.width(ui);
+        let migrate_x = open_x - 8.0 - migrate.width(ui);
+        let tests_x = migrate_x - 8.0 - tests.width(ui);
+        let buttons = [
+            (tests, tests_x, Some(Action::RunTests)),
+            (migrate, migrate_x, Some(Action::Migrate)),
+            (open, open_x, None),
+        ];
+        for (button, x, action) in buttons {
+            if button.show(ui, pal, pos2(x, y), state.keyboard).clicked() {
+                header_action = Some(match action {
+                    Some(action) => BoundaryAction::OpenAction(action),
+                    None => BoundaryAction::OpenInEditor {
+                        path: module.dir.clone(),
+                        line: 1,
+                    },
+                });
+            }
         }
     }
 
@@ -331,6 +368,14 @@ pub fn workspace(
         (_, Some((icon, title, text))) => {
             empty_state(ui, pal, body, EmptyMark::Icon(icon), title, &[text], 0.0);
             None
+        }
+        (Tab::Actions, None) => {
+            let WorkState {
+                actions,
+                actions_inputs,
+                ..
+            } = state;
+            actions_view::actions(ui, pal, body, app, module, actions, &actions_inputs)
         }
         (Tab::Boundary, None) => {
             let WorkState {

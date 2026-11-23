@@ -7,7 +7,7 @@ use eframe::egui::{
     Align2, Color32, Rect, Role, Sense, Shadow, Ui, UiBuilder, Vec2, WidgetInfo, pos2, vec2,
 };
 
-use crate::draw::{self, Icon};
+use crate::draw::{self, Button, Icon};
 use crate::strings;
 use crate::theme::{Palette, radius, size, ty};
 
@@ -21,10 +21,20 @@ pub enum ToastKind {
     Failed,
 }
 
+/// What the button of a toast asks for.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ToastAction {
+    /// Select the app in this folder and open the runner drawer. The folder, not the
+    /// place on the rail, because the rail can change while the toast stays.
+    ShowOutput(std::path::PathBuf),
+}
+
 #[derive(Debug, Clone)]
 pub struct Toast {
     pub text: String,
     pub kind: ToastKind,
+    /// A small button under the text, such as "Show output".
+    pub action: Option<(String, ToastAction)>,
     /// When it was first painted, in seconds of egui's clock.
     shown: Option<f64>,
 }
@@ -34,6 +44,7 @@ impl Toast {
         Self {
             text: text.into(),
             kind: ToastKind::Done,
+            action: None,
             shown: None,
         }
     }
@@ -42,13 +53,26 @@ impl Toast {
         Self {
             text: text.into(),
             kind: ToastKind::Failed,
+            action: None,
             shown: None,
         }
     }
 
+    /// A toast with a button under its text.
+    pub fn with_action(mut self, label: impl Into<String>, action: ToastAction) -> Self {
+        self.action = Some((label.into(), action));
+        self
+    }
+
     /// Paints the toast at the bottom right of `area`. Returns false once it has
-    /// left or was closed.
-    pub fn show(&mut self, ui: &mut Ui, pal: &Palette, area: Rect, reduced_motion: bool) -> bool {
+    /// left or was closed, and what its button asked for.
+    pub fn show(
+        &mut self,
+        ui: &mut Ui,
+        pal: &Palette,
+        area: Rect,
+        reduced_motion: bool,
+    ) -> (bool, Option<ToastAction>) {
         let now = ui.input(|input| input.time);
         let age = now - *self.shown.get_or_insert(now);
 
@@ -62,7 +86,7 @@ impl Toast {
         };
         let fade = if reduced_motion { 0.0 } else { FADE_OUT };
         let opacity = match self.kind {
-            ToastKind::Done if age > DWELL + fade => return false,
+            ToastKind::Done if age > DWELL + fade => return (false, None),
             ToastKind::Done if age > DWELL => 1.0 - ((age - DWELL) / FADE_OUT) as f32,
             _ => 1.0,
         };
@@ -78,7 +102,13 @@ impl Toast {
         let text_w =
             size::TOAST_W - (1.0 + 12.0 + size::STATE_MARK + 9.0) - (9.0 + 12.0 + 10.0 + 1.0);
         let text = draw::galley_wrapped(ui, &self.text, ty::BODY, pal.ink, text_w);
-        let height = (text.size().y + 18.0 + 2.0).ceil();
+        let button = self.action.as_ref().map(|(label, _)| Button {
+            label,
+            small: true,
+            ..Default::default()
+        });
+        let button_h = button.as_ref().map_or(0.0, |button| 6.0 + button.height());
+        let height = (text.size().y + button_h + 18.0 + 2.0).ceil();
         let min = pos2(
             area.right() - 16.0 - size::TOAST_W,
             area.bottom() - 16.0 - height + slide,
@@ -86,6 +116,7 @@ impl Toast {
         let rect = Rect::from_min_size(min, vec2(size::TOAST_W, height));
 
         let mut open = true;
+        let mut asked = None;
         ui.scope_builder(UiBuilder::new().max_rect(rect), |ui| {
             ui.set_opacity(opacity);
 
@@ -117,6 +148,12 @@ impl Toast {
             ui.ctx().accesskit_node_builder(announced.id, |node| {
                 node.set_live(eframe::egui::accesskit::Live::Polite);
             });
+            if let (Some(button), Some((_, action))) = (&button, &self.action) {
+                let at = pos2(text_rect.left(), text_rect.bottom() + 6.0);
+                if button.show(ui, pal, at, false).clicked() {
+                    asked = Some(action.clone());
+                }
+            }
 
             let close = Rect::from_min_size(
                 pos2(rect.right() - 11.0 - 12.0, rect.top() + 13.0),
@@ -136,6 +173,6 @@ impl Toast {
                 open = false;
             }
         });
-        open
+        (open, asked)
     }
 }

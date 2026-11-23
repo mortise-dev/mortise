@@ -251,9 +251,10 @@ struct Recording {
 
 /// The fake artisan.
 ///
-/// First it takes the words `hold` and `ignore-term`, in any order. `hold` waits
-/// 60 seconds after the output. `ignore-term` ignores SIGTERM on Unix and does
-/// nothing on Windows.
+/// First it takes the words `hold`, `ignore-term` and `gate <file>`, in any order.
+/// `hold` waits 60 seconds after the output. `ignore-term` ignores SIGTERM on Unix
+/// and does nothing on Windows. `gate <file>` waits, at most 60 seconds, until the
+/// file exists before it ends, so a test can do something while the command runs.
 ///
 /// Then the first remaining word picks the case.
 /// `--version` prints the version with the number in green and ends with 0.
@@ -271,9 +272,11 @@ struct Recording {
 pub fn fake_artisan_main() -> ExitCode {
     let mut words: Vec<String> = std::env::args().skip(1).collect();
     let mut hold = false;
+    let mut gate = None;
     loop {
         match words.first().map(String::as_str) {
             Some("hold") => hold = true,
+            Some("gate") if words.len() > 1 => gate = Some(words.remove(1)),
             Some("ignore-term") => {
                 #[cfg(unix)]
                 {
@@ -291,6 +294,12 @@ pub fn fake_artisan_main() -> ExitCode {
         words.remove(0);
     }
     let code = fake_case(&words);
+    if let Some(gate) = gate {
+        let deadline = std::time::Instant::now() + Duration::from_secs(60);
+        while !std::path::Path::new(&gate).exists() && std::time::Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
     if hold {
         std::thread::sleep(Duration::from_secs(60));
     }

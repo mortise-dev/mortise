@@ -108,6 +108,15 @@ fn the_workbench_and_its_tabs() {
     harness.run_steps(3);
     press(&mut harness, Key::Num1);
     audit(&harness, "Summary of a module, with routes");
+    press(&mut harness, Key::Num4);
+    audit(&harness, "Actions of a module, Migrate");
+    for action in ["Roll back", "Seed"] {
+        harness
+            .get_by_role_and_label(Role::ListBoxOption, action)
+            .click();
+        harness.run_steps(3);
+        audit(&harness, action);
+    }
     press(&mut harness, Key::Num2);
     audit(&harness, "Boundary of a module, links");
     press(&mut harness, Key::P);
@@ -202,9 +211,7 @@ fn the_runner_drawer() {
         line: format!("\"{}\"", env!("CARGO_BIN_EXE_app-fake-artisan")),
     });
     settings.save(&desk.settings_path()).unwrap();
-    let args = ["module:migrate", "NoSuchModule"]
-        .map(str::to_owned)
-        .to_vec();
+    let args = ["module:migrate", "Shipping"].map(str::to_owned).to_vec();
     let entry = mortise_core::history::Entry {
         id: 1,
         label: args.join(" "),

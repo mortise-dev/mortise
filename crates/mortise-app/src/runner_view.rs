@@ -5,7 +5,7 @@
 //! workspace column. Nothing here starts a process: the app does, through
 //! `mortise_core::Runs`, and hands the run to [`AppRuns`].
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -16,7 +16,10 @@ use eframe::egui::{
 };
 use mortise_core::ansi::{self, Span, Style};
 use mortise_core::history::{Ended, Entry, History};
-use mortise_core::{CommandLine, PhpSettings, Run, RunEnd, RunEvent, RunnerKind, Runs, StartError};
+use mortise_core::{
+    AppSnapshot, CommandLine, FailedMigration, PhpSettings, Run, RunEnd, RunEvent, RunnerKind,
+    Runs, StartError,
+};
 
 use crate::draw::{self, Icon, ListNav};
 use crate::strings;
@@ -181,10 +184,12 @@ struct Current {
     started_ms: i64,
     /// The id the run was kept under in the history, once it ended.
     recorded: Option<u64>,
+    /// The migration at which a `module:migrate` run failed, read once when it ended.
+    failed: Option<FailedMigration>,
 }
 
 /// The line that `args` would run through `runner` now, as the drawer shows it.
-fn line_now(runner: Option<&RunnerKind>, args: &[String]) -> Option<String> {
+pub fn line_now(runner: Option<&RunnerKind>, args: &[String]) -> Option<String> {
     let words: Vec<&str> = args.iter().map(String::as_str).collect();
     CommandLine::artisan(runner?, &words).map(|line| line.display())
 }
@@ -259,6 +264,7 @@ impl AppRuns {
                     .map_or(now_ms, |since| since.as_millis() as i64),
                 state: State::Running(run),
                 recorded: None,
+                failed: None,
             },
             Err(error) => Current {
                 label,
@@ -270,6 +276,7 @@ impl AppRuns {
                 started_ms: now_ms,
                 state: State::NotStarted(error),
                 recorded: None,
+                failed: None,
             },
         };
         self.current = Some(current);
@@ -295,6 +302,15 @@ impl AppRuns {
         let Some(end) = ended else {
             return true;
         };
+        let failed = matches!(end, RunEnd::Exited { code, .. } if code != Some(0));
+        if failed
+            && current
+                .args
+                .first()
+                .is_some_and(|word| word == "module:migrate")
+        {
+            current.failed = mortise_core::failed_migration(&current.output.lines);
+        }
         current.state = State::Ended(end);
         self.record();
         false
@@ -342,6 +358,18 @@ impl AppRuns {
             current.recorded = Some(id);
         }
         self.read_history();
+    }
+
+    /// How the run on screen ended and its output, once it has ended.
+    pub fn ended(&self) -> Option<(RunEnd, &[String])> {
+        match &self.current {
+            Some(Current {
+                state: State::Ended(end),
+                output,
+                ..
+            }) => Some((*end, &output.lines)),
+            _ => None,
+        }
     }
 
     /// The label of the command that runs, if one does.
@@ -488,6 +516,15 @@ pub enum DrawerAction {
     Show,
     /// Settings, on how PHP runs for the app.
     OpenSettings,
+    /// Open the file of the migration that failed, in the editor.
+    OpenMigration(PathBuf),
+    /// Open the Migrate panel of this module, or of "All modules" for `None`, with
+    /// the dry run checked and the database of the failed run. Nothing runs
+    /// (deviation S38).
+    DryRun {
+        module: Option<String>,
+        database: Option<String>,
+    },
 }
 
 /// What the drawer shows besides the runs.
@@ -496,6 +533,8 @@ pub struct Inputs<'a> {
     pub app: &'a str,
     /// How PHP runs for the app now: History shows the line Run again would run.
     pub runner: Option<&'a RunnerKind>,
+    /// The app as read, to find the file of a migration that failed.
+    pub snapshot: &'a AppSnapshot,
     /// True while the keyboard is in use: focus rings are drawn.
     pub keyboard: bool,
     pub mac: bool,
@@ -662,6 +701,8 @@ struct BarButton {
     said: Option<String>,
     /// Drawn in the text colour, as a step under a failure is.
     bright: bool,
+    /// A flag after the label, in mono: `--pretend`.
+    flag: Option<&'static str>,
 }
 
 impl BarButton {
@@ -674,6 +715,7 @@ impl BarButton {
             off: None,
             said: None,
             bright: false,
+            flag: None,
         }
     }
 
@@ -698,7 +740,11 @@ impl BarButton {
             .keys
             .as_ref()
             .map_or(0.0, |keys| 6.0 + draw::keycap_width(ui, keys));
-        (4.0 + label + keys + 4.0).ceil()
+        let flag = self.flag.map_or(0.0, |flag| {
+            let galley = draw::galley(ui, flag, BAR_MONO, Color32::PLACEHOLDER);
+            4.0 + galley.size().x
+        });
+        (4.0 + label + flag + keys + 4.0).ceil()
     }
 
     /// Paints the button with its left at `x`, centred on `mid`.
@@ -732,6 +778,13 @@ impl BarButton {
             self.label_type(),
             color,
         );
+        let label = match self.flag {
+            Some(flag) => {
+                let at = pos2(label.right() + 4.0, mid);
+                draw::paint_text(ui, at, Align2::LEFT_CENTER, flag, BAR_MONO, color)
+            }
+            None => label,
+        };
         if let Some(keys) = &self.keys {
             code_keycap(ui, pal, pos2(label.right() + 6.0, mid), keys);
         }
@@ -1068,7 +1121,7 @@ fn open(
             show_buttons(ui, pal, vec![button], x, mid, inputs.keyboard, actions);
         }
         State::Running(_) | State::Ended(_) => {
-            current_body(ui, pal, body, current, inputs.keyboard, actions);
+            current_body(ui, pal, body, current, inputs, actions);
         }
     }
 }
@@ -1079,13 +1132,13 @@ fn sentence_width() -> f32 {
 }
 
 /// The output of the run on screen, the notes of Mortise after it, and for a
-/// failure the sentence under a rule with its step.
+/// failure the sentence under a rule with its steps.
 fn current_body(
     ui: &mut Ui,
     pal: &Palette,
     body: Rect,
     current: &Current,
-    keyboard: bool,
+    inputs: &Inputs<'_>,
     actions: &mut Vec<DrawerAction>,
 ) {
     let mut notes = Vec::new();
@@ -1107,7 +1160,10 @@ fn current_body(
     // The sentence of a failure follows the output; a long output scrolls above it.
     let width = body.width().min(sentence_width());
     let sentence = failed.map(|code| {
-        let text = strings::stopped_with(&current.label, code);
+        let text = match &current.failed {
+            Some(at) => strings::failed_at(&current.label, code, &at.migration),
+            None => strings::stopped_with(&current.label, code),
+        };
         let galley = draw::galley_wrapped(ui, &text, SENTENCE, pal.code_fg, width);
         (text, galley)
     });
@@ -1141,22 +1197,100 @@ fn current_body(
             galley,
         );
         draw::announce(ui, at, Role::Label, &text);
-        let step = BarButton {
+        let copy = BarButton {
             said: Some(strings::copy_output_of(&current.label)),
             bright: true,
             ..BarButton::new(strings::COPY_OUTPUT, DrawerAction::CopyOutput)
+        };
+        let steps = match &current.failed {
+            Some(at) => {
+                let mut steps = migration_steps(ui, current, at, inputs.snapshot, actions);
+                steps.push(copy);
+                steps
+            }
+            None => vec![copy],
         };
         let mid = at.bottom() + 4.0 + BAR_H / 2.0;
         show_buttons(
             ui,
             pal,
-            vec![step],
+            steps,
             body.left() - 4.0,
             mid,
-            keyboard,
+            inputs.keyboard,
             actions,
         );
     }
+}
+
+/// The steps under a migration that failed (S11.1 c): "Open migration file" when
+/// the file is in the module's migrations folder, and "Dry run". Enter opens the
+/// file while the handle of the drawer holds focus.
+fn migration_steps(
+    ui: &Ui,
+    current: &Current,
+    failed: &FailedMigration,
+    app: &AppSnapshot,
+    actions: &mut Vec<DrawerAction>,
+) -> Vec<BarButton> {
+    let file = failed
+        .module
+        .clone()
+        .or_else(|| module_named(&current.args))
+        .as_deref()
+        .and_then(|name| app.module(name))
+        .and_then(|module| mortise_core::migration_file(&module.dir, &failed.migration));
+    let mut steps = Vec::new();
+    if let Some(path) = file {
+        let handle_focused = ui.memory(|memory| memory.has_focus(handle_id()));
+        if handle_focused && ui.input_mut(|input| input.consume_key(Modifiers::NONE, Key::Enter)) {
+            actions.push(DrawerAction::OpenMigration(path.clone()));
+        }
+        steps.push(BarButton {
+            pressed: true,
+            ..BarButton::new(strings::OPEN_MIGRATION, DrawerAction::OpenMigration(path))
+                .keys("Enter")
+        });
+    }
+    steps.push(BarButton {
+        said: Some(strings::dry_run_of(&current.label)),
+        bright: true,
+        flag: Some("--pretend"),
+        ..BarButton::new(strings::DRY_RUN, dry_run(&current.args, failed))
+    });
+    steps
+}
+
+/// The options of artisan words, before `--`, and the word after it.
+fn split_options(args: &[String]) -> (&[String], Option<&String>) {
+    match args.iter().position(|word| word == "--") {
+        Some(at) => (&args[..at], args.get(at + 1)),
+        None => (args, None),
+    }
+}
+
+/// The module that artisan words name: the second word, or the word after `--`.
+fn module_named(args: &[String]) -> Option<String> {
+    let (options, after) = split_options(args);
+    after
+        .or(options.get(1).filter(|word| !word.starts_with('-')))
+        .cloned()
+}
+
+/// "Dry run" under a failed migration: the module, or "All modules" for `--all`,
+/// and the database of the run that failed.
+fn dry_run(args: &[String], failed: &FailedMigration) -> DrawerAction {
+    let (options, _) = split_options(args);
+    let module = if options.iter().any(|word| word == "--all") {
+        None
+    } else {
+        failed.module.clone().or_else(|| module_named(args))
+    };
+    let database = options
+        .iter()
+        .find_map(|word| word.strip_prefix("--database="))
+        .map(str::to_owned);
+    DrawerAction::DryRun { module, database }
 }
 
 /// The colour of a style of the output.
@@ -1383,5 +1517,47 @@ fn result_of(ended: &Ended) -> (Mark, String) {
         Ended::Done { ms } => (Mark::Good, strings::run_time(time(*ms))),
         Ended::Failed { code, .. } => (Mark::Bad, strings::exit_code(*code)),
         Ended::Stopped { ms, .. } => (Mark::Stop, strings::stopped_after(time(*ms))),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_dry_run_keeps_the_module_and_the_database_of_the_failed_run() {
+        let words =
+            |words: &[&str]| -> Vec<String> { words.iter().map(|word| word.to_string()).collect() };
+        let failed = |module: Option<&str>| FailedMigration {
+            module: module.map(str::to_owned),
+            migration: "2026_11_22_140500_add_tracking_code_to_shipments_table".to_owned(),
+        };
+        assert_eq!(
+            dry_run(
+                &words(&["module:migrate", "Shipping", "--seed", "--database=testing"]),
+                &failed(None)
+            ),
+            DrawerAction::DryRun {
+                module: Some("Shipping".to_owned()),
+                database: Some("testing".to_owned()),
+            }
+        );
+        assert_eq!(
+            dry_run(
+                &words(&["module:migrate", "--all"]),
+                &failed(Some("Shipping"))
+            ),
+            DrawerAction::DryRun {
+                module: None,
+                database: None,
+            }
+        );
+        assert_eq!(
+            dry_run(&words(&["module:migrate", "--", "-Odd"]), &failed(None)),
+            DrawerAction::DryRun {
+                module: Some("-Odd".to_owned()),
+                database: None,
+            }
+        );
     }
 }
