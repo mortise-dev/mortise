@@ -354,6 +354,7 @@ pub fn test_php(runner: &RunnerKind, folder: &Path, limit: Duration) -> TestOutc
 pub enum TestOutcome { Answered(String), Failed(Failure) }
 pub enum Failure {
     NoCommand,                                   // an empty Custom line
+    NoFolder { folder: PathBuf },                // the working folder is not a folder
     NotFound { program: String },
     NotStarted { program: String, message: String },
     Exited { code: Option<i32>, line: String },
@@ -372,7 +373,7 @@ actuator test does. It runs `CommandLine::artisan(runner, &["--version"])` throu
 `Failure` is data. The interface writes it, in `strings.rs`, as the text in quotes of `x.nophp`:
 `herd: command not found` (`NotFound`, the spec's wording on every platform); `herd: ` and the system's
 message (`NotStarted`, like `EditorError`); the line, or "exit code 1" when it is empty (`Exited`);
-"no answer in 20 seconds" (`TimedOut`); "no command entered" (`NoCommand`). The last three are not in
+"no answer in 20 seconds" (`TimedOut`); "no command entered" (`NoCommand`); "the working folder does not exist" (`NoFolder`). The last four are not in
 the spec. There is no `reason()` in the core: all interface text stays in `strings.rs`.
 
 `NotFound` comes from a spawn error of kind `ErrorKind::NotFound`. The text of the operating system
