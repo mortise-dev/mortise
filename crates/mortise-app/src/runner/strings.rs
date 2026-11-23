@@ -167,7 +167,7 @@ pub fn copy_output_of(label: &str) -> String {
 }
 
 /// `module:migrate Checkout stopped with exit code 1 at 2026_11_20_...` (S11.1 c).
-/// A program a signal ended keeps the sentence of [`stopped_with`].
+/// A program a signal ended keeps the sentence of [`stopped_with`](crate::strings::stopped_with).
 pub fn failed_at(label: &str, code: Option<i32>, migration: &str) -> String {
     match code {
         Some(code) => format!(

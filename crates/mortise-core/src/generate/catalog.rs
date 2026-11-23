@@ -272,7 +272,7 @@ pub(crate) fn ships(generator: &str) -> bool {
 
 /// True when Mortise lists the files of `generator` by a dry run and reads the
 /// result of its run from its answer (design D5, D6): the package gives data
-/// ([`gives_data`]) and ships the generator ([`ships`]). An app's own generator
+/// ([`gives_data`]) and ships the generator (`ships`). An app's own generator
 /// runs as before 13.4.
 pub fn generator_gives_data(version: &Version, generator: &str) -> bool {
     gives_data(version) && ships(generator)
