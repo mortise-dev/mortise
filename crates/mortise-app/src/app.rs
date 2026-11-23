@@ -219,8 +219,9 @@ enum ReadFor {
     /// A generator with `--dry-run --json` (P2, design D5): the words of the form,
     /// and the runner and working folder it started with.
     DryRun { words: Vec<String>, place: RunPlace },
-    /// `module:migrate-status --json` (P4, design D7).
-    Migrations { target: Target },
+    /// `module:migrate-status --json` (P4, design D7), on a connection: its
+    /// `--database`, empty for the default.
+    Migrations { target: Target, connection: String },
 }
 
 /// A generator that runs, and what its end needs.
@@ -1111,17 +1112,27 @@ impl MortiseApp {
         match purpose {
             ReadFor::Catalog { package } => self.catalog_read(index, &package, end),
             ReadFor::DryRun { words, place } => self.dry_run_read(index, words, place, end),
-            ReadFor::Migrations { target } => self.migrations_read(index, target, end),
+            ReadFor::Migrations { target, connection } => {
+                self.migrations_read(index, target, &connection, end)
+            }
         }
     }
 
-    /// Takes in a read of the migration state of `target` (design D7): its document
-    /// merges into the app's package data. Otherwise the state box says why, and the
-    /// state stays as it was (design D2).
+    /// Starts a read of the migration state of `target` with `words`, on the
+    /// connection their `--database` names (design D7).
+    fn read_migrations(&mut self, index: usize, target: Target, words: Vec<String>) {
+        let connection = mortise_core::Options::from_args(&words).database;
+        self.start_read(index, words, ReadFor::Migrations { target, connection });
+    }
+
+    /// Takes in a read of the migration state of `target` on `connection` (design
+    /// D7): its document merges into the app's package data. Otherwise the state box
+    /// says why, and the state stays as it was (design D2).
     fn migrations_read(
         &mut self,
         index: usize,
         target: Target,
+        connection: &str,
         end: Result<mortise_core::ReadEnd, mortise_core::StartError>,
     ) {
         let status = match end {
@@ -1153,7 +1164,7 @@ impl MortiseApp {
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |since| since.as_millis() as i64);
         self.set_package(index, |package| {
-            package.merge_migrations(status, &target, &modules_on, now_ms);
+            package.merge_migrations(status, &target, connection, &modules_on, now_ms);
         });
     }
 
@@ -1189,9 +1200,8 @@ impl MortiseApp {
         if !gives || open.package.migration_table.is_none() {
             return;
         }
-        if let Some(target) = actions_view::reads_state_after(args) {
-            let words = mortise_core::migrate_status_args(&target);
-            self.start_read(index, words, ReadFor::Migrations { target });
+        if let Some((target, words)) = actions_view::reads_state_after(args) {
+            self.read_migrations(index, target, words);
         }
     }
 
@@ -1446,10 +1456,12 @@ impl MortiseApp {
                 }
                 // With the migration state the dialog lists the last batch and
                 // counts it (S10.3); without it, only the dry run (deviation S41).
+                let connection = mortise_core::Options::from_args(&act.args).database;
                 let last_batch: Vec<String> = self
                     .snapshot(index)
                     .and_then(|app| {
-                        app.package_data.migrations.get(&object).map(|state| {
+                        let migrations = app.package_data.migrations_for(&connection)?;
+                        migrations.get(&object).map(|state| {
                             state
                                 .last_batch()
                                 .into_iter()
@@ -1511,9 +1523,14 @@ impl MortiseApp {
             name: name.to_owned(),
             text: String::new(),
         });
-        // With the migration state reset and refresh name the tables and count the
-        // migrations (S10.5 a and b); without it they do not (deviation S42).
-        let state = app.package_data.migrations.get(module);
+        // With the migration state of the connection the words run on, reset and
+        // refresh name the tables and count the migrations (S10.5 a and b); without
+        // it they do not (deviation S42).
+        let connection = mortise_core::Options::from_args(&act.args).database;
+        let state = app
+            .package_data
+            .migrations_for(&connection)
+            .and_then(|migrations| migrations.get(module));
         let ran = state.map_or(0, |state| state.ran.len());
         let tables = state.map_or(&[][..], |state| state.tables.as_slice());
         let code = (!tables.is_empty()).then(|| tables.join(", "));
@@ -2905,7 +2922,7 @@ impl eframe::App for MortiseApp {
                             reading_state: open.reading.as_ref().and_then(|reading| match &reading
                                 .purpose
                             {
-                                ReadFor::Migrations { target } => Some(target),
+                                ReadFor::Migrations { target, .. } => Some(target),
                                 _ => None,
                             }),
                             state_error: open.migration_error.as_ref(),
@@ -3212,7 +3229,7 @@ impl eframe::App for MortiseApp {
             }
             Some(BoundaryAction::ReadMigrations { target, args }) => {
                 if let Some(current) = self.current {
-                    self.start_read(current, args, ReadFor::Migrations { target });
+                    self.read_migrations(current, target, args);
                 }
             }
             Some(BoundaryAction::Generate(GenerateAsk::NewModule)) => {

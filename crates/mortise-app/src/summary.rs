@@ -570,7 +570,11 @@ fn one_module(
     }
     // Which migrations ran comes from a read of the migration state (design D7).
     // Until then: how many files there are.
-    let state = app.package_data.migrations.get(&module.name);
+    // Of the default connection, the one the app migrates.
+    let state = app
+        .package_data
+        .migrations_for("")
+        .and_then(|migrations| migrations.get(&module.name));
     let waiting = state.map_or(0, |state| state.waiting.len());
     let migrations = match state {
         Some(state) => strings::ran(state.ran.len()),

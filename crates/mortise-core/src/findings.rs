@@ -376,10 +376,12 @@ pub(crate) fn find(subject: &Subject<'_>) -> Findings {
         ran(Check::TranslationsComplete, checked, found);
     }
 
+    // The to do list is of the default connection, the one the app migrates.
     let todo = subject
         .package
-        .migrations
-        .iter()
+        .migrations_for("")
+        .into_iter()
+        .flatten()
         .filter(|(name, state)| !state.waiting.is_empty() && in_app(name))
         .map(|(name, state)| Todo {
             module: name.clone(),

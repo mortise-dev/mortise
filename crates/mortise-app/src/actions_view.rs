@@ -138,16 +138,27 @@ pub struct ActionsInputs<'a> {
     pub state_error: Option<&'a (Target, String)>,
 }
 
+/// The connection `action` runs on with `options`: its `--database`, or empty for
+/// the default connection when it takes none or none is set.
+pub fn connection<'a>(action: Action, target: &Target, options: &'a Options) -> &'a str {
+    if action.options(target, true).database {
+        options.database.trim()
+    } else {
+        ""
+    }
+}
+
 /// The migration state of the module, or of each module that is on for "All
-/// modules", from the reads of this session. `None` when none of them was read.
+/// modules", on `connection`, from the reads of this session. `None` when none of
+/// them was read for that connection.
 fn migration_state<'a>(
     app: &'a AppSnapshot,
     module: Option<&'a Module>,
+    connection: &str,
 ) -> Option<Vec<(&'a Module, &'a ModuleMigrations)>> {
+    let migrations = app.package_data.migrations_for(connection)?;
     let read: Vec<(&Module, &ModuleMigrations)> = match module {
-        Some(module) => app
-            .package_data
-            .migrations
+        Some(module) => migrations
             .get(&module.name)
             .map(|state| vec![(module, state)])
             .unwrap_or_default(),
@@ -155,12 +166,7 @@ fn migration_state<'a>(
             .modules
             .iter()
             .filter(|module| module.state == ModuleState::On)
-            .filter_map(|module| {
-                app.package_data
-                    .migrations
-                    .get(&module.name)
-                    .map(|state| (module, state))
-            })
+            .filter_map(|module| migrations.get(&module.name).map(|state| (module, state)))
             .collect(),
     };
     (!read.is_empty()).then_some(read)
@@ -172,9 +178,10 @@ fn waiting_count(read: &[(&Module, &ModuleMigrations)]) -> usize {
 }
 
 /// The target whose migration state Mortise reads again after `args` ran, when it
-/// was read in this session: a migrate, roll back, reset, refresh or fresh that is
-/// not a dry run (design D7). A fresh reads every module.
-pub fn reads_state_after(args: &[String]) -> Option<Target> {
+/// was read in this session, and the words of that read: a migrate, roll back,
+/// reset, refresh or fresh that is not a dry run (design D7). A fresh reads every
+/// module. The read takes the run's `--database`.
+pub fn reads_state_after(args: &[String]) -> Option<(Target, Vec<String>)> {
     let action = Action::from_artisan(args.first()?)?;
     if !matches!(
         action,
@@ -191,10 +198,13 @@ pub fn reads_state_after(args: &[String]) -> Option<Target> {
         .iter()
         .take_while(|word| *word != "--")
         .any(|word| word == "--all");
-    if action == Action::FreshMigrate || all {
-        return Some(Target::All);
-    }
-    runner_view::module_named(args).map(Target::Module)
+    let target = if action == Action::FreshMigrate || all {
+        Target::All
+    } else {
+        Target::Module(runner_view::module_named(args)?)
+    };
+    let words = migrate_status_args(&target, &Options::from_args(args).database);
+    Some((target, words))
 }
 
 /// The modules that are on and use `name`, by name.
@@ -351,7 +361,7 @@ enum Detail {
     Text(String),
 }
 
-fn detail(action: Action, app: &AppSnapshot, module: Option<&Module>) -> Detail {
+fn detail(action: Action, app: &AppSnapshot, module: Option<&Module>, connection: &str) -> Detail {
     // A count over the module, or over the modules that are on.
     let total = |count: &dyn Fn(&Module) -> u32| -> u32 {
         match module {
@@ -373,7 +383,7 @@ fn detail(action: Action, app: &AppSnapshot, module: Option<&Module>) -> Detail 
                 .map_or(0, |kind| kind.files)
         }
     };
-    let read = migration_state(app, module);
+    let read = migration_state(app, module, connection);
     let ran = || {
         read.as_ref()
             .map(|read| read.iter().map(|(_, s)| s.ran.len()).sum())
@@ -530,7 +540,11 @@ fn action_list(
         );
         let right = rect.right() - 10.0;
         let detail = match row {
-            Row::Action(action) => detail(*action, app, module),
+            Row::Action(action) => {
+                let target = module.map_or(Target::All, |m| Target::Module(m.name.clone()));
+                let connection = connection(*action, &target, &state.options);
+                detail(*action, app, module, connection)
+            }
             Row::Group if state.destructive_open => Detail::Text(strings::GROUP_OPEN.to_owned()),
             Row::Group => Detail::Text(strings::GROUP_CLOSED.to_owned()),
         };
@@ -689,7 +703,9 @@ fn panel(
         let at = pos2(min.x, y + 12.0);
         y = alert_box(ui, pal, at, width, Severity::Warning, "", text, None, true).0;
     }
-    let read = migration_state(app, module);
+    // The state of the connection the line runs on (design D7).
+    let connection = connection(action, target, &state.options).to_owned();
+    let read = migration_state(app, module, &connection);
     if destructive {
         let rows = lost_rows(action, app, module, read.as_deref());
         y = lost_box(ui, pal, pos2(min.x, y + 12.0), width, &rows);
@@ -708,6 +724,7 @@ fn panel(
             pretend,
             read: read.as_deref(),
             last_read: state.read_shown.as_deref(),
+            connection: &connection,
         };
         if let Some((bottom, box_asked, read_shown)) = state_box(ui, pal, at, width, &shown, inputs)
         {
@@ -893,6 +910,8 @@ struct StateShown<'a> {
     read: Option<&'a [(&'a Module, &'a ModuleMigrations)]>,
     /// The words of the read whose line was whole on screen in the last frame.
     last_read: Option<&'a [String]>,
+    /// The connection of the panel's line: the read takes its `--database`.
+    connection: &'a str,
 }
 
 /// A row of the state box.
@@ -944,6 +963,7 @@ fn state_box(
         pretend,
         read,
         last_read,
+        connection,
     } = *shown;
     let title = match action {
         Action::Migrate => strings::WAITING,
@@ -952,7 +972,7 @@ fn state_box(
         Action::FreshMigrate => "",
         _ => return None,
     };
-    let args = migrate_status_args(target);
+    let args = migrate_status_args(target, connection);
     let line =
         line_now(inputs.runner, &args).unwrap_or_else(|| format!("php artisan {}", args.join(" ")));
     // A read in this session: the run is followed by a read, unless it is a dry run.
@@ -1039,6 +1059,11 @@ fn state_box(
         if app.package_data.migration_table == Some(false) {
             rows.push(StateRow::Text(strings::NO_MIGRATIONS_TABLE.to_owned()));
         }
+    } else if app.package_data.migration_table.is_some()
+        && app.package_data.migrations_for(connection).is_none()
+    {
+        // A state of another connection says nothing about this one.
+        rows.push(StateRow::Text(strings::NOT_READ_FOR_CONNECTION.to_owned()));
     } else {
         rows.push(StateRow::Text(strings::NOT_READ_YET.to_owned()));
     }

@@ -281,7 +281,7 @@ fn package_data_adds_translation_warnings_and_work_to_do() {
     // The state of Checkout has one migration waiting; fr lacks 2 keys of en.
     let mut package = PackageData::default();
     let state = document(&recording("module-migrate-status-waiting")).unwrap();
-    package.merge_migrations(state, &Target::Module("Checkout".into()), &[], 0);
+    package.merge_migrations(state, &Target::Module("Checkout".into()), "", &[], 0);
     package.merge_translations(document(&recording("module-lang-json")).unwrap());
     let options = ReadOptions {
         package,

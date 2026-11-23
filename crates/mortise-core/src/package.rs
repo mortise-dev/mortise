@@ -107,17 +107,24 @@ pub fn with_dry_run(words: Vec<String>) -> Vec<String> {
     with_flags(words, &["--dry-run", "--json"])
 }
 
-/// The words of a read of the migration state of `target`: `module:migrate-status
-/// Checkout --json`, or `--all`. A module name that starts with `-` goes after `--`,
-/// as [`crate::plan`] puts it.
-pub fn migrate_status_args(target: &Target) -> Vec<String> {
+/// The words of a read of the migration state of `target` on `database`:
+/// `module:migrate-status Checkout --database=testing --json`, or `--all`. An empty
+/// `database` is the default connection and is left out. A module name that starts
+/// with `-` goes after `--`, as [`crate::plan`] puts it.
+pub fn migrate_status_args(target: &Target, database: &str) -> Vec<String> {
     let mut words = vec!["module:migrate-status".to_string()];
+    let mut last = None;
     match target {
-        Target::Module(name) if name.starts_with('-') => {
-            words.extend(["--".to_string(), name.clone()]);
-        }
+        Target::Module(name) if name.starts_with('-') => last = Some(name.clone()),
         Target::Module(name) => words.push(name.clone()),
         Target::All => words.push("--all".to_string()),
+    }
+    let database = database.trim();
+    if !database.is_empty() {
+        words.push(format!("--database={database}"));
+    }
+    if let Some(name) = last {
+        words.extend(["--".to_string(), name]);
     }
     with_json(words)
 }
@@ -274,8 +281,11 @@ pub struct Locale {
 /// It lives in memory only: the database changes outside Mortise.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PackageData {
-    /// The migration state, by module name.
+    /// The migration state, by module name, of [`Self::migration_connection`].
     pub migrations: BTreeMap<String, ModuleMigrations>,
+    /// The connection the migration state was read for (`--database`). Empty for
+    /// the default connection.
+    pub migration_connection: String,
     /// Whether the database has a migrations table, from the last state read.
     pub migration_table: Option<bool>,
     /// The last translation report, by module.
@@ -313,16 +323,29 @@ impl ModuleMigrations {
 }
 
 impl PackageData {
-    /// Takes in a state read of `target`, read at `read_ms`. A module of the document
-    /// replaces its entry. Under `--all`, a module in `modules_on` that the document
-    /// does not hold is removed, because the package lists every module that is on.
+    /// The migration state when it was read for `connection` (empty for the default).
+    /// A state of another connection says nothing about this one.
+    pub fn migrations_for(&self, connection: &str) -> Option<&BTreeMap<String, ModuleMigrations>> {
+        (self.migration_connection == connection.trim()).then_some(&self.migrations)
+    }
+
+    /// Takes in a state read of `target` on `connection`, read at `read_ms`. A read of
+    /// another connection than the state's replaces the whole state. A module of the
+    /// document replaces its entry. Under `--all`, a module in `modules_on` that the
+    /// document does not hold is removed, because the package lists every module that is on.
     pub fn merge_migrations(
         &mut self,
         status: MigrationStatus,
         target: &Target,
+        connection: &str,
         modules_on: &[&str],
         read_ms: i64,
     ) {
+        let connection = connection.trim();
+        if self.migration_connection != connection {
+            self.migrations.clear();
+            self.migration_connection = connection.to_string();
+        }
         if *target == Target::All {
             let listed: BTreeSet<&str> = status
                 .modules
@@ -522,8 +545,14 @@ mod tests {
             words(&["module:make", "--dry-run", "--json", "--", "--force"])
         );
         assert_eq!(
-            migrate_status_args(&Target::Module("-Odd".into())),
-            words(&["module:migrate-status", "--json", "--", "-Odd"])
+            migrate_status_args(&Target::Module("-Odd".into()), " testing "),
+            words(&[
+                "module:migrate-status",
+                "--database=testing",
+                "--json",
+                "--",
+                "-Odd"
+            ])
         );
         // Once only, and a module named `--json` after `--` is not the option.
         assert_eq!(
@@ -540,7 +569,13 @@ mod tests {
     fn a_read_replaces_the_modules_it_holds() {
         let mut data = PackageData::default();
         let all: MigrationStatus = document(&stdout("module-migrate-status-all")).unwrap();
-        data.merge_migrations(all, &Target::All, &["Billing", "Checkout", "Loyalty"], 1);
+        data.merge_migrations(
+            all,
+            &Target::All,
+            "",
+            &["Billing", "Checkout", "Loyalty"],
+            1,
+        );
         let checkout = &data.migrations["Checkout"];
         assert_eq!(
             checkout.waiting,
@@ -554,7 +589,7 @@ mod tests {
 
         // A read of two modules keeps the third, and says there is no table.
         let two: MigrationStatus = document(&stdout("module-migrate-status-no-table")).unwrap();
-        data.merge_migrations(two, &Target::Module("Checkout".into()), &[], 2);
+        data.merge_migrations(two, &Target::Module("Checkout".into()), "", &[], 2);
         assert_eq!(data.migration_table, Some(false));
         assert_eq!(data.migrations["Checkout"].ran, []);
         assert_eq!(data.migrations["Checkout"].read_ms, 2);
@@ -565,8 +600,14 @@ mod tests {
             modules: Vec::new(),
             migration_table: true,
         };
-        data.merge_migrations(none, &Target::All, &["Checkout", "Loyalty"], 3);
+        data.merge_migrations(none.clone(), &Target::All, "", &["Checkout", "Loyalty"], 3);
         assert_eq!(data.migrations.keys().collect::<Vec<_>>(), ["Billing"]);
+
+        // The state is of one connection: a read of another replaces it all.
+        assert!(data.migrations_for("testing").is_none());
+        data.merge_migrations(none, &Target::Module("Checkout".into()), "testing", &[], 4);
+        assert!(data.migrations_for("").is_none());
+        assert_eq!(data.migrations_for(" testing").map(BTreeMap::len), Some(0));
 
         // A report of one module keeps the others.
         data.merge_translations(document(&stdout("module-lang-all-json")).unwrap());

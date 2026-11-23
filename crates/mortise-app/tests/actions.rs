@@ -685,6 +685,20 @@ fn the_migration_state_is_read_when_asked_and_again_after_a_migrate() {
     select(&mut harness, "Destructive");
     select(&mut harness, "Reset migrations");
     harness.get_by_label("orders, 1 table");
+    // The state is of the default connection: another one shows none and reads its own.
+    type_in(&mut harness, "Database connection", "testing");
+    harness.get_by_label("Not read for this connection.");
+    harness
+        .query_by_label_contains(
+            "migrate-status --no-interaction --ansi Checkout --database=testing --json",
+        )
+        .unwrap();
+    harness
+        .get_by_role_and_label(Role::TextInput, "Database connection")
+        .focus();
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::A);
+    harness.key_press(Key::Backspace);
+    harness.run_steps(3);
 
     // After a read, a migrate is followed by a read of the same module.
     select(&mut harness, "Migrate");

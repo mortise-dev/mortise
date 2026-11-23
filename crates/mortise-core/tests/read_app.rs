@@ -655,7 +655,7 @@ fn finds_what_breaks_a_rule_or_a_check() {
     // of Checkout: 2 keys of en are missing in fr.
     let mut package = PackageData::default();
     let state = document(&recorded("module-migrate-status-all")).unwrap();
-    package.merge_migrations(state, &Target::All, &[], 0);
+    package.merge_migrations(state, &Target::All, "", &[], 0);
     package.merge_translations(document(&recorded("module-lang-json")).unwrap());
     let options = ReadOptions {
         package,
