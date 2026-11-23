@@ -10,6 +10,7 @@ mod actions;
 mod apps;
 mod generate;
 mod keys;
+mod palette;
 mod runs;
 mod settings;
 
@@ -34,7 +35,7 @@ use crate::boundary::surface::SurfaceInputs;
 use crate::boundary::view::BoundaryState;
 use crate::generate::view::{GenerateAsk, GenerateInputs, GenerateRun, GenerateState, RunPlace};
 use crate::index::view::{self as index, IndexRuntime, IndexState, Selection};
-use crate::palette::view::{self as palette, Command, PaletteAction, PaletteState};
+use crate::palette::view::{self as palette_view, PaletteAction, PaletteState};
 use crate::runner::view::{self as runner_view, AppRuns, RunnerView};
 use crate::runtime::view::{Brief, RuntimeAction, RuntimeView};
 use crate::settings::view::{
@@ -500,104 +501,6 @@ impl MortiseApp {
         };
         if let Err(error) = self.settings.save(path) {
             self.toast = Some(Toast::failed(format!("{error}.")));
-        }
-    }
-
-    // --- Palette ---
-
-    fn open_palette(&mut self) {
-        self.palette = Some(PaletteState::default());
-        self.palette_scope = self.current.unwrap_or(0);
-    }
-
-    /// Runs a row of the palette, in the app the palette searched.
-    fn run(&mut self, command: Command) {
-        self.palette = None;
-        // A command that goes somewhere leaves Settings.
-        if !matches!(
-            command,
-            Command::Settings | Command::PhpSettings | Command::Theme(_) | Command::Runner
-        ) {
-            self.settings_open = None;
-        }
-        let scope = self.palette_scope;
-        // Commands about modules and findings act in the app the palette searched.
-        if matches!(
-            command,
-            Command::Module(_)
-                | Command::Surface(_)
-                | Command::AllModules
-                | Command::Findings
-                | Command::Finding { .. }
-                | Command::Action { .. }
-                | Command::Generate { .. }
-        ) {
-            if self.current != Some(scope) {
-                self.select_app(scope);
-            }
-            self.adding = None;
-        }
-        match command {
-            Command::Module(name) => {
-                if let Some(open) = self.apps.get_mut(scope) {
-                    open.selection = Selection::Module(name);
-                    self.reveal = true;
-                }
-            }
-            Command::Surface(name) => {
-                if let Some(open) = self.apps.get_mut(scope) {
-                    open.selection = Selection::Module(name);
-                    open.tab = Tab::Boundary;
-                    open.boundary.surface_view = true;
-                    self.reveal = true;
-                }
-            }
-            Command::AllModules => {
-                if let Some(open) = self.apps.get_mut(scope) {
-                    open.selection = Selection::All;
-                    open.tab = Tab::Summary;
-                    open.findings_open = false;
-                }
-            }
-            Command::Findings => {
-                if let Some(open) = self.apps.get_mut(scope) {
-                    open.selection = Selection::All;
-                    open.tab = Tab::Summary;
-                    open.findings_open = true;
-                    open.finding_row = 0;
-                }
-            }
-            Command::Finding { module, other } => {
-                if let Some(open) = self.apps.get_mut(scope) {
-                    open.selection = Selection::Module(module);
-                    match other {
-                        Some(other) => {
-                            open.tab = Tab::Boundary;
-                            open.boundary.surface_view = false;
-                            open.boundary.other = Some(other);
-                            open.boundary.file = 0;
-                        }
-                        None => open.tab = Tab::Summary,
-                    }
-                    self.reveal = true;
-                }
-            }
-            Command::Action { module, action } => {
-                if self.current != Some(scope) {
-                    self.select_app(scope);
-                }
-                self.open_action(module, action);
-            }
-            Command::Generate { module, generator } => self.open_generate(module, &generator),
-            Command::App(index) => self.select_app(index),
-            Command::AddApp => self.adding = Some(AddPanel::empty()),
-            Command::Settings => self.open_settings(Section::Apps),
-            Command::PhpSettings => self.open_settings(Section::Php),
-            Command::Runner => self.runner.toggle(),
-            Command::Theme(theme) => {
-                self.settings.general.theme = theme;
-                self.save();
-            }
         }
     }
 
@@ -1183,7 +1086,7 @@ impl eframe::App for MortiseApp {
                 (Some(open), Some(app)) => open.catalog.in_use(&app.package),
                 _ => Catalog::v13_3(),
             };
-            let source = palette::Source {
+            let source = palette_view::Source {
                 scope: snapshot.as_deref().map(|app| (scope, app)),
                 apps: &names,
                 recent,
@@ -1199,7 +1102,7 @@ impl eframe::App for MortiseApp {
             let scope_name = names
                 .get(scope)
                 .map_or(strings::NO_APP, |(name, _)| name.as_str());
-            palette_action = palette::palette(ui, pal, palette, &source, scope_name);
+            palette_action = palette_view::palette(ui, pal, palette, &source, scope_name);
         }
         match palette_action {
             Some(PaletteAction::Close) => self.palette = None,
