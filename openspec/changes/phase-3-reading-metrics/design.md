@@ -101,7 +101,7 @@ series is the difference between neighbouring kept reads: a point every 15 s in 
 Rejected:
 
 - Keep every read for 24 hours, as section 4 of the plan words it. 517 MB for the 60 module case.
-  **This design differs from that sentence of the plan. The lead confirms it.**
+  **This design differs from that sentence of the plan. The lead confirmed it on 23 November 2026.**
 - Keep totals per module only. Milestone 21 needs figures per route and would need a second store.
 - Keep differences per read. A figure over 24 hours would sum 520 rows, and thinning would have to
   add rows together.
@@ -114,7 +114,8 @@ Rejected:
 The store keeps, per subject, the counters of the last read that held it (the base).
 `MetricsStore::push(at, reading)` applies these rules, in this order:
 
-1. A reading whose `bounds` differ from the kept ones empties the store first.
+1. A reading whose `bounds` differ from the kept ones empties the store first. A reading with no
+   request histogram has no `bounds`; it keeps the kept ones and empties nothing.
 2. `at` not later than the newest kept read: the reading is dropped.
 3. **First read of a run.** A run starts with the first read, and with a read more than 3 paces (45 s)
    after the one before it. Every base is set. Nothing is added. `covered` does not grow.

@@ -16,7 +16,7 @@ and `cargo test --workspace`.
 
 - [ ] 2.1 Create `metrics/mod.rs` with the doc comment and the `sample` line of `design.md`, and the `mod metrics;` line in `lib.rs`, as in 1.1. Verify as 1.1
 - [ ] 2.2 Write `metrics/sample.rs`: `Subject`, `Cell`, `Reading`, `Change` and `MetricsStore` with `new`, `push`, `len` and `change`, as D1 and D2 say. Tests build `Reading`s by hand
-- [ ] 2.3 Test the rules of D2, one test per rule: the first read gives no change; 100, 3, 5 adds 0 then 2 and no figure is negative; a subject that appears in a run counts from zero, with its errors; a missing subject keeps its totals and its base; a read 46 s after the last starts a new run and one 30 s after does not; a rate divides by the covered time; other bounds empty the store. Verify with `cargo test -p mortise-core metrics::sample`
+- [ ] 2.3 Test the rules of D2, one test per rule: the first read gives no change; 100, 3, 5 adds 0 then 2 and no figure is negative; a subject that appears in a run counts from zero, with its errors; a missing subject keeps its totals and its base; a read 46 s after the last starts a new run and one 30 s after does not; a rate divides by the covered time; other bounds empty the store, and a reading with no bounds does not. Verify with `cargo test -p mortise-core metrics::sample`
 - [ ] 2.4 Test the window with times as parameters: 7,000 pushes 15 s apart keep at most 520 reads and the number does not grow after push 5,760; the change over 24 hours equals the sum of what was pushed in that span; a subject that stopped changing 24 hours ago is dropped. The test takes under a second. Verify with the same command
 
 ## 3. The client (20.5, Opus)
