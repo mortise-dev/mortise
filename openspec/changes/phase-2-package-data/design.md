@@ -353,8 +353,11 @@ accessible name and a 24 px target (`tests/accessibility.rs`).
   keeps its modules sorted by name.
 - `AppRuns::ended()` gives the end, the mixed output and the standard output lines.
 - The P3 line is 48552 bytes, under `KEEP`, so the line limits stay as they are.
-- The app's `read_options` passes an empty `PackageData` for now. The tasks of 4 keep the app's
-  data there, so that a change of settings does not drop it.
+- `OpenApp` keeps the app's `PackageData` and passes it to every read (`set_package`), so a change of
+  settings does not drop it.
+- The app's reads: `OpenApp::reading` holds at most one `PackageRead { read, label, purpose: ReadFor }`,
+  polled each frame; `start_read` starts one and `read_ended` takes its end (a start error ends it at
+  once). `OpenApp::busy()` gives the label of a run or a read; every run button uses it.
 
 ## Risks / Trade-offs
 
