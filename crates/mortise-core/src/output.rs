@@ -149,8 +149,9 @@ pub fn generated_files(lines: &[String], force: bool) -> Vec<GeneratedFile> {
 
 /// The files of a generator run from its document (P5), in write order. The folder
 /// that `module:make --force` deletes is not a file. A path is made relative to the
-/// app folder `root`, as the output lines print it; a path outside stays as printed.
-pub fn reported_files(report: &GeneratorReport, root: &Path) -> Vec<GeneratedFile> {
+/// app folder `root`, as the output lines print it, through [`app_relative`] with the
+/// modules folder `modules`; a path it cannot place stays as printed.
+pub fn reported_files(report: &GeneratorReport, root: &Path, modules: &str) -> Vec<GeneratedFile> {
     report
         .files
         .iter()
@@ -162,17 +163,22 @@ pub fn reported_files(report: &GeneratorReport, root: &Path) -> Vec<GeneratedFil
                 FileResult::Failed => FileOutcome::Failed,
                 FileResult::Deleted => return None,
             };
-            let path = app_relative(root, &file.path).unwrap_or_else(|| file.path.clone());
+            let path = app_relative(root, modules, &file.path).unwrap_or_else(|| file.path.clone());
             Some(GeneratedFile { path, outcome })
         })
         .collect()
 }
 
 /// A path the package printed, relative to the app folder `root` with `/` between its
-/// parts, or `None` when it is outside. The package prints absolute paths with `/` on
-/// every platform, from the real folder of the app, so `root` is compared as given and
-/// with its links resolved.
-pub fn app_relative(root: &Path, printed: &str) -> Option<String> {
+/// parts, or `None` when Mortise cannot place it. The package prints absolute paths
+/// with `/` on every platform, from the real folder of the app, so `root` is compared
+/// as given and with its links resolved.
+///
+/// PHP in a container (Sail, Docker) prints the folder of the container, such as
+/// `/var/www/html/Modules/Billing/app/Models/Invoice.php`. A path outside `root` is
+/// then read from its first part `/<modules>/<Module>/` on, where `modules` is the
+/// modules folder relative to the app (`Modules`): `Modules/Billing/app/Models/Invoice.php`.
+pub fn app_relative(root: &Path, modules: &str, printed: &str) -> Option<String> {
     let printed = printed.replace('\\', "/");
     [Some(root.to_path_buf()), root.canonicalize().ok()]
         .into_iter()
@@ -184,6 +190,22 @@ pub fn app_relative(root: &Path, printed: &str) -> Option<String> {
             let rest = printed.strip_prefix(root.trim_end_matches('/'))?;
             let rest = rest.strip_prefix('/')?;
             (!rest.is_empty()).then(|| rest.to_owned())
+        })
+        .or_else(|| from_modules(modules, &printed))
+}
+
+/// The part of `printed` from its first `/<modules>/<Module>/` on, when a file follows.
+fn from_modules(modules: &str, printed: &str) -> Option<String> {
+    let modules = modules.trim_matches('/');
+    if modules.is_empty() {
+        return None;
+    }
+    printed
+        .match_indices(&format!("/{modules}/"))
+        .find_map(|(at, _)| {
+            let rest = &printed[at + 1..];
+            let (module, file) = rest[modules.len() + 1..].split_once('/')?;
+            (!module.is_empty() && !file.is_empty()).then(|| rest.to_owned())
         })
 }
 
@@ -409,7 +431,7 @@ mod tests {
         let root = Path::new("/tmp/scratch-app");
         let read = |name: &str| {
             let report: GeneratorReport = crate::package::document(&recording(name)).unwrap();
-            reported_files(&report, root)
+            reported_files(&report, root, "Modules")
                 .into_iter()
                 .map(|file| (file.path, file.outcome))
                 .collect::<Vec<_>>()
@@ -437,9 +459,27 @@ mod tests {
             )
         );
         assert_eq!(
-            app_relative(Path::new("/tmp/other"), "/tmp/scratch-app/x.php"),
+            app_relative(Path::new("/tmp/other"), "Modules", "/tmp/scratch-app/x.php"),
             None
         );
+        // PHP in a container prints the container's folder: the path is read from
+        // the modules folder of the app's layout on.
+        let container = |modules: &str, printed: &str| {
+            app_relative(Path::new("/Users/me/shop"), modules, printed)
+        };
+        assert_eq!(
+            container(
+                "Modules",
+                "/var/www/html/Modules/Billing/app/Models/Invoice.php"
+            )
+            .as_deref(),
+            Some("Modules/Billing/app/Models/Invoice.php")
+        );
+        assert_eq!(
+            container("src/Domains", "/app/src/Domains/Billing/Invoice.php").as_deref(),
+            Some("src/Domains/Billing/Invoice.php")
+        );
+        assert_eq!(container("Modules", "/var/www/html/Modules/x.php"), None);
     }
 
     #[test]

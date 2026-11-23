@@ -433,6 +433,10 @@ accessible name and a 24 px target (`tests/accessibility.rs`).
 - S9.3 never takes `--factory` out: the model's stub renders `HasFactory` from it. A factory that
   exists keeps its flag and reads "exists"; the run leaves it, as the model's calls go on after one
   fails (`ModelMakeCommand` at 13.4.0). The button counts only the files the run writes.
+- `app_relative(root, modules, printed)` also places a path of a container (Sail, Docker): outside the
+  app folder, the path is read from its first `/<modules>/<Module>/` on, with `modules` the modules
+  folder of the layout. A result offers no Open for a path it still cannot place and that does not
+  exist on this computer.
 
 ## Risks / Trade-offs
 

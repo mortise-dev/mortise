@@ -1783,9 +1783,14 @@ impl MortiseApp {
         let answer = json.then(|| {
             mortise_core::whole_document::<mortise_core::GeneratorReport>(stdout, stdout_cut)
         });
+        // The modules folder of the app's layout places a path of a container (Sail).
+        let modules = self.snapshot(index).map_or_else(
+            || "Modules".to_owned(),
+            |app| app.path_shown(&app.layout.modules_dir),
+        );
         let (files, autoload_failed, fallback) = match answer {
             Some(Ok(report)) => (
-                mortise_core::reported_files(&report, &root),
+                mortise_core::reported_files(&report, &root, &modules),
                 report.autoload_failed(),
                 None,
             ),

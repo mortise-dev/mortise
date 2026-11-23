@@ -1843,7 +1843,8 @@ struct FilesShown {
 /// under no folder.
 fn placed(app: &AppSnapshot, module: Option<&Module>, printed: &str) -> (String, String) {
     let outside = (String::new(), printed.to_owned());
-    let Some(relative) = app_relative(&app.root, printed) else {
+    let modules_dir = app.path_shown(&app.layout.modules_dir);
+    let Some(relative) = app_relative(&app.root, &modules_dir, printed) else {
         return outside;
     };
     if let Some(module) = module {
@@ -2319,7 +2320,7 @@ fn result_view(
             format!("{shown}, {state_word}")
         };
         draw::announce(ui, text, Role::Label, &said);
-        if ok {
+        if ok && openable(app, &file.path) {
             let open_said = strings::open_path(&shown);
             let open = Button {
                 label: strings::OPEN,
@@ -2341,6 +2342,15 @@ fn result_view(
                     pal.ink_2,
                 );
             }
+        } else if ok {
+            draw::paint_text(
+                ui,
+                pos2(right, mid),
+                Align2::RIGHT_CENTER,
+                state_word,
+                ty::SECONDARY,
+                pal.ink_2,
+            );
         } else {
             draw::paint_text(
                 ui,
@@ -2376,7 +2386,11 @@ fn result_view(
     let y = y + 12.0;
     let mut x = min.x;
     if all_done {
-        if let Some(first) = result.written().next() {
+        if let Some(first) = result
+            .written()
+            .next()
+            .filter(|first| openable(app, &first.path))
+        {
             let name = file_name(&first.path);
             let label = strings::open_file(name);
             let open = Button {
@@ -2416,6 +2430,7 @@ fn result_view(
     };
     let words = replace_words(inputs.catalog, &result.args, &first_left.path, &app.package);
     let name = file_name(&first_left.path);
+    let mut bottom = y - 12.0;
     if let Some(words) = words {
         let label = strings::replace_file(name);
         let replace = Button {
@@ -2425,6 +2440,7 @@ fn result_view(
         };
         let response = replace.show(ui, pal, pos2(x, y), inputs.keyboard);
         x = response.rect.right() + 8.0;
+        bottom = response.rect.bottom();
         if response.clicked() {
             asked = Some(BoundaryAction::Generate(GenerateAsk::Replace {
                 file: name.to_owned(),
@@ -2436,6 +2452,9 @@ fn result_view(
             }));
         }
     }
+    if !openable(app, &first_left.path) {
+        return (bottom, asked);
+    }
     let existing = Button {
         label: strings::OPEN_THE_EXISTING_FILE,
         ..Default::default()
@@ -2445,6 +2464,14 @@ fn result_view(
         asked = Some(open_file_asked(app, &first_left.path));
     }
     (response.rect.bottom(), asked)
+}
+
+/// True when a file of a result opens on this computer: a path under the app folder,
+/// or another path that exists. PHP in a container prints its own folders, and a path
+/// that `app_relative` could not place may not exist here.
+fn openable(app: &AppSnapshot, printed: &str) -> bool {
+    let placed = Path::new(printed).is_relative() && !printed.starts_with(['/', '\\']);
+    placed || file_path(&app.root, printed).exists()
 }
 
 /// Opens a file of a result in the editor, through the code that opens a module.
