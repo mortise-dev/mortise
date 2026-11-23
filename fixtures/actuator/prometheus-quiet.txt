@@ -1,0 +1,25 @@
+# HELP laravel_db_migrations_pending Migrations that have not run yet.
+# TYPE laravel_db_migrations_pending gauge
+laravel_db_migrations_pending{otel_scope_name="nwidart/laravel-metrics"} 0
+# HELP laravel_info Laravel and PHP versions of the process that exports the metrics.
+# TYPE laravel_info gauge
+laravel_info{laravel_version="13.43.0",otel_scope_name="nwidart/laravel-metrics",php_sapi="cli-server",process_runtime_name="php",process_runtime_version="8.4.27"} 1
+# HELP php_opcache_lookups_total OPcache lookups, by result.
+# TYPE php_opcache_lookups_total counter
+php_opcache_lookups_total{otel_scope_name="nwidart/laravel-metrics",php_opcache_lookup_result="hit"} 3
+php_opcache_lookups_total{otel_scope_name="nwidart/laravel-metrics",php_opcache_lookup_result="miss"} 607
+# HELP php_opcache_memory_usage_bytes OPcache shared memory, by state.
+# TYPE php_opcache_memory_usage_bytes gauge
+php_opcache_memory_usage_bytes{otel_scope_name="nwidart/laravel-metrics",php_opcache_memory_state="used"} 24945528
+php_opcache_memory_usage_bytes{otel_scope_name="nwidart/laravel-metrics",php_opcache_memory_state="free"} 109272200
+php_opcache_memory_usage_bytes{otel_scope_name="nwidart/laravel-metrics",php_opcache_memory_state="wasted"} 0
+# HELP php_opcache_scripts Scripts held in OPcache.
+# TYPE php_opcache_scripts gauge
+php_opcache_scripts{otel_scope_name="nwidart/laravel-metrics"} 607
+# HELP system_cpu_load_average_1m Average number of threads ready or running over the last minute.
+# TYPE system_cpu_load_average_1m gauge
+system_cpu_load_average_1m{otel_scope_name="nwidart/laravel-metrics"} 29.337890625
+# HELP system_filesystem_usage_bytes Space usage of the disk that holds the application.
+# TYPE system_filesystem_usage_bytes gauge
+system_filesystem_usage_bytes{otel_scope_name="nwidart/laravel-metrics",system_filesystem_state="free"} 750068523008
+system_filesystem_usage_bytes{otel_scope_name="nwidart/laravel-metrics",system_filesystem_state="used"} 1245149642752
