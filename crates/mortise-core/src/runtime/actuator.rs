@@ -1,8 +1,9 @@
-//! The runtime status of a running app, read through `nwidart/laravel-actuator` 1.0.0.
+//! The runtime status of a running app, read through `nwidart/laravel-actuator`.
 //!
-//! The base path is read for its list of links, then four endpoints: `health`, `info`,
-//! `mappings` and `scheduledtasks`. `env` is never requested, and no redirect is followed. What the app answers is called Runtime; it is not
-//! mixed with Findings, which Mortise works out from files.
+//! The client asks for the actuator base path, `health`, `info`, `mappings`, `scheduledtasks` and
+//! `prometheus` only. It never asks for `env` and follows no redirect. The rule allows
+//! `prometheus`; this client does not ask for it yet. What the app answers is called Runtime; it is
+//! not mixed with Findings, which Mortise works out from files.
 
 use std::time::Duration;
 
