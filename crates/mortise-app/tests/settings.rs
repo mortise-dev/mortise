@@ -426,6 +426,9 @@ fn a_name_given_in_settings_is_the_name_everywhere() {
     assert_eq!(desk.saved().apps[0].name, "Shop");
 
     // The index, the rail and the title bar say the new name; the folder keeps its own.
+    // The first Escape leaves the field, the second closes Settings.
+    harness.key_press(Key::Escape);
+    harness.run();
     harness.key_press(Key::Escape);
     harness.run_steps(3);
     harness.get_by_role_and_label(Role::Heading, "Shop");
@@ -435,4 +438,26 @@ fn a_name_given_in_settings_is_the_name_everywhere() {
             .query_by_role_and_label(Role::Heading, "shop-api")
             .is_none()
     );
+
+    // Findings, Boundary and the palette say it too.
+    harness.key_press(Key::F);
+    harness.run();
+    harness.get_by_role_and_label(Role::Heading, "Findings in Shop");
+    harness.get_by_role_and_label(
+        Role::Row,
+        "Notifications is 39% covered. The limit for Shop is 50%.",
+    );
+    harness.key_press(Key::Escape);
+    harness.run();
+    harness.key_press(Key::Num2);
+    harness.run();
+    harness.get_by_role_and_label(Role::Heading, "Rules for Shop");
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::K);
+    harness.run_steps(3);
+    harness.get_by_label("Findings in Shop");
+    harness
+        .get_by_role_and_label(Role::TextInput, "Search or run a command")
+        .type_text("check");
+    harness.run_steps(3);
+    harness.get_by_label("Modules in Shop");
 }

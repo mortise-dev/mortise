@@ -698,7 +698,9 @@ impl Form<'_> {
             let selected = i == state.app;
             let response = ui.interact(row, apps_nav.id(i), apps_nav.sense(i));
             apps_nav.after(ui, i, &response);
-            response.widget_info(|| WidgetInfo::selected(Role::Row, true, selected, &app.name));
+            response.widget_info(|| {
+                WidgetInfo::selected(Role::Row, true, selected, app.display_name())
+            });
             if response.clicked() {
                 state.app = i;
             }
@@ -731,7 +733,7 @@ impl Form<'_> {
             );
             let name = draw::galley_elided(
                 ui,
-                &app.name,
+                app.display_name(),
                 ty::BODY.with_face(Face::Sans600),
                 pal.ink,
                 folder_x - 12.0 - (tile.right() + 8.0),
@@ -799,7 +801,7 @@ impl Form<'_> {
             };
             state.fields_of = Some((index, entry.clone()));
         }
-        let heading = settings.apps[index].name.clone();
+        let heading = settings.apps[index].display_name().to_owned();
         let heading_rect = draw::paint_text(
             ui,
             pos2(self.left, y),
@@ -995,7 +997,7 @@ impl Form<'_> {
         }
 
         // Removing an app: the folder and its files stay as they are.
-        let label = format!("Remove {} from Mortise", entry.name);
+        let label = format!("Remove {} from Mortise", entry.display_name());
         let remove = Button {
             label: &label,
             ..Default::default()
@@ -1032,7 +1034,7 @@ impl Form<'_> {
     ) -> (f32, bool) {
         let pal = self.pal;
         let mut changed = false;
-        let heading = strings::environments_of(&entry.name);
+        let heading = strings::environments_of(entry.display_name());
         let heading_rect = draw::paint_text(
             ui,
             pos2(self.left, y + 5.0),
@@ -1049,7 +1051,7 @@ impl Form<'_> {
             let text = draw::paragraph(
                 ui,
                 pos2(self.left, line + 9.0),
-                &strings::actuator_not_installed(&entry.name),
+                &strings::actuator_not_installed(entry.display_name()),
                 ty::BODY,
                 pal.ink_2,
                 self.width.min(560.0),
@@ -1092,7 +1094,7 @@ impl Form<'_> {
             let text = draw::paragraph(
                 ui,
                 pos2(self.left, y),
-                &strings::no_environment(&entry.name),
+                &strings::no_environment(entry.display_name()),
                 ty::BODY,
                 pal.ink_2,
                 self.width.min(560.0),

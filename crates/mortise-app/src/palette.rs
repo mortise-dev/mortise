@@ -98,7 +98,12 @@ pub fn entries(query: &str, source: &Source<'_>) -> Vec<Entry> {
         command,
     };
 
-    if let Some((_, app)) = source.scope {
+    if let Some((index, app)) = source.scope {
+        // The display name of the app, from the names of the rail.
+        let app_name = source
+            .apps
+            .get(index)
+            .map_or(app.name.as_str(), |(name, _)| name);
         let module_entry = |name: &str| {
             let module = app.module(name)?;
             let state = match (module.state, app.findings.state_of(name)) {
@@ -127,7 +132,7 @@ pub fn entries(query: &str, source: &Source<'_>) -> Vec<Entry> {
                     .collect(),
             );
 
-            let mut findings = entry(strings::findings_in(&app.name), "F", Command::Findings);
+            let mut findings = entry(strings::findings_in(app_name), "F", Command::Findings);
             findings.state = match (app.findings.problems(), app.findings.warnings()) {
                 (0, 0) => None,
                 (0, warnings) => Some((strings::warnings(warnings), false)),
@@ -149,7 +154,7 @@ pub fn entries(query: &str, source: &Source<'_>) -> Vec<Entry> {
                 let score = fuzzy(query, &format!("{} {}", module.name, module.code))?;
                 Some((score, module_entry(&module.name)?))
             });
-            add(&format!("Modules in {}", app.name), modules.collect());
+            add(&strings::modules_in(app_name), modules.collect());
 
             let findings = app.findings.list.iter().filter_map(|finding| {
                 let module = finding.module.clone()?;
@@ -171,7 +176,7 @@ pub fn entries(query: &str, source: &Source<'_>) -> Vec<Entry> {
                         ),
                         Some(of.clone()),
                     ),
-                    _ => (strings::finding(finding, app), None),
+                    _ => (strings::finding(finding, app, app_name), None),
                 };
                 let score = fuzzy(query, &label)?;
                 let place = if other.is_some() {

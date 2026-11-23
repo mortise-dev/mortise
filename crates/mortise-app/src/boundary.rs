@@ -68,6 +68,7 @@ pub fn boundary(
     pal: &Palette,
     body: Rect,
     app: &AppSnapshot,
+    name: &str,
     module: Option<&Module>,
     state: &mut BoundaryState,
     surface: &SurfaceInputs<'_>,
@@ -94,6 +95,7 @@ pub fn boundary(
                 let view = View {
                     pal,
                     app,
+                    name,
                     keyboard,
                     left: origin.x + 16.0,
                     width: width - 32.0,
@@ -148,6 +150,8 @@ pub fn boundary(
 struct View<'a> {
     pal: &'a Palette,
     app: &'a AppSnapshot,
+    /// The display name of the app.
+    name: &'a str,
     keyboard: bool,
     /// The left edge of the content and its width, inside the 16 px padding.
     left: f32,
@@ -843,7 +847,7 @@ impl View<'_> {
         action: &mut Option<BoundaryAction>,
     ) -> f32 {
         if self.app.modules.is_empty() {
-            return self.paragraph(ui, y, &strings::no_modules(self.app));
+            return self.paragraph(ui, y, &strings::no_modules(self.app, self.name));
         }
         let two = self.width >= 720.0;
         let graph_w = if two {
@@ -1240,7 +1244,7 @@ impl View<'_> {
             ui,
             pal,
             rect,
-            &strings::rules_for(&self.app.name),
+            &strings::rules_for(self.name),
             strings::RULES_KEPT,
         );
         let x = rect.left() + 13.0;
@@ -1529,7 +1533,7 @@ impl View<'_> {
             );
         }
 
-        let note = strings::many_modules(&self.app.name, self.app.modules.len());
+        let note = strings::many_modules(self.name, self.app.modules.len());
         let note_bottom = self.note(ui, table.bottom() + 12.0, &note);
         // The rules, under the table.
         self.rules_box(

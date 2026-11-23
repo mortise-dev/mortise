@@ -224,7 +224,7 @@ pub fn read_error(error: &ReadError) -> String {
 }
 
 /// Not in the spec: a note for settings of `config/modules.php` that need PHP to evaluate.
-pub fn assumed(app: &AppSnapshot) -> Option<String> {
+pub fn assumed(app: &AppSnapshot, name: &str) -> Option<String> {
     let keys: Vec<&str> = app
         .layout
         .assumed
@@ -239,8 +239,7 @@ pub fn assumed(app: &AppSnapshot) -> Option<String> {
     let verb = if keys.len() == 1 { "needs" } else { "need" };
     let follows = if app.layout.assumed.contains(&LayoutKey::ModulesFolder) {
         format!(
-            " If the modules of {} are not in {}, this list is wrong.",
-            app.name,
+            " If the modules of {name} are not in {}, this list is wrong.",
             app.modules_dir_shown()
         )
     } else {
@@ -253,21 +252,17 @@ pub fn assumed(app: &AppSnapshot) -> Option<String> {
 }
 
 /// Not in the spec: why the on or off state is unknown.
-pub fn state_not_in_a_file(app: &AppSnapshot) -> String {
+pub fn state_not_in_a_file(app: &AppSnapshot, name: &str) -> String {
     format!(
-        "{} keeps the state of its modules with the activator \"{}\", not in a file. \
+        "{name} keeps the state of its modules with the activator \"{}\", not in a file. \
          Mortise reads files only, so it cannot tell which modules are on.",
-        app.name, app.layout.activator
+        app.layout.activator
     )
 }
 
 /// Not in the spec: an app whose modules folder holds no module.
-pub fn no_modules(app: &AppSnapshot) -> String {
-    format!(
-        "{} has no modules in {}.",
-        app.name,
-        app.modules_dir_shown()
-    )
+pub fn no_modules(app: &AppSnapshot, name: &str) -> String {
+    format!("{name} has no modules in {}.", app.modules_dir_shown())
 }
 
 pub const FILTER_MODULES: &str = "Filter modules";
@@ -700,6 +695,11 @@ pub fn findings_in(app: &str) -> String {
     format!("Findings in {app}")
 }
 
+/// `Modules in shop-api`: the group of modules in the palette.
+pub fn modules_in(app: &str) -> String {
+    format!("Modules in {app}")
+}
+
 /// `Show all 3 findings`
 pub fn show_all_findings(n: usize) -> String {
     if n == 1 {
@@ -750,7 +750,8 @@ fn list_of(names: &[String]) -> String {
 }
 
 /// The sentence of a finding, as in section 10 of the specification.
-pub fn finding(finding: &mortise_core::Finding, app: &AppSnapshot) -> String {
+/// `name` is the display name of the app.
+pub fn finding(finding: &mortise_core::Finding, app: &AppSnapshot, name: &str) -> String {
     use mortise_core::Detail;
     let module = finding.module.as_deref().unwrap_or_default();
     match &finding.detail {
@@ -807,10 +808,7 @@ pub fn finding(finding: &mortise_core::Finding, app: &AppSnapshot) -> String {
         }
         // `Notifications is 39% covered. The limit for shop-api is 50%.`
         Detail::LowCoverage { percent, limit } => {
-            format!(
-                "{module} is {percent}% covered. The limit for {} is {limit}%.",
-                app.name
-            )
+            format!("{module} is {percent}% covered. The limit for {name} is {limit}%.")
         }
     }
 }
@@ -868,7 +866,7 @@ fn short_class<'a>(class: &'a str, app: &AppSnapshot) -> &'a str {
 
 /// The findings of one module as clauses of one sentence. `own` is true on the
 /// module's own Summary: `2 files here, 4 files there` and the full class name.
-fn clauses(module: &str, app: &AppSnapshot, own: bool) -> Vec<String> {
+fn clauses(module: &str, app: &AppSnapshot, name: &str, own: bool) -> Vec<String> {
     use mortise_core::Detail;
     app.findings
         .of(module)
@@ -918,7 +916,7 @@ fn clauses(module: &str, app: &AppSnapshot, own: bool) -> Vec<String> {
                 }
             }
             _ => {
-                let sentence = finding(found, app);
+                let sentence = finding(found, app, name);
                 let mut letters = sentence.trim_end_matches('.').chars();
                 // A clause in the middle of a sentence starts small, unless it starts with a path.
                 match letters.next() {
@@ -951,7 +949,10 @@ fn sentence_of(clauses: &[String]) -> String {
 /// `Checkout` and ` has 2 problems. It and Shipping use each other (6 files), and 3 of its
 /// files read Billing\Models\Invoice directly.`
 /// Without a module that has a problem, the first finding, with its own severity.
-pub fn app_alert(app: &AppSnapshot) -> Option<(mortise_core::Severity, String, String)> {
+pub fn app_alert(
+    app: &AppSnapshot,
+    name: &str,
+) -> Option<(mortise_core::Severity, String, String)> {
     use mortise_core::{FindingState, Severity};
     let worst = app
         .modules
@@ -963,12 +964,12 @@ pub fn app_alert(app: &AppSnapshot) -> Option<(mortise_core::Severity, String, S
         .max_by(|a, b| a.0.cmp(&b.0).then_with(|| b.1.cmp(a.1)));
     let Some((count, module)) = worst else {
         let first = app.findings.list.first()?;
-        return Some((first.severity, String::new(), finding(first, app)));
+        return Some((first.severity, String::new(), finding(first, app, name)));
     };
     let rest = format!(
         " has {}. {}",
         problems(count),
-        sentence_of(&clauses(module, app, false))
+        sentence_of(&clauses(module, app, name, false))
     );
     Some((Severity::Problem, module.clone(), rest))
 }
@@ -978,20 +979,21 @@ pub fn app_alert(app: &AppSnapshot) -> Option<(mortise_core::Severity, String, S
 /// 3 files read Modules\Billing\Models\Invoice directly.`
 pub fn module_alert(
     app: &AppSnapshot,
+    name: &str,
     module: &str,
 ) -> Option<(mortise_core::Severity, String, String)> {
     use mortise_core::{FindingState, Severity};
     match app.findings.state_of(module) {
         FindingState::Problems(n) => {
             let head = format!("{}.", problems(n));
-            let rest = format!(" {}", sentence_of(&clauses(module, app, true)));
+            let rest = format!(" {}", sentence_of(&clauses(module, app, name, true)));
             Some((Severity::Problem, capitalised(&head), rest))
         }
         FindingState::Warning => {
             let sentences: Vec<String> = app
                 .findings
                 .of(module)
-                .map(|found| finding(found, app))
+                .map(|found| finding(found, app, name))
                 .collect();
             Some((Severity::Warning, String::new(), sentences.join(" ")))
         }
@@ -1100,7 +1102,7 @@ mod tests {
             },
         }];
         assert_eq!(
-            app_alert(&app),
+            app_alert(&app, &app.name),
             Some((
                 Severity::Problem,
                 String::new(),
