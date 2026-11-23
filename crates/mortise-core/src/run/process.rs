@@ -122,13 +122,7 @@ fn start(
 /// The command for `line` in `folder`, with both pipes and the `PATH` of [`child_path`].
 #[cfg(feature = "run")]
 fn prepare(line: &CommandLine, folder: &Path) -> Command {
-    // std leaves a relative program with `current_dir` to the platform, so it is made absolute.
-    let program = if line.program.starts_with("./") || line.program.starts_with(".\\") {
-        folder.join(&line.program).into_os_string()
-    } else {
-        OsString::from(&line.program)
-    };
-    let mut command = command(program);
+    let mut command = command(program_path(&line.program, folder));
     command
         .args(&line.args)
         .current_dir(folder)
@@ -139,6 +133,19 @@ fn prepare(line: &CommandLine, folder: &Path) -> Command {
         command.env("PATH", path);
     }
     command
+}
+
+/// The program to start for the word `program`. A relative path with a separator
+/// (`/`, or `\\` on Windows) is joined to `folder`: std leaves a relative program with
+/// `current_dir` to the platform. A bare name stays a lookup in `PATH`.
+#[cfg(feature = "run")]
+fn program_path(program: &str, folder: &Path) -> PathBuf {
+    let separators: &[char] = if cfg!(windows) { &['/', '\\'] } else { &['/'] };
+    if program.contains(separators) {
+        folder.join(program)
+    } else {
+        PathBuf::from(program)
+    }
 }
 
 /// The `PATH` of Mortise with the folders of [`extra_folders`] at the end.
@@ -206,6 +213,29 @@ fn read_lines(
 #[cfg(all(test, feature = "run"))]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_program_with_a_separator_starts_in_the_folder() {
+        let folder = Path::new("/code/shop-api");
+        assert_eq!(program_path("php", folder), PathBuf::from("php"));
+        assert_eq!(
+            program_path("./vendor/bin/sail", folder),
+            folder.join("./vendor/bin/sail")
+        );
+        assert_eq!(
+            program_path("vendor/bin/sail", folder),
+            folder.join("vendor/bin/sail")
+        );
+        let windows = program_path(r"vendor\bin\sail", folder);
+        if cfg!(windows) {
+            assert_eq!(windows, folder.join(r"vendor\bin\sail"));
+        } else {
+            assert_eq!(windows, PathBuf::from(r"vendor\bin\sail"));
+        }
+        let absolute = std::env::temp_dir().join("php");
+        let absolute = absolute.to_str().unwrap();
+        assert_eq!(program_path(absolute, folder), PathBuf::from(absolute));
+    }
 
     #[test]
     fn the_path_of_mortise_comes_first() {
