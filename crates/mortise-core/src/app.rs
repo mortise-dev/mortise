@@ -214,9 +214,10 @@ fn read_env(root: &Path) -> (Option<String>, Option<String>) {
     }
 }
 
-/// The value of one name in the text of a `.env` file.
+/// The value of one name in the text of a `.env` file. As in dotenv, a later line
+/// of the same name replaces an earlier one.
 fn env_value(env: &str, name: &str) -> Option<String> {
-    let value = env.lines().find_map(|line| {
+    let value = env.lines().rev().find_map(|line| {
         let line = line.trim_start();
         let line = line.strip_prefix("export ").unwrap_or(line);
         line.strip_prefix(name)?.trim_start().strip_prefix('=')
@@ -507,5 +508,9 @@ mod tests {
         assert_eq!(env_value("# APP_URL=http://old.test", "APP_URL"), None);
         assert_eq!(env_value("APP_ENV=local", "APP_URL"), None);
         assert_eq!(env_value(env, "APP_ENV").as_deref(), Some("production"));
+        assert_eq!(
+            env_value("APP_URL=http://a.test\nAPP_URL=http://b.test", "APP_URL").as_deref(),
+            Some("http://b.test")
+        );
     }
 }
