@@ -203,7 +203,7 @@ for Composer. It catches a change in the package's output before a user does.
 
 ## 8. Milestone 17: package by feature
 
-Sections 1 to 7 end at 7, so this section is 8. Milestone 17 is one OpenSpec change,
+Milestone 17 is one OpenSpec change,
 `phase-2-package-by-feature`, merged through three pull requests. It moves code and changes no behaviour.
 Nothing a user sees changes.
 
@@ -217,7 +217,7 @@ desktop app of this size.
   `catalog` and `package`, and `catalog/cache.rs`, `run/recent.rs` with `run::history`.
 - `catalog/` and `output.rs` each held two features, Actions and Generate.
 - `mortise-app` was by layer: `*_view.rs` for screens, `draw.rs`, `dialog.rs` and `toast.rs` for components,
-  one `strings.rs` of 3,106 lines, and one `app.rs` of 3,396 lines that wired every feature.
+  one `strings.rs` of 3,385 lines, and one `app.rs` of 3,912 lines that wired every feature.
 - Three helpers sat in the wrong module (`summary::alert_box`, `workspace::empty_state`, `app::Selection`),
   and `BoundaryAction` was what every tab returns.
 - CI never built the core with `--no-default-features`, so a feature gate in the wrong place went unseen.
