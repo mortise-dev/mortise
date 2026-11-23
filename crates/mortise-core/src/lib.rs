@@ -5,6 +5,7 @@
 //! [`read_app`], which turns a folder into an [`AppSnapshot`]: plain data that an
 //! interface, a command line tool or a service can show.
 
+mod actions;
 mod app;
 mod boundary;
 mod catalog;
@@ -24,6 +25,9 @@ mod surface;
 #[cfg(feature = "testing")]
 pub mod testing;
 
+pub use actions::plan::{
+    Action, Ask, Context, OptionSet, Options, Plan, asks_again, plan, refuses, typed_name_matches,
+};
 #[cfg(feature = "watch")]
 pub use app::live::{LiveApp, LiveState};
 pub use app::{
@@ -35,9 +39,8 @@ pub use boundary::rules::{RULES_FILE, Rules, RulesError, RulesSource};
 #[cfg(feature = "run")]
 pub use catalog::cache as catalog_cache;
 pub use catalog::{
-    Action, Argument, Ask, Catalog, Context, Filled, Generator, GeneratorOption, Group,
-    MODULE_MAKE, NameRule, OptionSet, Options, Plan, asks_again, class_name_ok, model_flag_of,
-    module_name_ok, plan, refuses, replace_words, shipped_mark, typed_name_matches,
+    Argument, Catalog, Filled, Generator, GeneratorOption, Group, MODULE_MAKE, NameRule,
+    class_name_ok, model_flag_of, module_name_ok, replace_words, shipped_mark,
 };
 pub use editor::{Editor, EditorError, editor_arguments, open_in_editor};
 pub use findings::{
