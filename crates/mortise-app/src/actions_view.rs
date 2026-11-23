@@ -691,7 +691,7 @@ fn panel(
     // The migration state and its read, on a 13.4 app (design D7).
     let mut state_asked = None;
     if gives_data(&app.package) {
-        let pretend = action.options(target).pretend && state.options.pretend;
+        let pretend = action.options(target, true).pretend && state.options.pretend;
         let at = pos2(min.x, y + 12.0);
         let shown = StateShown {
             app,
