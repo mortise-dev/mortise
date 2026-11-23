@@ -895,7 +895,7 @@ impl View<'_> {
             .iter()
             .map(|module| module.name.as_str())
             .collect();
-        let layout = columns(&names, &self.app.links, &self.app.cycles);
+        let layout = columns(&names, &self.app.links);
         let tallest = layout.iter().map(Vec::len).max().unwrap_or(1) as f32;
         let (node_w, node_h, row_gap) = (
             132.0_f32.min((width - 44.0) / layout.len() as f32 - 24.0),
@@ -1066,7 +1066,7 @@ impl View<'_> {
         let rules = &self.app.rules;
         let mut rows = Vec::new();
         if rules.no_circular_use {
-            for cycle in self.app.cycles.iter().filter(|cycle| !cycle.off) {
+            for cycle in &self.app.cycles {
                 let files = cycle.files.iter().map(|(_, files)| files).sum();
                 let other = self
                     .app

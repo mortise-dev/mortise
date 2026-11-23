@@ -57,7 +57,7 @@ pub struct AppSnapshot {
     /// Which module uses which, by the name of the module that uses and then of the
     /// one that is used.
     pub links: Vec<Link>,
-    /// The groups of modules that use each other.
+    /// The groups of modules that are on and use each other.
     pub cycles: Vec<Cycle>,
     /// The boundary rules the links were checked against.
     pub rules: Rules,
@@ -132,12 +132,11 @@ impl AppSnapshot {
     }
 
     /// The modules that carry a circle `name` is in without carrying it, by name. Empty
-    /// while "No circular use" is off, because then no circle is a finding. A circle
-    /// through a module that is off is left out for the same reason.
+    /// while "No circular use" is off, because then no circle is a finding.
     pub fn circles_counted_elsewhere<'a>(&'a self, name: &str) -> Vec<&'a str> {
         let mut carriers: Vec<&str> = Vec::new();
         if self.rules.no_circular_use {
-            for cycle in self.cycles.iter().filter(|cycle| !cycle.off) {
+            for cycle in &self.cycles {
                 let member = cycle.modules.iter().any(|module| module == name);
                 if member && cycle.carrier != name && !carriers.contains(&cycle.carrier.as_str()) {
                     carriers.push(&cycle.carrier);

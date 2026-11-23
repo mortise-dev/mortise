@@ -62,7 +62,7 @@ impl Link {
     }
 }
 
-/// Modules that use each other, directly or through others.
+/// Modules that are on and use each other, directly or through others.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Cycle {
     /// The modules of the circle, by name.
@@ -72,8 +72,6 @@ pub struct Cycle {
     pub carrier: String,
     /// For each module of the circle, how many of its files use another module of it.
     pub files: Vec<(String, usize)>,
-    /// True when a module of the circle is off. The circle does not run, so it breaks no rule.
-    pub off: bool,
 }
 
 /// The module of the circle of `module` that `module` uses directly. Every member of a
@@ -162,16 +160,21 @@ pub(crate) fn build(modules: &[ModuleSource<'_>], rules: &Rules) -> (Vec<Link>, 
             .iter()
             .any(|module| module.name == name && module.on)
     };
-    // Owned, so that the links can be taken out of `found` below.
-    let circles: Vec<Vec<String>> = circles(&names, &edges)
+    // A module that is off does not run, so the circles are found among the modules
+    // that are on. Owned, so that the links can be taken out of `found` below.
+    let running: BTreeSet<(&str, &str)> = edges
+        .iter()
+        .copied()
+        .filter(|(from, to)| is_on(from) && is_on(to))
+        .collect();
+    let circles: Vec<Vec<String>> = circles(&names, &running)
         .into_iter()
         .map(|circle| circle.into_iter().map(str::to_owned).collect())
         .collect();
-    // Only a circle whose modules are all on runs.
     let circle_of = |name: &str| {
-        circles.iter().position(|circle| {
-            circle.iter().any(|member| member == name) && circle.iter().all(|member| is_on(member))
-        })
+        circles
+            .iter()
+            .position(|circle| circle.iter().any(|member| member == name))
     };
 
     let cycles = circles
@@ -198,7 +201,6 @@ pub(crate) fn build(modules: &[ModuleSource<'_>], rules: &Rules) -> (Vec<Link>, 
                 modules: files.iter().map(|(name, _)| name.clone()).collect(),
                 carrier,
                 files,
-                off: !circle.iter().all(|member| is_on(member)),
             }
         })
         .collect();
@@ -295,14 +297,20 @@ fn circles<'a>(names: &[&'a str], edges: &BTreeSet<(&'a str, &'a str)>) -> Vec<V
 }
 
 /// Places modules in columns from left to right: a module sits to the left of what
-/// it uses, and the modules of a circle share a column.
-pub fn columns(names: &[&str], links: &[Link], cycles: &[Cycle]) -> Vec<Vec<String>> {
+/// it uses, and the modules of a circle share a column. A circle through a module
+/// that is off counts here too.
+pub fn columns(names: &[&str], links: &[Link]) -> Vec<Vec<String>> {
+    let edges: BTreeSet<(&str, &str)> = links
+        .iter()
+        .map(|link| (link.from.as_str(), link.to.as_str()))
+        .collect();
+    let circles = circles(names, &edges);
     // A circle counts as one node.
     let group = |name: &str| -> String {
-        cycles
+        circles
             .iter()
-            .find(|cycle| cycle.modules.iter().any(|member| member == name))
-            .map_or_else(|| name.to_owned(), |cycle| cycle.modules[0].clone())
+            .find(|circle| circle.contains(&name))
+            .map_or_else(|| name.to_owned(), |circle| circle[0].to_owned())
     };
     let mut users: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     for link in links {
@@ -505,7 +513,6 @@ mod tests {
                 modules: vec!["Checkout".into(), "Shipping".into()],
                 carrier: "Checkout".into(),
                 files: vec![("Checkout".into(), 2), ("Shipping".into(), 4)],
-                off: false,
             }]
         );
         // With the rule off, a circle is not a problem, but it is still known.
@@ -548,33 +555,58 @@ mod tests {
         let mut modules = modules;
         modules[2].on = false;
         let (links, cycles) = build(&modules, &Rules::default());
-        assert!(cycles[0].off);
+        assert!(cycles.is_empty());
         assert!(links.iter().all(|link| !link.circular));
+
+        // A and B use each other, B and C too, and C is off: A and B still make a circle.
+        let a = [("a.php", vec![named(r"M\B\Contracts\X", 1)])];
+        let b = [
+            ("b.php", vec![named(r"M\A\Contracts\X", 1)]),
+            ("b2.php", vec![named(r"M\C\Contracts\X", 1)]),
+        ];
+        let c = [("c.php", vec![named(r"M\B\Contracts\X", 1)])];
+        let mut modules = [
+            source("A", r"M\A", &a),
+            source("B", r"M\B", &b),
+            source("C", r"M\C", &c),
+        ];
+        modules[2].on = false;
+        let (links, cycles) = build(&modules, &Rules::default());
+        assert_eq!(cycles.len(), 1);
+        assert_eq!(cycles[0].modules, ["A", "B"]);
+        let circular: Vec<_> = links
+            .iter()
+            .map(|link| (link.from.as_str(), link.to.as_str(), link.circular))
+            .collect();
+        assert_eq!(
+            circular,
+            [
+                ("A", "B", true),
+                ("B", "A", true),
+                ("B", "C", false),
+                ("C", "B", false)
+            ]
+        );
     }
 
     #[test]
     fn a_module_sits_left_of_what_it_uses_and_a_circle_shares_a_column() {
-        let link = |from: &str, to: &str, circular: bool| Link {
+        // The layout finds the circles itself: `circular` is not read.
+        let link = |from: &str, to: &str| Link {
             from: from.into(),
             to: to.into(),
             refs: Vec::new(),
-            circular,
+            circular: false,
         };
         let links = [
-            link("Notifications", "Checkout", false),
-            link("Checkout", "Shipping", true),
-            link("Shipping", "Checkout", true),
-            link("Checkout", "Billing", false),
-            link("Billing", "Users", false),
-            link("Inventory", "Catalog", false),
-            link("Checkout", "Catalog", false),
+            link("Notifications", "Checkout"),
+            link("Checkout", "Shipping"),
+            link("Shipping", "Checkout"),
+            link("Checkout", "Billing"),
+            link("Billing", "Users"),
+            link("Inventory", "Catalog"),
+            link("Checkout", "Catalog"),
         ];
-        let cycles = [Cycle {
-            modules: vec!["Checkout".into(), "Shipping".into()],
-            carrier: "Checkout".into(),
-            files: Vec::new(),
-            off: false,
-        }];
         let names = [
             "Billing",
             "Catalog",
@@ -586,7 +618,7 @@ mod tests {
             "Alone",
         ];
         assert_eq!(
-            columns(&names, &links, &cycles),
+            columns(&names, &links),
             [
                 vec!["Inventory", "Notifications", "Alone"],
                 vec!["Checkout", "Shipping"],
