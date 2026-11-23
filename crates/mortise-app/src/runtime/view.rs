@@ -596,7 +596,10 @@ pub fn runtime_box(
                 } else {
                     ty::BODY
                 };
-                // The parts of the value, from the right edge.
+                // The parts of the value, from the right edge. Text stops short of the
+                // name and ends with an ellipsis when it is longer, as a detail an app
+                // writes can be any length.
+                let name_end = left + draw::galley(ui, name, name_type, pal.ink).size().x + 16.0;
                 let mut x = right;
                 for part in parts.iter().rev() {
                     let part_rect = match part {
@@ -604,14 +607,16 @@ pub fn runtime_box(
                             if text.is_empty() {
                                 continue;
                             }
-                            draw::label(
+                            let room = (x - name_end).max(24.0);
+                            let galley = draw::galley_elided(ui, text, *ty, *color, room);
+                            let rect = draw::paint_galley(
                                 ui,
                                 pos2(x, line_mid),
                                 Align2::RIGHT_CENTER,
-                                text,
-                                *ty,
-                                *color,
-                            )
+                                galley,
+                            );
+                            draw::announce(ui, rect, Role::Label, text);
+                            rect
                         }
                         Part::State(brief) if brief.word.is_empty() => {
                             let at = Rect::from_min_size(
