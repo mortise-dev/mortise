@@ -7,6 +7,6 @@
   ],
   "made_with": "nwidart/laravel-modules 13.3.0, laravel/framework 13.43.0, PHP 8.4.27, macOS",
   "exit": 1,
-  "stdout": " Generating file Modules/Blog/app/Http/Controllers/PostController.php  0.66ms FAIL\n\n ERROR File : Modules/Blog/app/Http/Controllers/PostController.php already exists. \n\n",
+  "stdout": "  Generating file Modules/Blog/app/Http/Controllers/PostController.php \u001b[90m 0.53ms\u001b[39m \u001b[31;1mFAIL\u001b[39;22m\n\n  \u001b[37;41m ERROR \u001b[39;49m File : Modules/Blog/app/Http/Controllers/PostController.php already exists.  \n\n",
   "stderr": ""
 }

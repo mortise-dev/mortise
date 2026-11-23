@@ -6,6 +6,6 @@
   ],
   "made_with": "nwidart/laravel-modules 13.3.0, laravel/framework 13.43.0, PHP 8.4.27, macOS",
   "exit": 0,
-  "stdout": " Running Migration Blog Module .. \n\n INFO Nothing to migrate. \n\n Running Migration Shop Module .. \n\n INFO Running migrations. \n\n 2026_11_23_022648_create_items_table .. 1.72ms DONE\n\n",
+  "stdout": "  Running Migration \u001b[36;1mBlog\u001b[39;22m Module \u001b[90m..............................................\u001b[39m  \n\n  \u001b[37;44m INFO \u001b[39;49m Nothing to migrate.  \n\n  Running Migration \u001b[36;1mShop\u001b[39;22m Module \u001b[90m..............................................\u001b[39m  \n\n  \u001b[37;44m INFO \u001b[39;49m Running migrations.  \n\n  2026_11_23_022819_create_items_table \u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m 1.86ms\u001b[39m \u001b[32;1mDONE\u001b[39;22m\n\n",
   "stderr": ""
 }
