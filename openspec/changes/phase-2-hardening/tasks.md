@@ -6,9 +6,9 @@
 
 ## 2. Small fixes (16.9, 16.5, 16.8 sonnet, in parallel)
 
-- [ ] 2.1 (16.9) Change the dry run text everywhere (D1), rebuild `docs/spec`, mark S40 accepted. Verify no "change nothing" is left outside archives
-- [ ] 2.2 (16.5) Draw `⇂` in the drawer (D2). Verify with a test at the layer that owns it, and a deviation row
-- [ ] 2.3 (16.8) Show the batch refusal as "The command did not start" with its reason (D3). Verify with a unit test that runs on every platform, and a deviation row
+- [x] 2.1 (16.9) Change the dry run text everywhere (D1), rebuild `docs/spec`, mark S40 accepted. Verify no "change nothing" is left outside archives
+- [x] 2.2 (16.5) Draw `⇂` in the drawer (D2). Verify with a test at the layer that owns it, and a deviation row
+- [x] 2.3 (16.8) Show the batch refusal as "The command did not start" with its reason (D3). Verify with a unit test that runs on every platform, and a deviation row
 
 ## 3. Fixes (16.4, 16.6, 16.7, 16.12 opus, in parallel)
 
