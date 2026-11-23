@@ -1246,6 +1246,16 @@ impl View<'_> {
 
         let indent = size::CHECKBOX + 8.0;
         let hint_w = width - 26.0 - indent;
+        // The labels of the rules wrap at the right edge of the box, as the hints do.
+        let label_w = hint_w;
+        let labels: f32 = [
+            strings::RULE_NO_CIRCULAR,
+            strings::RULE_PUBLIC_SURFACE,
+            strings::RULE_FAIL_CI,
+        ]
+        .iter()
+        .map(|label| draw::checkbox_extra(ui, label_w, label))
+        .sum();
         let accepted = strings::accepted_for(0, self.app.modules.len());
         let hint = draw::galley_wrapped(ui, &accepted, ty::SECONDARY, pal.ink_2, hint_w);
         let ci_hint = draw::galley_wrapped(
@@ -1258,6 +1268,7 @@ impl View<'_> {
         let title = strings::rules_for(self.name);
         let height = 41.0
             + draw::box_head_extra(ui, width, &title, strings::RULES_KEPT)
+            + labels
             + 24.0
             + 4.0
             + 24.0
@@ -1272,40 +1283,46 @@ impl View<'_> {
         let mut y = draw::box_head(ui, pal, rect, &title, strings::RULES_KEPT);
         let x = rect.left() + 13.0;
 
-        if draw::checkbox(
+        let rule = |ui: &Ui, y: f32, label: &str, checked: bool, disabled: bool| {
+            draw::checkbox_in(
+                ui,
+                pal,
+                pos2(x, y),
+                label_w,
+                label,
+                checked,
+                disabled,
+                self.keyboard,
+            )
+        };
+        let row = rule(
             ui,
-            pal,
-            pos2(x, y),
+            y,
             strings::RULE_NO_CIRCULAR,
             rules.no_circular_use,
             false,
-            self.keyboard,
-        )
-        .clicked()
-        {
+        );
+        if row.clicked() {
             *action = Some(BoundaryAction::SetRules(Rules {
                 no_circular_use: !rules.no_circular_use,
                 ..rules.clone()
             }));
         }
-        y += 24.0 + 4.0;
-        if draw::checkbox(
+        y = row.rect.bottom() + 4.0;
+        let row = rule(
             ui,
-            pal,
-            pos2(x, y),
+            y,
             strings::RULE_PUBLIC_SURFACE,
             rules.public_surface_only,
             false,
-            self.keyboard,
-        )
-        .clicked()
-        {
+        );
+        if row.clicked() {
             *action = Some(BoundaryAction::SetRules(Rules {
                 public_surface_only: !rules.public_surface_only,
                 ..rules.clone()
             }));
         }
-        y += 24.0;
+        y = row.rect.bottom();
         let hint_rect = draw::paint_galley(ui, pos2(x + indent, y), Align2::LEFT_TOP, hint);
         draw::announce(ui, hint_rect, Role::Label, &accepted);
         y = hint_rect.bottom() + 6.0;
@@ -1337,16 +1354,9 @@ impl View<'_> {
         }
         y = field.bottom() + 8.0;
 
-        draw::checkbox(
-            ui,
-            pal,
-            pos2(x, y),
-            strings::RULE_FAIL_CI,
-            false,
-            true,
-            self.keyboard,
-        );
-        y += 24.0;
+        y = rule(ui, y, strings::RULE_FAIL_CI, false, true)
+            .rect
+            .bottom();
         let ci_rect = draw::paint_galley(ui, pos2(x + indent, y), Align2::LEFT_TOP, ci_hint);
         draw::announce(ui, ci_rect, Role::Label, strings::RULE_FAIL_CI_HINT);
         rect.bottom()

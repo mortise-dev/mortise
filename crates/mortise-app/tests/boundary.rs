@@ -394,6 +394,20 @@ fn the_graph_of_12_modules_gives_each_node_its_full_name() {
         .rect();
     let note = harness.get_by_label(strings::RULES_KEPT).rect();
     assert!(!title.intersects(note), "{title:?} {note:?}");
+    // The label of a rule wraps inside the box, whose right edge the folders field meets,
+    // and the hint under it moves down.
+    let rule = harness
+        .get_by_role_and_label(
+            Role::CheckBox,
+            "Other modules use only a module's public surface",
+        )
+        .rect();
+    let field = harness
+        .get_by_role_and_label(Role::TextInput, "Folders that count as public")
+        .rect();
+    let hint = harness.get_by_label_contains("Accepted for").rect();
+    assert!(rule.right() <= field.right(), "{rule:?} {field:?}");
+    assert!(rule.bottom() <= hint.top(), "{rule:?} {hint:?}");
 
     // And in full in the tooltip.
     let before = harness.get_all_by_label("Addresses").count();

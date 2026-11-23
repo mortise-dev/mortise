@@ -1307,15 +1307,43 @@ pub fn checkbox(
     disabled: bool,
     keyboard: bool,
 ) -> Response {
-    let text = galley(
+    checkbox_in(
         ui,
+        pal,
+        min,
+        f32::INFINITY,
         label,
-        ty::BODY,
-        if disabled { pal.ink_3 } else { pal.ink },
-    );
+        checked,
+        disabled,
+        keyboard,
+    )
+}
+
+/// A checkbox row whose label wraps at `width`. The row grows by the lines the label
+/// adds: see `checkbox_extra`.
+#[expect(clippy::too_many_arguments)]
+pub fn checkbox_in(
+    ui: &Ui,
+    pal: &Palette,
+    min: Pos2,
+    width: f32,
+    label: &str,
+    checked: bool,
+    disabled: bool,
+    keyboard: bool,
+) -> Response {
+    let color = if disabled { pal.ink_3 } else { pal.ink };
+    let text = galley_wrapped(ui, label, ty::BODY, color, width);
+    // The box and the first line of the label are centred in the first 24 px.
+    let first_mid = min.y + size::HIT_MIN / 2.0;
+    let line_h = text.size().y / text.rows.len().max(1) as f32;
+    let text_top = first_mid - line_h / 2.0;
     let row = Rect::from_min_size(
         min,
-        vec2(size::CHECKBOX + 8.0 + text.size().x, size::HIT_MIN),
+        vec2(
+            size::CHECKBOX + 8.0 + text.size().x,
+            size::HIT_MIN + text.size().y - line_h,
+        ),
     );
     let sense = if disabled {
         Sense::hover()
@@ -1326,20 +1354,26 @@ pub fn checkbox(
     response.widget_info(|| WidgetInfo::selected(Role::CheckBox, !disabled, checked, label));
 
     let mark = Rect::from_min_size(
-        pos2(row.left(), (row.center().y - size::CHECKBOX / 2.0).round()),
+        pos2(row.left(), (first_mid - size::CHECKBOX / 2.0).round()),
         Vec2::splat(size::CHECKBOX),
     );
     checkbox_box(ui, pal, mark, checked, disabled, response.hovered());
     paint_galley(
         ui,
-        pos2(mark.right() + 8.0, row.center().y),
-        Align2::LEFT_CENTER,
+        pos2(mark.right() + 8.0, text_top),
+        Align2::LEFT_TOP,
         text,
     );
     if keyboard && response.has_focus() {
         focus_ring(ui, pal, row, radius::STAMP);
     }
     response
+}
+
+/// How much higher than 24 px `checkbox_in` draws a row whose label wraps at `width`.
+pub fn checkbox_extra(ui: &Ui, width: f32, label: &str) -> f32 {
+    let text = galley_wrapped(ui, label, ty::BODY, Color32::PLACEHOLDER, width);
+    text.size().y - text.size().y / text.rows.len().max(1) as f32
 }
 
 /// Paints the 14 px box of a checkbox into `mark`, with its tick when checked.
