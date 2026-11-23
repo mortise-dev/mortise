@@ -1,7 +1,7 @@
 //! The actions and generators that ran last in an app, read from its history (S12.2 a).
 
 use crate::run::history::Entry;
-use crate::{Action, AppSnapshot, Catalog};
+use crate::{Action, AppSnapshot, Catalog, ModuleState, Target};
 
 /// What a run of the history was.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -29,7 +29,8 @@ pub struct RecentRun {
 /// The distinct actions and generators of `runs`, which hold the latest first: at most
 /// `limit`, the latest first. A run is the action of [`Action::from_artisan`] or a generator of
 /// `catalog`, by its first word, with the module of its words. A run that is neither,
-/// or whose module is not in `app`, is left out. Of two runs of the same action or
+/// whose module is not in `app`, or whose action the Actions tab does not list for the
+/// module as it is now (Turn off of a module that is off), is left out. Of two runs of the same action or
 /// generator on the same module, the latest stays.
 pub fn recent_runs(
     runs: &[Entry],
@@ -86,6 +87,19 @@ fn ran(args: &[String], catalog: &Catalog, app: &AppSnapshot) -> Option<Ran> {
         } else {
             Some(module(arguments.first())?)
         };
+        // The actions the Actions tab lists for the target: the everyday ones for the
+        // state of the module, and the destructive ones of the target.
+        let everyday = match &module {
+            Some(name) => {
+                let on = app.module(name)?.state != ModuleState::Off;
+                Action::for_module(on).contains(&action)
+            }
+            None => Action::for_all().contains(&action),
+        };
+        let target = module.clone().map_or(Target::All, Target::Module);
+        if !everyday && !Action::destructive(&target).contains(&action) {
+            return None;
+        }
         return Some(Ran::Action { action, module });
     }
     let generator = catalog.get(first)?;
@@ -133,6 +147,8 @@ mod tests {
             // Not an action or a generator, and a module the app does not have.
             run("about", 8),
             run("module:migrate Nowhere", 7),
+            // Checkout is on: the Actions tab offers Turn off, not Turn on.
+            run("module:enable Checkout", 7),
             // A generator without its module runs in the module the package uses.
             run("module:make-model Invoice", 6),
             // The same action on the same module: the latest stays.
@@ -171,7 +187,7 @@ mod tests {
         );
         // `module:make` has no module.
         assert_eq!(
-            recent_runs(&runs[7..], Catalog::v13_3(), &app, 3)[0].ran,
+            recent_runs(&runs[runs.len() - 1..], Catalog::v13_3(), &app, 3)[0].ran,
             Ran::Generator {
                 name: crate::MODULE_MAKE.into(),
                 module: None,
