@@ -91,7 +91,8 @@ pub use runtime::actuator::{
 pub use runtime::environment::{Credentials, Environment};
 #[cfg(feature = "actuator")]
 pub use runtime::live::{
-    LiveRuntime, Pace, RuntimeState, module_of, routes_by_module, routes_of, tasks_of,
+    LiveRuntime, Pace, RuntimeState, module_of, module_of_task, routes_by_module, routes_of,
+    tasks_of,
 };
 pub use runtime::secrets::{Kept, Secrets};
 pub use settings::{AppEntry, General, IndexRows, Motion, Settings, SettingsError, ThemeChoice};

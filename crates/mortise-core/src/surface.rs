@@ -13,11 +13,9 @@ use serde::{Deserialize, Serialize};
 use crate::app::AppSnapshot;
 use crate::modules::kind::{Kinds, TESTS};
 use crate::modules::layout::Layout;
-use crate::modules::module::{files_of, is_php};
+use crate::modules::module::{artisan_command, command_of, files_of, is_php};
 use crate::php::{DeclaredKind, analyze};
 
-/// The folder kind of the package's command generator.
-const COMMANDS: &str = "Commands";
 /// The folder kind of the package's event generator.
 const EVENTS: &str = "Events";
 
@@ -326,13 +324,11 @@ impl SurfaceScan {
             let folder = self.kinds.of(relative);
             let analysis = analyze(&std::fs::read(path).unwrap_or_default());
             for declared in analysis.declares {
-                // An older command has its name in `$name`.
-                let named = declared.name_property.filter(|_| folder == COMMANDS);
                 self.found.push(Found {
+                    command: command_of(&declared, &folder),
                     class: declared.class,
                     interface: declared.kind == DeclaredKind::Interface,
                     folder: folder.clone(),
-                    command: declared.command.or(named),
                 });
             }
         }
@@ -452,10 +448,10 @@ impl SurfaceScan {
             .filter_map(|found| found.command.as_ref())
             .map(|name| {
                 let mut entry = SurfaceEntry::new(SurfaceKind::Command, name.clone());
-                // A scheduled task runs the command when its target names it.
+                // A scheduled task runs the command when its target is `php artisan <name>`.
                 entry.schedule = scheduled
                     .iter()
-                    .find(|(target, _)| target.split_whitespace().any(|word| word == name))
+                    .find(|(target, _)| artisan_command(target) == Some(name.as_str()))
                     .map(|(_, schedule)| schedule.clone());
                 entry
             })

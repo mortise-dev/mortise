@@ -60,7 +60,7 @@ fn the_summary_shows_what_the_running_app_reports() {
     harness.get_by_label("22");
     harness.get_by_label("12");
 
-    // Scheduled tasks. Only a task whose target is a class has a module.
+    // Scheduled tasks. A task has the module of its class or of its artisan command.
     harness.get_by_role_and_label(Role::Heading, "Scheduled tasks");
     harness.get_by_label("5 tasks, read from local");
     harness.get_by_label("php artisan checkout:expire-carts");
@@ -68,8 +68,9 @@ fn the_summary_shows_what_the_running_app_reports() {
     harness.get_by_label("every 10 s");
     harness.get_by_label("no fixed time");
     assert_eq!(harness.get_all_by_label("tomorrow 06:00 UTC").count(), 2);
-    assert_eq!(harness.get_all_by_label("none").count(), 4);
+    assert_eq!(harness.get_all_by_label("none").count(), 3);
     harness.get_by_role_and_label(Role::Cell, "INV");
+    harness.get_by_role_and_label(Role::Cell, "BLN");
 
     // Mortise never asks for env, and asks for nothing else than these.
     for path in stub.asked() {
@@ -126,6 +127,15 @@ fn a_module_shows_its_routes_and_its_tasks() {
     harness.get_by_label("1 task");
     harness.get_by_label(r"Modules\Inventory\Jobs\SyncStock");
     harness.get_by_label("9 (6 API, 3 web)");
+
+    // Billing declares the command of a task: its Summary lists the task.
+    harness
+        .get_by_role_and_label(Role::ListBoxOption, "Billing")
+        .click();
+    harness.run_steps(3);
+    harness.get_by_role_and_label(Role::Heading, "Scheduled tasks");
+    harness.get_by_label("1 task");
+    harness.get_by_label("php artisan billing:send-invoices");
 }
 
 #[test]

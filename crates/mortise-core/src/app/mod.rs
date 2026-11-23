@@ -440,6 +440,7 @@ pub fn read_app_cached(
             files: module.scan.files,
             lines: module.scan.lines,
             kinds: module.scan.kinds,
+            commands: module.scan.commands.into_iter().collect(),
             tests: module.scan.tests,
             coverage: coverage_of(folder),
             churn: churn.get(folder).copied(),

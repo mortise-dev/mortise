@@ -97,6 +97,23 @@ fn reads_shop_api() {
             .all(|module| module.state == ModuleState::On)
     );
     assert_eq!(app.modules_on(), 7);
+    // Only Billing declares console commands: one by its signature, one by an attribute.
+    let commands: Vec<(&str, &[String])> = app
+        .modules
+        .iter()
+        .filter(|module| !module.commands.is_empty())
+        .map(|module| (module.name.as_str(), module.commands.as_slice()))
+        .collect();
+    assert_eq!(
+        commands,
+        [(
+            "Billing",
+            &[
+                "billing:retry-failed-payments".to_owned(),
+                "billing:send-invoices".to_owned()
+            ][..]
+        )]
+    );
     assert_eq!(app.files(), 91);
     assert_eq!(app.lines(), 861);
     assert_eq!(app.tests(), 18);

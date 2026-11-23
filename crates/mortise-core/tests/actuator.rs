@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 use mortise_core::testing::{Reply, StubActuator};
 use mortise_core::{
     Answer, Credentials, Environment, LiveRuntime, Pace, Runtime, RuntimeState, Status, ask,
-    ask_status, module_of, read_app, routes_by_module, routes_of, tasks_of,
+    ask_status, module_of, module_of_task, read_app, routes_by_module, routes_of, tasks_of,
 };
 
 fn local(stub: &StubActuator) -> Environment {
@@ -373,7 +373,7 @@ fn the_regular_check_asks_for_health_only() {
 }
 
 #[test]
-fn routes_and_tasks_are_given_to_the_module_of_their_class() {
+fn routes_and_tasks_are_given_to_their_module() {
     let app =
         read_app(&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/shop-api"))
             .unwrap();
@@ -405,11 +405,42 @@ fn routes_and_tasks_are_given_to_the_module_of_their_class() {
     assert_eq!(routes_of(&app, "Checkout", &routes).len(), 2);
     assert!(routes_of(&app, "Users", &routes).is_empty());
 
-    // A task belongs to a module only when its target is a class of the module.
-    let inventory = tasks_of(&app, "Inventory", &tasks);
-    assert_eq!(inventory.len(), 1);
-    assert_eq!(inventory[0].target, r"Modules\Inventory\Jobs\SyncStock");
-    assert!(tasks_of(&app, "Billing", &tasks).is_empty());
+    // A task belongs to the module of its class, or to the module that declares the
+    // command of `php artisan <name>`. A described task and a command no module
+    // declares belong to none.
+    let mut tasks = tasks;
+    let mut task = tasks[0].clone();
+    for target in [
+        "php artisan billing:send-invoices --force",
+        "php artisan queue:prune-batches",
+        "billing:send-invoices",
+        "php ./artisan billing:send-invoices",
+    ] {
+        task.target = target.to_owned();
+        tasks.push(task.clone());
+    }
+    let placed: Vec<(&str, Option<&str>)> = tasks
+        .iter()
+        .map(|task| {
+            (
+                task.target.as_str(),
+                module_of_task(&app, task).map(|module| module.name.as_str()),
+            )
+        })
+        .collect();
+    assert_eq!(
+        placed,
+        [
+            ("php artisan billing:send-invoices", Some("Billing")),
+            (r"Modules\Inventory\Jobs\SyncStock", Some("Inventory")),
+            ("Poll shipment tracking", None),
+            ("php artisan billing:send-invoices --force", Some("Billing")),
+            ("php artisan queue:prune-batches", None),
+            ("billing:send-invoices", None),
+            ("php ./artisan billing:send-invoices", Some("Billing")),
+        ]
+    );
+    assert_eq!(tasks_of(&app, "Billing", &tasks).len(), 3);
 }
 
 fn wait_for(
