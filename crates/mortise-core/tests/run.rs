@@ -6,8 +6,8 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 
 use mortise_core::{
-    Failure, MigrationStatus, PhpSettings, Read, Run, RunEnd, RunEvent, RunnerKind, Runs,
-    STOP_WAIT, StartError, TEST_LIMIT, TestOutcome, document, test_php,
+    DataError, Failure, MigrationStatus, PhpSettings, Read, Run, RunEnd, RunEvent, RunnerKind,
+    Runs, STOP_WAIT, StartError, TEST_LIMIT, TestOutcome, document, test_php,
 };
 
 /// A Custom runner whose first artisan argument is `case`, or `--version` with no case.
@@ -355,7 +355,7 @@ fn a_read_keeps_its_streams_apart_and_holds_the_app() {
         .expect("the read ended");
     assert!(matches!(end.end, RunEnd::Exited { code: Some(0), .. }));
     assert!(end.stderr.is_empty());
-    let status: MigrationStatus = document(&end.stdout).unwrap();
+    let status: MigrationStatus = end.document().unwrap();
     assert_eq!(status.modules[0].name, "Checkout");
 
     // A read that fails says why on its last line of standard error.
@@ -368,4 +368,12 @@ fn a_read_keeps_its_streams_apart_and_holds_the_app() {
         end.error_line().as_deref(),
         Some(r#"service "app" is not running"#)
     );
+
+    // A line cut at 64 KiB is not read, though its start parses as a document.
+    let mut read = Read::start(&runs, app(), &php(""), &words(&["long"])).unwrap();
+    let end = read
+        .wait(Instant::now() + Duration::from_secs(10))
+        .expect("the read ended");
+    assert!(document::<serde_json::Value>(&end.stdout).is_ok());
+    assert_eq!(end.document::<serde_json::Value>(), Err(DataError::Cut));
 }

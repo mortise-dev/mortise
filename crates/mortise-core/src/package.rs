@@ -41,6 +41,9 @@ pub enum DataError {
     Missing,
     /// The last line is not the document: serde's message.
     Malformed(String),
+    /// The last line was longer than a line may be and only its start was kept, or
+    /// the output passed its limit. A cut document is never read in part.
+    Cut,
 }
 
 /// The last non-empty line of standard output, read as `T`.
@@ -54,6 +57,15 @@ pub fn document<T: DeserializeOwned>(stdout: &[String]) -> Result<T, DataError> 
         .find(|line| !line.is_empty())
         .ok_or(DataError::Missing)?;
     serde_json::from_str(line).map_err(|error| DataError::Malformed(error.to_string()))
+}
+
+/// [`document`], unless the last non-empty line of `stdout` was cut (`cut`): then
+/// [`DataError::Cut`], since the start of a line may parse as a whole document.
+pub fn whole_document<T: DeserializeOwned>(stdout: &[String], cut: bool) -> Result<T, DataError> {
+    if cut {
+        return Err(DataError::Cut);
+    }
+    document(stdout)
 }
 
 /// The artisan words with `--json`, before a `--` when the words hold one.

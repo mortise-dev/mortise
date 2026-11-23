@@ -1130,7 +1130,8 @@ impl MortiseApp {
         }
         let root = self.settings.apps[index].root.clone();
         let read = match &end {
-            Ok(end) => mortise_core::document::<Catalog>(&end.stdout)
+            Ok(end) => end
+                .document::<Catalog>()
                 .map_err(|error| strings::no_document(end, &error)),
             Err(error) => Err(strings::start_reason(error)),
         };
@@ -1165,7 +1166,8 @@ impl MortiseApp {
             return;
         };
         let listed = match &end {
-            Ok(end) => mortise_core::document::<mortise_core::GeneratorReport>(&end.stdout)
+            Ok(end) => end
+                .document::<mortise_core::GeneratorReport>()
                 .map_err(|error| strings::no_document(end, &error)),
             Err(error) => Err(strings::start_reason(error)),
         };
@@ -1548,7 +1550,7 @@ impl MortiseApp {
     /// and Check translations get none when they succeed. A failure gets one only when
     /// the drawer does not show it.
     fn action_ended(&mut self, index: usize, act: &Act, modules_on: usize) {
-        let Some((end, lines, _)) = self.apps[index].runs.ended() else {
+        let Some(runner_view::RunOver { end, lines, .. }) = self.apps[index].runs.ended() else {
             return;
         };
         let object = match &act.target {
@@ -1756,7 +1758,13 @@ impl MortiseApp {
             form,
         } = generating;
         let root = self.settings.apps[index].root.clone();
-        let Some((end, lines, stdout)) = self.apps[index].runs.ended() else {
+        let Some(runner_view::RunOver {
+            end,
+            lines,
+            stdout,
+            stdout_cut,
+        }) = self.apps[index].runs.ended()
+        else {
             return;
         };
         let done = matches!(end, RunEnd::Exited { code: Some(0), .. });
@@ -1767,7 +1775,9 @@ impl MortiseApp {
             .iter()
             .take_while(|word| *word != "--")
             .any(|word| word == "--json");
-        let answer = json.then(|| mortise_core::document::<mortise_core::GeneratorReport>(stdout));
+        let answer = json.then(|| {
+            mortise_core::whole_document::<mortise_core::GeneratorReport>(stdout, stdout_cut)
+        });
         let (files, autoload_failed, fallback) = match answer {
             Some(Ok(report)) => (
                 mortise_core::reported_files(&report, &root),

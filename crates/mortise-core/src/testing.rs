@@ -264,7 +264,8 @@ struct Recording {
 /// `--version` prints the version with the number in green and ends with 0.
 /// `fail` prints the error of a stopped Docker service on stderr and ends with 1.
 /// `wait` sleeps for 60 seconds. `flood` prints 2 MiB of short lines on stderr and
-/// one line of 2 MiB with no newline on stdout, and ends with 0.
+/// one line of 2 MiB with no newline on stdout, and ends with 0. `long` prints one
+/// line of 70 000 bytes on stdout whose first 64 KiB read as the JSON document `{}`.
 /// `ask` asks for a name and ends with 1 when its input ends.
 /// `ticks` prints a line every 50 ms for 60 seconds, and ends when a write fails.
 /// `orphan` starts a copy of itself with `wait` on the same pipes, prints its pid
@@ -350,6 +351,10 @@ fn fake_case(words: &[String]) -> ExitCode {
             // A reader that stops reading would block one of these writes.
             let _ = std::io::stderr().lock().write_all(lines.as_bytes());
             let _ = std::io::stdout().lock().write_all(&vec![b'x'; SIZE]);
+            ExitCode::SUCCESS
+        }
+        Some("long") => {
+            println!("{{}}{}x", " ".repeat(70_000));
             ExitCode::SUCCESS
         }
         Some("wait") => {

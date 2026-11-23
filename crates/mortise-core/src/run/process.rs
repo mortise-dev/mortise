@@ -246,8 +246,13 @@ impl Run {
 #[cfg(feature = "run")]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RunEvent {
-    /// A line without its newline, with its escape codes.
-    Line { stream: Stream, text: String },
+    /// A line without its newline, with its escape codes. `cut` is true when the
+    /// line was longer than [`KEEP`] bytes and `text` holds only its start.
+    Line {
+        stream: Stream,
+        text: String,
+        cut: bool,
+    },
     /// The output passed [`OUTPUT_LIMIT`]; the later lines are dropped.
     Cut,
     /// The run is over. No thread of the run is left, and the app accepts a new start.
@@ -348,7 +353,7 @@ impl Owner {
         } = self;
         let mut sent = 0;
         let mut cut = false;
-        let mut forward = |stream, text: String| {
+        let mut forward = |stream, text: String, line_cut| {
             if cut {
                 return;
             }
@@ -357,7 +362,11 @@ impl Owner {
                 cut = true;
                 let _ = events.send(RunEvent::Cut);
             } else {
-                let _ = events.send(RunEvent::Line { stream, text });
+                let _ = events.send(RunEvent::Line {
+                    stream,
+                    text,
+                    cut: line_cut,
+                });
             }
         };
         // `stopped` is `Some` when Mortise ended it, with the limit when that did.
@@ -408,7 +417,7 @@ const QUEUE: usize = 1024;
 #[cfg(feature = "run")]
 struct Process {
     child: Child,
-    lines: Receiver<(Stream, String)>,
+    lines: Receiver<(Stream, String, bool)>,
     readers: Vec<JoinHandle<()>>,
 }
 
@@ -440,17 +449,17 @@ impl Process {
     /// Waits up to `wait` for a line, then gives `forward` the lines that arrived,
     /// at most [`QUEUE`], so the caller looks at the program again soon.
     /// It returns whether a line came.
-    fn read(&self, wait: Duration, forward: &mut impl FnMut(Stream, String)) -> bool {
+    fn read(&self, wait: Duration, forward: &mut impl FnMut(Stream, String, bool)) -> bool {
         match self.lines.recv_timeout(wait) {
-            Ok((stream, text)) => forward(stream, text),
+            Ok((stream, text, cut)) => forward(stream, text, cut),
             Err(RecvTimeoutError::Timeout) => return false,
             Err(RecvTimeoutError::Disconnected) => {
                 std::thread::sleep(wait);
                 return false;
             }
         }
-        for (stream, text) in self.lines.try_iter().take(QUEUE) {
-            forward(stream, text);
+        for (stream, text, cut) in self.lines.try_iter().take(QUEUE) {
+            forward(stream, text, cut);
         }
         true
     }
@@ -474,7 +483,7 @@ impl Process {
 
     /// Ends the process tree: it asks first, and kills after [`STOP_GRACE`].
     /// It reads the lines meanwhile. [`Process::finish`] then kills what is left.
-    fn stop(&mut self, forward: &mut impl FnMut(Stream, String)) {
+    fn stop(&mut self, forward: &mut impl FnMut(Stream, String, bool)) {
         self.terminate();
         let asked = Instant::now();
         while !self.exited().unwrap_or(true) {
@@ -557,7 +566,7 @@ impl Process {
         &mut self,
         stopped: bool,
         stop: &AtomicBool,
-        forward: &mut impl FnMut(Stream, String),
+        forward: &mut impl FnMut(Stream, String, bool),
     ) -> (Option<ExitStatus>, bool) {
         let stopping = || stop.load(Ordering::Relaxed);
         let mut done = self.wait_for_readers(GRACE, (!stopped).then_some(stop), forward);
@@ -583,8 +592,8 @@ impl Process {
             }
         }
         // A reader left behind may still send; the queue bounds what is taken.
-        for (stream, text) in self.lines.try_iter().take(QUEUE) {
-            forward(stream, text);
+        for (stream, text, cut) in self.lines.try_iter().take(QUEUE) {
+            forward(stream, text, cut);
         }
         (status, late)
     }
@@ -607,7 +616,7 @@ impl Process {
     fn stop_the_rest(
         &mut self,
         done: bool,
-        forward: &mut impl FnMut(Stream, String),
+        forward: &mut impl FnMut(Stream, String, bool),
     ) -> (Option<ExitStatus>, bool) {
         self.terminate();
         #[cfg(unix)]
@@ -643,7 +652,7 @@ impl Process {
         &self,
         wait: Duration,
         stop: Option<&AtomicBool>,
-        forward: &mut impl FnMut(Stream, String),
+        forward: &mut impl FnMut(Stream, String, bool),
     ) -> bool {
         let last = Instant::now() + DRAIN;
         let mut until = Instant::now() + wait;
@@ -691,7 +700,7 @@ pub(crate) fn capture(
     let mut stdout = Vec::new();
     let mut stderr = Vec::new();
     let mut kept = [0, 0];
-    let mut keep = |stream, text: String| {
+    let mut keep = |stream, text: String, _cut| {
         let (kept, lines) = match stream {
             Stream::Out => (&mut kept[0], &mut stdout),
             Stream::Err => (&mut kept[1], &mut stderr),
@@ -806,13 +815,13 @@ fn extra_folders(home: Option<&Path>) -> Vec<PathBuf> {
 }
 
 /// Reads `pipe` line by line on a thread of its own and sends each line with `stream`.
-/// A line is cut at [`KEEP`] bytes. The thread ends when the pipe closes or nobody
+/// A line is cut at [`KEEP`] bytes, and sent with `true` then. The thread ends when the pipe closes or nobody
 /// listens any more. `None` when there is no pipe.
 #[cfg(feature = "run")]
 fn read_lines(
     pipe: Option<impl Read + Send + 'static>,
     stream: Stream,
-    sender: SyncSender<(Stream, String)>,
+    sender: SyncSender<(Stream, String, bool)>,
 ) -> Option<JoinHandle<()>> {
     let pipe = pipe?;
     Some(std::thread::spawn(move || {
@@ -829,26 +838,29 @@ fn read_lines(
                 Ok(0) | Err(_) => return,
                 Ok(_) => {}
             }
+            let mut cut = false;
             if bytes.last() == Some(&b'\n') {
                 bytes.pop();
             } else if bytes.len() == KEEP {
                 // An error shows again at the next read, which ends the thread.
-                let _ = skip_line(&mut reader);
+                cut = skip_line(&mut reader).unwrap_or(true);
             }
             if bytes.last() == Some(&b'\r') {
                 bytes.pop();
             }
             let text = String::from_utf8_lossy(&bytes).into_owned();
-            if sender.send((stream, text)).is_err() {
+            if sender.send((stream, text, cut)).is_err() {
                 return;
             }
         }
     }))
 }
 
-/// Reads and drops the rest of a line, up to and with its newline.
+/// Reads and drops the rest of a line, up to and with its newline. True when it
+/// dropped a byte other than the line's end (`\r` and `\n`).
 #[cfg(feature = "run")]
-fn skip_line(reader: &mut impl BufRead) -> std::io::Result<()> {
+fn skip_line(reader: &mut impl BufRead) -> std::io::Result<bool> {
+    let mut dropped = false;
     loop {
         let buffer = match reader.fill_buf() {
             Ok(buffer) => buffer,
@@ -856,12 +868,15 @@ fn skip_line(reader: &mut impl BufRead) -> std::io::Result<()> {
             Err(error) => return Err(error),
         };
         if buffer.is_empty() {
-            return Ok(());
+            return Ok(dropped);
         }
-        match buffer.iter().position(|byte| *byte == b'\n') {
+        let end = buffer.iter().position(|byte| *byte == b'\n');
+        let rest = &buffer[..end.unwrap_or(buffer.len())];
+        dropped |= rest.iter().any(|byte| *byte != b'\r');
+        match end {
             Some(at) => {
                 reader.consume(at + 1);
-                return Ok(());
+                return Ok(dropped);
             }
             None => {
                 let read = buffer.len();
@@ -892,7 +907,7 @@ mod tests {
         let deadline = Instant::now() + Duration::from_secs(10);
         while !(process.exited().unwrap() && ready(&process, &lines)) {
             assert!(Instant::now() < deadline, "{lines:?}");
-            process.read(TICK, &mut |_, text| lines.push(text));
+            process.read(TICK, &mut |_, text, _| lines.push(text));
         }
         (process, lines)
     }
@@ -914,7 +929,7 @@ mod tests {
             &folder,
             |_, lines| lines.iter().any(|line| line == "tick"),
         );
-        let (_, late) = process.finish(false, &pending, &mut |_, text| lines.push(text));
+        let (_, late) = process.finish(false, &pending, &mut |_, text, _| lines.push(text));
         assert!(late);
         assert!(lines.iter().any(|line| line == "term"), "{lines:?}");
 
@@ -928,7 +943,7 @@ mod tests {
             },
         );
         let asked = Instant::now();
-        let (_, late) = process.finish(false, &pending, &mut |_, _| {});
+        let (_, late) = process.finish(false, &pending, &mut |_, _, _| {});
         assert!(late);
         assert!(asked.elapsed() < STOP_GRACE, "{:?}", asked.elapsed());
         assert!(folder.join("term").exists());

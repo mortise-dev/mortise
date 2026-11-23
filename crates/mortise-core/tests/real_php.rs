@@ -95,6 +95,7 @@ fn run_split(runs: &Runs, app: &Path, args: &[&str]) -> (i32, Vec<String>, Vec<S
             RunEvent::Line {
                 stream: Stream::Out,
                 text,
+                ..
             } => out.push(text),
             RunEvent::Line { text, .. } => err.push(text),
             RunEvent::Cut => panic!("{args:?}: the output passed the limit"),
