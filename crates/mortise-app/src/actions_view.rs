@@ -37,6 +37,9 @@ pub struct ActionsState {
     target: Option<Target>,
     action: Action,
     pub options: Options,
+    /// The words the panel showed in the last frame it was drawn. Ctrl Enter runs
+    /// only these, so a key never runs a line that was not on screen.
+    last_shown: Option<Vec<String>>,
 }
 
 impl Default for ActionsState {
@@ -45,6 +48,7 @@ impl Default for ActionsState {
             target: None,
             action: Action::Migrate,
             options: Options::default(),
+            last_shown: None,
         }
     }
 }
@@ -56,6 +60,19 @@ impl ActionsState {
             target: Some(target),
             action,
             options: Options::default(),
+            last_shown: None,
+        }
+    }
+
+    /// Called every frame for the app on screen: another module, or "All modules",
+    /// starts the options again on Migrate (design D4). `shown` is false while the
+    /// Actions tab is not on screen, and then no line counts as shown.
+    pub fn follow(&mut self, target: Target, shown: bool) {
+        if self.target.as_ref() != Some(&target) {
+            *self = Self::on(target, Action::Migrate);
+        }
+        if !shown {
+            self.last_shown = None;
         }
     }
 }
@@ -122,9 +139,7 @@ pub fn actions(
 ) -> Option<BoundaryAction> {
     let target = module.map_or(Target::All, |module| Target::Module(module.name.clone()));
     // Another module, or another app: the options start again on Migrate (D4).
-    if state.target.as_ref() != Some(&target) {
-        *state = ActionsState::on(target.clone(), Action::Migrate);
-    }
+    state.follow(target.clone(), true);
     let list: Vec<Action> = match module {
         Some(module) => Action::for_module(module.state != ModuleState::Off).to_vec(),
         None => Action::for_all().to_vec(),
@@ -397,6 +412,9 @@ fn panel(
         Plan::Run { args } | Plan::Ask { args, .. } | Plan::Refused { args } => Some(args),
         Plan::NoCommand => None,
     };
+    let shown_args = shown.cloned();
+    // Ctrl Enter runs only the line that was on screen in the last frame.
+    let run_key = run_key && state.last_shown == shown_args;
     let line = shown.map(|args| {
         line_now(inputs.runner, args).unwrap_or_else(|| format!("php artisan {}", args.join(" ")))
     });
@@ -467,6 +485,7 @@ fn panel(
             })
         });
     }
+    state.last_shown = shown_args;
     // Dry run checks the option and runs nothing (deviation S38).
     if action == Action::RollBack {
         let dry = Button {
@@ -586,11 +605,14 @@ fn options(
             if !taken {
                 continue;
             }
+            // The package seeds after a pretend migrate: a dry run cannot seed.
+            let off = flag == "--seed" && options.pretend;
             let value = match flag {
                 "--pretend" => &mut options.pretend,
                 _ => &mut options.seed,
             };
-            let response = draw::checkbox(ui, pal, pos2(top.x, y), label, *value, false, keyboard);
+            let at = pos2(top.x, y);
+            let response = draw::checkbox(ui, pal, at, label, *value && !off, off, keyboard);
             if response.clicked() {
                 *value = !*value;
             }

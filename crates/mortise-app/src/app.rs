@@ -946,15 +946,31 @@ impl MortiseApp {
 
     /// Runs the command on screen again, unless the app runs one. It runs only when
     /// its exact line is on screen; otherwise the drawer shows that line first.
+    /// A line Mortise asked about before it ran asks again (design D2).
     fn run_again(&mut self, index: usize) {
         let runner = self.settings.apps[index].php.runner.as_ref();
         let runs = &mut self.apps[index].runs;
         if runs.running().is_some() {
             return;
         }
-        if let Some(args) = runs.again(&mut self.runner, runner) {
+        let Some(args) = runs.again(&mut self.runner, runner) else {
+            return;
+        };
+        if !mortise_core::asks_again(&args) {
             self.start_run(index, args);
+            return;
         }
+        let dialog = Dialog {
+            danger: true,
+            start_on_cancel: true,
+            ..Dialog::new(
+                strings::run_again_title(&args.join(" ")),
+                strings::RUN_AGAIN_BODY.to_owned(),
+                strings::RUN_AGAIN.to_owned(),
+            )
+        };
+        self.dialog = Some((dialog, Pending::RunAgain { index, args }));
+        self.dialog_opened = true;
     }
 
     /// What the drawer asked for.
@@ -979,12 +995,15 @@ impl MortiseApp {
             }
             DrawerAction::OpenMigration(path) => self.open_in_editor(&path, 1),
             // The Migrate panel with the dry run checked; nothing runs (deviation S38).
-            DrawerAction::DryRun(module) => {
+            // The database of the failed run comes along; seeding stays off.
+            DrawerAction::DryRun { module, database } => {
                 if self.current != Some(index) {
                     self.select_app(index);
                 }
                 self.open_action(module, Action::Migrate);
-                self.apps[index].actions.options.pretend = true;
+                let options = &mut self.apps[index].actions.options;
+                options.pretend = true;
+                options.database = database.unwrap_or_default();
             }
         }
     }
@@ -1116,16 +1135,21 @@ impl MortiseApp {
             RunEnd::Exited { code, .. } => strings::stopped_with(&label, code),
             RunEnd::Stopped { .. } => strings::was_stopped(&label),
         };
+        let root = self.settings.apps[index].root.clone();
         let toast =
-            Toast::failed(text).with_action(strings::SHOW_OUTPUT, ToastAction::ShowOutput(index));
+            Toast::failed(text).with_action(strings::SHOW_OUTPUT, ToastAction::ShowOutput(root));
         self.toast = Some(toast);
     }
 
     /// What the button of a toast asked for.
     fn toast_action(&mut self, action: ToastAction) {
         match action {
-            ToastAction::ShowOutput(index) => {
+            ToastAction::ShowOutput(root) => {
                 self.toast = None;
+                // The app may be gone from the rail since the toast came.
+                let Some(index) = self.settings.apps.iter().position(|app| app.root == root) else {
+                    return;
+                };
                 self.settings_open = None;
                 self.adding = None;
                 self.select_app(index);
@@ -1804,6 +1828,14 @@ impl eframe::App for MortiseApp {
                         }
                     }
 
+                    // The options of the Actions tab belong to the selection, wherever it
+                    // changed in this frame.
+                    let target = match &open.selection {
+                        Selection::All => Target::All,
+                        Selection::Module(name) => Target::Module(name.clone()),
+                    };
+                    open.actions.follow(target, open.tab == Tab::Actions);
+
                     // The workspace, after the index: Tab goes from the rail to the index
                     // and then to the workspace.
                     let state = WorkState {
@@ -2018,6 +2050,15 @@ impl eframe::App for MortiseApp {
                 (Some(Answer::Confirm), Some((_, Pending::StopRun(index)))) => {
                     if let Some(open) = self.apps.get(index) {
                         open.runs.stop();
+                    }
+                }
+                (Some(Answer::Confirm), Some((_, Pending::RunAgain { index, args }))) => {
+                    if self
+                        .apps
+                        .get(index)
+                        .is_some_and(|open| open.runs.running().is_none())
+                    {
+                        self.start_run(index, args);
                     }
                 }
                 (Some(Answer::Confirm), Some((_, Pending::Action { index, act }))) => {
@@ -2252,6 +2293,8 @@ enum Pending {
     StopRun(usize),
     /// Start an action in the app at this place on the rail.
     Action { index: usize, act: Act },
+    /// Run these words again in the app at this place on the rail.
+    RunAgain { index: usize, args: Vec<String> },
 }
 
 /// How wide the module index is for a window of this width (section 5.14), and

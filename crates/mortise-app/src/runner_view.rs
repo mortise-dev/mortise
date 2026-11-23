@@ -519,8 +519,12 @@ pub enum DrawerAction {
     /// Open the file of the migration that failed, in the editor.
     OpenMigration(PathBuf),
     /// Open the Migrate panel of this module, or of "All modules" for `None`, with
-    /// the dry run checked. Nothing runs (deviation S38).
-    DryRun(Option<String>),
+    /// the dry run checked and the database of the failed run. Nothing runs
+    /// (deviation S38).
+    DryRun {
+        module: Option<String>,
+        database: Option<String>,
+    },
 }
 
 /// What the drawer shows besides the runs.
@@ -1229,16 +1233,11 @@ fn migration_steps(
     app: &AppSnapshot,
     actions: &mut Vec<DrawerAction>,
 ) -> Vec<BarButton> {
-    let named = current
-        .args
-        .get(1)
-        .filter(|word| !word.starts_with("--"))
-        .cloned();
-    let all = current.args.iter().any(|word| word == "--all");
     let file = failed
         .module
-        .as_ref()
-        .or(named.as_ref())
+        .clone()
+        .or_else(|| module_named(&current.args))
+        .as_deref()
         .and_then(|name| app.module(name))
         .and_then(|module| mortise_core::migration_file(&module.dir, &failed.migration));
     let mut steps = Vec::new();
@@ -1253,18 +1252,45 @@ fn migration_steps(
                 .keys("Enter")
         });
     }
-    let module = if all {
-        None
-    } else {
-        failed.module.clone().or(named)
-    };
     steps.push(BarButton {
         said: Some(strings::dry_run_of(&current.label)),
         bright: true,
         flag: Some("--pretend"),
-        ..BarButton::new(strings::DRY_RUN, DrawerAction::DryRun(module))
+        ..BarButton::new(strings::DRY_RUN, dry_run(&current.args, failed))
     });
     steps
+}
+
+/// The options of artisan words, before `--`, and the word after it.
+fn split_options(args: &[String]) -> (&[String], Option<&String>) {
+    match args.iter().position(|word| word == "--") {
+        Some(at) => (&args[..at], args.get(at + 1)),
+        None => (args, None),
+    }
+}
+
+/// The module that artisan words name: the second word, or the word after `--`.
+fn module_named(args: &[String]) -> Option<String> {
+    let (options, after) = split_options(args);
+    after
+        .or(options.get(1).filter(|word| !word.starts_with('-')))
+        .cloned()
+}
+
+/// "Dry run" under a failed migration: the module, or "All modules" for `--all`,
+/// and the database of the run that failed.
+fn dry_run(args: &[String], failed: &FailedMigration) -> DrawerAction {
+    let (options, _) = split_options(args);
+    let module = if options.iter().any(|word| word == "--all") {
+        None
+    } else {
+        failed.module.clone().or_else(|| module_named(args))
+    };
+    let database = options
+        .iter()
+        .find_map(|word| word.strip_prefix("--database="))
+        .map(str::to_owned);
+    DrawerAction::DryRun { module, database }
 }
 
 /// The colour of a style of the output.
@@ -1491,5 +1517,47 @@ fn result_of(ended: &Ended) -> (Mark, String) {
         Ended::Done { ms } => (Mark::Good, strings::run_time(time(*ms))),
         Ended::Failed { code, .. } => (Mark::Bad, strings::exit_code(*code)),
         Ended::Stopped { ms, .. } => (Mark::Stop, strings::stopped_after(time(*ms))),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_dry_run_keeps_the_module_and_the_database_of_the_failed_run() {
+        let words =
+            |words: &[&str]| -> Vec<String> { words.iter().map(|word| word.to_string()).collect() };
+        let failed = |module: Option<&str>| FailedMigration {
+            module: module.map(str::to_owned),
+            migration: "2026_11_22_140500_add_tracking_code_to_shipments_table".to_owned(),
+        };
+        assert_eq!(
+            dry_run(
+                &words(&["module:migrate", "Shipping", "--seed", "--database=testing"]),
+                &failed(None)
+            ),
+            DrawerAction::DryRun {
+                module: Some("Shipping".to_owned()),
+                database: Some("testing".to_owned()),
+            }
+        );
+        assert_eq!(
+            dry_run(
+                &words(&["module:migrate", "--all"]),
+                &failed(Some("Shipping"))
+            ),
+            DrawerAction::DryRun {
+                module: None,
+                database: None,
+            }
+        );
+        assert_eq!(
+            dry_run(&words(&["module:migrate", "--", "-Odd"]), &failed(None)),
+            DrawerAction::DryRun {
+                module: Some("-Odd".to_owned()),
+                database: None,
+            }
+        );
     }
 }

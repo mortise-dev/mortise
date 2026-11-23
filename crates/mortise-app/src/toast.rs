@@ -22,10 +22,11 @@ pub enum ToastKind {
 }
 
 /// What the button of a toast asks for.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ToastAction {
-    /// Select the app at this place on the rail and open the runner drawer.
-    ShowOutput(usize),
+    /// Select the app in this folder and open the runner drawer. The folder, not the
+    /// place on the rail, because the rail can change while the toast stays.
+    ShowOutput(std::path::PathBuf),
 }
 
 #[derive(Debug, Clone)]
@@ -150,7 +151,7 @@ impl Toast {
             if let (Some(button), Some((_, action))) = (&button, &self.action) {
                 let at = pos2(text_rect.left(), text_rect.bottom() + 6.0);
                 if button.show(ui, pal, at, false).clicked() {
-                    asked = Some(*action);
+                    asked = Some(action.clone());
                 }
             }
 

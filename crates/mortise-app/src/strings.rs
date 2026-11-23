@@ -2088,6 +2088,15 @@ pub fn failed_at(label: &str, code: Option<i32>, migration: &str) -> String {
 }
 
 pub const OPEN_MIGRATION: &str = "Open migration file";
+
+/// Not in the spec: Run again of a line Mortise asked about before it ran.
+pub fn run_again_title(label: &str) -> String {
+    format!("Run {label} again?")
+}
+
+/// Not in the spec.
+pub const RUN_AGAIN_BODY: &str =
+    "Mortise asked before this command ran last time. It runs the same line again.";
 pub const DRY_RUN: &str = "Dry run";
 pub const SHOW_OUTPUT: &str = "Show output";
 

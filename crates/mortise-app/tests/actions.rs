@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use common::Desk;
-use eframe::egui::{Key, Modifiers, Role};
+use eframe::egui::{Event, Key, Modifiers, Role};
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT as _, Queryable as _};
 use mortise_app::app::{MortiseApp, Selection};
@@ -63,9 +63,10 @@ fn wait_for(harness: &mut Harness<'static, MortiseApp>, text: &str) {
     }
 }
 
-/// The runs kept in the history: what ran.
-fn runs(desk: &Desk, root: &std::path::Path) -> usize {
+/// The runs kept in the history: what ran. A run is kept once a frame sees its end.
+fn runs(harness: &mut Harness<'static, MortiseApp>, desk: &Desk, root: &std::path::Path) -> usize {
     std::thread::sleep(Duration::from_millis(300));
+    harness.run_steps(3);
     History::open(&desk.data_dir(), root).entries().len()
 }
 
@@ -73,7 +74,25 @@ fn runs(desk: &Desk, root: &std::path::Path) -> usize {
 fn migrate_runs_the_line_on_screen_and_the_toast_counts_its_migration() {
     let (desk, root) = desk("");
     let mut harness = desk.start();
-    actions_of(&mut harness, "Checkout");
+    // A key runs only a line that was on screen: the tab and Ctrl Enter in one
+    // frame run nothing.
+    harness
+        .get_by_role_and_label(Role::ListBoxOption, "Checkout")
+        .click();
+    harness.run_steps(3);
+    let press = |key, modifiers| Event::Key {
+        key,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers,
+    };
+    let events = &mut harness.input_mut().events;
+    events.push(press(Key::Num4, Modifiers::NONE));
+    events.push(press(Key::Enter, Modifiers::COMMAND));
+    harness.run_steps(3);
+    assert_eq!(harness.state().tab(), Tab::Actions);
+    assert!(harness.query_by_label_contains("$ ").is_none());
     // Migrate is selected, and its line is the line that runs (deviation S37).
     harness.get_by_role_and_label(Role::Heading, "Migrate Checkout");
     harness
@@ -88,10 +107,29 @@ fn migrate_runs_the_line_on_screen_and_the_toast_counts_its_migration() {
     harness
         .query_by_label_contains("--ansi Checkout --seed")
         .unwrap();
+    // A dry run cannot seed: the package seeds after a pretend migrate.
+    let dry_run = "Dry run: print the SQL, change nothing";
     harness
-        .get_by_role_and_label(Role::CheckBox, "Seed afterwards")
+        .get_by_role_and_label(Role::CheckBox, dry_run)
         .click();
     harness.run_steps(3);
+    let seed = harness.get_by_role_and_label(Role::CheckBox, "Seed afterwards");
+    assert!(seed.accesskit_node().is_disabled());
+    harness
+        .query_by_label_contains("--ansi Checkout --pretend")
+        .unwrap();
+    // Another module, selected on another tab, starts the options again.
+    harness.key_press(Key::Num1);
+    harness.run_steps(3);
+    select(&mut harness, "Billing");
+    select(&mut harness, "Checkout");
+    harness.key_press(Key::Num4);
+    harness.run_steps(3);
+    assert!(
+        harness
+            .query_by_label_contains("--ansi Checkout --pretend")
+            .is_none()
+    );
 
     // Copy puts the line on the clipboard and runs nothing.
     harness
@@ -99,7 +137,7 @@ fn migrate_runs_the_line_on_screen_and_the_toast_counts_its_migration() {
         .click();
     harness.run_steps(3);
     harness.get_by_label("Copied the command.");
-    assert_eq!(runs(&desk, &root), 0);
+    assert_eq!(runs(&mut harness, &desk, &root), 0);
 
     run(&mut harness);
     wait_for(&mut harness, "Migrated Checkout: 1 migration ran.");
@@ -164,7 +202,34 @@ fn roll_back_asks_and_its_dry_run_only_checks_the_option() {
             "module:migrate-rollback --no-interaction --ansi Checkout --pretend",
         )
         .unwrap();
-    assert_eq!(runs(&desk, &root), 0);
+    assert_eq!(runs(&mut harness, &desk, &root), 0);
+
+    // A roll back that was confirmed asks again before Run again runs it.
+    harness
+        .get_by_role_and_label(Role::CheckBox, "Dry run: print the SQL, change nothing")
+        .click();
+    harness.run_steps(3);
+    run(&mut harness);
+    let roll_backs = harness.get_all_by_role_and_label(Role::Button, "Roll back");
+    roll_backs.last().unwrap().click();
+    harness.run_steps(3);
+    wait_for(&mut harness, "Rolled back Checkout: 1 migration.");
+    harness.key_press_modifiers(Modifiers::COMMAND | Modifiers::SHIFT, Key::R);
+    harness.run_steps(3);
+    harness.get_by_role_and_label(Role::Heading, "Run module:migrate-rollback Checkout again?");
+    harness.get_by_label(
+        "Mortise asked before this command ran last time. It runs the same line again.",
+    );
+    assert!(
+        harness
+            .get_by_role_and_label(Role::Button, "Cancel")
+            .is_focused()
+    );
+    harness
+        .get_by_role_and_label(Role::Button, "Cancel")
+        .click();
+    harness.run_steps(3);
+    assert_eq!(runs(&mut harness, &desk, &root), 1);
 }
 
 #[test]
@@ -186,7 +251,7 @@ fn production_asks_and_the_line_carries_force() {
         .get_by_role_and_label(Role::Button, "Cancel")
         .click();
     harness.run_steps(3);
-    assert_eq!(runs(&desk, &root), 0);
+    assert_eq!(runs(&mut harness, &desk, &root), 0);
 }
 
 #[test]
@@ -217,7 +282,7 @@ fn the_header_opens_the_panel_and_run_tests_is_off() {
             .is_disabled()
     );
     run(&mut harness);
-    assert_eq!(runs(&desk, &root), 0);
+    assert_eq!(runs(&mut harness, &desk, &root), 0);
 
     // K, in the list, moves to Seed.
     harness
@@ -235,7 +300,18 @@ fn the_header_opens_the_panel_and_run_tests_is_off() {
 
 #[test]
 fn a_failed_migration_is_named_and_the_toast_shows_the_output() {
+    // The fake ends only once the gate file exists, so the drawer is hidden first.
     let (desk, root) = desk("");
+    let gate = desk.path().join("gate");
+    let mut settings = desk.saved();
+    settings.apps[0].php.runner = Some(RunnerKind::Custom {
+        line: format!(
+            "\"{}\" gate \"{}\"",
+            env!("CARGO_BIN_EXE_app-fake-artisan"),
+            gate.display()
+        ),
+    });
+    settings.save(&desk.settings_path()).unwrap();
     let migrations = root.join("Modules/Shipping/database/migrations");
     std::fs::create_dir_all(&migrations).unwrap();
     let name = "2026_11_22_140500_add_tracking_code_to_shipments_table";
@@ -245,6 +321,9 @@ fn a_failed_migration_is_named_and_the_toast_shows_the_output() {
     run(&mut harness);
     // Hidden, the drawer cannot show the failure: a toast does.
     harness.key_press_modifiers(Modifiers::CTRL, Key::Backtick);
+    harness.run_steps(3);
+    harness.get_by_role_and_label(Role::Button, "Show");
+    std::fs::write(&gate, "").unwrap();
     wait_for(
         &mut harness,
         "module:migrate Shipping stopped with exit code 1.",
@@ -268,7 +347,7 @@ fn a_failed_migration_is_named_and_the_toast_shows_the_output() {
     harness
         .query_by_label_contains("module:migrate --no-interaction --ansi Shipping --pretend")
         .unwrap();
-    assert_eq!(runs(&desk, &root), 1);
+    assert_eq!(runs(&mut harness, &desk, &root), 1);
 }
 
 #[test]
