@@ -11,8 +11,8 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
 use crate::catalog::{Catalog, Target};
-use crate::composer::Version;
-use crate::module::Module;
+use crate::modules::composer::Version;
+use crate::modules::module::Module;
 use crate::php;
 
 /// True when the app's package gives P2 to P8: a released 13.4.0 or later.

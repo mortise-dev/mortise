@@ -6,15 +6,15 @@ use std::time::UNIX_EPOCH;
 
 use serde::{Deserialize, Serialize};
 
-use crate::clover::{self, Coverage};
-use crate::code::propose_codes;
-use crate::composer::{Lock, Version};
 use crate::findings::{self, DEFAULT_COVERAGE_LIMIT, Findings, Subject};
-use crate::git::{self, Git};
-use crate::kind::Kinds;
-use crate::layout::Layout;
 use crate::links::{self, Cycle, Link, ModuleSource};
-use crate::module::{Module, ModuleState, ReadCache, find_modules};
+use crate::modules::clover::{self, Coverage};
+use crate::modules::code::propose_codes;
+use crate::modules::composer::{Lock, Version};
+use crate::modules::git::{self, Git};
+use crate::modules::kind::Kinds;
+use crate::modules::layout::Layout;
+use crate::modules::module::{Module, ModuleState, ReadCache, find_modules};
 use crate::package::PackageData;
 use crate::rules::{Rules, RulesSource};
 

@@ -9,20 +9,14 @@
 mod actuator;
 mod app;
 mod catalog;
-mod clover;
-mod code;
-mod composer;
 mod editor;
 mod environment;
 mod findings;
-mod git;
-mod kind;
-mod layout;
 mod links;
 #[cfg(feature = "watch")]
 mod live;
 mod matcher;
-mod module;
+mod modules;
 #[cfg(feature = "run")]
 mod output;
 mod package;
@@ -53,23 +47,23 @@ pub use catalog::{
     MODULE_MAKE, NameRule, OptionSet, Options, Plan, Target, asks_again, class_name_ok,
     model_flag_of, module_name_ok, plan, refuses, replace_words, shipped_mark, typed_name_matches,
 };
-pub use clover::Coverage;
-pub use code::{ALL_CODE, propose_codes, propose_monogram};
-pub use composer::Version;
 pub use editor::{Editor, EditorError, editor_arguments, open_in_editor};
 pub use environment::{Credentials, Environment};
 pub use findings::{
     Check, CheckResult, DEFAULT_COVERAGE_LIMIT, Detail, Finding, FindingState, Findings, Severity,
     Todo,
 };
-pub use git::{CHURN_DAYS, Churn, Git};
-pub use kind::{OTHER, TESTS};
-pub use layout::{Layout, LayoutKey, read_layout};
 pub use links::{Cycle, Link, Reference, columns};
 #[cfg(feature = "watch")]
 pub use live::{LiveApp, LiveState};
 pub use matcher::fuzzy;
-pub use module::{KindCount, Manifest, Module, ModuleState, Progress, ReadCache};
+pub use modules::clover::Coverage;
+pub use modules::code::{ALL_CODE, propose_codes, propose_monogram};
+pub use modules::composer::Version;
+pub use modules::git::{CHURN_DAYS, Churn, Git};
+pub use modules::kind::{OTHER, TESTS};
+pub use modules::layout::{Layout, LayoutKey, read_layout};
+pub use modules::module::{KindCount, Manifest, Module, ModuleState, Progress, ReadCache};
 #[cfg(feature = "run")]
 pub use output::{
     FailedMigration, FileOutcome, GeneratedFile, MigrationCount, app_relative, autoload_failed,

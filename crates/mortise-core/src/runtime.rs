@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 use crate::actuator::{Answer, Route, Secret, Task, ask, ask_status};
 use crate::app::AppSnapshot;
 use crate::environment::Environment;
-use crate::module::Module;
+use crate::modules::module::Module;
 
 /// How often things are asked.
 #[derive(Debug, Clone, Copy)]

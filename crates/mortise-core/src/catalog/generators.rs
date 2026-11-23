@@ -10,7 +10,7 @@ use std::sync::OnceLock;
 
 use serde::{Deserialize, Serialize};
 
-use crate::composer::Version;
+use crate::modules::composer::Version;
 use crate::package::{gives_data, ships};
 
 /// The artisan name of the generator of a new module.

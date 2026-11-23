@@ -9,7 +9,7 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 
 use crate::links::{Cycle, Link};
-use crate::module::{Manifest, Module, ModuleState};
+use crate::modules::module::{Manifest, Module, ModuleState};
 use crate::package::PackageData;
 use crate::rules::Rules;
 

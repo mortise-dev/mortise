@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use super::generators::{Catalog, Generator};
-use crate::composer::Version;
+use crate::modules::composer::Version;
 use crate::run::history::app_key;
 
 #[derive(Serialize)]

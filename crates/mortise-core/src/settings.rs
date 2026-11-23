@@ -8,10 +8,10 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use crate::app::AppSnapshot;
-use crate::code::propose_monogram;
 use crate::editor::Editor;
 use crate::environment::Environment;
 use crate::findings::DEFAULT_COVERAGE_LIMIT;
+use crate::modules::code::propose_monogram;
 use crate::run::PhpSettings;
 
 /// An app Mortise knows.
