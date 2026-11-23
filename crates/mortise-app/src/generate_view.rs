@@ -571,6 +571,20 @@ pub fn takes_module(generator: &Generator) -> bool {
         .any(|argument| argument.name == "module")
 }
 
+/// The names `module:make` words give: the words that are not options.
+pub fn typed_names(args: &[String]) -> Vec<String> {
+    let mut names = Vec::new();
+    let mut after_dashes = false;
+    for word in args.iter().skip(1) {
+        if word == "--" {
+            after_dashes = true;
+        } else if after_dashes || !word.starts_with('-') {
+            names.push(word.clone());
+        }
+    }
+    names
+}
+
 /// The folder names of the app's modules, which place a path of a container.
 pub fn module_folders(app: &AppSnapshot) -> Vec<&str> {
     app.modules
@@ -2063,11 +2077,17 @@ fn writes<'a>(generator: &str, files: &[&'a ReportedFile]) -> Writes<'a> {
 /// folder for a file generator (`Modules/Billing/`), under the folder of its module
 /// for `module:make` (`Modules/Loyalty/`). A path outside both is shown as printed,
 /// under no folder.
-fn placed(app: &AppSnapshot, module: Option<&Module>, printed: &str) -> (String, String) {
+/// `asked` holds the modules `module:make` asks for, which place a path first.
+fn placed(
+    app: &AppSnapshot,
+    module: Option<&Module>,
+    asked: &[&str],
+    printed: &str,
+) -> (String, String) {
     let outside = (String::new(), printed.to_owned());
     let modules_dir = app.path_shown(&app.layout.modules_dir);
-    let Some(relative) = app_relative(&app.root, &modules_dir, &module_folders(app), printed)
-    else {
+    let folders = module_folders(app);
+    let Some(relative) = app_relative(&app.root, &modules_dir, asked, &folders, printed) else {
         return outside;
     };
     if let Some(module) = module {
@@ -2121,6 +2141,12 @@ fn files_this_creates(
         return list_files(ui, pal, min, width, words, list, inputs, ready, shown);
     };
     let new_module = generator.name == MODULE_MAKE;
+    let asked = if new_module {
+        typed_names(words)
+    } else {
+        Vec::new()
+    };
+    let asked: Vec<&str> = asked.iter().map(String::as_str).collect();
     // A `delete` entry is the folder that `module:make --force` deletes, not a file.
     let files: Vec<&ReportedFile> = report
         .files
@@ -2146,7 +2172,7 @@ fn files_this_creates(
     // its top first, then by folder.
     let mut roots: Vec<(String, Vec<ListRow>)> = Vec::new();
     for file in &files {
-        let (root, rest) = placed(app, module, &file.path);
+        let (root, rest) = placed(app, module, &asked, &file.path);
         let (folder, name) = match rest.rsplit_once('/') {
             Some((folder, name)) => (format!("{folder}/"), name.to_owned()),
             None => (String::new(), rest),
@@ -2187,7 +2213,7 @@ fn files_this_creates(
     let sentence = |y: f32, text: &str, color: Color32| {
         draw::paragraph(ui, pos2(min.x, y + 6.0), text, HINT, color, width).bottom()
     };
-    let shown = |file: &ReportedFile| placed(app, module, &file.path).1;
+    let shown = |file: &ReportedFile| placed(app, module, &asked, &file.path).1;
     for file in files.iter().filter(|file| taken(file)) {
         let flag = flag_of(file).unwrap_or_default();
         let text = strings::taken_out(&shown(file), strings::model_call_kind(flag));

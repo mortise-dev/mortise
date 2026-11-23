@@ -23,7 +23,7 @@ use crate::dialog::{Answer, Dialog, Typed};
 use crate::draw::{self, Button, ButtonKind};
 use crate::generate_view::{
     CatalogRead, GenerateAsk, GenerateInputs, GenerateResult, GenerateRun, GenerateState, RunPlace,
-    TakenOut,
+    TakenOut, typed_names,
 };
 use crate::index::{self, IndexRuntime, IndexState};
 use crate::palette::{self, Command, PaletteAction, PaletteState};
@@ -1815,9 +1815,16 @@ impl MortiseApp {
             .as_deref()
             .map(crate::generate_view::module_folders)
             .unwrap_or_default();
+        // The modules `module:make` asks for place its paths first.
+        let asked = if run.generator == MODULE_MAKE {
+            typed_names(&run.args)
+        } else {
+            Vec::new()
+        };
+        let asked: Vec<&str> = asked.iter().map(String::as_str).collect();
         let (mut files, autoload_failed, fallback) = match answer {
             Some(Ok(report)) => (
-                mortise_core::reported_files(&report, &root, &modules, &folders),
+                mortise_core::reported_files(&report, &root, &modules, &asked, &folders),
                 report.autoload_failed(),
                 None,
             ),
@@ -1833,7 +1840,7 @@ impl MortiseApp {
             .taken_out
             .iter()
             .map(|file| TakenOut {
-                path: mortise_core::app_relative(&root, &modules, &folders, &file.path)
+                path: mortise_core::app_relative(&root, &modules, &asked, &folders, &file.path)
                     .unwrap_or_else(|| file.path.clone()),
                 replace: file.replace.clone(),
             })
@@ -3262,20 +3269,6 @@ fn forced(runner: Option<&RunnerKind>, args: &[String]) -> bool {
     line.iter()
         .take_while(|word| *word != "--")
         .any(|word| word == "--force")
-}
-
-/// The names `module:make` words give: the words that are not options.
-fn typed_names(args: &[String]) -> Vec<String> {
-    let mut names = Vec::new();
-    let mut after_dashes = false;
-    for word in args.iter().skip(1) {
-        if word == "--" {
-            after_dashes = true;
-        } else if after_dashes || !word.starts_with('-') {
-            names.push(word.clone());
-        }
-    }
-    names
 }
 
 /// What a dialog waits to do.
