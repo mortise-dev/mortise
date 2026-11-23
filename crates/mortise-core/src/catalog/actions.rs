@@ -232,9 +232,7 @@ pub fn plan(action: Action, target: &Target, options: &Options, context: &Contex
         Action::FreshMigrate => Some(Ask::TypeAppName),
         Action::DeleteModule => Some(Ask::TypeModuleName),
     };
-    if let Some(ask) = ask
-        && action.package_confirms(production)
-    {
+    if ask.is_some() && action.package_confirms(production) {
         args.push("--force".to_string());
     }
     if let Some(name) = last {
