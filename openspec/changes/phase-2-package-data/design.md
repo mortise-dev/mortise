@@ -359,6 +359,20 @@ accessible name and a 24 px target (`tests/accessibility.rs`).
   polled each frame; `start_read` starts one and `read_ended` takes its end (a start error ends it at
   once). `OpenApp::busy()` gives the label of a run or a read; every run button uses it.
 
+### Changed while building 15.6
+
+- `Action::options(target, package_data)` takes the gate: Run tests has no options to draw
+  before 13.4. `Action::artisan()` still gives none for Run tests; `Action::from_artisan`
+  knows `module:test`, so a test run in the history is found again.
+- "All modules" on 13.4 counts the tests of every module and reads "307 tests in every module,
+  on or off." (not in the spec): `module:test --all` takes every module, on or off. The row
+  detail keeps the count of the modules that are on.
+- The kind of the Run tests toast follows the exit code, as for every action: a failed run gets
+  its toast, "3 of 31 tests failed in Checkout.", only when the drawer does not show it. A run
+  with exit 0 and no counts gets no toast, as Run tests had none in milestone 12.
+- The field "Filter, a test name or pattern" shows `--filter` beside its label in dim mono,
+  as a checkbox shows its option.
+
 ## Risks / Trade-offs
 
 - [The user must press "List files" and "Read migration state"] → One more step than the spec draws.

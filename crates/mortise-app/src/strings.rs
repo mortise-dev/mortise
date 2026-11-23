@@ -2130,6 +2130,9 @@ pub const ROLL_BACK_HINT: &str = "Destructive. Mortise asks before it runs. The 
 pub const TESTS_PLACEHOLDER: &str = "[the package's command for the tests of one module]";
 /// Not in the spec: why Run tests and its Copy command are off (design D4).
 pub const NO_TESTS_COMMAND: &str = "The package has no command for the tests of one module yet.";
+/// Not in the spec: the options of `module:test` (13.4, design D8).
+pub const TESTS_FILTER: &str = "Filter, a test name or pattern";
+pub const RUN_IN_PARALLEL: &str = "Run in parallel";
 
 /// The hint of the database field: Migrate says what an empty field means, Seed
 /// names the option only.
@@ -2266,6 +2269,26 @@ pub const TESTS_TEXT: &str = "The package will provide a command that runs the t
 
 /// Not in the spec: where the tests of "All modules" are, after their count.
 pub const TESTS_IN_MODULES_ON: &str = "in the modules that are on.";
+
+/// Not in the spec: where the tests of "All modules" are on 13.4, after their count.
+/// `module:test --all` takes every module, on or off.
+pub const TESTS_IN_EVERY_MODULE: &str = "in every module, on or off.";
+
+/// The toast of Run tests that passed: `31 tests passed in Checkout.` (C13). For
+/// "All modules" the object is the count of modules that ran: not in the spec.
+pub fn tests_passed(passed: u32, object: &str) -> String {
+    format!("{} passed in {object}.", tests(passed))
+}
+
+/// Not in the spec: the toast of Run tests that failed, `3 of 31 tests failed in Checkout.`
+pub fn tests_failed(failed: u32, total: u32, object: &str) -> String {
+    format!("{failed} of {} failed in {object}.", tests(total))
+}
+
+/// Not in the spec: the toast of Run tests in a module without a tests folder.
+pub fn no_tests_folder(module: &str) -> String {
+    format!("{module} has no tests folder.")
+}
 
 /// The alert of Turn off (S10.2 a): `Shipping and Notifications use Checkout. ...`
 /// Not in the spec: the sentence for one module.
