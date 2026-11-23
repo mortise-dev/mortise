@@ -4,8 +4,8 @@
 //! added or Esc is pressed.
 
 use eframe::egui::{
-    self, Align2, Color32, FontId, Key, KeyboardShortcut, Modifiers, Rect, RichText, Role, Ui,
-    Vec2, pos2, vec2,
+    self, Align2, Color32, FontId, Key, KeyboardShortcut, Modifiers, Rect, RichText, Role,
+    ScrollArea, Ui, UiBuilder, Vec2, pos2, vec2,
 };
 use mortise_core::{AppSnapshot, ReadError};
 
@@ -186,9 +186,51 @@ pub fn add_panel(
         action = Some(AddAction::Back);
     }
 
+    // The body scrolls when it does not fit, at 150% text size for one.
+    let body = Rect::from_min_max(pos2(rect.left(), head.bottom()), rect.max);
+    ui.scope_builder(UiBuilder::new().max_rect(body), |ui| {
+        ScrollArea::vertical()
+            .id_salt("add-panel")
+            .auto_shrink(false)
+            .show(ui, |ui| {
+                ui.spacing_mut().item_spacing = Vec2::ZERO;
+                let origin = ui.cursor().min;
+                let area = Rect::from_min_size(origin, vec2(ui.available_width(), body.height()));
+                let (body_action, bottom) =
+                    add_body(ui, pal, area, panel, monogram, progress, keyboard, mac);
+                if body_action.is_some() {
+                    action = body_action;
+                }
+                // The controls are placed by hand: tell the scroll area how far they reach.
+                ui.allocate_space(vec2(area.width(), bottom + BODY_PAD - origin.y));
+            });
+    });
+    action
+}
+
+/// Room under the last control of the panel.
+const BODY_PAD: f32 = 16.0;
+
+/// The field, what was found and the buttons, placed from the top left of `rect`.
+/// Returns the action, and the bottom edge of what was painted.
+#[expect(clippy::too_many_arguments)]
+fn add_body(
+    ui: &mut Ui,
+    pal: &Palette,
+    rect: Rect,
+    panel: &mut AddPanel,
+    monogram: &str,
+    progress: Option<(usize, usize)>,
+    keyboard: bool,
+    mac: bool,
+) -> (Option<AddAction>, f32) {
+    let mut action = None;
     let left = rect.left() + 16.0;
     let column_w = 560.0_f32.min(rect.width() - 32.0);
-    let mut y = head.bottom() + 14.0;
+    let top = rect.top() + 14.0;
+    let mut y = top;
+    // The bottom edge of the right column, when it is drawn.
+    let mut right_bottom = 0.0_f32;
 
     // The label of the field, with a hint until a folder is chosen.
     let label = draw::label(
@@ -289,10 +331,7 @@ pub fn add_panel(
     y = field.bottom();
 
     let right_column = Rect::from_min_max(
-        pos2(
-            (left + column_w + 45.0).min(rect.right() - 16.0),
-            head.bottom() + 14.0,
-        ),
+        pos2((left + column_w + 45.0).min(rect.right() - 16.0), top),
         pos2(rect.right() - 16.0, rect.bottom()),
     );
     let command_enter = format!("{} Enter", strings::command_key(mac));
@@ -312,9 +351,10 @@ pub fn add_panel(
                     read as f32 / total as f32
                 };
                 let label = strings::reading_files(read, total);
-                draw::progress(ui, pal, pos2(left, y + 12.0), column_w, &label, share);
+                let bar = draw::progress(ui, pal, pos2(left, y + 12.0), column_w, &label, share);
+                return (action, bar);
             }
-            return action;
+            return (action, y + 12.0);
         }
         None => {
             y += 12.0;
@@ -335,16 +375,18 @@ pub fn add_panel(
                 ty::SECONDARY,
                 pal.ink_2,
             );
+            let mut bottom = y + choose.height();
             if right_column.width() > 200.0 {
-                note(
+                let reach = note(
                     ui,
                     pal,
                     right_column.min,
                     right_column.width(),
                     strings::READS_NOTE,
                 );
+                bottom = bottom.max(reach);
             }
-            return action;
+            return (action, bottom);
         }
         Some(Checked::Found(app)) => {
             primary_label = strings::add_named(&app.name);
@@ -357,7 +399,7 @@ pub fn add_panel(
             others = &[strings::CANCEL];
             y += 16.0;
             if right_column.width() > 200.0 {
-                found(ui, pal, right_column, app, monogram);
+                right_bottom = found(ui, pal, right_column, app, monogram);
             }
             // Runtime, optional: the app is added without it when the URL is empty.
             if let Some(form) = &mut panel.runtime {
@@ -458,7 +500,7 @@ pub fn add_panel(
                 if response.clicked() {
                     action = Some(AddAction::Check);
                 }
-                return action;
+                return (action, y + again.height());
             }
             // The add button is disabled until the folder changes.
             primary = Button {
@@ -502,12 +544,12 @@ pub fn add_panel(
         }
         x += button.width(ui) + 8.0;
     }
-    action
+    (action, (y + primary.height()).max(right_bottom))
 }
 
 /// The two boxes at the right once a folder is read: what was found, and how the
 /// app will be shown on the rail.
-fn found(ui: &Ui, pal: &Palette, column: Rect, app: &AppSnapshot, monogram: &str) {
+fn found(ui: &Ui, pal: &Palette, column: Rect, app: &AppSnapshot, monogram: &str) -> f32 {
     let package = Type {
         size: 11.5,
         ..ty::CODE
@@ -643,13 +685,15 @@ fn found(ui: &Ui, pal: &Palette, column: Rect, app: &AppSnapshot, monogram: &str
         pal.ink_2,
     );
     draw::announce(ui, letters, Role::Label, monogram);
+    shown.bottom()
 }
 
 /// A note (C19): panel fill, line-2 outline, no mark.
-fn note(ui: &Ui, pal: &Palette, min: egui::Pos2, width: f32, text: &str) {
+fn note(ui: &Ui, pal: &Palette, min: egui::Pos2, width: f32, text: &str) -> f32 {
     let galley = draw::galley_wrapped(ui, text, ty::BODY, pal.ink, width - 26.0);
     let rect = Rect::from_min_size(min, vec2(width, galley.size().y + 20.0));
     draw::outlined(ui, rect, radius::CONTROL, pal.panel, pal.line_2);
     let text_rect = draw::paint_galley(ui, rect.min + vec2(13.0, 10.0), Align2::LEFT_TOP, galley);
     draw::announce(ui, text_rect, Role::Label, text);
+    rect.bottom()
 }

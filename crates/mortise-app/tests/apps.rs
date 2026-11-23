@@ -3,7 +3,7 @@
 mod common;
 
 use common::{Desk, shop_api, wait_until};
-use eframe::egui::{Key, Modifiers, Role};
+use eframe::egui::{Key, Modifiers, Role, vec2};
 use egui_kittest::kittest::{NodeT as _, Queryable as _};
 use mortise_core::Settings;
 
@@ -295,6 +295,24 @@ fn a_folder_on_the_command_line_opens_the_panel_or_the_app() {
     let harness = desk.start_with(Some(desk.app("landing-pages")));
     assert!(harness.state().is_adding());
     harness.get_by_role_and_label(Role::Button, "Add landing-pages");
+
+    // At 150% text size in a low window the panel scrolls to the Add button.
+    let mut settings = desk.saved();
+    settings.general.text_size = 150;
+    settings.save(&desk.settings_path()).unwrap();
+    let mut desk = desk;
+    desk.size = vec2(900.0, 240.0);
+    let mut harness = desk.start_with(Some(desk.app("landing-pages")));
+    let add = harness.get_by_role_and_label(Role::Button, "Add landing-pages");
+    let window = harness.ctx.content_rect();
+    assert!(
+        !window.contains_rect(add.rect()),
+        "the button is below the fold"
+    );
+    add.scroll_to_me();
+    harness.run_steps(3);
+    let add = harness.get_by_role_and_label(Role::Button, "Add landing-pages");
+    assert!(window.contains_rect(add.rect()));
 }
 
 #[test]
