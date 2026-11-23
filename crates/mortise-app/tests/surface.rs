@@ -7,7 +7,8 @@ use eframe::egui::accesskit::Toggled;
 use eframe::egui::{Key, Modifiers, Role};
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT as _, Queryable as _};
-use mortise_app::app::{MortiseApp, Selection};
+use mortise_app::app::MortiseApp;
+use mortise_app::index::Selection;
 use mortise_app::workspace::Tab;
 
 const INVOICE: &str = r"Modules\Billing\Models\Invoice";

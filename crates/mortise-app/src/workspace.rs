@@ -4,11 +4,11 @@ use eframe::egui::{Align2, Color32, Key, Modifiers, Rect, Role, Ui, WidgetInfo, 
 use mortise_core::{Action, AppSnapshot};
 
 use crate::actions_view::{self, ActionsInputs, ActionsState};
-use crate::app::Selection;
 use crate::boundary::{self, BoundaryAction, BoundaryState};
 use crate::draw::{self, Button, ButtonKind, EmptyMark, Icon, StampState, empty_state};
 use crate::findings_view;
 use crate::generate_view::{self, GenerateInputs, GenerateState};
+use crate::index::Selection;
 use crate::strings;
 use crate::summary::{self, SummaryState};
 use crate::surface_view::SurfaceInputs;

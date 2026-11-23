@@ -6,7 +6,6 @@ use eframe::egui::{
 };
 use mortise_core::{ALL_CODE, AppSnapshot, FindingState, IndexRows, Module, ModuleState};
 
-use crate::app::Selection;
 use crate::draw::{self, Icon, StampState};
 use crate::runtime_view::Brief;
 use crate::strings;
@@ -21,6 +20,13 @@ const STRIP_FOOT_H: f32 = 32.0;
 const LIST_PAD: f32 = 8.0;
 /// The room the sentence takes when the filter leaves no module.
 const NO_MATCH_H: f32 = 60.0;
+
+/// The row of the index that is selected: the whole app or one module.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Selection {
+    All,
+    Module(String),
+}
 
 /// What the index needs from the app besides the snapshot.
 pub struct IndexState<'a> {

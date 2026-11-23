@@ -9,8 +9,9 @@ use common::{Desk, fixture, shop_api};
 use eframe::egui::{Key, Role, Theme};
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT as _, Queryable as _};
-use mortise_app::app::{MortiseApp, Selection};
+use mortise_app::app::MortiseApp;
 use mortise_app::boundary::BoundaryAction;
+use mortise_app::index::Selection;
 use mortise_app::workspace::Tab;
 use mortise_app::{findings_view, fonts, theme};
 use mortise_core::{

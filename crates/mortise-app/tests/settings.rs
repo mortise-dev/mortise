@@ -6,7 +6,8 @@ use common::{Desk, shop_api, wait_until};
 use eframe::egui::{self, Key, Modifiers, Role, Theme};
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT as _, Queryable as _};
-use mortise_app::app::{MortiseApp, Selection};
+use mortise_app::app::MortiseApp;
+use mortise_app::index::Selection;
 use mortise_core::{CommandLine, Editor, IndexRows, RunnerKind, ThemeChoice};
 
 fn open_settings(harness: &mut Harness<'static, MortiseApp>) {

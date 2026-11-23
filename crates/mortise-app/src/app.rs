@@ -26,7 +26,7 @@ use crate::generate_view::{
     CatalogRead, GenerateAsk, GenerateInputs, GenerateResult, GenerateRun, GenerateState, RunPlace,
     TakenOut, typed_names,
 };
-use crate::index::{self, IndexRuntime, IndexState};
+use crate::index::{self, IndexRuntime, IndexState, Selection};
 use crate::palette::{self, Command, PaletteAction, PaletteState};
 use crate::rail::{self, RailAction, Tile};
 use crate::runner_view::{self, AppRuns, DrawerAction, RunnerView, Shown};
@@ -38,13 +38,6 @@ use crate::surface_view::SurfaceInputs;
 use crate::theme::{self, radius, size};
 use crate::toast::{Toast, ToastAction};
 use crate::workspace::{self, Tab, WorkState};
-
-/// The row of the index that is selected: the whole app or one module.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Selection {
-    All,
-    Module(String),
-}
 
 /// How the app is started.
 pub struct Config {
