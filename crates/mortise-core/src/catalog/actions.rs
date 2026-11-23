@@ -37,6 +37,10 @@ pub struct Options {
     pub pretend: bool,
     /// `--seed`: run the seeders after the migrations.
     pub seed: bool,
+    /// `--drop-views`: a fresh also drops the views.
+    pub drop_views: bool,
+    /// `--drop-types`: a fresh also drops the types, on Postgres.
+    pub drop_types: bool,
     /// `--database=<value>`: the connection. Empty leaves it out.
     pub database: String,
     /// `--class=<value>`: the root seeder. Empty leaves it out.
@@ -48,6 +52,8 @@ pub struct Options {
 pub struct OptionSet {
     pub pretend: bool,
     pub seed: bool,
+    pub drop_views: bool,
+    pub drop_types: bool,
     pub database: bool,
     pub class: bool,
 }
@@ -91,7 +97,40 @@ pub enum Plan {
     NoCommand,
 }
 
+impl Ask {
+    /// The name the user types to confirm, if this question asks for one:
+    /// the app for [`Ask::TypeAppName`], the module for [`Ask::TypeModuleName`].
+    pub fn name_to_type<'a>(self, app: &'a str, target: &'a Target) -> Option<&'a str> {
+        match (self, target) {
+            (Ask::TypeAppName, _) => Some(app),
+            (Ask::TypeModuleName, Target::Module(module)) => Some(module),
+            _ => None,
+        }
+    }
+}
+
+/// True when `typed` is `name` exactly: same case, no space trimmed.
+/// An empty text never matches.
+pub fn typed_name_matches(typed: &str, name: &str) -> bool {
+    !typed.is_empty() && typed == name
+}
+
 impl Action {
+    /// Every action, for the reverse of [`Action::artisan`].
+    const EVERY: [Action; 11] = [
+        Action::TurnOn,
+        Action::TurnOff,
+        Action::Migrate,
+        Action::RollBack,
+        Action::Seed,
+        Action::RunTests,
+        Action::CheckTranslations,
+        Action::ResetMigrations,
+        Action::RefreshMigrations,
+        Action::FreshMigrate,
+        Action::DeleteModule,
+    ];
+
     /// The actions of one module, in the order of S10.1. The first is
     /// [`Action::TurnOff`] when the module is on, else [`Action::TurnOn`].
     pub fn for_module(on: bool) -> [Action; 6] {
@@ -116,6 +155,44 @@ impl Action {
         ]
     }
 
+    /// The destructive actions of `target`, in the order of S10.4. A fresh drops
+    /// every table, so it belongs to all modules only. Reset, refresh and delete
+    /// belong to one module: `module:delete --all` would delete every module.
+    pub fn destructive(target: &Target) -> &'static [Action] {
+        match target {
+            Target::Module(_) => &[
+                Action::ResetMigrations,
+                Action::RefreshMigrations,
+                Action::DeleteModule,
+            ],
+            Target::All => &[Action::FreshMigrate],
+        }
+    }
+
+    /// True for reset, refresh, fresh and delete: the actions that lose data.
+    pub fn is_destructive(self) -> bool {
+        matches!(
+            self,
+            Action::ResetMigrations
+                | Action::RefreshMigrations
+                | Action::FreshMigrate
+                | Action::DeleteModule
+        )
+    }
+
+    /// The action whose artisan command is `word`, such as `module:delete`.
+    pub fn from_artisan(word: &str) -> Option<Action> {
+        Action::EVERY
+            .into_iter()
+            .find(|action| action.artisan() == Some(word))
+    }
+
+    /// The action runs on `target`. A destructive action runs only on the
+    /// targets of [`Action::destructive`].
+    fn takes(self, target: &Target) -> bool {
+        !self.is_destructive() || Action::destructive(target).contains(&self)
+    }
+
     /// The artisan command of the action. [`Action::RunTests`] has none.
     pub fn artisan(self) -> Option<&'static str> {
         Some(match self {
@@ -137,23 +214,45 @@ impl Action {
     /// no database, as S10.2 f draws it.
     pub fn options(self, target: &Target) -> OptionSet {
         let all = *target == Target::All;
-        let (pretend, seed, database, class) = match self {
-            Action::Migrate => (true, true, !all, false),
-            Action::RollBack => (true, false, false, false),
-            Action::Seed => (false, false, true, true),
-            Action::ResetMigrations => (true, false, true, false),
-            Action::RefreshMigrations | Action::FreshMigrate => (false, true, true, false),
+        let none = OptionSet::default();
+        match self {
+            Action::Migrate => OptionSet {
+                pretend: true,
+                seed: true,
+                database: !all,
+                ..none
+            },
+            Action::RollBack => OptionSet {
+                pretend: true,
+                ..none
+            },
+            Action::Seed => OptionSet {
+                database: true,
+                class: true,
+                ..none
+            },
+            Action::ResetMigrations => OptionSet {
+                pretend: true,
+                database: true,
+                ..none
+            },
+            Action::RefreshMigrations => OptionSet {
+                seed: true,
+                database: true,
+                ..none
+            },
+            Action::FreshMigrate => OptionSet {
+                seed: true,
+                drop_views: true,
+                drop_types: true,
+                database: true,
+                ..none
+            },
             Action::TurnOn
             | Action::TurnOff
             | Action::RunTests
             | Action::CheckTranslations
-            | Action::DeleteModule => (false, false, false, false),
-        };
-        OptionSet {
-            pretend,
-            seed,
-            database,
-            class,
+            | Action::DeleteModule => none,
         }
     }
 
@@ -181,7 +280,13 @@ impl Action {
 /// order of [`OptionSet`], then `--force`. A text option is trimmed and is one
 /// word, such as `--database=testing`. An empty one is left out.
 /// `--force` is added only when the package confirms and Mortise asks.
+///
+/// A destructive action on a target it does not take has no command, also in
+/// production: see [`Action::destructive`].
 pub fn plan(action: Action, target: &Target, options: &Options, context: &Context) -> Plan {
+    if !action.takes(target) {
+        return Plan::NoCommand;
+    }
     let Some(command) = action.artisan() else {
         return Plan::NoCommand;
     };
@@ -201,6 +306,12 @@ pub fn plan(action: Action, target: &Target, options: &Options, context: &Contex
     // The package seeds after a pretend migrate, so a dry run leaves out `--seed`.
     if set.seed && options.seed && !pretend {
         args.push("--seed".to_string());
+    }
+    if set.drop_views && options.drop_views {
+        args.push("--drop-views".to_string());
+    }
+    if set.drop_types && options.drop_types {
+        args.push("--drop-types".to_string());
     }
     if set.database {
         args.extend(text_option("database", &options.database));
@@ -228,6 +339,8 @@ pub fn plan(action: Action, target: &Target, options: &Options, context: &Contex
             }
             return Plan::Refused { args };
         }
+        // A dry run of reset changes nothing, as for roll back.
+        Action::ResetMigrations if pretend => None,
         Action::ResetMigrations | Action::RefreshMigrations => Some(Ask::NamingTables),
         Action::FreshMigrate => Some(Ask::TypeAppName),
         Action::DeleteModule => Some(Ask::TypeModuleName),
@@ -246,7 +359,7 @@ pub fn plan(action: Action, target: &Target, options: &Options, context: &Contex
 }
 
 /// True when Mortise asks before `args` run: a command with `--force`, a roll back
-/// that is not a dry run, and reset, refresh, fresh and delete. Run again asks
+/// or a reset that is not a dry run, and refresh, fresh and delete. Run again asks
 /// first for these too, because the question was about this very line.
 pub fn asks_again(args: &[String]) -> bool {
     let words: Vec<&str> = args
@@ -255,13 +368,12 @@ pub fn asks_again(args: &[String]) -> bool {
         .take_while(|word| *word != "--")
         .collect();
     match words.first() {
-        Some(&"module:migrate-rollback") if !words.contains(&"--pretend") => true,
-        Some(
-            &"module:migrate-reset"
-            | &"module:migrate-refresh"
-            | &"module:migrate-fresh"
-            | &"module:delete",
-        ) => true,
+        Some(&"module:migrate-rollback" | &"module:migrate-reset")
+            if !words.contains(&"--pretend") =>
+        {
+            true
+        }
+        Some(&"module:migrate-refresh" | &"module:migrate-fresh" | &"module:delete") => true,
         _ => words.contains(&"--force"),
     }
 }
@@ -280,8 +392,18 @@ mod tests {
         words.iter().map(|word| word.to_string()).collect()
     }
 
-    /// The plan for Checkout with `pretend`, in production or not, with `users` on.
-    fn plan_for(action: Action, production: bool, pretend: bool, users: &[String]) -> Plan {
+    fn checkout() -> Target {
+        Target::Module("Checkout".to_string())
+    }
+
+    /// The plan for `target` with `pretend`, in production or not, with `users` on.
+    fn plan_for(
+        action: Action,
+        target: &Target,
+        production: bool,
+        pretend: bool,
+        users: &[String],
+    ) -> Plan {
         let options = Options {
             pretend,
             ..Options::default()
@@ -290,12 +412,7 @@ mod tests {
             production,
             users_on: users,
         };
-        plan(
-            action,
-            &Target::Module("Checkout".to_string()),
-            &options,
-            &context,
-        )
+        plan(action, target, &options, &context)
     }
 
     #[test]
@@ -309,11 +426,14 @@ mod tests {
         let refused = |args: &[&str]| Plan::Refused { args: words(args) };
         let shipping = words(&["Shipping"]);
         let none: &[String] = &[];
+        let module = checkout();
+        let all = Target::All;
 
-        // Action, production, pretend, the modules on that use Checkout, the plan.
+        // Action, target, production, pretend, the modules on that use Checkout, the plan.
         let table = [
             (
                 TurnOn,
+                &module,
                 true,
                 false,
                 none,
@@ -321,6 +441,7 @@ mod tests {
             ),
             (
                 TurnOff,
+                &module,
                 false,
                 false,
                 none,
@@ -328,6 +449,7 @@ mod tests {
             ),
             (
                 TurnOff,
+                &module,
                 true,
                 false,
                 &shipping[..],
@@ -335,6 +457,7 @@ mod tests {
             ),
             (
                 Migrate,
+                &module,
                 false,
                 false,
                 none,
@@ -342,6 +465,7 @@ mod tests {
             ),
             (
                 Migrate,
+                &module,
                 true,
                 true,
                 none,
@@ -350,9 +474,17 @@ mod tests {
                     &["module:migrate", "Checkout", "--pretend", "--force"],
                 ),
             ),
-            (Seed, false, false, none, run(&["module:seed", "Checkout"])),
             (
                 Seed,
+                &module,
+                false,
+                false,
+                none,
+                run(&["module:seed", "Checkout"]),
+            ),
+            (
+                Seed,
+                &module,
                 true,
                 false,
                 none,
@@ -360,6 +492,7 @@ mod tests {
             ),
             (
                 RollBack,
+                &module,
                 false,
                 false,
                 none,
@@ -367,6 +500,7 @@ mod tests {
             ),
             (
                 RollBack,
+                &module,
                 false,
                 true,
                 none,
@@ -374,6 +508,7 @@ mod tests {
             ),
             (
                 RollBack,
+                &module,
                 true,
                 true,
                 none,
@@ -387,9 +522,10 @@ mod tests {
                     ],
                 ),
             ),
-            (RunTests, false, false, none, Plan::NoCommand),
+            (RunTests, &module, false, false, none, Plan::NoCommand),
             (
                 CheckTranslations,
+                &module,
                 true,
                 false,
                 none,
@@ -397,13 +533,32 @@ mod tests {
             ),
             (
                 ResetMigrations,
+                &module,
                 false,
                 false,
                 none,
                 ask(Ask::NamingTables, &["module:migrate-reset", "Checkout"]),
             ),
+            // A dry run of reset changes nothing, so it runs at once, except in production.
+            (
+                ResetMigrations,
+                &module,
+                false,
+                true,
+                none,
+                run(&["module:migrate-reset", "Checkout", "--pretend"]),
+            ),
+            (
+                ResetMigrations,
+                &module,
+                true,
+                true,
+                none,
+                refused(&["module:migrate-reset", "Checkout", "--pretend"]),
+            ),
             (
                 RefreshMigrations,
+                &module,
                 false,
                 false,
                 none,
@@ -411,6 +566,7 @@ mod tests {
             ),
             (
                 RefreshMigrations,
+                &module,
                 true,
                 false,
                 none,
@@ -418,20 +574,23 @@ mod tests {
             ),
             (
                 FreshMigrate,
+                &all,
                 false,
                 false,
                 none,
-                ask(Ask::TypeAppName, &["module:migrate-fresh", "Checkout"]),
+                ask(Ask::TypeAppName, &["module:migrate-fresh", "--all"]),
             ),
             (
                 FreshMigrate,
+                &all,
                 true,
                 false,
                 none,
-                refused(&["module:migrate-fresh", "Checkout"]),
+                refused(&["module:migrate-fresh", "--all"]),
             ),
             (
                 DeleteModule,
+                &module,
                 false,
                 false,
                 none,
@@ -442,65 +601,77 @@ mod tests {
             ),
             (
                 DeleteModule,
+                &module,
                 true,
                 false,
                 none,
                 refused(&["module:delete", "Checkout"]),
             ),
+            // A destructive action on a target it does not take has no command,
+            // before production is looked at.
+            (ResetMigrations, &all, true, false, none, Plan::NoCommand),
+            (RefreshMigrations, &all, false, false, none, Plan::NoCommand),
+            (DeleteModule, &all, true, false, none, Plan::NoCommand),
+            (FreshMigrate, &module, true, false, none, Plan::NoCommand),
         ];
-        for (action, production, pretend, users, expected) in table {
+        for (action, target, production, pretend, users, expected) in table {
             assert_eq!(
-                plan_for(action, production, pretend, users),
+                plan_for(action, target, production, pretend, users),
                 expected,
-                "{action:?}, production {production}, pretend {pretend}"
+                "{action:?} on {target:?}, production {production}, pretend {pretend}"
             );
         }
         assert_eq!(Action::for_module(true)[0], TurnOff);
         assert_eq!(Action::for_module(false)[0], TurnOn);
+        assert_eq!(
+            Action::destructive(&module),
+            [ResetMigrations, RefreshMigrations, DeleteModule]
+        );
+        assert_eq!(Action::destructive(&all), [FreshMigrate]);
+        for action in Action::EVERY {
+            let listed = Action::destructive(&module).contains(&action)
+                || Action::destructive(&all).contains(&action);
+            assert_eq!(action.is_destructive(), listed, "{action:?}");
+            // Run again reads the action back from the first word.
+            let back = action.artisan().and_then(Action::from_artisan);
+            assert_eq!(back, action.artisan().map(|_| action), "{action:?}");
+        }
+        assert_eq!(Action::from_artisan("module:make"), None);
     }
 
     #[test]
     fn force_comes_only_after_a_question() {
         use Action::*;
-        let every = [
-            TurnOn,
-            TurnOff,
-            Migrate,
-            RollBack,
-            Seed,
-            RunTests,
-            CheckTranslations,
-            ResetMigrations,
-            RefreshMigrations,
-            FreshMigrate,
-            DeleteModule,
-        ];
         let users = words(&["Shipping"]);
-        for action in every {
-            for production in [false, true] {
-                for pretend in [false, true] {
-                    let plan = plan_for(action, production, pretend, &users);
-                    let case = format!("{action:?}, production {production}, pretend {pretend}");
-                    let confirms = match action {
-                        DeleteModule => true,
-                        Migrate | Seed | RollBack | ResetMigrations | RefreshMigrations
-                        | FreshMigrate => production,
-                        _ => false,
-                    };
-                    let (asks, args) = match &plan {
-                        Plan::Ask { args, .. } => (true, args.clone()),
-                        Plan::Run { args } | Plan::Refused { args } => (false, args.clone()),
-                        Plan::NoCommand => (false, Vec::new()),
-                    };
-                    // Where the package confirms, Mortise asks or refuses.
-                    if confirms {
-                        assert!(!matches!(plan, Plan::Run { .. }), "{case}");
+        for action in Action::EVERY {
+            for target in [checkout(), Target::All] {
+                for production in [false, true] {
+                    for pretend in [false, true] {
+                        let plan = plan_for(action, &target, production, pretend, &users);
+                        let case = format!(
+                            "{action:?} on {target:?}, production {production}, pretend {pretend}"
+                        );
+                        let confirms = match action {
+                            DeleteModule => true,
+                            Migrate | Seed | RollBack | ResetMigrations | RefreshMigrations
+                            | FreshMigrate => production,
+                            _ => false,
+                        };
+                        let (asks, args) = match &plan {
+                            Plan::Ask { args, .. } => (true, args.clone()),
+                            Plan::Run { args } | Plan::Refused { args } => (false, args.clone()),
+                            Plan::NoCommand => (false, Vec::new()),
+                        };
+                        // Where the package confirms, Mortise asks or refuses.
+                        if confirms {
+                            assert!(!matches!(plan, Plan::Run { .. }), "{case}");
+                        }
+                        assert_eq!(
+                            args.contains(&"--force".to_string()),
+                            confirms && asks,
+                            "{case}"
+                        );
                     }
-                    assert_eq!(
-                        args.contains(&"--force".to_string()),
-                        confirms && asks,
-                        "{case}"
-                    );
                 }
             }
         }
@@ -508,11 +679,13 @@ mod tests {
 
     #[test]
     fn run_again_asks_where_mortise_asked() {
-        let table: [(&[&str], bool); 8] = [
+        let table: [(&[&str], bool); 10] = [
             (&["module:migrate", "Checkout", "--force"], true),
             (&["module:migrate", "Checkout"], false),
             (&["module:migrate-rollback", "Checkout"], true),
             (&["module:migrate-rollback", "Checkout", "--pretend"], false),
+            (&["module:migrate-reset", "Checkout"], true),
+            (&["module:migrate-reset", "Checkout", "--pretend"], false),
             (&["module:migrate-refresh", "Checkout"], true),
             (&["module:delete", "Checkout", "--force"], true),
             (&["module:disable", "Checkout"], false),
@@ -529,6 +702,8 @@ mod tests {
         let options = Options {
             pretend: true,
             seed: true,
+            drop_views: true,
+            drop_types: true,
             database: "  testing ".to_string(),
             class: "Modules\\Checkout\\Database\\Seeders\\CheckoutSeeder".to_string(),
         };
@@ -536,14 +711,9 @@ mod tests {
             production: true,
             users_on: &[],
         };
-        // Migrate takes no class.
+        // Migrate takes no class and no drop.
         assert_eq!(
-            plan(
-                Action::Migrate,
-                &Target::Module("Checkout".to_string()),
-                &options,
-                &production
-            ),
+            plan(Action::Migrate, &checkout(), &options, &production),
             Plan::Ask {
                 ask: Ask::Production,
                 args: words(&[
@@ -591,15 +761,31 @@ mod tests {
             }
         );
 
+        let local = Context {
+            production: false,
+            users_on: &[],
+        };
+        // Fresh takes no pretend, so it seeds, and drops views and types.
+        assert_eq!(
+            plan(Action::FreshMigrate, &Target::All, &options, &local),
+            Plan::Ask {
+                ask: Ask::TypeAppName,
+                args: words(&[
+                    "module:migrate-fresh",
+                    "--all",
+                    "--seed",
+                    "--drop-views",
+                    "--drop-types",
+                    "--database=testing",
+                ]),
+            }
+        );
+
         // Seed takes neither pretend nor seed, and leaves out an empty database.
         let options = Options {
             database: "   ".to_string(),
             class: " CheckoutSeeder ".to_string(),
             ..options
-        };
-        let local = Context {
-            production: false,
-            users_on: &[],
         };
         assert_eq!(
             plan(Action::Seed, &Target::All, &options, &local),
@@ -607,5 +793,24 @@ mod tests {
                 args: words(&["module:seed", "--all", "--class=CheckoutSeeder"]),
             }
         );
+    }
+
+    #[test]
+    fn the_typed_name_must_match_exactly() {
+        let module = checkout();
+        assert_eq!(
+            Ask::TypeAppName.name_to_type("shop-api", &Target::All),
+            Some("shop-api")
+        );
+        assert_eq!(
+            Ask::TypeModuleName.name_to_type("shop-api", &module),
+            Some("Checkout")
+        );
+        assert_eq!(Ask::NamingTables.name_to_type("shop-api", &module), None);
+
+        assert!(typed_name_matches("Checkout", "Checkout"));
+        assert!(!typed_name_matches("checkout", "Checkout"));
+        assert!(!typed_name_matches("Checkout ", "Checkout"));
+        assert!(!typed_name_matches("", ""));
     }
 }
