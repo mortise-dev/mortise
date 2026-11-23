@@ -543,10 +543,10 @@ impl Process {
     /// left of the tree.
     ///
     /// A stop that is asked for while a child that outlived the program still
-    /// writes, or that was asked for as the program ended and has not started, ends
-    /// what is left as [`Process::stop`] does: SIGTERM to the group, and SIGKILL
-    /// after [`STOP_GRACE`]. After a stop, the readers are not waited for past
-    /// [`GRACE`] and [`DETACH`], so the run ends within [`STOP_WAIT`].
+    /// writes, or that was asked for as the program ended and has not started,
+    /// ends what is left as [`Process::stop`] does, with [`Process::stop_the_rest`],
+    /// whether or not a child still holds a pipe. After a stop, the readers are not
+    /// waited for past [`GRACE`] and [`DETACH`], so the run ends within [`STOP_WAIT`].
     ///
     /// Known limit: a process that left the group (`setsid`), or on Windows a child
     /// of a program that ended by itself or that `taskkill` missed, can keep a pipe
@@ -561,15 +561,17 @@ impl Process {
     ) -> (Option<ExitStatus>, bool) {
         let stopping = || stop.load(Ordering::Relaxed);
         let mut done = self.wait_for_readers(GRACE, (!stopped).then_some(stop), forward);
-        let mut late = !done && !stopped && stopping();
-        if late {
-            self.terminate();
-            done = self.wait_for_readers(STOP_GRACE, None, forward);
-        }
-        // The program is not reaped yet, so the group id cannot belong to another group.
-        #[cfg(unix)]
-        self.kill();
-        let status = self.child.wait().ok();
+        let mut late = !stopped && stopping();
+        let status = if late {
+            let (status, rest_done) = self.stop_the_rest(done, forward);
+            done = rest_done;
+            status
+        } else {
+            // The program is not reaped yet, so the group id cannot belong to another group.
+            #[cfg(unix)]
+            self.kill();
+            self.child.wait().ok()
+        };
         if !done {
             let watch = !stopped && !late;
             done = self.wait_for_readers(DETACH, watch.then_some(stop), forward);
@@ -585,6 +587,52 @@ impl Process {
             forward(stream, text);
         }
         (status, late)
+    }
+
+    /// Ends what is left of the tree after the program exited, as [`Process::stop`]
+    /// does: SIGTERM to the group, and SIGKILL to what is still there after
+    /// [`STOP_GRACE`]. It reads the lines meanwhile and reaps the program. `done`
+    /// says whether the readers already finished. It returns the status of the
+    /// program and whether the readers finished.
+    ///
+    /// On Unix the SIGTERM goes first, while the unreaped program keeps the group id
+    /// ours. The program is then reaped, because a group whose leader is a zombie
+    /// still answers signal 0 on Linux. Then signal 0 to the group, every [`TICK`],
+    /// tells whether a member is left, also one that closed its pipes. The SIGKILL
+    /// after [`STOP_GRACE`] goes to a group whose member answered a [`TICK`] before.
+    ///
+    /// On Windows `taskkill` runs on the program, which has exited, and Windows
+    /// cannot name what is left: the readers get [`STOP_GRACE`], and a child that
+    /// closed its pipes is not waited for.
+    fn stop_the_rest(
+        &mut self,
+        done: bool,
+        forward: &mut impl FnMut(Stream, String),
+    ) -> (Option<ExitStatus>, bool) {
+        self.terminate();
+        #[cfg(unix)]
+        {
+            use rustix::process::{Pid, test_kill_process_group};
+            let asked = Instant::now();
+            let status = self.child.wait().ok();
+            let group = Pid::from_child(&self.child);
+            while test_kill_process_group(group).is_ok() {
+                if asked.elapsed() >= STOP_GRACE {
+                    self.kill();
+                    break;
+                }
+                // With both readers gone, this sleeps for a tick.
+                self.read(TICK, forward);
+            }
+            let finished = self.readers.iter().all(JoinHandle::is_finished);
+            (status, done || finished)
+        }
+        #[cfg(not(unix))]
+        {
+            let done = done || self.wait_for_readers(STOP_GRACE, None, forward);
+            self.kill();
+            (self.child.wait().ok(), done)
+        }
     }
 
     /// Reads until both readers finished, for at most `wait`. True when they did.
@@ -827,30 +875,64 @@ fn skip_line(reader: &mut impl BufRead) -> std::io::Result<()> {
 mod tests {
     use super::*;
 
+    /// Starts `script` in `sh` in `folder`, and reads until the program exited and
+    /// `ready` holds. It gives the program and the lines read.
+    #[cfg(unix)]
+    fn exited_with_its_child(
+        script: &str,
+        folder: &Path,
+        ready: impl Fn(&Process, &[String]) -> bool,
+    ) -> (Process, Vec<String>) {
+        let line = CommandLine {
+            program: "/bin/sh".into(),
+            args: vec!["-c".into(), script.into()],
+        };
+        let mut process = Process::start(&line, folder).unwrap();
+        let mut lines = Vec::new();
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while !(process.exited().unwrap() && ready(&process, &lines)) {
+            assert!(Instant::now() < deadline, "{lines:?}");
+            process.read(TICK, &mut |_, text| lines.push(text));
+        }
+        (process, lines)
+    }
+
     /// The owner reads the stop flag after it sees that the program exited, so a
     /// stop asked for as the program ends is pending when the readers drain. Here
-    /// the program has exited before the flag is set, every time.
+    /// the program has exited, and its child is ready, before the flag is set.
     #[cfg(unix)]
     #[test]
     fn a_stop_pending_when_the_readers_drain_asks_the_rest_to_end() {
-        // The program ends at once. Its child writes and says when SIGTERM comes.
-        let line = CommandLine {
-            program: "/bin/sh".into(),
-            args: vec![
-                "-c".into(),
-                r#"(trap 'echo term; exit 0' TERM; while :; do echo tick; sleep 0.05; done) &"#
-                    .into(),
-            ],
-        };
-        let mut process = Process::start(&line, &std::env::temp_dir()).unwrap();
-        let mut lines = Vec::new();
-        let mut keep = |_, text: String| lines.push(text);
-        while !process.exited().unwrap() {
-            process.read(TICK, &mut keep);
-        }
-        let (_, late) = process.finish(false, &AtomicBool::new(true), &mut keep);
+        let folder =
+            std::env::temp_dir().join(format!("mortise-pending-stop-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).unwrap();
+        let pending = AtomicBool::new(true);
+
+        // The child writes, and says when SIGTERM comes.
+        let (mut process, mut lines) = exited_with_its_child(
+            r#"(trap 'echo term; exit 0' TERM; while :; do echo tick; sleep 0.05; done) &"#,
+            &folder,
+            |_, lines| lines.iter().any(|line| line == "tick"),
+        );
+        let (_, late) = process.finish(false, &pending, &mut |_, text| lines.push(text));
         assert!(late);
         assert!(lines.iter().any(|line| line == "term"), "{lines:?}");
+
+        // The child closed its pipes, so the readers are done, and it leaves a file
+        // when SIGTERM comes. It ends at SIGTERM, before the kill.
+        let (mut process, _) = exited_with_its_child(
+            r#"(trap 'touch term; exit 0' TERM; exec >&- 2>&-; touch ready; while :; do sleep 0.05; done) &"#,
+            &folder,
+            |process, _| {
+                folder.join("ready").exists() && process.readers.iter().all(JoinHandle::is_finished)
+            },
+        );
+        let asked = Instant::now();
+        let (_, late) = process.finish(false, &pending, &mut |_, _| {});
+        assert!(late);
+        assert!(asked.elapsed() < STOP_GRACE, "{:?}", asked.elapsed());
+        assert!(folder.join("term").exists());
+        let _ = std::fs::remove_dir_all(&folder);
     }
 
     #[test]
