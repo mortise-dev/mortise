@@ -1,6 +1,9 @@
 //! Starting a program: the setup every program Mortise starts shares, and, with
-//! the `run` feature, running one to its end while its lines are read.
+//! the `run` feature, running one while its lines are read, and ending its whole
+//! process tree.
 
+#[cfg(feature = "run")]
+use std::collections::BTreeMap;
 use std::ffi::OsStr;
 #[cfg(feature = "run")]
 use std::ffi::OsString;
@@ -9,15 +12,21 @@ use std::io::{BufRead, BufReader, Read};
 #[cfg(feature = "run")]
 use std::path::{Path, PathBuf};
 #[cfg(feature = "run")]
-use std::process::Child;
+use std::process::{Child, ExitStatus};
 use std::process::{Command, Stdio};
+#[cfg(feature = "run")]
+use std::sync::atomic::{AtomicBool, Ordering};
 #[cfg(feature = "run")]
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 #[cfg(feature = "run")]
-use std::time::{Duration, Instant};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+#[cfg(feature = "run")]
+use std::thread::JoinHandle;
+#[cfg(feature = "run")]
+use std::time::{Duration, Instant, SystemTime};
 
 #[cfg(feature = "run")]
-use super::CommandLine;
+use super::{CommandLine, Failure, PhpSettings};
 
 /// A command with no standard input and, on Windows, no console window.
 pub(crate) fn command(program: impl AsRef<OsStr>) -> Command {
@@ -33,26 +42,486 @@ pub(crate) fn command(program: impl AsRef<OsStr>) -> Command {
     command
 }
 
-/// How long the loop waits for a line before it looks at the program again.
+/// How long a loop waits for a line before it looks at the program again.
 #[cfg(feature = "run")]
 const TICK: Duration = Duration::from_millis(50);
 
-/// How long the loop still reads after the program ended. A program that a
+/// How long the readers may still read after the program ended. A program that a
 /// grandchild outlives can leave a pipe open.
 #[cfg(feature = "run")]
 const GRACE: Duration = Duration::from_millis(250);
 
-/// The most text kept of one stream, and of one line, in bytes. A newline counts
-/// as one byte, so a flood of empty lines is bounded too.
+/// How long the readers may still read after the kill of what is left of the
+/// group, before they are left behind.
+#[cfg(feature = "run")]
+const DETACH: Duration = Duration::from_secs(1);
+
+/// How long a stopped program has to end after it was asked to, before it is killed.
+#[cfg(feature = "run")]
+const STOP_GRACE: Duration = Duration::from_secs(3);
+
+/// The most text kept of one line in bytes, and, by [`capture`], of one stream.
+/// A newline counts as one byte, so a flood of empty lines is bounded too.
 #[cfg(feature = "run")]
 const KEEP: usize = 64 * 1024;
+
+/// The most text a run sends, in bytes, newlines counted. Past it the run sends
+/// [`RunEvent::Cut`] once and drops the later lines.
+#[cfg(feature = "run")]
+pub const OUTPUT_LIMIT: usize = 1_000_000;
 
 /// The pipe a line came from.
 #[cfg(feature = "run")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Stream {
+pub enum Stream {
     Out,
     Err,
+}
+
+/// The commands that run now, one per app at most. A clone shares the same list.
+#[cfg(feature = "run")]
+#[derive(Debug, Clone, Default)]
+pub struct Runs {
+    /// The app folder, as given to [`Runs::start`], to the label of its command.
+    running: Arc<Mutex<BTreeMap<PathBuf, String>>>,
+}
+
+#[cfg(feature = "run")]
+impl Runs {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Starts artisan with `args` through the runner of `php`, in `php.folder(app)`,
+    /// for at most `php.time_limit()`. A second start in the same app is refused
+    /// while the first runs.
+    pub fn start(&self, app: &Path, php: &PhpSettings, args: &[String]) -> Result<Run, StartError> {
+        self.start_for(app, php, args, php.time_limit())
+    }
+
+    /// As [`Runs::start`], with `limit` in place of the time limit of `php`. The
+    /// settings count whole minutes, which a test cannot wait for.
+    #[cfg(feature = "testing")]
+    pub fn start_with_limit(
+        &self,
+        app: &Path,
+        php: &PhpSettings,
+        args: &[String],
+        limit: Duration,
+    ) -> Result<Run, StartError> {
+        self.start_for(app, php, args, limit)
+    }
+
+    /// The label of the command that runs in `app`, if one does.
+    pub fn running(&self, app: &Path) -> Option<String> {
+        self.lock().get(app).cloned()
+    }
+
+    fn lock(&self) -> MutexGuard<'_, BTreeMap<PathBuf, String>> {
+        self.running.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    fn start_for(
+        &self,
+        app: &Path,
+        php: &PhpSettings,
+        args: &[String],
+        limit: Duration,
+    ) -> Result<Run, StartError> {
+        let label = label(args);
+        let folder = php.folder(app);
+        let line = {
+            let mut running = self.lock();
+            if let Some(command) = running.get(app) {
+                return Err(StartError::Busy {
+                    command: command.clone(),
+                });
+            }
+            let runner = php.runner.as_ref().ok_or(StartError::NoRunner)?;
+            let words: Vec<&str> = args.iter().map(String::as_str).collect();
+            let line = CommandLine::artisan(runner, &words)
+                .ok_or(StartError::Failed(Failure::NoCommand))?;
+            if !folder.is_dir() {
+                return Err(StartError::Failed(Failure::NoFolder { folder }));
+            }
+            running.insert(app.to_owned(), label.clone());
+            line
+        };
+        let process = match Process::start(&line, &folder) {
+            Ok(process) => process,
+            Err(error) => {
+                self.lock().remove(app);
+                return Err(StartError::Failed(not_started(error, &line.program)));
+            }
+        };
+        let started = Instant::now();
+        let stop = Arc::new(AtomicBool::new(false));
+        let (sender, events) = mpsc::channel();
+        let owner = Owner {
+            process,
+            started,
+            limit,
+            stop: Arc::clone(&stop),
+            events: sender,
+            runs: self.clone(),
+            app: app.to_owned(),
+        };
+        std::thread::spawn(move || owner.run());
+        Ok(Run {
+            line,
+            label,
+            args: args.to_vec(),
+            started_at: SystemTime::now(),
+            started,
+            events,
+            stop,
+        })
+    }
+}
+
+/// Why a command did not start.
+#[cfg(feature = "run")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StartError {
+    /// The app runs another command, with this label.
+    Busy { command: String },
+    /// No way to run PHP is chosen for the app.
+    NoRunner,
+    /// `NoCommand`, `NoFolder`, `NotFound` or `NotStarted`.
+    Failed(Failure),
+}
+
+/// A command that started. Its owner thread sends what happens to it.
+#[cfg(feature = "run")]
+#[derive(Debug)]
+pub struct Run {
+    /// What runs; `display()` is the `$` line.
+    pub line: CommandLine,
+    /// The artisan words, quoted as the `$` line quotes them.
+    pub label: String,
+    /// The artisan words as given to [`Runs::start`].
+    pub args: Vec<String>,
+    pub started_at: SystemTime,
+    started: Instant,
+    events: Receiver<RunEvent>,
+    stop: Arc<AtomicBool>,
+}
+
+#[cfg(feature = "run")]
+impl Run {
+    /// Asks the run to end its process tree. Safe to call twice or after the end.
+    pub fn stop(&self) {
+        self.stop.store(true, Ordering::Relaxed);
+    }
+
+    /// The time since the start.
+    pub fn elapsed(&self) -> Duration {
+        self.started.elapsed()
+    }
+
+    /// What arrived since the last call. It never blocks.
+    pub fn events(&self) -> Vec<RunEvent> {
+        self.events.try_iter().collect()
+    }
+}
+
+/// What a run sends, in order. [`RunEvent::Ended`] comes last.
+#[cfg(feature = "run")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RunEvent {
+    /// A line without its newline, with its escape codes.
+    Line { stream: Stream, text: String },
+    /// The output passed [`OUTPUT_LIMIT`]; the later lines are dropped.
+    Cut,
+    /// The run is over. No thread of the run is left, and the app accepts a new start.
+    Ended(RunEnd),
+}
+
+/// How a run ended.
+#[cfg(feature = "run")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RunEnd {
+    /// The program ended by itself. `code` is `None` when a signal that Mortise
+    /// did not send ended it.
+    Exited {
+        code: Option<i32>,
+        elapsed: Duration,
+    },
+    /// Mortise stopped it. `limit` is the time limit, when that stopped it.
+    Stopped {
+        elapsed: Duration,
+        limit: Option<Duration>,
+    },
+}
+
+/// Whether a stop of the command with these artisan words asks first. A migration
+/// that stops half way can leave the database between two states.
+#[cfg(feature = "run")]
+pub fn stop_asks_first(args: &[String]) -> bool {
+    const ASK: [&str; 6] = [
+        "module:migrate",
+        "module:migrate-rollback",
+        "module:migrate-refresh",
+        "module:migrate-reset",
+        "module:migrate-fresh",
+        "module:seed",
+    ];
+    args.first()
+        .is_some_and(|word| ASK.contains(&word.as_str()))
+}
+
+/// The artisan words one space apart, each quoted as [`CommandLine::display`]
+/// quotes an argument on this platform.
+#[cfg(feature = "run")]
+fn label(args: &[String]) -> String {
+    // `display` quotes each argument on its own, and a bare program adds no `& `.
+    let line = CommandLine {
+        program: "artisan".into(),
+        args: args.to_vec(),
+    };
+    let shown = line.display();
+    shown
+        .strip_prefix("artisan")
+        .unwrap_or(&shown)
+        .trim_start()
+        .to_string()
+}
+
+/// The failure of a program that did not start.
+#[cfg(feature = "run")]
+fn not_started(error: std::io::Error, program: &str) -> Failure {
+    if error.kind() == std::io::ErrorKind::NotFound {
+        Failure::NotFound {
+            program: program.to_owned(),
+        }
+    } else {
+        Failure::NotStarted {
+            program: program.to_owned(),
+            message: error.to_string(),
+        }
+    }
+}
+
+/// The thread that holds the program of a run.
+#[cfg(feature = "run")]
+struct Owner {
+    process: Process,
+    started: Instant,
+    limit: Duration,
+    stop: Arc<AtomicBool>,
+    events: Sender<RunEvent>,
+    runs: Runs,
+    app: PathBuf,
+}
+
+#[cfg(feature = "run")]
+impl Owner {
+    /// Forwards the lines until the program ends, by itself, by a stop or at the
+    /// limit. Then it ends as D2 of the design says: the readers joined, the app
+    /// removed from [`Runs`], and [`RunEvent::Ended`] last.
+    fn run(self) {
+        let Owner {
+            mut process,
+            started,
+            limit,
+            stop,
+            events,
+            runs,
+            app,
+        } = self;
+        let mut sent = 0;
+        let mut cut = false;
+        let mut forward = |stream, text: String| {
+            if cut {
+                return;
+            }
+            sent += text.len() + 1;
+            if sent > OUTPUT_LIMIT {
+                cut = true;
+                let _ = events.send(RunEvent::Cut);
+            } else {
+                let _ = events.send(RunEvent::Line { stream, text });
+            }
+        };
+        // `stopped` is `Some` when Mortise ended it, with the limit when that did.
+        let (status, stopped) = loop {
+            match process.child.try_wait() {
+                Ok(Some(status)) => break (Some(status), None),
+                Ok(None) => {}
+                Err(_) => break (process.stop(&mut forward).ok(), None),
+            }
+            let at_limit = started.elapsed() >= limit;
+            if at_limit || stop.load(Ordering::Relaxed) {
+                let status = process.stop(&mut forward).ok();
+                break (status, Some(at_limit.then_some(limit)));
+            }
+            process.read(TICK, &mut forward);
+        };
+        let elapsed = started.elapsed();
+        process.finish(&mut forward);
+        let end = match stopped {
+            Some(limit) => RunEnd::Stopped { elapsed, limit },
+            None => RunEnd::Exited {
+                code: status.and_then(|status| status.code()),
+                elapsed,
+            },
+        };
+        runs.lock().remove(&app);
+        let _ = events.send(RunEvent::Ended(end));
+    }
+}
+
+/// A started program and the threads that read its pipes.
+#[cfg(feature = "run")]
+struct Process {
+    child: Child,
+    lines: Receiver<(Stream, String)>,
+    readers: Vec<JoinHandle<()>>,
+}
+
+#[cfg(feature = "run")]
+impl Process {
+    /// Starts `line` in `folder`, on Unix as the leader of a new process group,
+    /// with both pipes read into one channel.
+    fn start(line: &CommandLine, folder: &Path) -> std::io::Result<Self> {
+        let mut command = prepare(line, folder)?;
+        // Its children join the group, so a signal to the group reaches the tree.
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::CommandExt;
+            command.process_group(0);
+        }
+        let mut child = command.spawn()?;
+        let (sender, lines) = mpsc::channel();
+        let readers = [
+            read_lines(child.stdout.take(), Stream::Out, sender.clone()),
+            read_lines(child.stderr.take(), Stream::Err, sender),
+        ];
+        Ok(Self {
+            child,
+            lines,
+            readers: readers.into_iter().flatten().collect(),
+        })
+    }
+
+    /// Waits up to `wait` for a line, then gives `forward` each line that arrived.
+    fn read(&self, wait: Duration, forward: &mut impl FnMut(Stream, String)) {
+        match self.lines.recv_timeout(wait) {
+            Ok((stream, text)) => forward(stream, text),
+            Err(RecvTimeoutError::Timeout) => return,
+            Err(RecvTimeoutError::Disconnected) => {
+                std::thread::sleep(wait);
+                return;
+            }
+        }
+        for (stream, text) in self.lines.try_iter() {
+            forward(stream, text);
+        }
+    }
+
+    /// Ends the process tree: it asks first, and kills after [`STOP_GRACE`].
+    /// It reads the lines meanwhile and returns how the program ended.
+    fn stop(&mut self, forward: &mut impl FnMut(Stream, String)) -> std::io::Result<ExitStatus> {
+        self.terminate();
+        let asked = Instant::now();
+        loop {
+            if let Some(status) = self.child.try_wait()? {
+                return Ok(status);
+            }
+            if asked.elapsed() >= STOP_GRACE {
+                self.kill();
+                return self.child.wait();
+            }
+            self.read(TICK, forward);
+        }
+    }
+
+    /// Asks the tree to end: SIGTERM to the group.
+    #[cfg(unix)]
+    fn terminate(&mut self) {
+        self.signal(rustix::process::Signal::TERM);
+    }
+
+    /// Ends the tree at once: SIGKILL to the group.
+    #[cfg(unix)]
+    fn kill(&mut self) {
+        self.signal(rustix::process::Signal::KILL);
+    }
+
+    /// Sends `signal` to the group of the program. `ESRCH` means that the group is
+    /// gone. On another error the leader alone gets SIGKILL, so a wait for it ends.
+    #[cfg(unix)]
+    fn signal(&mut self, signal: rustix::process::Signal) {
+        use rustix::process::{Pid, kill_process_group};
+        match kill_process_group(Pid::from_child(&self.child), signal) {
+            Ok(()) | Err(rustix::io::Errno::SRCH) => {}
+            Err(_) => {
+                let _ = self.child.kill();
+            }
+        }
+    }
+
+    /// Ends the tree: `taskkill /T` ends the children too, so `php.exe` under
+    /// `herd.bat` ends. When `taskkill` fails, the program alone is ended.
+    /// Not run on Windows.
+    #[cfg(not(unix))]
+    fn terminate(&mut self) {
+        let pid = self.child.id().to_string();
+        let ended = command("taskkill")
+            .args(["/PID", pid.as_str(), "/T", "/F"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .is_ok_and(|status| status.success());
+        if !ended {
+            let _ = self.child.kill();
+        }
+    }
+
+    /// Ends the program at once.
+    #[cfg(not(unix))]
+    fn kill(&mut self) {
+        let _ = self.child.kill();
+    }
+
+    /// The end, once the program has exited. The readers get [`GRACE`] to finish.
+    /// Then, on Unix, what is left in the group is killed, which closes the pipes.
+    /// The readers are joined and `forward` gets their last lines.
+    ///
+    /// Known limit: a process that left the group (`setsid`), or on Windows a child
+    /// of a program that ended by itself, can keep a pipe open. Windows cannot name
+    /// the children of an ended program without a job object. A reader that still
+    /// reads [`DETACH`] later is left behind; it ends when the pipe closes.
+    fn finish(&mut self, forward: &mut impl FnMut(Stream, String)) {
+        if !self.wait_for_readers(GRACE, forward) {
+            #[cfg(unix)]
+            self.kill();
+            self.wait_for_readers(DETACH, forward);
+        }
+        for reader in std::mem::take(&mut self.readers) {
+            if reader.is_finished() {
+                let _ = reader.join();
+            }
+        }
+        for (stream, text) in self.lines.try_iter() {
+            forward(stream, text);
+        }
+    }
+
+    /// Reads until both readers finished, for at most `wait`. True when they did.
+    fn wait_for_readers(&self, wait: Duration, forward: &mut impl FnMut(Stream, String)) -> bool {
+        let until = Instant::now() + wait;
+        loop {
+            if self.readers.iter().all(JoinHandle::is_finished) {
+                return true;
+            }
+            let left = until.saturating_duration_since(Instant::now());
+            if left.is_zero() {
+                return false;
+            }
+            self.read(left.min(TICK), forward);
+        }
+    }
 }
 
 /// What a program printed and how it ended.
@@ -67,7 +536,8 @@ pub(crate) struct Captured {
     pub timed_out: bool,
 }
 
-/// Runs `line` in `folder` and keeps its lines, for at most `limit`.
+/// Runs `line` in `folder` and keeps its lines, at most [`KEEP`] bytes of each
+/// stream, for at most `limit`. At the limit it ends the whole process tree.
 /// An error means the program did not start.
 #[cfg(feature = "run")]
 pub(crate) fn capture(
@@ -75,53 +545,46 @@ pub(crate) fn capture(
     folder: &Path,
     limit: Duration,
 ) -> std::io::Result<Captured> {
-    let (mut child, lines) = start(line, folder)?;
+    let mut process = Process::start(line, folder)?;
     let started = Instant::now();
-    let mut captured = Captured::default();
-    let mut ended: Option<Instant> = None;
-    let mut open = true;
-    loop {
-        if open {
-            match lines.recv_timeout(TICK) {
-                Ok((Stream::Out, text)) => captured.stdout.push(text),
-                Ok((Stream::Err, text)) => captured.stderr.push(text),
-                Err(RecvTimeoutError::Timeout) => {}
-                Err(RecvTimeoutError::Disconnected) => open = false,
-            }
+    let mut stdout = Vec::new();
+    let mut stderr = Vec::new();
+    let mut kept = [0, 0];
+    let mut keep = |stream, text: String| {
+        let (kept, lines) = match stream {
+            Stream::Out => (&mut kept[0], &mut stdout),
+            Stream::Err => (&mut kept[1], &mut stderr),
+        };
+        // Once a stream is full, its later lines are dropped too.
+        if *kept + text.len() > KEEP {
+            *kept = KEEP + 1;
         } else {
-            std::thread::sleep(TICK);
+            *kept += text.len() + 1;
+            lines.push(text);
         }
-        if ended.is_none()
-            && let Some(status) = child.try_wait()?
-        {
-            captured.code = status.code();
-            ended = Some(Instant::now());
+    };
+    let mut code = None;
+    let mut timed_out = false;
+    loop {
+        if let Some(status) = process.child.try_wait()? {
+            code = status.code();
+            break;
         }
-        match ended {
-            Some(at) if !open || at.elapsed() >= GRACE => return Ok(captured),
-            None if started.elapsed() >= limit => {
-                // The program may have ended in the meantime; then there is nothing to stop.
-                let _ = child.kill();
-                let _ = child.wait();
-                captured.timed_out = true;
-                return Ok(captured);
-            }
-            _ => {}
+        if started.elapsed() >= limit {
+            // The program may have ended in the meantime; then there is nothing to stop.
+            let _ = process.stop(&mut keep);
+            timed_out = true;
+            break;
         }
+        process.read(TICK, &mut keep);
     }
-}
-
-/// Starts `line` in `folder` with both pipes read into one channel.
-#[cfg(feature = "run")]
-fn start(
-    line: &CommandLine,
-    folder: &Path,
-) -> std::io::Result<(Child, Receiver<(Stream, String)>)> {
-    let mut child = prepare(line, folder)?.spawn()?;
-    let (sender, lines) = mpsc::channel();
-    read_lines(child.stdout.take(), Stream::Out, sender.clone());
-    read_lines(child.stderr.take(), Stream::Err, sender);
-    Ok((child, lines))
+    process.finish(&mut keep);
+    Ok(Captured {
+        code,
+        stdout,
+        stderr,
+        timed_out,
+    })
 }
 
 /// The command for `line` in `folder`, with both pipes and the `PATH` of [`child_path`].
@@ -206,20 +669,18 @@ fn extra_folders(home: Option<&Path>) -> Vec<PathBuf> {
 }
 
 /// Reads `pipe` line by line on a thread of its own and sends each line with `stream`.
-/// A line is cut at [`KEEP`] bytes. Once the lines pass [`KEEP`] bytes in all, the
-/// rest is read and dropped, so the program never blocks on a full pipe.
-/// The thread ends when the pipe closes or nobody listens any more.
+/// A line is cut at [`KEEP`] bytes. The thread ends when the pipe closes or nobody
+/// listens any more. `None` when there is no pipe.
 #[cfg(feature = "run")]
 fn read_lines(
     pipe: Option<impl Read + Send + 'static>,
     stream: Stream,
     sender: Sender<(Stream, String)>,
-) {
-    let Some(pipe) = pipe else { return };
-    std::thread::spawn(move || {
+) -> Option<JoinHandle<()>> {
+    let pipe = pipe?;
+    Some(std::thread::spawn(move || {
         let mut reader = BufReader::new(pipe);
         let mut bytes = Vec::new();
-        let mut kept = 0;
         loop {
             bytes.clear();
             // `take` bounds the buffer when a stream has no newline.
@@ -229,11 +690,7 @@ fn read_lines(
                 .read_until(b'\n', &mut bytes)
             {
                 Ok(0) | Err(_) => return,
-                Ok(read) => kept += read,
-            }
-            if kept > KEEP {
-                let _ = std::io::copy(&mut reader, &mut std::io::sink());
-                return;
+                Ok(_) => {}
             }
             if bytes.last() == Some(&b'\n') {
                 bytes.pop();
@@ -249,7 +706,7 @@ fn read_lines(
                 return;
             }
         }
-    });
+    }))
 }
 
 /// Reads and drops the rest of a line, up to and with its newline.
@@ -280,6 +737,22 @@ fn skip_line(reader: &mut impl BufRead) -> std::io::Result<()> {
 #[cfg(all(test, feature = "run"))]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_stop_of_a_migration_or_a_seed_asks_first() {
+        let words = |words: &[&str]| {
+            words
+                .iter()
+                .map(|word| word.to_string())
+                .collect::<Vec<_>>()
+        };
+        assert!(stop_asks_first(&words(&["module:migrate", "Blog"])));
+        assert!(stop_asks_first(&words(&["module:migrate-fresh"])));
+        assert!(stop_asks_first(&words(&["module:seed", "Blog"])));
+        assert!(!stop_asks_first(&words(&["module:make", "module:migrate"])));
+        assert!(!stop_asks_first(&words(&["migrate"])));
+        assert!(!stop_asks_first(&[]));
+    }
 
     #[test]
     fn a_program_with_a_separator_starts_in_the_folder() {

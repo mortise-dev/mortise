@@ -12,6 +12,8 @@ pub use detect::{Detected, detect, herd_config_dir};
 #[cfg(feature = "run")]
 pub mod history;
 pub(crate) mod process;
+#[cfg(feature = "run")]
+pub use process::{OUTPUT_LIMIT, Run, RunEnd, RunEvent, Runs, StartError, Stream, stop_asks_first};
 
 use std::path::{Path, PathBuf};
 use std::time::Duration;
