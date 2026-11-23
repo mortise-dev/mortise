@@ -2,3 +2,346 @@
 
 All notable changes to this project are listed here.
 <!-- git-cliff: end of header -->
+## [0.1.0] - 2026-11-23
+
+### Features
+
+- *(core)* Read an app folder into a snapshot
+- *(app)* Show the workbench with the real module list
+- *(core)* Keep the app list and read an app again when its files change
+- *(app)* Add apps, keep them between runs and follow changes on disk
+- *(core)* Read lines, kinds, tests, coverage and git changes
+- *(app)* Show statistics on the Summary and filter the index
+- *(core)* Find links between modules, circles and the rules of an app
+- *(app)* Show the boundary of a module and of the app
+- *(core)* Work out findings from rules and checks on files
+- *(app)* Show findings in the index, on the rail and in a list
+- *(core)* Add the palette matcher, the editor command and more settings
+- *(app)* Add the command palette
+- *(app)* Add Settings, the editor command and the window widths
+- *(app)* Show focus on every control and honour reduced motion
+- *(core)* Read runtime status through laravel-actuator
+- *(app)* Show runtime status, routes and scheduled tasks
+- *(core)* Scan a module and propose its public surface
+- *(app)* Show the public surface of a module and scan it
+- *(app)* Complete the keyboard model
+- Read a folder off the interface thread and say how far it is
+- *(app)* Set the index width, reorder the rail, show shortcuts in tooltips
+- *(app)* Follow the reduce motion setting of macOS
+- *(app)* Add the menu bar of macOS
+- *(app)* Add the app icon for macOS, Windows and Linux
+- *(app)* Name the module that counts a circle in the summary of the other members
+- *(core)* Find herd, sail and docker from the app folder
+- *(core)* Read APP_ENV from .env beside APP_URL
+- *(core)* Build an artisan command line for each kind of runner
+- *(core)* Keep the runner, working folder and time limit of each app
+- *(core)* Test how php runs with artisan --version
+- *(app)* Choose and test how php runs in settings
+- *(app)* Choose how php runs when an app is added
+- *(core)* Map sgr codes of command output to four styles
+- *(core)* Keep the last 50 runs of each app
+- *(core)* Run a command with streamed output, stop and a time limit
+- *(app)* Show runs in the runner drawer
+- *(core)* Plan the everyday actions and their confirmations
+- *(core)* Read the migration lines of a run
+- *(app)* Add the actions tab
+- *(app)* List the actions of a module in the palette
+- *(core)* Count the files that are not committed in a module
+- *(core)* Plan the destructive actions and check the typed name
+- *(core)* Read a prohibited command and count rollbacks
+- *(app)* Offer the destructive actions in a closed group
+- *(app)* Confirm destructive actions with a typed name
+- *(core)* Describe the 42 generators of 13.3.0
+- *(core)* Build the words of a generator and check names
+- *(core)* Read the files a generator run wrote
+- *(app)* Build the generate tab, its runs and its ways in
+- *(app)* List the new module and generate keys in settings
+- *(core)* Wait for the end of a run with a deadline
+- *(core)* Map the runs of the history to recent actions and generators
+- *(app)* List recent actions in the empty palette
+- *(app)* List the runner keys in settings and copy the command with Ctrl Shift C in Actions
+- *(app)* List the run again, history and copy output keys in settings
+- *(core)* Add the package data groundwork of 13.4
+- *(app)* Keep the package data of an app across its reads
+- *(app)* Start and poll reads of package data beside runs
+- *(app)* Read the migration state and count migrations in the actions
+- *(app)* Run module:test and read its counts on a 13.4 app
+- *(app)* Show translation warnings and work to do in findings
+- Read the generators of a 13.4 app and keep them in a cache
+- List the files of a dry run and read the answer of a generator run
+- *(app)* Offer list files again beside a file list
+
+### Bug fixes
+
+- *(core)* Say an unknown host and an untrusted certificate in plain words
+- *(app)* Show the name from Settings in the index header
+- *(core)* Say the host was not found on Windows too
+- *(app)* Write the home path with / on every platform
+- *(app)* Ship the font licences in the installers
+- *(core)* Do not follow redirects from the actuator
+- *(core)* Read a file again when its test folder changes
+- *(core)* Watch the folder of the statuses file the config names
+- *(core)* See a commit that changes only the refs and the git log
+- *(core)* Run git without a console window on windows
+- *(core)* Save the rules through a temporary file with a unique name
+- *(app)* Open a circle on a module its carrier uses
+- *(app)* Show a one-way link in a circle as part of the circle
+- *(app)* Add only the folder the path field shows
+- *(app)* Close settings first on esc and keep only saved field values
+- *(app)* Alert a problem of the app itself with its own severity
+- *(app)* Key rail tiles by app folder so equal names do not clash
+- *(app)* Give the index strip a scrollbar track and keep its focus ring inside
+- *(app)* Wrap the findings states so they stay inside their stat cell
+- *(core)* Name where a redirect of the actuator sends to
+- *(core)* Watch a renamed statuses file and folders that appear later
+- *(app)* Keep ctrl o and the rules dialog to the app it was asked for
+- *(app)* Let esc leave a settings field before it closes settings
+- *(app)* Close settings when a command or menu item goes somewhere
+- *(app)* Open a link or a finding on the links of boundary
+- *(app)* Keep the click that leaves an edited settings field
+- *(app)* Wrap the dependency names so they stay clear of the counts
+- *(app)* Show a circle in the files of a link only while its rule is on
+- *(app)* Draw the neighbours that break a rule before the more node
+- *(core)* Watch a folder wanted twice with its subfolders
+- *(app)* Wrap a long test answer on its own lines
+- *(app)* Leave settings cleanly from the menu bar and the add panel
+- *(app)* Keep a long test answer to two lines and repaint after a menu choice
+- *(core)* Leave test files out of links
+- *(app)* Draw the code stamp in a graph node and the name only when it fits
+- *(app)* Scroll the add panel when it does not fit
+- *(core)* Count a rule finding only when its modules are on
+- *(core)* Name no carrier of a circle through a module that is off
+- *(app)* Show the settings name of an app on every screen
+- *(app)* Scroll the add panel to the control that gets focus
+- *(app)* Scroll the add panel only for a control inside it
+- *(core)* Count a circle of modules that are on when an off module joins it
+- *(app)* Draw the add panel's bar only once the files are counted
+- *(core)* Name a missing working folder in the php test
+- *(app)* Show the line that the php test runs
+- *(core)* Take the last line of a name in .env
+- *(core)* Read a docker line with an empty service as custom
+- *(core)* Add each artisan flag only once
+- *(core)* Quote a program with = in the posix line
+- *(core)* Start a relative program with a separator in the folder
+- *(core)* Refuse a batch file with % in its path on windows
+- *(core)* Bound the output a php test keeps
+- *(app)* Keep the status of the runner still when the run time changes
+- *(core)* Kill the whole group when a run ends and bound the line queue
+- *(core)* Lock the history while a run is kept and prune only its own logs
+- *(app)* Keep the room of the status and make mortise the default binary
+- *(app)* Run again only a line that is on screen
+- *(core)* Read the lines a reader still sends after a run ends
+- *(app)* Give the fake artisan of the app its own name
+- *(core)* Count rolled back migrations and drop the database of migrate all
+- *(core)* Keep a dry run dry and say which commands run again asks for
+- *(core)* Drop an unused binding in plan
+- *(app)* Settle the review of the actions tab
+- *(app)* Check the typed name again when the button is pressed
+- *(app)* Settle the review of the destructive actions
+- *(app)* Check refusals from the app's files when a destructive dialog confirms
+- *(core)* Keep --factory when the model file is replaced
+- *(app)* Settle the review of the generate tab
+- *(app)* Say the dry run runs none of the sql
+- *(app)* Draw the harpoon of laravel output
+- *(app)* Stop every run when mortise closes
+- *(app)* Keep graph nodes, add buttons and box heads inside their room
+- *(app)* Wrap the labels of the rules inside the rules box
+- *(core)* Leave out recent actions the actions tab does not offer
+- *(app)* Keep the hint of the current palette row
+- *(app)* Say open on a current palette row with no hint
+- *(app)* Scroll a focused graph node into view
+- *(app)* Grow each box by its wrapped head
+- *(core)* Honour a stop while the readers drain
+- *(app)* Keep a palette row's detail clear of its hint
+- *(core)* Start a stop that is pending when the readers drain
+- *(app)* Scroll the page to a focused graph node too
+- *(core)* Start a pending stop even when the pipes closed
+- *(app)* Pass the gate to the options of a migration panel
+- *(core)* Replace only the model file when the model passes --force on
+- *(app)* Start a read only from a line that was whole on screen
+- *(app)* Drop a generator read when the package version changed while it ran
+- *(core)* Mark a cut line of standard output and never read it as a document
+- Count an option only before -- when words get --json or --pretend
+- *(app)* Turn off run again in the drawer while a read runs
+- *(app)* Say why a run gave no answer when it read no file
+- *(core)* Read created tables through use aliases and the named table argument
+- *(app)* List files and add --json only for generators the package ships
+- *(core)* Offer no replace for a generator the package does not ship
+- *(core)* Offer no replace of a 13.4 model whose run made its factory
+- *(app)* Keep the factory in the command when the dry run finds it
+- *(core)* Place a container path of a generator under the app folder
+- *(app)* List the files s9.3 took out in the result with their replace
+- *(core)* Count only the schema facade when a migration imports another schema
+- *(core)* Check each name of an array argument of a generator
+- *(app)* Keep why a failed autoload result was read from the output
+- *(app)* Offer replace in the own-file sentence only when the form offers it
+- *(core)* Keep a module named like a flag in the words that replace a model
+- Read the runner's own options in the guards of replace
+- *(core)* Place a container path by a module of the app, else by the last modules folder
+- *(app)* Mark the factory box exists when the dry run keeps the factory
+- *(app)* Give each file a run left its own replace in its row
+- *(app)* Open a generator without a module argument under all modules
+- *(app)* Drop the file list when the runner or the working folder changes
+- *(core)* Offer no model replace when the runner sets a model option
+- *(app)* Drop a stale dry run before it edits the form and restore its flags
+- *(app)* Keep the other rows of a result when one left file is replaced
+- *(app)* Let only the generator's own file stop create
+- *(core)* Place the paths of a new module by the names module:make asks for
+- *(app)* Keep the path of a result row clear of its state and replace
+- *(core)* Place a container path by the first part of the run's own module
+- *(app)* Update a replaced row only by its own path and keep the reason of a failed replace
+- *(app)* Turn off the replace buttons of a result while the app is busy
+- *(app)* Give back the flags of a dropped file list when the words change
+- *(app)* Give back the flags a run took out of the form when it ends
+- *(app)* Clear the reason of a failed replace when a later replace answers
+- *(app)* Read the migration state only from a line whole on screen
+- *(app)* Show and read the migration state of the panel's connection
+- *(app)* Read the state after a run only when the panel showed that read
+- *(app)* Forget the migration state of a connection after a fresh
+- *(app)* Take in the test and translation documents of every run
+- *(app)* Count no tests when a module that ran has no counts
+- *(app)* List at most six migrations or tables in a confirmation
+- *(app)* Forget the migration state a migration command changed instead of reading it again
+- *(app)* Show the counts of all modules only when every module that is on was read
+- *(app)* Give no count toast to a failed test run that counts no failed test
+- *(app)* Say when the translation report of a run cannot be read
+- *(core)* Cover only the modules that were on at a read of every module
+- *(core)* Add no translation check when no module was checked
+- *(app)* Count the tests of every module in the run tests row on 13.4
+- *(app)* Show a failed state read only for its target and connection
+- *(app)* Forget the migration state when the runner or working folder changes
+- *(core)* Stop doc comments linking to private items
+
+### Refactoring
+
+- *(core)* Add the run module tree and the run feature
+- *(core)* Start git and the editor through one command setup
+- *(core)* Name the reading of the two lines of .env
+- *(core)* Pass the time limit to a run and share the output limit
+- *(app)* Move the alert box and the empty state to draw.rs
+- *(app)* Move selection to index.rs
+- *(app)* Rename the boundary action to work action and move it to workspace.rs
+- *(app)* Move the theme and the components to ui/
+- *(app)* Move each screen to its feature folder
+- *(app)* Move the window, its chrome and the workspace to app/
+- *(app)* Move the keys to app/keys.rs
+- *(app)* Move the generate wiring to app/generate.rs
+- *(app)* Move the actions wiring to app/actions.rs
+- *(app)* Move the runs wiring to app/runs.rs
+- *(app)* Move the apps wiring to app/apps.rs
+- *(app)* Move the settings wiring to app/settings.rs
+- *(app)* Move the palette wiring to app/palette.rs
+- *(app)* Move the runtime wiring to app/runtime.rs
+- *(core)* Move starting a program to program.rs
+- *(core)* Move the reading of modules to modules/
+- *(core)* Move target to modules/target.rs
+- *(core)* Move the app read and its watch to app/
+- *(core)* Move links and rules to boundary/
+- *(core)* Move the runtime to runtime/
+- *(core)* Move the actions plan to actions/
+- *(core)* Move the generators catalog to generate/
+- *(core)* Split the output readers into actions and generate
+- *(core)* Move what the package ships to the generate catalog
+- *(core)* Move the palette's matcher and recent runs to palette/
+- *(core)* Import command in the runner only with the run feature
+- *(app)* Move the text of actions to actions/strings.rs
+- *(app)* Move the text of app to app/strings.rs
+- *(app)* Move the text of apps to apps/strings.rs
+- *(app)* Move the text of boundary to boundary/strings.rs
+- *(app)* Move the text of findings to findings/strings.rs
+- *(app)* Move the text of generate to generate/strings.rs
+- *(app)* Move the text of index to index/strings.rs
+- *(app)* Move the text of palette to palette/strings.rs
+- *(app)* Move the text of runner to runner/strings.rs
+- *(app)* Move the text of runtime to runtime/strings.rs
+- *(app)* Move the text of settings to settings/strings.rs
+- *(app)* Move the text of summary to summary/strings.rs
+
+### Documentation
+
+- Add the phase 0 design specification
+- Add the phase 1 plan and the list of deviations
+- Record the owner's decisions and what milestone 1 found
+- Record what milestone 6 moved to milestone 9
+- Describe phase 1, list third-party licences, keep differing images in CI
+- Set up openspec and add instructions for coding agents
+- Name the actuator base path among the requests
+- Add orchestration instructions to agents.md
+- Add the approved phase 2 plan
+- Propose the phase 2 groundwork change
+- Let mortise run package commands the user starts
+- Bring spec section 12.2 up to the packages
+- Name the prohibit flags of the destructive commands
+- Mark the phase 2 groundwork tasks done
+- Keep the 13.3 generator fallback at 42 commands
+- Say that a module of unknown state counts as on
+- Archive the phase 2 groundwork change
+- Propose the phase 2 how php runs change
+- Tick the core groundwork tasks of how php runs
+- Add the missing working folder to the how php runs design
+- Tick the settings and palette tasks of how php runs
+- Say how mortise runs php in the readme
+- Tick the add panel, readme and image tasks of how php runs
+- Tick the integration tasks of how php runs
+- *(core)* Say that a batch file still gets the legacy arguments
+- Record the bounds of a php test in the design
+- Archive the phase 2 how php runs change
+- Propose the phase 2 runner drawer change
+- Mark the core tasks of the runner drawer done
+- Record the header of the runner drawer as a deviation
+- Mark the runner drawer change built
+- Record the review fixes of the process model in the design
+- Archive the phase 2 runner drawer change
+- Propose the phase 2 everyday actions change
+- Count rolled back migrations and the options of all modules in the design
+- Record the deviations of the actions
+- Mark the everyday actions change built
+- Record the review decisions of the actions
+- Archive the phase 2 everyday actions change
+- Propose the phase 2 destructive actions change
+- Tick the git count task
+- Tick the core tasks of the destructive actions
+- Record the deviations of the destructive actions
+- Archive the phase 2 destructive actions change
+- Propose the phase 2 generate change
+- Tick the core tasks of the generate change
+- Record the deviations of the generate screens
+- Tick the interface tasks of the generate change
+- Record what replace module does and the review of the generate tab
+- Archive the phase 2 generate change
+- Propose the phase 2 hardening change
+- Record that the owner accepts deviation S40
+- Mark the small fixes of the hardening change done
+- Mark the fixes of the hardening change done
+- Say how to run the real php tests
+- Mark the real php task of the hardening change done
+- Mark the accessibility task of the hardening change done
+- Describe phase 2 in the readme
+- Check deviations s32 to s50 against the build
+- Name the phase 2 plan and the real php tests in the readme
+- Record the linux look of the hardening change
+- Mark the images task of the hardening change done
+- Mark the integration of the hardening change done
+- Say run none of it in every drawn dry run of the spec
+- Archive the phase 2 hardening change
+- Propose the phase 2 package data change
+- Note the app plumbing of reads in the design
+- Record the deviations of the actions with package data and describe 13.4 in the readme
+- Record the deviations of the generate package data
+- Note what changed after the review of the generate package data
+- Record the third review round in s55 and the design notes
+- Record the fourth review round in s55, s57 and the design notes
+- Say what changed after the review of the migration state and the documents
+- Say in the proposal that a migration command forgets the state
+- Archive the phase 2 package data change
+- Split the json answer out of the result requirement of module generators
+- Propose the phase 2 package by feature change
+- Name the cycle of catalog and run in the proposal
+- Add readme banner and social preview
+- Name the feature folders and the strings rule in agents.md
+- Update the moved paths in the deviations
+- Add milestone 17 to the phase 2 plan
+- Record what the package by feature build did and tick its tasks
+- Use the measured sizes in the milestone 17 plan
+- Archive the phase 2 package by feature change
+
