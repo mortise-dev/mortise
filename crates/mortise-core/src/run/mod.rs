@@ -61,7 +61,8 @@ impl RunnerKind {
 
     /// The kind a command field holds. The words of Herd, or of Sail off Windows,
     /// give that kind. `docker compose exec [-T] <service> php artisan` gives Docker
-    /// with that service. Any other text gives Custom with the text.
+    /// with that service, unless the service is empty or starts with `-`. Any other
+    /// text gives Custom with the text.
     pub fn from_line(line: &str) -> RunnerKind {
         let words = split_words(line);
         let words: Vec<&str> = words.iter().map(String::as_str).collect();
@@ -76,9 +77,11 @@ impl RunnerKind {
             _ => None,
         };
         match service {
-            Some(service) if !service.starts_with('-') => RunnerKind::Docker {
-                service: service.to_string(),
-            },
+            Some(service) if !service.is_empty() && !service.starts_with('-') => {
+                RunnerKind::Docker {
+                    service: service.to_string(),
+                }
+            }
             _ => RunnerKind::Custom {
                 line: line.to_string(),
             },
@@ -357,6 +360,7 @@ mod tests {
         for line in [
             "\"/opt/my php/bin/php\" artisan",
             "docker compose exec -T php artisan",
+            "docker compose exec -T \"\" php artisan",
             "herd php artisan tinker",
             "",
         ] {
