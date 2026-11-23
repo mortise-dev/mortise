@@ -56,9 +56,9 @@ const DRAIN: Duration = Duration::from_secs(10);
 const STOP_GRACE: Duration = Duration::from_secs(3);
 
 /// The longest a stop takes to end a run, from [`Run::stop`] to [`RunEvent::Ended`]:
-/// [`STOP_GRACE`] to the kill, [`GRACE`] and [`DETACH`] for the readers, and a margin
-/// for a few [`TICK`]s and, on Windows, `taskkill`. A stop that comes while a
-/// child that outlived the program still writes takes [`STOP_GRACE`] and [`DETACH`].
+/// `STOP_GRACE` to the kill, `GRACE` and `DETACH` for the readers, and a margin
+/// for a few `TICK`s and, on Windows, `taskkill`. A stop that comes while a
+/// child that outlived the program still writes takes `STOP_GRACE` and `DETACH`.
 #[cfg(feature = "run")]
 pub const STOP_WAIT: Duration = STOP_GRACE
     .saturating_add(GRACE)
@@ -235,7 +235,7 @@ impl Run {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RunEvent {
     /// A line without its newline, with its escape codes. `cut` is true when the
-    /// line was longer than [`KEEP`] bytes and `text` holds only its start.
+    /// line was longer than `KEEP` bytes and `text` holds only its start.
     Line {
         stream: Stream,
         text: String,
