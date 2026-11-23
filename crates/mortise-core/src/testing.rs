@@ -264,7 +264,7 @@ struct Recording {
 /// `--version` prints the version with the number in green and ends with 0.
 /// `fail` prints the error of a stopped Docker service on stderr and ends with 1.
 /// `wait` sleeps for 60 seconds. `flood` prints 2 MiB of short lines on stderr and
-/// one line of 2 MiB with no newline on stdout, and ends with 0. `long` prints one
+/// one line of 2 MiB on stdout, and ends with 0. `long` prints one
 /// line of 70 000 bytes on stdout whose first 64 KiB read as the JSON document `{}`.
 /// `ask` asks for a name and ends with 1 when its input ends.
 /// `ticks` prints a line every 50 ms for 60 seconds, and ends when a write fails.
@@ -350,7 +350,13 @@ fn fake_case(words: &[String]) -> ExitCode {
             let lines = "Laravel Framework 13.2.0\n".repeat(SIZE / 25);
             // A reader that stops reading would block one of these writes.
             let _ = std::io::stderr().lock().write_all(lines.as_bytes());
-            let _ = std::io::stdout().lock().write_all(&vec![b'x'; SIZE]);
+            // The line ends with a newline. A reader of a line without one waits for the
+            // end of the pipe, and on macOS another test's child can hold the pipe open:
+            // std marks a new pipe close-on-exec only after it made it, so a child that
+            // starts in between keeps a copy of its end.
+            let mut line = vec![b'x'; SIZE];
+            line.push(b'\n');
+            let _ = std::io::stdout().lock().write_all(&line);
             ExitCode::SUCCESS
         }
         Some("long") => {
