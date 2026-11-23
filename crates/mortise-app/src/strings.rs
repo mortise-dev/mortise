@@ -29,7 +29,6 @@ pub fn action_label(action: mortise_core::Action, module: Option<&str>) -> Strin
     }
 }
 pub const SEARCH: &str = "Search or run a command";
-pub const SORTED_BY_NAME: &str = "Sorted: by name";
 pub const MODULES_ON: &str = "Modules on";
 pub const MODULE_STATE: &str = "Module state";
 pub const ON: &str = "On";
@@ -69,16 +68,6 @@ pub fn files(n: u64) -> String {
     } else {
         format!("{} files", count(n))
     }
-}
-
-/// `38 files, turned off`
-pub fn files_turned_off(n: u64) -> String {
-    format!("{}, turned off", files(n))
-}
-
-/// `7 of 7 on`
-pub fn of_on(on: usize, total: usize) -> String {
-    format!("{on} of {total} on")
 }
 
 /// `7 of 7`
@@ -199,7 +188,6 @@ pub fn no_modules(app: &AppSnapshot, name: &str) -> String {
     format!("{name} has no modules in {}.", app.modules_dir_shown())
 }
 
-pub const FILTER_MODULES: &str = "Filter modules";
 pub const LINES_OF_PHP: &str = "Lines of PHP";
 pub const TEST_COVERAGE: &str = "Test coverage";
 /// The word for a coverage that cannot be worked out: there is no report.
@@ -224,14 +212,6 @@ pub const COL_TESTS: &str = "Tests";
 pub const COL_COVERAGE: &str = "Coverage";
 pub const COL_COMMITS: &str = "Commits, 30 days";
 
-/// `84 files, 54% covered`
-pub fn files_covered(n: u64, percent: Option<u8>) -> String {
-    match percent {
-        Some(percent) => format!("{}, {percent}% covered", files(n)),
-        None => files(n),
-    }
-}
-
 /// `54%`
 pub fn percent(percent: u8) -> String {
     format!("{percent}%")
@@ -254,16 +234,6 @@ pub fn files_and_lines(files_count: u64, lines: u64) -> String {
         format!("{} lines", count(lines))
     };
     format!("{}, {lines}", files(files_count))
-}
-
-/// `1 of 7 modules`
-pub fn of_modules(shown: usize, total: usize) -> String {
-    format!("{shown} of {total} modules")
-}
-
-/// `No module matches "paym". Press Esc to clear the filter.`
-pub fn no_module_matches(filter: &str) -> String {
-    format!("No module matches \"{filter}\". Press Esc to clear the filter.")
 }
 
 /// `sorted by name`
@@ -396,9 +366,6 @@ pub fn problems(n: usize) -> String {
 }
 
 pub const FINDINGS: &str = "Findings";
-pub const SORTED_PROBLEMS_FIRST: &str = "Sorted: problems first";
-pub const CHANGE_THE_ORDER: &str = "Change the order";
-pub const NEEDS_ATTENTION: &str = "Needs attention";
 pub const COL_FINDINGS: &str = "Findings";
 pub const LOW_COVERAGE: &str = "Low coverage";
 pub const WARNING: &str = "Warning";
@@ -716,6 +683,7 @@ pub fn command_key(mac: bool) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::index::strings::files_turned_off;
 
     #[test]
     fn counts_have_a_comma_between_thousands() {
