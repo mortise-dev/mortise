@@ -88,7 +88,7 @@ def build():
         ['App rail, module index', y, 'Plus "New module" in the footer', 'Plus the runtime mark per module, when the packages offer it'],
         ['Summary', 'Files, git, coverage, findings. With an environment: runtime box, routes, scheduled tasks.', 'Plus migration state, and the Run tests and Migrate buttons in the header', 'Plus runtime per module'],
         ['Findings list', 'Rules and file checks', 'Plus translations, and the waiting migrations under "To do"', 'Same'],
-        ['Boundary', 'Links, rules, and the public surface scan with its proposal', 'Same', 'Same. Accepting a public surface arrives when the package can store one (P6), in whichever phase that is.'], ['Generate tab', e, y, y], ['Actions tab', e, 'Yes, with the closed group of destructive actions', y], ['Metrics tab', e, e, y],
+        ['Boundary', 'Links, rules, and the public surface scan with its proposal', 'Same', 'Same. Accepting a public surface arrives when the package can store one (P6), planned for phase 4.'], ['Generate tab', e, y, y], ['Actions tab', e, 'Yes, with the closed group of destructive actions', y], ['Metrics tab', e, e, y],
         ['Runner drawer', 'Hidden', y, y], ['Command palette', 'Navigation, findings, settings', 'Plus generators and actions', 'Same'],
         ['Settings', 'Apps, General, Keyboard', 'Plus PHP', 'Same'],
     ])
@@ -97,6 +97,7 @@ def build():
           'Buttons, footer actions and palette entries of a later phase are left out, because a disabled button on every module is noise and a palette that lists what cannot run wastes the first result.</p>'
           '<p>The same explanation block has a permanent use. In a build that has the phase, a tab still explains itself when this app cannot use it: PHP was not found, or the app\'s version of the package is too old. '
           'In that case the controls that exist are drawn disabled, each with the reason in its tooltip.</p>') % r('S7.4')
+    b += '<p><strong>Phase 4</strong> is planned to hold accepting a public surface (P6; S5.8 and S5.9 show it) and the command line twin for CI (M1).</p>'
     b += '<h2>2.6 How it scales</h2>'
     b += spec_table(['Size', 'What changes'], [
         ['1 app, 5 modules', 'The rail holds one tile and the add tile. The index shows every module without scrolling, two lines a row. The app graph is drawn whole.'],

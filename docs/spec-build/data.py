@@ -97,7 +97,7 @@ deftext('Errors: what happened, then what to do', [
  ('x.rt.oos', 'Runtime box', 'readinessState is out of service. The app reports this while it is in maintenance mode.'),
  ('x.rt.hidden', 'Runtime box', 'Components are hidden. The app shows them only when health.show_details allows it, and that is never by default. Set it to when_authorized or always in config/actuator.php.'),
  ('x.rt.500', 'Runtime box', 'local answered 500 for /actuator/health. The actuator configuration has an error. Read the app log.'),
- ('x.mx.expose', 'Metrics', 'The metrics endpoint is not exposed on local. Add it to exposure.include in config/actuator.php, next to health.'),
+ ('x.mx.expose', 'Metrics', 'Add prometheus to exposure.include in config/actuator.php, next to health.'),
  ('x.editor', 'Toast', 'Could not open the editor: "code: command not found". Choose the editor command in Settings.'),
 ])
 deftext('Confirmations', [
@@ -189,31 +189,31 @@ defassume([
  ('P1', 'nwidart/laravel-modules', 'Read commands that print JSON',
   'A <code>--json</code> output on <code>module:list</code> and the other read commands. Today <code>module:list</code> has two options, <code>--only</code> and <code>--direction</code>, and prints a table.'),
  ('P2', 'nwidart/laravel-modules', 'Dry run for generators',
-  'An option on <code>module:make</code> and every <code>module:make-*</code> command that returns the paths it would write, and whether each exists, without writing. Today a generator writes at once and the only way to know the paths is to copy the package\'s path logic.'),
+  'An option on <code>module:make</code> and every <code>module:make-*</code> command that returns the paths it would write, and whether each exists, without writing. Release 13.4.0 has it. Before, a generator wrote at once.'),
  ('P3', 'nwidart/laravel-modules', 'Generator description',
-  'One command that lists every generator with its arguments and options as data, so the forms are built from the package. Today the 43 commands are only described by <code>--help</code>.'),
+  'One command that lists every generator with its arguments and options as data, so the forms are built from the package. Release 13.4.0 has it. Before, the commands were only described by <code>--help</code>.'),
  ('P4', 'nwidart/laravel-modules', 'Migration state as data',
-  'Which migrations of a module ran and which wait, as JSON. Today <code>module:migrate-status</code> calls Laravel\'s <code>migrate:status</code> and prints its table.'),
+  'Which migrations of a module ran and which wait, as JSON. Release 13.4.0 has it. Before, <code>module:migrate-status</code> printed Laravel\'s table.'),
  ('P5', 'nwidart/laravel-modules', 'Result of a generator run as data',
-  'For each file: created, replaced or left because it exists. Today the output is text lines: "Generating file ..." and "File : ... already exists."'),
+  'For each file: created, replaced or left because it exists. Release 13.4.0 has it. Before, the output was text lines.'),
  ('P6', 'nwidart/laravel-modules', 'A module\'s public surface, and where it is declared',
-  'The owner decided that the package will define a module\'s public surface. Not decided yet: where a module declares it and in what form. The screens need a place where the accepted list of classes, routes and console commands of a module is stored and read back. Today the package has no such idea, so the rule about internals rests on a list of folders in <code>mortise.json</code>.'),
+  'The owner decided that the package will define a module\'s public surface. It is planned for phase 4. Not decided yet: where a module declares it and in what form. The screens need a place where the accepted list of classes, routes and console commands of a module is stored and read back. Today the package has no such idea, so the rule about internals rests on a list of folders in <code>mortise.json</code>.'),
  ('P7', 'nwidart/laravel-modules', 'A command that runs the tests of one module',
-  'The owner decided that the package will provide it. Its name and options are not decided, so the drawing shows a placeholder in the command line and no options. Today the package has no test command.'),
+  'The owner decided that the package will provide it. Release 13.4.0 has it. Before, the package had no test command.'),
  ('P8', 'nwidart/laravel-modules', 'Translation check as data',
-  '<code>module:lang</code> exists and prints text. The finding needs the missing keys as data.'),
+  'The finding needs the missing keys as data. Release 13.4.0 has it. Before, <code>module:lang</code> printed text.'),
  ('P9', 'nwidart/laravel-modules', 'Actuator integration: runtime status per module',
-  'Module-aware health indicators: runtime status per module, with the failing indicator and its detail. The source of <code>master</code> at <code>5b0307af</code> has it: a <code>modules</code> health indicator and, per module, indicators named <code>module:{module}:{key}</code>. It is not in a release yet; 13.3.0 has no actuator integration.'),
+  'Module-aware health indicators: runtime status per module, with the failing indicator and its detail. Release 13.4.0 has it: a <code>modules</code> health indicator and, per module, indicators named <code>module:{module}:{key}</code>. Version 13.3.0 has no actuator integration.'),
  ('P10', 'nwidart/laravel-modules', 'Actuator integration: module data',
-  'Routes and scheduled tasks grouped by module, read over the actuator. Today Mortise can attribute a route by the namespace of its action, and a scheduled task only when its target is a class name. The same source adds a <code>modules</code> endpoint that lists name, enabled, version, description, priority and providers. It lists no routes and no scheduled tasks, so the need is met in part.'),
+  'Routes and scheduled tasks grouped by module, read over the actuator. Today Mortise can attribute a route by the namespace of its action, and a scheduled task only when its target is a class name. Release 13.4.0 adds a <code>modules</code> endpoint that lists name, enabled, version, description, priority and providers. It lists no routes and no scheduled tasks, so the need is met in part.'),
  ('A1', 'nwidart/laravel-actuator', 'Custom endpoints',
-  'A way for another package to register an endpoint. Version 1.3.0 (tag, <code>main</code> at <code>b77ae76</code>) has custom endpoints with read, write and delete operations. Version 1.0.0 had a fixed set of five: health, info, env, mappings, scheduledtasks.'),
+  'A way for another package to register an endpoint. Version 1.3.1 has custom endpoints with read, write and delete operations. Version 1.0.0 had a fixed set of five: health, info, env, mappings, scheduledtasks.'),
  ('A2', 'nwidart/laravel-actuator', 'Metrics endpoint',
-  'A Prometheus endpoint with requests, response time, errors, jobs and database time, each labelled with the module. Version 1.3.0 has a <code>prometheus</code> endpoint, fed by <code>nwidart/laravel-metrics</code>. It has no module label, so the need is met in part. Version 1.0.0 had no metrics endpoint.'),
+  'A Prometheus endpoint with requests, response time, errors, jobs and database time, each labelled with the module. Version 1.3.1 has a <code>prometheus</code> endpoint, there since 1.2.0, fed by <code>nwidart/laravel-metrics</code>. Its guide describes a <code>module</code> label, <code>none</code> outside a module, but no code adds a module to the metrics, so the need is met in part. Version 1.0.0 had no metrics endpoint.'),
  ('M1', 'Mortise', 'Rule check outside the app',
-  'A command line twin of Mortise that checks the boundary rules in CI. It is phase 3 and is drawn only as a line that is not available yet.'),
+  'A command line twin of Mortise that checks the boundary rules in CI. It is planned for phase 4 and is drawn only as a line that is not available yet.'),
 ])
-ASTATE.update({'P9': 'met', 'A1': 'met', 'P10': 'in part', 'A2': 'in part'})
+ASTATE.update({'P2': 'met', 'P3': 'met', 'P4': 'met', 'P5': 'met', 'P7': 'met', 'P8': 'met', 'P9': 'met', 'A1': 'met', 'P10': 'in part', 'A2': 'in part'})
 
 
 # Complete shortcut table: (scope, what it does, macOS, Windows and Linux, note)

@@ -1,7 +1,8 @@
 # Shared helpers for the Mortise spec pages. Everything a page needs is inlined at build time.
-import html, json, re
+import html, json, os, re
 
-OUT = '/Users/nicolaswidart/Sites/php/packages/LaravelModules/docs/companion-app/spec'
+# The built pages go to docs/spec, beside this folder.
+OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'spec')
 
 # ---------------------------------------------------------------- tokens
 def _rgb(h):
