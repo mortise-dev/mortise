@@ -27,6 +27,7 @@ testing = ["mortise-core/testing"]
 
 [dependencies]
 eframe.workspace = true
+jiff.workspace = true
 mortise-core.workspace = true
 rfd.workspace = true
 

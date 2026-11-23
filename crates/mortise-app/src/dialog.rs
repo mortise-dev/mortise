@@ -4,7 +4,6 @@
 use eframe::egui::{self, Align2, Rect, Role, Sense, Shadow, Ui, vec2};
 
 use crate::draw::{self, Button, ButtonKind};
-use crate::strings;
 use crate::theme::{Palette, radius, size, ty};
 
 /// What a dialog asks.
@@ -15,6 +14,10 @@ pub struct Dialog {
     /// The label of the button that goes ahead. An action keeps one name from the
     /// button to the confirmation to the message.
     pub confirm: String,
+    /// The label of the quiet choice, "Cancel" unless the dialog names it.
+    pub cancel: String,
+    /// Focus starts on the quiet choice, as for a stop that can harm the database.
+    pub start_on_cancel: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -24,16 +27,21 @@ pub enum Answer {
 }
 
 impl Dialog {
+    /// A dialog with "Cancel" as the quiet choice, which starts on the button that goes ahead.
+    pub fn new(title: String, body: String, confirm: String) -> Self {
+        Self {
+            title,
+            body,
+            confirm,
+            cancel: crate::strings::CANCEL.to_owned(),
+            start_on_cancel: false,
+        }
+    }
+
     /// Paints the dialog over a scrim, 440 px wide. It holds focus until it closes.
-    /// `focus_confirm` is true in the frame it opens: a confirmation that loses
-    /// nothing starts on the button that goes ahead.
-    pub fn show(
-        &self,
-        ui: &Ui,
-        pal: &Palette,
-        focus_confirm: bool,
-        keyboard: bool,
-    ) -> Option<Answer> {
+    /// `opened` is true in the frame it opens: a confirmation that loses nothing
+    /// starts on the button that goes ahead, else on the quiet choice.
+    pub fn show(&self, ui: &Ui, pal: &Palette, opened: bool, keyboard: bool) -> Option<Answer> {
         let id = egui::Id::unique("dialog");
         let area = egui::Modal::default_area(id)
             .anchor(Align2::CENTER_TOP, vec2(0.0, size::TITLEBAR_H + 96.0));
@@ -90,22 +98,23 @@ impl Dialog {
                     ..Default::default()
                 };
                 let cancel = Button {
-                    label: strings::CANCEL,
+                    label: &self.cancel,
                     keys: Some("Esc"),
                     ..Default::default()
                 };
                 let y = foot.top() + 10.0;
                 let confirm_x = foot.right() - 16.0 - confirm.width(ui);
                 let cancel_x = confirm_x - 8.0 - cancel.width(ui);
-                if cancel
-                    .show(ui, pal, egui::pos2(cancel_x, y), keyboard)
-                    .clicked()
-                {
+                let quiet = cancel.show(ui, pal, egui::pos2(cancel_x, y), keyboard);
+                if quiet.clicked() {
                     answer = Some(Answer::Cancel);
                 }
                 let response = confirm.show(ui, pal, egui::pos2(confirm_x, y), keyboard);
-                if focus_confirm {
-                    response.request_focus();
+                if opened {
+                    match self.start_on_cancel {
+                        true => quiet.request_focus(),
+                        false => response.request_focus(),
+                    }
                 }
                 if response.clicked() {
                     answer = Some(Answer::Confirm);

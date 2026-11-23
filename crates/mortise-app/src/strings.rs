@@ -1919,3 +1919,155 @@ pub fn typed_verdict(typed: &mortise_core::Typed, module: &str) -> String {
         Typed::Unknown => format!("Nothing in {module} has this name."),
     }
 }
+
+// --- Runner drawer (S11.1) ---
+
+pub const RUNNER: &str = "Runner";
+pub const STOP: &str = "Stop";
+pub const HIDE: &str = "Hide";
+pub const SHOW: &str = "Show";
+pub const RUN_AGAIN: &str = "Run again";
+pub const COPY_OUTPUT: &str = "Copy output";
+pub const HISTORY: &str = "History";
+pub const NOTHING_RAN: &str =
+    "No command has run yet. Output of generators and actions appears here.";
+/// The keys that show and hide the drawer, on every platform (section 7).
+pub const TOGGLE_RUNNER_KEYS: &str = "Ctrl `";
+/// Not in the spec: the palette row that shows and hides the drawer, as "Theme: dark" is written.
+pub const SHOW_OR_HIDE_RUNNER: &str = "Runner drawer: show or hide";
+/// Not in the spec: the name of the handle at the top of the drawer.
+pub const DRAWER_HEIGHT: &str = "Height of the runner drawer";
+/// Not in the spec: a run whose output passed the limit of the history.
+pub const OUTPUT_CUT: &str = "Output past 1 MB is not kept.";
+/// Not in the spec: a stop through Sail or Docker reaches `docker` only.
+pub const CONTAINER_MAY_RUN: &str = "PHP in the container may still run.";
+/// The stop dialog of S10.3.
+pub const STOP_BODY: &str =
+    "A migration that stops half way can leave the database between two states.";
+pub const KEEP_RUNNING: &str = "Keep running";
+pub const STOP_COMMAND: &str = "Stop command";
+/// Not in the spec: the reason of a start without a runner (design D1).
+pub const NO_RUNNER_CHOSEN: &str = "no way to run PHP is chosen";
+
+/// The keys of Stop: `Cmd .` on macOS, `Ctrl .` elsewhere.
+pub fn stop_keys(mac: bool) -> String {
+    format!("{} .", command_key(mac))
+}
+
+/// A time as the drawer writes it: `186 ms` under a second, else `2.4 s`.
+pub fn run_time(elapsed: std::time::Duration) -> String {
+    let ms = elapsed.as_millis();
+    if ms < 1000 {
+        format!("{ms} ms")
+    } else {
+        format!("{:.1} s", elapsed.as_secs_f64())
+    }
+}
+
+/// `Running, 2.4 s`. Seconds with one decimal.
+pub fn running_for(elapsed: std::time::Duration) -> String {
+    format!("Running, {:.1} s", elapsed.as_secs_f64())
+}
+
+/// `Done in 186 ms`
+pub fn done_in(elapsed: std::time::Duration) -> String {
+    format!("Done in {}", run_time(elapsed))
+}
+
+/// `Exit code 1`. Not in the spec: a program a signal ended.
+pub fn exit_code(code: Option<i32>) -> String {
+    match code {
+        Some(code) => format!("Exit code {code}"),
+        None => "Ended by a signal".to_owned(),
+    }
+}
+
+/// `Stopped after 3.1 s`
+pub fn stopped_after(elapsed: std::time::Duration) -> String {
+    format!("Stopped after {}", run_time(elapsed))
+}
+
+/// Not in the spec: the line under a run that the time limit stopped.
+pub fn stopped_at_limit(limit: std::time::Duration) -> String {
+    let minutes = (limit.as_secs() / 60).clamp(1, u64::from(u16::MAX)) as u16;
+    format!("Stopped at the time limit of {}.", self::minutes(minutes))
+}
+
+/// Not in the spec: the sentence under a failed run (design D9). The sentence that
+/// names a migration comes with the actions.
+pub fn stopped_with(label: &str, code: Option<i32>) -> String {
+    match code {
+        Some(code) => format!("{label} stopped with exit code {code}."),
+        None => format!("{label} was ended by a signal."),
+    }
+}
+
+/// What the live region says when a run ends: `module:migrate Blog: Done in 186 ms`.
+pub fn run_ended(label: &str, status: &str) -> String {
+    format!("{label}: {status}")
+}
+
+/// `module:migrate --all is running`, the tooltip of a run button that is off.
+pub fn is_running(label: &str) -> String {
+    format!("{label} is running")
+}
+
+/// `Stop module:migrate Checkout?`
+pub fn stop_title(label: &str) -> String {
+    format!("Stop {label}?")
+}
+
+/// `5 runs today in shop-api`
+pub fn runs_today(n: usize, app: &str) -> String {
+    match n {
+        1 => format!("1 run today in {app}"),
+        n => format!("{n} runs today in {app}"),
+    }
+}
+
+/// The reason in quotes of a command that did not start.
+pub fn start_reason(error: &mortise_core::StartError) -> String {
+    use mortise_core::StartError;
+    match error {
+        StartError::Busy { command } => is_running(command),
+        StartError::NoRunner => NO_RUNNER_CHOSEN.to_owned(),
+        StartError::Failed(failure) => php_reason(failure),
+    }
+}
+
+/// `The command did not start: "herd: command not found". Choose how PHP runs for shop-api in Settings.`
+pub fn did_not_start(error: &mortise_core::StartError, app: &str) -> String {
+    format!(
+        "The command did not start: \"{}\". Choose how PHP runs for {app} in Settings.",
+        start_reason(error)
+    )
+}
+
+/// Not in the spec: the name of "Open settings" in the drawer, which opens the PHP
+/// section, apart from the "Open settings" of the runtime box.
+pub fn open_php_settings(app: &str) -> String {
+    format!("Open settings, how PHP runs for {app}")
+}
+
+/// Not in the spec: the name of the step "Copy output" under a failure, apart from
+/// the button of the bar.
+pub fn copy_output_of(label: &str) -> String {
+    format!("Copy output of {label}")
+}
+
+#[cfg(test)]
+mod runner_tests {
+    use super::*;
+    use std::time::Duration;
+
+    #[test]
+    fn times_are_written_as_in_the_drawings() {
+        assert_eq!(done_in(Duration::from_millis(186)), "Done in 186 ms");
+        assert_eq!(
+            stopped_after(Duration::from_millis(3140)),
+            "Stopped after 3.1 s"
+        );
+        assert_eq!(running_for(Duration::from_millis(2420)), "Running, 2.4 s");
+        assert_eq!(running_for(Duration::from_millis(300)), "Running, 0.3 s");
+    }
+}

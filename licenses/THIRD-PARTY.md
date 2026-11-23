@@ -8,7 +8,7 @@ holds only a part of them.
 The fonts in `assets/fonts` are under the SIL Open Font License 1.1.
 Each folder there holds its `OFL.txt` with the copyright line.
 
-523 crates.
+527 crates.
 
 ## By licence
 
@@ -20,7 +20,7 @@ Each folder there holds its `OFL.txt` with the copyright line.
 | MIT/Apache-2.0 | 13 |
 | Zlib OR Apache-2.0 OR MIT | 13 |
 | Apache-2.0 | 12 |
-| Unlicense OR MIT | 8 |
+| Unlicense OR MIT | 12 |
 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT | 7 |
 | MIT OR Apache-2.0 OR Zlib | 6 |
 | ISC | 5 |
@@ -230,6 +230,10 @@ Each folder there holds its `OFL.txt` with the copyright line.
 | inout | 0.2.6 | MIT OR Apache-2.0 | https://github.com/RustCrypto/utils |
 | itertools | 0.15.0 | MIT OR Apache-2.0 | https://github.com/rust-itertools/itertools |
 | itoa | 1.0.19 | MIT OR Apache-2.0 | https://github.com/dtolnay/itoa |
+| jiff | 0.2.28 | Unlicense OR MIT | https://github.com/BurntSushi/jiff |
+| jiff-static | 0.2.28 | Unlicense OR MIT | https://github.com/BurntSushi/jiff |
+| jiff-tzdb | 0.1.9 | Unlicense OR MIT | https://github.com/BurntSushi/jiff |
+| jiff-tzdb-platform | 0.1.3 | Unlicense OR MIT | https://github.com/BurntSushi/jiff |
 | jni | 0.22.4 | MIT OR Apache-2.0 | https://github.com/jni-rs/jni-rs |
 | jni-macros | 0.22.4 | MIT OR Apache-2.0 | https://github.com/jni-rs/jni-rs |
 | jni-sys | 0.3.1 | MIT OR Apache-2.0 | https://github.com/jni-rs/jni-sys |

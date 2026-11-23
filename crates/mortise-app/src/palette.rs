@@ -48,6 +48,8 @@ pub enum Command {
     Settings,
     /// Settings, on the PHP section.
     PhpSettings,
+    /// Show or hide the runner drawer.
+    Runner,
     Theme(ThemeChoice),
 }
 
@@ -245,6 +247,11 @@ pub fn entries(query: &str, source: &Source<'_>) -> Vec<Entry> {
             ("Settings", format!("{command} ,"), Command::Settings),
             (strings::SETTINGS_PHP, String::new(), Command::PhpSettings),
             (strings::ADD_APP, format!("{command} O"), Command::AddApp),
+            (
+                strings::SHOW_OR_HIDE_RUNNER,
+                strings::TOGGLE_RUNNER_KEYS.to_owned(),
+                Command::Runner,
+            ),
             (
                 "Theme: follow the system",
                 String::new(),

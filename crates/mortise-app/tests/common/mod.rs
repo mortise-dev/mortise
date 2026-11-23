@@ -68,6 +68,11 @@ impl Desk {
         self.dir.path()
     }
 
+    /// The folder of the history of runs.
+    pub fn data_dir(&self) -> PathBuf {
+        self.dir.path().join("data")
+    }
+
     pub fn settings_path(&self) -> PathBuf {
         self.dir.path().join("config").join("settings.json")
     }
@@ -131,6 +136,7 @@ impl Desk {
             // Never the credential store of the computer the tests run on.
             secrets: Secrets::memory(),
             quick_read: self.quick_read,
+            data_dir: Some(self.data_dir()),
         };
         let mut harness = Harness::builder()
             .with_size(self.size)
