@@ -1319,12 +1319,14 @@ impl eframe::App for MortiseApp {
         let mut first_run_add = false;
         let monogram = self.monogram_preview();
         if let Some(panel) = &mut self.adding {
-            // The bar is drawn only after 300 ms, so quick work does not flash.
+            // The bar is drawn only after 300 ms, so quick work does not flash, and only
+            // once the files are counted, so it never reads "0 of 0 files".
             let progress = self
                 .reading
                 .as_ref()
                 .filter(|reading| reading.since.elapsed() >= SHOW_PROGRESS_AFTER)
-                .map(|reading| reading.progress.get());
+                .map(|reading| reading.progress.get())
+                .filter(|&(_, total)| total > 0);
             add_action = add::add_panel(
                 ui,
                 pal,

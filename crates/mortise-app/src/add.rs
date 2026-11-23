@@ -138,7 +138,8 @@ fn runtime_form(checked: &Checked) -> Option<EnvironmentForm> {
 }
 
 /// Paints the panel into `rect`. `monogram` is what the app would get on the rail.
-/// `progress` is how far the read of the folder is, once it took longer than a moment.
+/// `progress` is how far the read of the folder is, once it took longer than a moment
+/// and the files are counted.
 #[expect(clippy::too_many_arguments)]
 pub fn add_panel(
     ui: &mut Ui,
@@ -365,11 +366,7 @@ fn add_body(
             // Reading the folder. The bar is drawn only when it takes longer than a
             // moment, so that quick work does not flash.
             if let Some((read, total)) = progress {
-                let share = if total == 0 {
-                    0.0
-                } else {
-                    read as f32 / total as f32
-                };
+                let share = read as f32 / total as f32;
                 let label = strings::reading_files(read, total);
                 let bar = draw::progress(ui, pal, pos2(left, y + 12.0), column_w, &label, share);
                 return (action, bar);
