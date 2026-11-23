@@ -2458,6 +2458,8 @@ fn result_view(
     inputs: &GenerateInputs<'_>,
 ) -> (f32, Option<BoundaryAction>) {
     let now = ui.input(|input| input.time);
+    // Replace is off while a run or read holds the app, as the other run buttons are.
+    let busy = inputs.busy.map(strings::is_running);
     let Some(shown) = state.result.as_mut().map(|result| &mut result.shown) else {
         return (min.y, None);
     };
@@ -2679,11 +2681,16 @@ fn result_view(
                     label: strings::REPLACE,
                     small: true,
                     said: Some(&replace_said),
+                    disabled: busy.is_some(),
                     ..Default::default()
                 };
                 let at = pos2(right - replace.width(ui), mid - replace.height() / 2.0);
-                if replace.show(ui, pal, at, inputs.keyboard).clicked() {
+                let response = replace.show(ui, pal, at, inputs.keyboard);
+                if response.clicked() && busy.is_none() {
                     asked = Some(replace_asked(app, &result, &file.path, words));
+                }
+                if let Some(tip) = &busy {
+                    draw::tooltip(response, pal, tip);
                 }
                 word_right = at.x - 8.0;
             }
@@ -2771,13 +2778,17 @@ fn result_view(
         let replace = Button {
             label: &label,
             kind: ButtonKind::Danger,
+            disabled: busy.is_some(),
             ..Default::default()
         };
         let response = replace.show(ui, pal, pos2(x, y), inputs.keyboard);
         x = response.rect.right() + 8.0;
         bottom = response.rect.bottom();
-        if response.clicked() {
+        if response.clicked() && busy.is_none() {
             asked = Some(replace_asked(app, &result, &first_left.path, words));
+        }
+        if let Some(tip) = &busy {
+            draw::tooltip(response, pal, tip);
         }
     }
     if !openable(app, &first_left.path) {

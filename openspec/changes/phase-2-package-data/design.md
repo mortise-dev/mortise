@@ -485,6 +485,8 @@ accessible name and a 24 px target (`tests/accessibility.rs`).
   such as one the app's generator paths now place elsewhere, gets a row of its own, and the left row
   stays with its Replace. A Replace that read no file keeps the rows and shows "Read from the output:
   ..." under the result.
+- Every Replace of a result, on a row or under the alert, is off while a run or read holds the app, with
+  "<command> is running", as the run buttons are.
 
 ## Risks / Trade-offs
 
