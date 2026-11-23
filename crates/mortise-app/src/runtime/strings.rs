@@ -236,7 +236,8 @@ pub fn exposed(endpoints: &[String]) -> String {
 #[cfg(test)]
 mod runtime_tests {
     use super::*;
-    use crate::strings::{and_list, every, routes_of_module};
+    use crate::strings::{and_list, every};
+    use crate::summary::strings::routes_of_module;
 
     #[test]
     fn the_next_run_is_said_relative_to_today_in_the_zone_of_the_task() {
