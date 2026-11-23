@@ -89,8 +89,12 @@ it covers:
 - A read older than 24 hours is dropped. The store holds at most 519 reads, under the 520 the tests
   assert.
 - A subject that did not change in the whole kept window and is not in the newest read is dropped,
-  and the rows are packed. So a renamed route does not stay for ever. With no subject left, the
-  bounds go too.
+  and the rows are packed. So a renamed route does not stay for ever.
+- A bound that no reading gave since the oldest kept read is dropped, with its bucket in every row
+  and every base, though its subjects stay. The store keeps, per bound, the time of the newest read
+  that gave it. Such a bucket did not grow between two kept reads, so no figure needs it, and a base
+  holds its value from before the kept window, as a dropped series does. So bounds the app no
+  longer writes stop counting towards the caps, and a bound that comes back widens the store again.
 - The store keeps the time, the covered time and the totals of the newest read apart from the two
   queues. A gap longer than the fine part moves every read to the coarse part, and the next read
   still carries on from them.
@@ -151,7 +155,8 @@ their own series. Totals stay per subject.
 `MetricsStore::push(at, reading)` applies these rules, in this order:
 
 0. `at` not later than the newest read: the reading is dropped. Else what `at` makes too old goes
-   first (D1): old reads, then the series and subjects that no kept read holds. Then a reading over
+   first (D1): old reads, then the series and subjects that no kept read holds, then the bounds
+   that no kept read gave. Then a reading over
    the caps of D1 is refused as a whole and adds nothing. The caps count the bounds of the store
    and the new bounds of the reading, so a widening over a cap is refused too.
 1. Buckets match by bound, not by place: the same bounds in another order add to the same buckets.

@@ -85,7 +85,7 @@ Mortise SHALL treat a counter that is lower than at the read before as a reset. 
 - **THEN** the second read adds 2 requests and no time, and the third adds 2 requests and 2 s
 
 ### Requirement: Buckets match by their bound
-A bucket SHALL add to the kept bucket of the same bound, in whatever order a read gives the bounds. A bucket that a read does not give SHALL be a counter that the read does not give. A bound that no read gave before SHALL widen what is kept and SHALL empty nothing. A read whose new bounds take what is kept over the cap SHALL be refused as for too many series.
+A bucket SHALL add to the kept bucket of the same bound, in whatever order a read gives the bounds. A bucket that a read does not give SHALL be a counter that the read does not give. A bound that no read gave before SHALL widen what is kept and SHALL empty nothing. A read whose new bounds take what is kept over the cap SHALL be refused as for too many series. A bound that no read of the last 24 hours gave SHALL be dropped and SHALL no longer count towards the cap.
 
 #### Scenario: Buckets in another order, or one missing
 - **WHEN** a route counts 4 requests with buckets `le="0.1"` and `le="1"`, then 5 with the same buckets in the other order, then 6 with no `le="0.1"` line
@@ -94,6 +94,10 @@ A bucket SHALL add to the kept bucket of the same bound, in whatever order a rea
 #### Scenario: A new bound
 - **WHEN** a read gives a bucket `le="0.5"` that no read gave before
 - **THEN** every kept row gains that bucket at zero, and the request rate goes on
+
+#### Scenario: The app changes its bounds
+- **WHEN** a route is read every few minutes for a day, and its reads give `le="2"` in place of `le="0.1"`, `le="0.5"` and `le="1"`
+- **THEN** once the last read that gave the old bounds is older than 24 hours, only `le="2"` is kept and the route keeps its rate
 
 ### Requirement: No rate is worked out across a gap or from one read
 Mortise SHALL work out no rate from the first read. It SHALL work out no rate across a gap: two reads more than 45 s apart, such as while the tab was closed or the window hidden. The read after a gap SHALL start again as a first read, and SHALL give no rate while it is the newest read. A series that is missing from that read SHALL add nothing when it returns. A rate SHALL divide by the time between reads that Mortise did cover.

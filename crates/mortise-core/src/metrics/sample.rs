@@ -296,6 +296,8 @@ struct Column {
 pub(crate) struct MetricsStore {
     every: Duration,
     bounds: Vec<f64>,
+    /// For each bound, the time of the newest read whose reading gave it.
+    bound_seen: Vec<Duration>,
     columns: Vec<Column>,
     index: HashMap<Subject, usize>,
     /// The number of the current run. It goes up at the first read of each run.
@@ -321,6 +323,7 @@ impl MetricsStore {
         Self {
             every,
             bounds: Vec::new(),
+            bound_seen: Vec::new(),
             columns: Vec::new(),
             index: HashMap::new(),
             run: 0,
@@ -368,6 +371,9 @@ impl MetricsStore {
         // The bucket of the store for each bound of the reading: buckets match by bound, not by
         // place.
         let places: Vec<Option<usize>> = bounds.iter().map(|&bound| self.bucket(bound)).collect();
+        for &place in places.iter().flatten() {
+            self.bound_seen[place] = at;
+        }
         let first = self
             .latest
             .is_none_or(|(before, _)| at - before > self.every * GAP_PACES);
@@ -591,7 +597,13 @@ impl MetricsStore {
             spread(&base.counters, f64::NAN, &mut wide);
             base.counters = wide;
         }
+        // An added bound is seen by the push that adds it.
+        let mut seen = vec![Duration::ZERO; bounds.len()];
+        for (&at, &place) in self.bound_seen.iter().zip(&places) {
+            seen[place] = at;
+        }
         self.bounds = bounds;
+        self.bound_seen = seen;
     }
 
     /// The totals of each kept read, and the running totals.
@@ -627,6 +639,7 @@ impl MetricsStore {
             .or(self.fine.front())
             .map_or(newest, |read| read.at);
         self.drop_gone(oldest);
+        self.drop_bounds(oldest);
     }
 
     /// Moves reads out of the fine part, keeping the first of each step, and drops what is too old.
@@ -649,7 +662,7 @@ impl MetricsStore {
     }
 
     /// Drops the series last held by a read before `oldest`, the subjects left with none, and packs
-    /// the rows. With no subject left, the bounds go too.
+    /// the rows.
     ///
     /// Such a subject did not change in the kept window and is not in the newest read.
     /// One that is in an older kept read stays, so it keeps its base (a load balancer can show
@@ -690,9 +703,51 @@ impl MetricsStore {
             .enumerate()
             .map(|(column, kept)| (kept.subject.clone(), column))
             .collect();
-        if self.columns.is_empty() {
-            self.bounds.clear();
+    }
+
+    /// Drops the bounds that no reading gave since `oldest`, and their bucket in every row and
+    /// every base.
+    ///
+    /// Such a bucket did not grow between any two kept reads, so no figure needs it. A base holds
+    /// its value from a read no newer than the last that gave the bound, so from before the kept
+    /// window, as a dropped series does. If the bound comes back, it widens the store again and
+    /// counts from that read.
+    fn drop_bounds(&mut self, oldest: Duration) {
+        let keep: Vec<bool> = self.bound_seen.iter().map(|&seen| seen >= oldest).collect();
+        if keep.iter().all(|&keep| keep) {
+            return;
         }
+        let width = self.width();
+        let pack = |row: &[f64], into: &mut Vec<f64>| {
+            into.extend_from_slice(&row[..FIXED]);
+            into.extend(
+                row[FIXED..]
+                    .iter()
+                    .zip(&keep)
+                    .filter(|(_, keep)| **keep)
+                    .map(|(value, _)| *value),
+            );
+        };
+        for totals in self.all_totals() {
+            let mut narrow = Vec::with_capacity(totals.len());
+            for row in totals.chunks(width) {
+                pack(row, &mut narrow);
+            }
+            *totals = narrow;
+        }
+        for base in self
+            .columns
+            .iter_mut()
+            .flat_map(|column| column.bases.values_mut())
+        {
+            let mut narrow = Vec::with_capacity(width);
+            pack(&base.counters, &mut narrow);
+            base.counters = narrow;
+        }
+        let mut kept = keep.iter();
+        self.bounds.retain(|_| kept.next() == Some(&true));
+        let mut kept = keep.iter();
+        self.bound_seen.retain(|_| kept.next() == Some(&true));
     }
 }
 
@@ -1158,14 +1213,22 @@ mod tests {
         );
         assert_eq!(grew(&store, WINDOW, &job).map(|cell| cell.count), Some(2.0));
 
-        // Once no subject is kept, the bounds go too.
-        store
-            .push(
-                secs(90) + WINDOW + PACE,
-                with_bounds(vec![2.0], request(1.0, vec![1.0])),
-            )
-            .unwrap();
+        // The app changes its bounds, in the next thinning step: the read at 300 s stays a day.
+        // The old bounds go once no kept read gave them, though the route stays. So they no
+        // longer count towards the caps.
+        let two = |count: f64| with_bounds(vec![2.0], request(count, vec![count]));
+        store.push(secs(300), two(8.0)).unwrap();
+        store.push(secs(315), two(9.0)).unwrap();
+        assert_eq!(store.bounds, [0.1, 0.5, 1.0, 2.0]);
+        store.push(secs(91) + WINDOW, two(9.0)).unwrap();
         assert_eq!(store.bounds, [2.0]);
+        // Every kept row lost the same buckets: from the read at 300 s, the route and its bucket
+        // of 2 grew by what was pushed.
+        store.push(secs(106) + WINDOW, two(10.0)).unwrap();
+        assert_eq!(
+            grew(&store, WINDOW, &route("/")),
+            Some(request(2.0, vec![2.0]))
+        );
     }
 
     #[test]
