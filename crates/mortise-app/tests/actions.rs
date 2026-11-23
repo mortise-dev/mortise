@@ -425,6 +425,29 @@ fn a_failed_migration_is_named_and_the_toast_shows_the_output() {
 }
 
 #[test]
+fn a_translation_report_that_cannot_be_read_says_why() {
+    let desk = Desk::new();
+    let root = common::app_with_package(&desk, "shop-api", "v13.4.0");
+    // The fake prints one line too long to keep whole.
+    through_fake(&desk, &root, " long");
+    let mut harness = desk.start();
+    actions_of(&mut harness, "Checkout");
+    select(&mut harness, "Check translations");
+    run(&mut harness);
+    wait_for(
+        &mut harness,
+        "Mortise could not read the translation report: \"the answer was cut",
+    );
+    harness.get_by_label_contains("Findings show the last report.");
+    assert!(
+        harness
+            .state()
+            .app()
+            .is_some_and(|app| app.package_data.translations.is_none())
+    );
+}
+
+#[test]
 fn a_run_turns_every_run_button_off() {
     let (desk, _root) = desk(" hold");
     let mut harness = desk.start();

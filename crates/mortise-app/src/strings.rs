@@ -3159,6 +3159,14 @@ pub fn quoted(text: &str) -> String {
     format!("\"{}\"", text.trim())
 }
 
+/// Not in the spec: a run of `module:lang --json` that gave no report (design D9).
+pub fn translations_not_read(reason: &str) -> String {
+    format!(
+        "Mortise could not read the translation report: \"{reason}\". Findings show the last \
+         report."
+    )
+}
+
 /// Not in the spec: a dry run that gave no document (design D2).
 pub fn dry_run_failed(reason: &str) -> String {
     format!("The dry run gave no file list: \"{reason}\".")

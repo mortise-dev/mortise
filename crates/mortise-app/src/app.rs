@@ -1776,7 +1776,8 @@ impl MortiseApp {
     /// started: the Actions tab, Run again or the history (design D8, D9). The report
     /// of `module:lang --json` goes into the package data, and `module:test --json`
     /// gets the toast that counts its tests, whatever the exit code. A failure gets
-    /// that toast only when the drawer does not show it.
+    /// that toast only when the drawer does not show it. A translation report that
+    /// cannot be read gets a failed toast with the reason: Findings keep the last one.
     fn documents_ended(&mut self, index: usize, args: &[String]) {
         if let Some(text) = self.tests_ended(index, args) {
             let passed = matches!(
@@ -1796,11 +1797,15 @@ impl MortiseApp {
         if !is_json_run(args, Action::CheckTranslations) {
             return;
         }
-        let report = self.apps[index].runs.ended().and_then(|over| {
-            mortise_core::whole_document::<LangReport>(over.stdout, over.stdout_cut).ok()
-        });
-        if let Some(report) = report {
-            self.set_package(index, |data| data.merge_translations(report));
+        let Some(report) = self.apps[index].runs.ended().map(|over| {
+            mortise_core::whole_document::<LangReport>(over.stdout, over.stdout_cut)
+                .map_err(|error| strings::no_run_document(&error, over.end))
+        }) else {
+            return;
+        };
+        match report {
+            Ok(report) => self.set_package(index, |data| data.merge_translations(report)),
+            Err(reason) => self.failed_toast(index, strings::translations_not_read(&reason)),
         }
     }
 

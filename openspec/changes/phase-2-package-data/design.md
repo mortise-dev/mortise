@@ -581,6 +581,9 @@ accessible name and a 24 px target (`tests/accessibility.rs`).
 - A test run whose document counts no failed test but whose exit code is not 0 (PHPUnit with
   `failOnWarning`) gives no count toast: "1 test passed" would name a failed run. The toast of
   milestone 12 applies.
+- A run of `module:lang --json` that gives no readable report (none, malformed, or cut past 64 KiB)
+  keeps the last report and gets a failed toast with "Show output": "Mortise could not read the
+  translation report: "<reason>". Findings show the last report." (not in the spec).
 
 ## Risks / Trade-offs
 
