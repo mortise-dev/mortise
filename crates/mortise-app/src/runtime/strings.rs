@@ -32,6 +32,11 @@ pub fn runtime_on(environment: &str) -> String {
     format!("Runtime on {environment}")
 }
 
+/// `Status of Checkout`: the first line of the runtime box of a module.
+pub fn status_of(module: &str) -> String {
+    format!("Status of {module}")
+}
+
 pub fn not_exposed(endpoints: &[&str], environment: &str) -> String {
     let (verb, them) = if endpoints.len() == 1 {
         ("is", "it")

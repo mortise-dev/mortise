@@ -415,6 +415,7 @@ fn all_modules(
         runtime_at,
         column_w,
         shared.name,
+        app,
         runtime,
         shared.keyboard,
         paint,
@@ -693,7 +694,24 @@ fn one_module(
         bottom += 12.0 + text_h;
     }
 
-    // What the running app says about the module: its scheduled tasks and its routes.
+    // What the running app says about the module: its status, its scheduled tasks and
+    // its routes. The status box is full width above the tasks (deviation).
+    if let Some((box_bottom, asked)) = runtime_view::module_runtime_box(
+        ui,
+        pal,
+        pos2(left, bottom + 12.0),
+        inner,
+        app,
+        &module.name,
+        shared.runtime,
+        shared.keyboard,
+        paint,
+    ) {
+        if asked.is_some() {
+            shared.asked = asked;
+        }
+        bottom = box_bottom;
+    }
     if !tasks.is_empty() {
         let note = strings::tasks_count(tasks.len());
         let at = pos2(left, bottom + 12.0);
