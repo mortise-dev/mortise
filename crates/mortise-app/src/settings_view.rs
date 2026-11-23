@@ -148,6 +148,8 @@ pub struct AppInfo<'a> {
     pub last: &'a mut BTreeMap<String, Brief>,
     /// The test of how PHP runs that runs, and the last one, in this run.
     pub php_test: &'a mut PhpTest,
+    /// `module:migrate --all is running`, while the app runs a command.
+    pub running: Option<String>,
 }
 
 #[derive(Debug, Default)]
@@ -1071,15 +1073,20 @@ impl Form<'_> {
             }
         }
 
-        // Removing an app: the folder and its files stay as they are.
+        // Removing an app: the folder and its files stay as they are. Not while it
+        // runs a command, which would lose its stop and its history.
         let label = format!("Remove {} from Mortise", entry.display_name());
+        let running = infos.get(index).and_then(|info| info.running.as_deref());
         let remove = Button {
             label: &label,
+            disabled: running.is_some(),
             ..Default::default()
         };
-        let remove_clicked = remove
-            .show(ui, pal, pos2(self.left, y), self.keyboard)
-            .clicked();
+        let response = remove.show(ui, pal, pos2(self.left, y), self.keyboard);
+        let remove_clicked = response.clicked();
+        if let Some(running) = running {
+            draw::tooltip(response, pal, running);
+        }
         // The click that asks to remove may also leave an edited field: that edit first.
         if let Some(reread) = changed {
             actions.push(SettingsAction::Changed {

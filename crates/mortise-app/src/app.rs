@@ -10,7 +10,7 @@ use mortise_core::{
     propose_monogram, read_app_cached,
 };
 use mortise_core::{
-    Environment, LiveRuntime, ReadOptions, Rules, RunnerKind, RuntimeState, Secret, Secrets,
+    Environment, LiveRuntime, ReadOptions, Rules, RunnerKind, Runs, RuntimeState, Secret, Secrets,
     ThemeChoice,
 };
 
@@ -22,6 +22,7 @@ use crate::draw::{self, Button, ButtonKind};
 use crate::index::{self, IndexRuntime, IndexState};
 use crate::palette::{self, Command, PaletteAction, PaletteState};
 use crate::rail::{self, RailAction, Tile};
+use crate::runner_view::{self, AppRuns, DrawerAction, RunnerView, Shown};
 use crate::runtime_view::{Brief, RuntimeAction, RuntimeView};
 use crate::settings_view::{self, AppInfo, Section, SettingsAction, SettingsState};
 use crate::strings;
@@ -52,6 +53,8 @@ pub struct Config {
     /// How long the window waits for a folder to be read before it goes on without
     /// the result. A folder that is read within this time shows in the same frame.
     pub quick_read: std::time::Duration,
+    /// Where Mortise keeps the history of runs. `None` keeps no history.
+    pub data_dir: Option<PathBuf>,
 }
 
 /// An environment that is asked for its runtime status, and what it was opened with.
@@ -91,6 +94,8 @@ struct OpenApp {
     php_test: crate::php_settings::PhpTest,
     /// When the app was opened, to show how far its first read is only when it takes long.
     since: std::time::Instant,
+    /// The command that runs or ran last, and the history of runs.
+    runs: AppRuns,
 }
 
 /// A folder that is read for the add panel.
@@ -159,6 +164,14 @@ pub struct MortiseApp {
     /// The dialog opened in this frame: focus goes to its button.
     dialog_opened: bool,
     secrets: Secrets,
+    /// The commands that run, one per app at most, for the whole window.
+    runs: Runs,
+    /// The runner drawer, the same for every app.
+    runner: RunnerView,
+    /// Where the history of runs is kept.
+    data_dir: Option<PathBuf>,
+    /// Where the drawer was in the last frame, to tell which region holds focus.
+    drawer_rect: Rect,
 }
 
 impl MortiseApp {
@@ -187,7 +200,7 @@ impl MortiseApp {
         let apps = settings
             .apps
             .iter()
-            .map(|entry| open_app(&cc.egui_ctx, entry))
+            .map(|entry| open_app(&cc.egui_ctx, entry, config.data_dir.as_deref()))
             .collect();
         let mut app = Self {
             chrome: config.chrome,
@@ -222,6 +235,10 @@ impl MortiseApp {
             dialog: None,
             dialog_opened: false,
             secrets: config.secrets,
+            runs: Runs::new(),
+            runner: RunnerView::default(),
+            data_dir: config.data_dir,
+            drawer_rect: Rect::NOTHING,
         };
         let first = if app.apps.is_empty() { None } else { Some(0) };
         if let Some(index) = app.settings.current.or(first) {
@@ -531,7 +548,7 @@ impl MortiseApp {
             entry.environment = Some(environment.name.clone());
             entry.environments.push(environment);
         }
-        let mut open = open_app(ctx, &self.settings.apps[index]);
+        let mut open = open_app(ctx, &self.settings.apps[index], self.data_dir.as_deref());
         // The test is kept in memory, as Settings shows it. One that runs still lands.
         open.php_test = php_test;
         self.apps.push(open);
@@ -799,7 +816,7 @@ impl MortiseApp {
         // A command that goes somewhere leaves Settings.
         if !matches!(
             command,
-            Command::Settings | Command::PhpSettings | Command::Theme(_)
+            Command::Settings | Command::PhpSettings | Command::Theme(_) | Command::Runner
         ) {
             self.settings_open = None;
         }
@@ -867,9 +884,83 @@ impl MortiseApp {
             Command::AddApp => self.adding = Some(AddPanel::empty()),
             Command::Settings => self.open_settings(Section::Apps),
             Command::PhpSettings => self.open_settings(Section::Php),
+            Command::Runner => self.runner.toggle(),
             Command::Theme(theme) => {
                 self.settings.general.theme = theme;
                 self.save();
+            }
+        }
+    }
+
+    // --- Runs ---
+
+    /// Starts artisan with `args` in the app at `index`, through its current runner.
+    /// The drawer opens on it; it does not take focus.
+    fn start_run(&mut self, index: usize, args: Vec<String>) {
+        let Some(entry) = self.settings.apps.get(index) else {
+            return;
+        };
+        let (root, php) = (entry.root.clone(), entry.php.clone());
+        self.apps[index].runs.start(&self.runs, &root, &php, args);
+        self.runner.shown = Shown::Open;
+        self.runner.history_open = false;
+    }
+
+    /// Stops the command of the app at `index`. A migration, a rollback or a seed asks first.
+    fn ask_stop(&mut self, index: usize) {
+        let Some(open) = self.apps.get(index) else {
+            return;
+        };
+        match open.runs.stop_asks_first() {
+            Some(label) => {
+                let dialog = Dialog {
+                    cancel: strings::KEEP_RUNNING.to_owned(),
+                    start_on_cancel: true,
+                    ..Dialog::new(
+                        strings::stop_title(&label),
+                        strings::STOP_BODY.to_owned(),
+                        strings::STOP_COMMAND.to_owned(),
+                    )
+                };
+                self.dialog = Some((dialog, Pending::StopRun(index)));
+                self.dialog_opened = true;
+            }
+            None => open.runs.stop(),
+        }
+    }
+
+    /// Runs the command on screen again, unless the app runs one. It runs only when
+    /// its exact line is on screen; otherwise the drawer shows that line first.
+    fn run_again(&mut self, index: usize) {
+        let runner = self.settings.apps[index].php.runner.as_ref();
+        let runs = &mut self.apps[index].runs;
+        if runs.running().is_some() {
+            return;
+        }
+        if let Some(args) = runs.again(&mut self.runner, runner) {
+            self.start_run(index, args);
+        }
+    }
+
+    /// What the drawer asked for.
+    fn drawer_action(&mut self, ctx: &egui::Context, index: usize, action: DrawerAction) {
+        match action {
+            DrawerAction::Stop => self.ask_stop(index),
+            DrawerAction::RunAgain => self.run_again(index),
+            DrawerAction::CopyOutput => {
+                if let Some(text) = self.apps[index].runs.output_text(&self.runner) {
+                    ctx.copy_text(text);
+                }
+            }
+            DrawerAction::ToggleHistory => self.runner.toggle_history(),
+            DrawerAction::Hide => self.runner.shown = Shown::Collapsed,
+            DrawerAction::Show => self.runner.shown = Shown::Open,
+            // Settings open on the PHP section with this app selected.
+            DrawerAction::OpenSettings => {
+                self.open_settings(Section::Php);
+                if let Some(state) = &mut self.settings_open {
+                    state.app = index;
+                }
             }
         }
     }
@@ -886,11 +977,11 @@ impl MortiseApp {
             self.save_rules(&app.root, &rules);
         } else {
             let name = self.settings.apps[current].display_name();
-            let dialog = Dialog {
-                title: strings::create_rules_title(name),
-                body: strings::create_rules_body(name),
-                confirm: strings::CREATE_RULES_FILE.to_owned(),
-            };
+            let dialog = Dialog::new(
+                strings::create_rules_title(name),
+                strings::create_rules_body(name),
+                strings::CREATE_RULES_FILE.to_owned(),
+            );
             let root = app.root.clone();
             self.dialog = Some((dialog, Pending::CreateRules { root, rules }));
             self.dialog_opened = true;
@@ -969,6 +1060,9 @@ impl MortiseApp {
                 self.open_palette();
             }
         }
+        // Copy the output of the drawer: before Add app, which would take Cmd Shift O too.
+        let free = self.palette.is_none() && self.dialog.is_none() && self.adding.is_none();
+        let copy_output = free && chord(Modifiers::COMMAND | Modifiers::SHIFT, Key::O);
         // Add app: the folder dialog opens at once. A dialog holds the keys.
         if self.palette.is_none() && self.dialog.is_none() && chord(Modifiers::COMMAND, Key::O) {
             self.pick(ui.ctx());
@@ -1035,26 +1129,36 @@ impl MortiseApp {
             return;
         }
 
-        // F6 and Shift F6: to the next or the previous region. Rail, index, workspace.
+        // F6 and Shift F6: to the next or the previous region. Rail, index, workspace,
+        // and the runner drawer while it is open.
         let backwards = chord(Modifiers::SHIFT, Key::F6);
         if (backwards || chord(Modifiers::NONE, Key::F6))
             && let Some(current) = self.current
         {
+            let regions = if self.runner.shown == Shown::Open {
+                4
+            } else {
+                3
+            };
+            let in_drawer = focused_at.is_some_and(|at| self.drawer_rect.contains(at));
             let region = if on_index {
                 1
+            } else if in_drawer {
+                3
             } else if in_workspace {
                 2
             } else {
                 0
             };
             let target = if backwards {
-                (region + 2) % 3
+                (region + regions - 1) % regions
             } else {
-                (region + 1) % 3
+                (region + 1) % regions
             };
             let id = match target {
                 0 => rail::current_tile(ui.ctx()),
                 2 => Some(workspace::tab_id(ui, self.apps[current].tab)),
+                3 => Some(runner_view::handle_id()),
                 _ => None,
             };
             ui.memory_mut(|memory| match (id, focused) {
@@ -1081,6 +1185,25 @@ impl MortiseApp {
         // Enter in the filter keeps the first match and gives the keys back to the list.
         if filter_focused && chord(Modifiers::NONE, Key::Enter) {
             ui.memory_mut(|memory| memory.surrender_focus(filter_id));
+        }
+
+        // The runner drawer, where not typing. Cmd Shift R comes before Cmd R.
+        if !typing && let Some(current) = self.current {
+            if chord(Modifiers::CTRL, Key::Backtick) || chord(Modifiers::COMMAND, Key::J) {
+                self.runner.toggle();
+            }
+            if chord(Modifiers::COMMAND | Modifiers::SHIFT, Key::R) {
+                self.run_again(current);
+            }
+            if chord(Modifiers::COMMAND | Modifiers::SHIFT, Key::H) {
+                self.runner.toggle_history();
+            }
+            if copy_output {
+                self.drawer_action(ui.ctx(), current, DrawerAction::CopyOutput);
+            }
+            if chord(Modifiers::COMMAND, Key::Period) {
+                self.ask_stop(current);
+            }
         }
 
         // Read the app again.
@@ -1272,6 +1395,14 @@ impl eframe::App for MortiseApp {
         self.keys(ui);
         self.take_in();
         self.sync_runtime(&ctx);
+        // Lines and the elapsed time show without a callback from the core.
+        let mut running = false;
+        for open in &mut self.apps {
+            running |= open.runs.poll();
+        }
+        if running {
+            ctx.request_repaint_after(std::time::Duration::from_millis(100));
+        }
 
         // A folder dropped on the window opens the add panel on it.
         let dropped = ui.input(|input| {
@@ -1347,6 +1478,8 @@ impl eframe::App for MortiseApp {
             .current
             .is_some_and(|current| self.settings.apps[current].problems_first);
         let mut first_run_add = false;
+        let mut drawer_rect = Rect::NOTHING;
+        let mut drawer_actions = Vec::new();
         let monogram = self.monogram_preview();
         if let Some(panel) = &mut self.adding {
             // The bar is drawn only after 300 ms, so quick work does not flash, and only
@@ -1387,6 +1520,7 @@ impl eframe::App for MortiseApp {
                         app_url: app.as_ref().and_then(|app| app.app_url.clone()),
                         last: &mut open.last_answers,
                         php_test: &mut open.php_test,
+                        running: open.runs.running().map(strings::is_running),
                     }
                 })
                 .collect();
@@ -1419,8 +1553,15 @@ impl eframe::App for MortiseApp {
                         index_w
                     };
                     let index_rect = Rect::from_min_size(rest.min, vec2(index_w, rest.height()));
-                    let work_rect =
-                        Rect::from_min_max(pos2(index_rect.right(), rest.top()), rest.max);
+                    // The runner drawer takes the bottom of the workspace column.
+                    let column = Rect::from_min_max(pos2(index_rect.right(), rest.top()), rest.max);
+                    let drawer_h = self.runner.taken(window.height(), column.height());
+                    let work_rect = Rect::from_min_max(
+                        column.min,
+                        pos2(column.right(), column.bottom() - drawer_h),
+                    );
+                    drawer_rect =
+                        Rect::from_min_max(pos2(column.left(), work_rect.bottom()), column.max);
                     // The Findings list belongs to the Summary of "All modules" only.
                     if open.selection != Selection::All || open.tab != Tab::Summary {
                         open.findings_open = false;
@@ -1531,6 +1672,26 @@ impl eframe::App for MortiseApp {
                         _ => {}
                     }
                     self.work_rect = work_rect;
+
+                    // The drawer, after the workspace in the Tab order.
+                    let inputs = runner_view::Inputs {
+                        app: entry.display_name(),
+                        runner: entry.php.runner.as_ref(),
+                        keyboard: self.keyboard,
+                        mac,
+                    };
+                    // Each action carries its app, as the selection may change later in the frame.
+                    drawer_actions = runner_view::drawer(
+                        ui,
+                        pal,
+                        drawer_rect,
+                        &mut self.runner,
+                        &mut open.runs,
+                        &inputs,
+                    )
+                    .into_iter()
+                    .map(|action| (current, entry.root.clone(), action))
+                    .collect();
                 }
                 LiveState::Reading => {
                     ui.painter().rect_filled(rest, 0, pal.surface);
@@ -1580,8 +1741,16 @@ impl eframe::App for MortiseApp {
             first_run_add = button.show(ui, pal, at, self.keyboard).clicked();
         }
 
+        self.drawer_rect = drawer_rect;
+        // The toast stands above the drawer.
+        let drawer_h = if drawer_rect.is_positive() {
+            drawer_rect.height()
+        } else {
+            0.0
+        };
+        let toast_area = Rect::from_min_max(rest.min, pos2(rest.right(), rest.bottom() - drawer_h));
         if let Some(toast) = &mut self.toast
-            && !toast.show(ui, pal, rest, reduced_motion)
+            && !toast.show(ui, pal, toast_area, reduced_motion)
         {
             self.toast = None;
         }
@@ -1647,6 +1816,11 @@ impl eframe::App for MortiseApp {
                 (Some(Answer::Confirm), Some((_, Pending::RemoveApp(index)))) => {
                     self.remove_app(index)
                 }
+                (Some(Answer::Confirm), Some((_, Pending::StopRun(index)))) => {
+                    if let Some(open) = self.apps.get(index) {
+                        open.runs.stop();
+                    }
+                }
                 _ => {}
             }
         }
@@ -1711,15 +1885,17 @@ impl eframe::App for MortiseApp {
                             .set_options(read_options(&self.settings.apps[index]));
                     }
                 }
+                // An app that runs a command stays: Remove is off until it ends.
+                SettingsAction::RemoveApp(index) if self.apps[index].runs.running().is_some() => {}
                 SettingsAction::RemoveApp(index) => {
                     let name = self.settings.apps[index].display_name().to_owned();
-                    let dialog = Dialog {
-                        title: format!("Remove {name} from Mortise?"),
-                        body: "The folder and its files stay as they are. Mortise forgets the \
-                               app, its environments and its saved credentials."
+                    let dialog = Dialog::new(
+                        format!("Remove {name} from Mortise?"),
+                        "The folder and its files stay as they are. Mortise forgets the \
+                         app, its environments and its saved credentials."
                             .to_owned(),
-                        confirm: "Remove app".to_owned(),
-                    };
+                        "Remove app".to_owned(),
+                    );
                     self.dialog = Some((dialog, Pending::RemoveApp(index)));
                     self.dialog_opened = true;
                 }
@@ -1727,6 +1903,18 @@ impl eframe::App for MortiseApp {
         }
         if first_run_add {
             self.adding = Some(AddPanel::empty());
+        }
+        // An action of the drawer applies to the app it was drawn for, if that app
+        // is still at its place on the rail.
+        for (index, root, action) in drawer_actions {
+            if self
+                .settings
+                .apps
+                .get(index)
+                .is_some_and(|entry| entry.root == root)
+            {
+                self.drawer_action(&ctx, index, action);
+            }
         }
         if let Some(action) = add_action {
             self.add_action(&ctx, action);
@@ -1746,7 +1934,7 @@ impl eframe::App for MortiseApp {
 }
 
 /// Starts reading an app. The interface is asked to repaint after every read.
-fn open_app(ctx: &egui::Context, entry: &AppEntry) -> OpenApp {
+fn open_app(ctx: &egui::Context, entry: &AppEntry, data_dir: Option<&Path>) -> OpenApp {
     let ctx = ctx.clone();
     OpenApp {
         live: LiveApp::open(
@@ -1771,6 +1959,7 @@ fn open_app(ctx: &egui::Context, entry: &AppEntry) -> OpenApp {
         last_answers: BTreeMap::new(),
         php_test: crate::php_settings::PhpTest::default(),
         since: std::time::Instant::now(),
+        runs: AppRuns::open(data_dir, &entry.root),
     }
 }
 
@@ -1834,6 +2023,8 @@ enum Pending {
     CreateRules { root: PathBuf, rules: Rules },
     /// Forget the app at this place on the rail.
     RemoveApp(usize),
+    /// Stop the command that runs in the app at this place on the rail.
+    StopRun(usize),
 }
 
 /// How wide the module index is for a window of this width (section 5.14), and
@@ -2016,6 +2207,7 @@ pub fn run(chrome: Chrome, folder: Option<PathBuf>) -> eframe::Result {
                     _ => Secrets::os(),
                 },
                 quick_read: std::time::Duration::from_millis(60),
+                data_dir: mortise_core::history::data_dir(),
             };
             let app = MortiseApp::new(cc, config);
             // The system menu bar: Mortise, File, View, Window and Help.

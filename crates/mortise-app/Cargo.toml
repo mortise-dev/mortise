@@ -6,6 +6,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
+default-run = "mortise"
 
 [lib]
 name = "mortise_app"
@@ -14,12 +15,26 @@ name = "mortise_app"
 name = "mortise"
 path = "src/main.rs"
 
+# The artisan of the tests, the same as that of `mortise-core`, under another name:
+# two binaries of one name in a workspace collide in the target folder. A release
+# build leaves `testing` off, so it is not built.
+[[bin]]
+name = "app-fake-artisan"
+path = "src/bin/app-fake-artisan.rs"
+required-features = ["testing"]
+
+[features]
+# The helpers of `mortise_core::testing` and the fake artisan, for the tests.
+testing = ["mortise-core/testing"]
+
 [dependencies]
 eframe.workspace = true
+jiff.workspace = true
 mortise-core.workspace = true
 rfd.workspace = true
 
 [dev-dependencies]
+mortise-app = { path = ".", features = ["testing"] }
 mortise-core = { workspace = true, features = ["testing"] }
 egui_kittest.workspace = true
 image.workspace = true

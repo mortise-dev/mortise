@@ -1,0 +1,11 @@
+{
+  "command": "php artisan module:seed Blog --no-interaction --ansi",
+  "args": [
+    "module:seed",
+    "Blog"
+  ],
+  "made_with": "nwidart/laravel-modules 13.3.0, laravel/framework 13.43.0, PHP 8.4.27, macOS",
+  "exit": 0,
+  "stdout": "\n  \u001b[37;44m INFO \u001b[39;49m Seeding module ...  \n\n  Seeding \u001b[36;1mBlog\u001b[39;22m Module \n\n  \u001b[37;44m INFO \u001b[39;49m Seeding database.  \n\n  Modules\\Blog\\Database\\Seeders\\BlogDatabaseSeeder \u001b[90m...................\u001b[39m \u001b[33;1mRUNNING\u001b[39;22m  \n  Modules\\Blog\\Database\\Seeders\\BlogDatabaseSeeder \u001b[90m.................\u001b[39m \u001b[90m0 ms\u001b[39m \u001b[32;1mDONE\u001b[39;22m  \n\n\u001b[32mModule [Blog] seeded.\u001b[39m\n\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m 1.66ms\u001b[39m \u001b[32;1mDONE\u001b[39;22m\n",
+  "stderr": ""
+}

@@ -49,6 +49,8 @@ egui_kittest = { version = "0.37.0", features = ["eframe", "snapshot", "wgpu"] }
 # The image tests crop a part of the window. The same version as egui_kittest.
 image = { version = "0.25.10", default-features = false }
 winit = "0.30"
+# Local clock time and dates of the runner history. std has no local time zone.
+jiff = "0.2.28"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

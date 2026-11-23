@@ -78,6 +78,7 @@ UPDATE_SNAPSHOTS=1 cargo test -p mortise-app --test images
 Environment for work on Mortise itself:
 
 - `MORTISE_CONFIG_DIR` names another folder for `settings.json`.
+- `MORTISE_DATA_DIR` names another folder for the history of runs.
 - `MORTISE_SECRETS=memory` keeps secrets out of the credential store.
 
 ## Tests

@@ -58,8 +58,15 @@ pub use matcher::fuzzy;
 pub use module::{KindCount, Manifest, Module, ModuleState, Progress, ReadCache};
 pub use rules::{RULES_FILE, Rules, RulesError, RulesSource};
 #[cfg(feature = "run")]
+pub use run::ansi;
+#[cfg(feature = "run")]
+pub use run::history;
+#[cfg(feature = "run")]
+pub use run::history::OUTPUT_LIMIT;
+#[cfg(feature = "run")]
 pub use run::{
-    CommandLine, Detected, Failure, TEST_LIMIT, TestOutcome, detect, herd_config_dir, test_php,
+    CommandLine, Detected, Failure, Run, RunEnd, RunEvent, Runs, StartError, Stream, TEST_LIMIT,
+    TestOutcome, detect, herd_config_dir, stop_asks_first, test_php,
 };
 pub use run::{PhpSettings, RunnerKind};
 #[cfg(feature = "actuator")]

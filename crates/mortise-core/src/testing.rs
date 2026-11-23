@@ -236,15 +236,89 @@ fn serve(mut stream: TcpStream, routes: &Mutex<Routes>) {
     let _ = stream.write_all(response.as_bytes());
 }
 
-/// The fake artisan: it reads its first argument only.
+/// The folder of the recorded package output that the fake artisan replays.
+const RECORDINGS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../fixtures/output");
+
+/// One recorded command of the package, as `fixtures/output/*.json` holds it.
+#[derive(serde::Deserialize)]
+struct Recording {
+    /// The artisan words without `--no-interaction` and `--ansi`.
+    args: Vec<String>,
+    exit: u8,
+    stdout: String,
+    stderr: String,
+}
+
+/// The fake artisan.
 ///
+/// First it takes the words `hold` and `ignore-term`, in any order. `hold` waits
+/// 60 seconds after the output. `ignore-term` ignores SIGTERM on Unix and does
+/// nothing on Windows.
+///
+/// Then the first remaining word picks the case.
 /// `--version` prints the version with the number in green and ends with 0.
 /// `fail` prints the error of a stopped Docker service on stderr and ends with 1.
 /// `wait` sleeps for 60 seconds. `flood` prints 2 MiB of short lines on stderr and
 /// one line of 2 MiB with no newline on stdout, and ends with 0.
-/// Anything else is a command artisan does not know.
+/// `ask` asks for a name and ends with 1 when its input ends.
+/// `orphan` starts a copy of itself with `wait` on the same pipes, prints its pid
+/// and ends with 0. `orphan-wait` does the same, then sleeps for 60 seconds.
+/// `orphan-quiet` is `orphan-wait` with a child that ignores SIGTERM and has
+/// closed its pipes, so only a kill of the group ends it.
+/// Any other words replay the recording in `fixtures/output` whose `args` they are,
+/// without `--no-interaction` and `--ansi`. With no recording, they are a command
+/// artisan does not know.
 pub fn fake_artisan_main() -> ExitCode {
-    match std::env::args().nth(1).as_deref() {
+    let mut words: Vec<String> = std::env::args().skip(1).collect();
+    let mut hold = false;
+    loop {
+        match words.first().map(String::as_str) {
+            Some("hold") => hold = true,
+            Some("ignore-term") => {
+                #[cfg(unix)]
+                {
+                    words.remove(0);
+                    let mut rest = Vec::new();
+                    if hold {
+                        rest.push("hold".to_string());
+                    }
+                    rest.extend(words);
+                    return ignore_term(&rest);
+                }
+            }
+            _ => break,
+        }
+        words.remove(0);
+    }
+    let code = fake_case(&words);
+    if hold {
+        std::thread::sleep(Duration::from_secs(60));
+    }
+    code
+}
+
+/// Starts the fake again with `rest`, through a shell that ignores SIGTERM. An
+/// ignored signal stays ignored across `exec`. This is the only shell Mortise runs,
+/// in a test helper, with no text of a user. It returns only when `exec` fails.
+#[cfg(unix)]
+fn ignore_term(rest: &[String]) -> ExitCode {
+    use std::os::unix::process::CommandExt;
+    let Ok(itself) = std::env::current_exe() else {
+        return ExitCode::from(2);
+    };
+    let error = std::process::Command::new("/bin/sh")
+        .arg("-c")
+        .arg(r#"trap '' TERM; exec "$0" "$@""#)
+        .arg(itself)
+        .args(rest)
+        .exec();
+    eprintln!("{error}");
+    ExitCode::from(2)
+}
+
+/// Runs the case that `words` name. See [`fake_artisan_main`].
+fn fake_case(words: &[String]) -> ExitCode {
+    match words.first().map(String::as_str) {
         Some("--version") => {
             println!("Laravel Framework \x1b[32m13.2.0\x1b[39m");
             ExitCode::SUCCESS
@@ -265,9 +339,80 @@ pub fn fake_artisan_main() -> ExitCode {
             std::thread::sleep(Duration::from_secs(60));
             ExitCode::SUCCESS
         }
-        other => {
-            eprintln!("Command \"{}\" is not defined.", other.unwrap_or_default());
-            ExitCode::from(1)
+        Some("ask") => {
+            println!("Name of the new module?");
+            let _ = std::io::stdout().flush();
+            let mut answer = String::new();
+            match std::io::stdin().read_line(&mut answer) {
+                Ok(read) if read > 0 => ExitCode::SUCCESS,
+                _ => {
+                    eprintln!("Aborted.");
+                    ExitCode::from(1)
+                }
+            }
+        }
+        Some(case @ ("orphan" | "orphan-wait" | "orphan-quiet")) => {
+            let quiet = case == "orphan-quiet";
+            let child = std::env::current_exe().and_then(|itself| {
+                let mut child = std::process::Command::new(itself);
+                child.stdin(std::process::Stdio::null());
+                if quiet {
+                    child
+                        .args(["ignore-term", "wait"])
+                        .stdout(std::process::Stdio::null())
+                        .stderr(std::process::Stdio::null());
+                } else {
+                    child.arg("wait");
+                }
+                child.spawn()
+            });
+            let Ok(child) = child else {
+                eprintln!("the orphan did not start");
+                return ExitCode::from(2);
+            };
+            println!("{}", child.id());
+            if case != "orphan" {
+                std::thread::sleep(Duration::from_secs(60));
+            }
+            ExitCode::SUCCESS
+        }
+        _ => replay(words),
+    }
+}
+
+/// Prints the recording whose `args` are `words` without `--no-interaction` and
+/// `--ansi`, and ends with its code.
+fn replay(words: &[String]) -> ExitCode {
+    let words: Vec<&str> = words
+        .iter()
+        .map(String::as_str)
+        .filter(|word| !matches!(*word, "--no-interaction" | "--ansi"))
+        .collect();
+    let recordings = std::fs::read_dir(RECORDINGS)
+        .into_iter()
+        .flatten()
+        .flatten();
+    for entry in recordings {
+        let path = entry.path();
+        if path.extension().is_none_or(|extension| extension != "json") {
+            continue;
+        }
+        let Some(recording) = std::fs::read(&path)
+            .ok()
+            .and_then(|bytes| serde_json::from_slice::<Recording>(&bytes).ok())
+        else {
+            continue;
+        };
+        if recording.args == words {
+            let _ = std::io::stdout().write_all(recording.stdout.as_bytes());
+            let _ = std::io::stdout().flush();
+            let _ = std::io::stderr().write_all(recording.stderr.as_bytes());
+            return ExitCode::from(recording.exit);
         }
     }
+    eprintln!(
+        "Command \"{}\" is not defined.",
+        words.first().copied().unwrap_or_default()
+    );
+    ExitCode::from(1)
 }

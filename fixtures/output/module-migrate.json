@@ -1,0 +1,11 @@
+{
+  "command": "php artisan module:migrate Blog --no-interaction --ansi",
+  "args": [
+    "module:migrate",
+    "Blog"
+  ],
+  "made_with": "nwidart/laravel-modules 13.3.0, laravel/framework 13.43.0, PHP 8.4.27, macOS",
+  "exit": 0,
+  "stdout": "  Running Migration \u001b[36;1mBlog\u001b[39;22m Module \u001b[90m..............................................\u001b[39m  \n\n  \u001b[37;44m INFO \u001b[39;49m Running migrations.  \n\n  2026_11_23_022817_create_posts_table \u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m.\u001b[39m\u001b[90m 1.89ms\u001b[39m \u001b[32;1mDONE\u001b[39;22m\n\n",
+  "stderr": ""
+}
