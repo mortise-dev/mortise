@@ -14,9 +14,9 @@ use mortise_core::{
     Options, Plan, RunnerKind, Severity, Target, gives_data, migrate_status_args, plan,
 };
 
+use crate::actions::strings;
 use crate::app::workspace::WorkAction;
 use crate::runner::view::line_now;
-use crate::strings;
 use crate::ui::draw::alert_box;
 use crate::ui::draw::{self, Button, ButtonKind, Icon, ListNav, StampState};
 use crate::ui::theme::{Face, Palette, Type, radius, size, ty};
@@ -245,7 +245,7 @@ pub fn production(app: &AppSnapshot) -> bool {
 
 /// The keys that run the selected action.
 pub fn run_keys(mac: bool) -> String {
-    format!("{} Enter", strings::command_key(mac))
+    format!("{} Enter", crate::strings::command_key(mac))
 }
 
 /// Paints the Actions tab into `body`. Returns what was asked for: an action to
@@ -388,24 +388,26 @@ fn detail(action: Action, app: &AppSnapshot, module: Option<&Module>, connection
         (Action::TurnOff, Some(ModuleState::On)) => Detail::On,
         (Action::TurnOn, Some(ModuleState::Off)) => Detail::Off,
         (Action::Migrate, _) => Detail::Text(match &read {
-            Some(read) => strings::waiting(waiting_count(read)),
-            None => strings::files(u64::from(total(&kind("Migrations")))),
+            Some(read) => crate::strings::waiting(waiting_count(read)),
+            None => crate::strings::files(u64::from(total(&kind("Migrations")))),
         }),
         (Action::RollBack, _) => match read.as_ref().map(|read| read[0].1.last_batch().len()) {
             Some(n) if n > 0 => Detail::Text(strings::last_batch(n)),
             _ => Detail::None,
         },
         (Action::Seed, _) => Detail::Text(strings::seeders(total(&kind("Seeders")))),
-        (Action::RunTests, _) => Detail::Text(strings::tests(tests_counted(
+        (Action::RunTests, _) => Detail::Text(crate::strings::tests(tests_counted(
             app,
             module,
             mortise_core::gives_data(&app.package),
         ))),
         // Without the migration state reset and refresh have none (deviation S42).
         (Action::ResetMigrations | Action::RefreshMigrations, _) => {
-            ran().map_or(Detail::None, |ran| Detail::Text(strings::ran(ran)))
+            ran().map_or(Detail::None, |ran| Detail::Text(crate::strings::ran(ran)))
         }
-        (Action::DeleteModule, _) => Detail::Text(strings::files(module.map_or(0, |m| m.files))),
+        (Action::DeleteModule, _) => {
+            Detail::Text(crate::strings::files(module.map_or(0, |m| m.files)))
+        }
         _ => Detail::None,
     }
 }
@@ -462,7 +464,7 @@ fn action_list(
         let on = index == selected;
         let in_group = matches!(row, Row::Action(action) if action.is_destructive());
         let label = match row {
-            Row::Action(action) => strings::action_row(*action, all),
+            Row::Action(action) => crate::strings::action_row(*action, all),
             Row::Group => strings::DESTRUCTIVE,
         };
         let response = ui.interact(rect, nav.id(index), nav.sense(index));
@@ -555,7 +557,7 @@ fn action_list(
                     ui,
                     pos2(right, mid),
                     Align2::RIGHT_CENTER,
-                    strings::ON,
+                    crate::strings::ON,
                     ty::LABEL,
                     pal.good,
                 );
@@ -567,7 +569,7 @@ fn action_list(
                     ui,
                     pos2(right, mid),
                     Align2::RIGHT_CENTER,
-                    strings::OFF,
+                    crate::strings::OFF,
                     ty::LABEL,
                     pal.ink_2,
                 );
@@ -783,11 +785,11 @@ fn panel(
         ui,
         label_at,
         Align2::LEFT_TOP,
-        strings::COMMAND,
+        crate::strings::COMMAND,
         ty::LABEL,
         pal.ink,
     );
-    draw::announce(ui, label, Role::Label, strings::COMMAND);
+    draw::announce(ui, label, Role::Label, crate::strings::COMMAND);
     let code_at = pos2(min.x, label.top() + ty::LABEL.line + 4.0);
     let code = match &line {
         Some(line) => draw::code_block(ui, pal, code_at, width, line),
@@ -801,19 +803,19 @@ fn panel(
     } else if refused {
         refusal(app, inputs.app, action)
     } else if let Some(label) = inputs.busy {
-        Some(strings::is_running(label))
+        Some(crate::strings::is_running(label))
     } else if line_now(inputs.runner, &[]).is_none() {
-        Some(strings::choose_php(inputs.app))
+        Some(crate::strings::choose_php(inputs.app))
     } else if !whole {
-        Some(strings::SCROLL_TO_COMMAND.to_owned())
+        Some(crate::strings::SCROLL_TO_COMMAND.to_owned())
     } else {
         None
     };
     let keys = run_keys(inputs.mac);
     // Migrate counts the waiting migrations once the state is read (S10.1).
     let run_label = match (action, &read) {
-        (Action::Migrate, Some(read)) => strings::migrate_counted(waiting_count(read)),
-        _ => strings::action_button(action).to_owned(),
+        (Action::Migrate, Some(read)) => crate::strings::migrate_counted(waiting_count(read)),
+        _ => crate::strings::action_button(action).to_owned(),
     };
     let run = Button {
         label: &run_label,
@@ -864,7 +866,7 @@ fn panel(
     // reset runs nothing at all (S10.4 d).
     if matches!(action, Action::RollBack | Action::ResetMigrations) {
         let dry = Button {
-            label: strings::DRY_RUN,
+            label: crate::strings::DRY_RUN,
             disabled: refused,
             ..Default::default()
         };
@@ -875,7 +877,7 @@ fn panel(
         }
     }
     let copy = Button {
-        label: strings::COPY_COMMAND,
+        label: crate::strings::COPY_COMMAND,
         disabled: line.is_none(),
         ..Default::default()
     };
@@ -885,7 +887,7 @@ fn panel(
         Some(line) if response.clicked() || copy_key => {
             asked = Some(WorkAction::Copy {
                 text: line,
-                said: strings::COPIED_COMMAND,
+                said: crate::strings::COPIED_COMMAND,
             });
         }
         Some(_) => {}
@@ -1013,7 +1015,7 @@ fn state_box(
         }
         if names.is_empty() {
             let none = match action {
-                Action::Migrate => strings::NOTHING_WAITING,
+                Action::Migrate => crate::strings::NOTHING_WAITING,
                 _ => strings::NOTHING_RAN_YET,
             };
             rows.push(StateRow::Text(none.to_owned()));
@@ -1130,9 +1132,11 @@ fn state_box(
     // The button that reads, and when the state was read. It runs only the line
     // that was whole on screen in the last frame, as the run button does (S37).
     let off = match inputs.busy {
-        Some(label) => Some(strings::is_running(label)),
-        None if line_now(inputs.runner, &[]).is_none() => Some(strings::choose_php(inputs.app)),
-        None if last_read != Some(&args[..]) => Some(strings::SCROLL_TO_COMMAND.to_owned()),
+        Some(label) => Some(crate::strings::is_running(label)),
+        None if line_now(inputs.runner, &[]).is_none() => {
+            Some(crate::strings::choose_php(inputs.app))
+        }
+        None if last_read != Some(&args[..]) => Some(crate::strings::SCROLL_TO_COMMAND.to_owned()),
         None => None,
     };
     let button = Button {
@@ -1248,14 +1252,14 @@ fn lost_rows(
             let mut rows = vec![Lost::with_path(
                 strings::THE_FOLDER,
                 app.path_shown(&module.dir),
-                strings::files_and_lines(module.files, module.lines),
+                crate::strings::files_and_lines(module.files, module.lines),
             )];
             // Left out when git has nothing to lose; said when git cannot tell.
             match module.uncommitted {
                 Some(0) => {}
                 Some(n) => rows.push(Lost::new(
                     strings::UNCOMMITTED_CHANGES,
-                    strings::files(u64::from(n)),
+                    crate::strings::files(u64::from(n)),
                 )),
                 None => rows.push(Lost::new(strings::CANNOT_TELL_GIT, "")),
             }
@@ -1401,7 +1405,7 @@ fn tests_text(
     module: Option<&Module>,
     package_data: bool,
 ) -> f32 {
-    let count = strings::tests(tests_counted(app, module, package_data));
+    let count = crate::strings::tests(tests_counted(app, module, package_data));
     let folder = module.map(|module| app.path_shown(&module.dir.join("tests")));
     let mono = Type {
         size: 11.5,
