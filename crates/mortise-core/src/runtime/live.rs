@@ -3,7 +3,8 @@
 //! `health` is asked every 15 s while the window is visible. Everything else is asked
 //! when the environment is opened, every 5 minutes, and when the user reads the app again.
 //! `prometheus` is asked every 15 s only while the Metrics tab is open and the window is visible,
-//! after `health` when both are due. One request is on its way at a time.
+//! after `health` when both are due. None leaves after the tab closes. One request is on its way at
+//! a time.
 
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
@@ -150,6 +151,15 @@ impl LiveRuntime {
     pub fn metrics_seen(&self) {
         self.lock().metrics_seen = Some(Instant::now());
         self.shared.1.notify_all();
+    }
+
+    /// Tells the worker that the Metrics tab is not drawn: no read of `prometheus` starts after
+    /// this, until `metrics_seen()` is called again. A read on its way ends.
+    pub fn metrics_closed(&self) {
+        let open = self.lock().metrics_seen.take().is_some();
+        if open {
+            self.shared.1.notify_all();
+        }
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, Shared> {

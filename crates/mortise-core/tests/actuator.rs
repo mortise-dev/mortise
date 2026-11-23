@@ -840,8 +840,11 @@ fn prometheus_is_asked_only_while_the_metrics_tab_is_seen() {
         Some(Answer::Answered(_))
     ));
 
-    // The tab closes: prometheus stops, health goes on.
-    for_a_while(&seen);
+    // The tab closes: prometheus stops at once, health goes on. A read on its way ends first.
+    runtime.metrics_closed();
+    keep_seeing("the last read", seen, || {
+        reads.lock().unwrap().len() == prometheus()
+    });
     let (asked, checks) = (prometheus(), health());
     keep_seeing("health after the tab closed", seen, || {
         health() >= checks + 3

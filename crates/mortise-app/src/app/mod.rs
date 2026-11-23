@@ -813,8 +813,16 @@ impl eframe::App for MortiseApp {
                         Selection::All => None,
                     };
                     open.generate.follow(module, open.tab == Tab::Generate);
-                    let metrics = (open.tab == Tab::Metrics)
-                        .then(|| metrics::tab(open.runtime.as_mut(), &app, entry.display_name()));
+                    let metrics = if open.tab == Tab::Metrics {
+                        Some(metrics::tab(
+                            open.runtime.as_mut(),
+                            &app,
+                            entry.display_name(),
+                        ))
+                    } else {
+                        metrics::closed(open.runtime.as_ref());
+                        None
+                    };
 
                     // The workspace, after the index: Tab goes from the rail to the index
                     // and then to the workspace.

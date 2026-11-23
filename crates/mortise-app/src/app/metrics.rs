@@ -15,6 +15,13 @@ pub(super) struct Kept {
     figures: Figures,
 }
 
+/// Tells the worker in a frame that does not draw the tab: no read of `prometheus` starts.
+pub(super) fn closed(connected: Option<&Connected>) {
+    if let Some(connected) = connected {
+        connected.live.metrics_closed();
+    }
+}
+
 /// What the Metrics tab shows in this frame, first match wins. Call it only in a frame that
 /// draws the tab: it tells the worker that the tab is open.
 pub(super) fn tab<'a>(
@@ -42,6 +49,7 @@ pub(super) fn tab<'a>(
     }
     let state = connected.metrics.state();
     match state.last {
+        // Also while the newest read is too old to give the rates of now.
         None => MetricsView::Waiting { environment },
         Some(Err(NotKept::NoMetrics(why))) => MetricsView::NoMetrics { environment, why },
         Some(Err(NotKept::TooManySeries { limit })) => MetricsView::TooMany { environment, limit },
