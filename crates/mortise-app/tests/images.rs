@@ -349,6 +349,54 @@ fn many_modules() {
 }
 
 #[test]
+fn runtime_per_module() {
+    use mortise_core::testing::{Reply, StubActuator};
+    // S3.1, the sixth drawing: each module reports its own indicator, and Billing is down.
+    let stub = StubActuator::healthy();
+    stub.set(
+        "/actuator/health",
+        Reply::status(
+            503,
+            r#"{"status":"DOWN","components":{"ping":{"status":"UP"},"db":{"status":"UP"},
+            "module:catalog:search":{"status":"UP"},"module:checkout:payments":{"status":"UP"},
+            "module:users:directory":{"status":"UP"},"module:shipping:carrier":{"status":"UP"},
+            "module:inventory:stock":{"status":"UP"},"module:notifications:mail":{"status":"UP"},
+            "module:billing:gateway":{"status":"DOWN","details":{"error":"Connection refused."}}}}"#,
+        ),
+    );
+    // The index column only: the Summary says when the app was checked.
+    let index = |width: f64| ((52.0, 34.0), (52.0 + width, 800.0));
+    // One set of results for the test: both themes are compared when it ends.
+    let mut shots = Shots::new();
+    for (theme, name) in THEMES {
+        shots.theme = name;
+        for rows in [
+            mortise_core::IndexRows::TwoLines,
+            mortise_core::IndexRows::OneLine,
+        ] {
+            let mut desk = Desk::new();
+            desk.theme = theme;
+            let root = desk.app("shop-api");
+            desk.knows(&[(&root, "SA")]);
+            desk.connect(&[common::environment("local", &stub)]);
+            let mut settings = desk.saved();
+            settings.general.index_rows = rows;
+            settings.save(&desk.settings_path()).unwrap();
+            let mut harness = desk.start();
+            common::wait_for_answer(&mut harness);
+            if rows == mortise_core::IndexRows::OneLine {
+                shots.take_part(&mut harness, "s3.1-index-runtime-one-line", index(264.0));
+            } else {
+                shots.take_part(&mut harness, "s3.1-index-runtime", index(264.0));
+                // S13.1: the strip, wider by the runtime mark and its gap.
+                chord(&mut harness, Key::B);
+                shots.take_part(&mut harness, "s13.1-index-strip-runtime", index(96.0));
+            }
+        }
+    }
+}
+
+#[test]
 fn palette_and_settings() {
     // One set of results for the test: both themes are compared when it ends.
     let mut shots = Shots::new();

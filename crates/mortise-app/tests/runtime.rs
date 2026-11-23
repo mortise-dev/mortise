@@ -444,7 +444,10 @@ fn the_switch_in_the_runtime_box_chooses_the_environment() {
     let staging = shop_api_actuator();
     staging.set(
         "/actuator/health",
-        Reply::status(503, r#"{"status":"DOWN"}"#),
+        Reply::status(
+            503,
+            r#"{"status":"DOWN","components":{"module:billing:gateway":{"status":"DOWN"}}}"#,
+        ),
     );
     let (desk, mut harness) = with_environments(&[
         environment("local", &local),
@@ -452,6 +455,15 @@ fn the_switch_in_the_runtime_box_chooses_the_environment() {
     ]);
     wait_for_answer(&mut harness);
     assert_eq!(harness.get_all_by_label("Up on local").count(), 2);
+    // The index row of Billing, the one module with an indicator, has a runtime mark
+    // with its own name, and its tooltip says when it was checked.
+    assert_eq!(
+        harness.get_all_by_label_contains(": Up on local").count(),
+        1
+    );
+    harness.get_by_label("Billing: Up on local").hover();
+    harness.run_steps(12);
+    harness.get_by_label_contains("Up on local, checked");
     let before = staging.asked().len();
     // Only the chosen environment is asked.
     assert_eq!(before, 0);
@@ -467,6 +479,13 @@ fn the_switch_in_the_runtime_box_chooses_the_environment() {
     );
     harness.get_by_role_and_label(Role::Heading, "Runtime on staging");
     assert_eq!(harness.get_all_by_label("Down on staging").count(), 2);
+    harness.get_by_label("Billing: Down on staging");
+    // A module that is down raises no pip on the rail: the tile counts problems only.
+    harness
+        .get_by_role_and_label(Role::ListBoxOption, "shop-api")
+        .hover();
+    harness.run_steps(12);
+    harness.get_by_label("shop-api, 2 problems");
     // The choice is kept.
     assert_eq!(desk.saved().apps[0].environment.as_deref(), Some("staging"));
     assert_eq!(status(&harness), Some(Status::Down));
