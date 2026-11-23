@@ -5,6 +5,8 @@ use std::process::Stdio;
 
 use serde::{Deserialize, Serialize};
 
+use crate::program::split_words;
+
 /// The editor that opens files.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -54,42 +56,11 @@ pub fn editor_arguments(command: &str, file: &Path, line: u32) -> Vec<String> {
         .collect()
 }
 
-/// Splits a command into words at spaces and tabs. A part in double quotes is one
-/// word. A backslash is an ordinary letter, so a Windows path needs no escape.
-pub(crate) fn split_words(command: &str) -> Vec<String> {
-    let mut words: Vec<String> = Vec::new();
-    let mut word = String::new();
-    let mut quoted = false;
-    let mut started = false;
-    for letter in command.chars() {
-        match letter {
-            '"' => {
-                quoted = !quoted;
-                started = true;
-            }
-            ' ' | '\t' if !quoted => {
-                if started {
-                    words.push(std::mem::take(&mut word));
-                    started = false;
-                }
-            }
-            _ => {
-                word.push(letter);
-                started = true;
-            }
-        }
-    }
-    if started {
-        words.push(word);
-    }
-    words
-}
-
 /// Starts the editor on a file at a line. Does not wait for it to close.
 pub fn open_in_editor(command: &str, file: &Path, line: u32) -> Result<(), EditorError> {
     let mut words = editor_arguments(command, file, line).into_iter();
     let program = words.next().unwrap_or_default();
-    crate::run::process::command(&program)
+    crate::program::command(&program)
         .args(words)
         .stdout(Stdio::null())
         .stderr(Stdio::null())

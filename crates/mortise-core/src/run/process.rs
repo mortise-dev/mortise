@@ -4,7 +4,6 @@
 
 #[cfg(feature = "run")]
 use std::collections::BTreeMap;
-use std::ffi::OsStr;
 #[cfg(feature = "run")]
 use std::ffi::OsString;
 #[cfg(feature = "run")]
@@ -13,6 +12,7 @@ use std::io::{BufRead, BufReader, Read};
 use std::path::{Path, PathBuf};
 #[cfg(feature = "run")]
 use std::process::{Child, ExitStatus};
+#[cfg(feature = "run")]
 use std::process::{Command, Stdio};
 #[cfg(feature = "run")]
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -29,20 +29,7 @@ use std::time::{Duration, Instant, SystemTime};
 use super::history::OUTPUT_LIMIT;
 #[cfg(feature = "run")]
 use super::{CommandLine, Failure, PhpSettings};
-
-/// A command with no standard input and, on Windows, no console window.
-pub(crate) fn command(program: impl AsRef<OsStr>) -> Command {
-    let mut command = Command::new(program);
-    command.stdin(Stdio::null());
-    // The app has no console on Windows, so each run of a program would open a window.
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-        command.creation_flags(CREATE_NO_WINDOW);
-    }
-    command
-}
+use crate::program::command;
 
 /// How long a loop waits for a line before it looks at the program again.
 #[cfg(feature = "run")]

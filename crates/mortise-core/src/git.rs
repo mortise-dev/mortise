@@ -39,7 +39,7 @@ pub struct Churn {
 }
 
 fn git(root: &Path, args: &[&str]) -> Option<String> {
-    let output = crate::run::process::command("git")
+    let output = crate::program::command("git")
         .arg("-C")
         .arg(root)
         // Paths as they are, not quoted and escaped.
@@ -61,7 +61,7 @@ fn git(root: &Path, args: &[&str]) -> Option<String> {
 
 /// Reads the branch and commit of the app in `root`.
 pub(crate) fn read(root: &Path) -> Git {
-    let started = crate::run::process::command("git")
+    let started = crate::program::command("git")
         .arg("--version")
         .stdout(Stdio::null())
         .stderr(Stdio::null())

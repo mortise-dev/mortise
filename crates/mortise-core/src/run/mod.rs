@@ -28,7 +28,7 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
-use crate::editor::split_words;
+use crate::program::split_words;
 
 /// The program through which PHP runs artisan for an app.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

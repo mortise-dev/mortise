@@ -27,6 +27,7 @@ mod module;
 mod output;
 mod package;
 mod php;
+mod program;
 mod rules;
 mod run;
 #[cfg(feature = "actuator")]
