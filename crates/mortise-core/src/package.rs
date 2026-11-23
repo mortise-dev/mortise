@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
-use crate::catalog::Catalog;
+use crate::generate::catalog::Catalog;
 use crate::modules::composer::Version;
 use crate::modules::module::Module;
 use crate::modules::target::Target;

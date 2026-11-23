@@ -8,9 +8,9 @@
 mod actions;
 mod app;
 mod boundary;
-mod catalog;
 mod editor;
 mod findings;
+mod generate;
 mod matcher;
 mod modules;
 #[cfg(feature = "run")]
@@ -36,16 +36,16 @@ pub use app::{
 };
 pub use boundary::links::{Cycle, Link, Reference, columns};
 pub use boundary::rules::{RULES_FILE, Rules, RulesError, RulesSource};
-#[cfg(feature = "run")]
-pub use catalog::cache as catalog_cache;
-pub use catalog::{
-    Argument, Catalog, Filled, Generator, GeneratorOption, Group, MODULE_MAKE, NameRule,
-    class_name_ok, model_flag_of, module_name_ok, replace_words, shipped_mark,
-};
 pub use editor::{Editor, EditorError, editor_arguments, open_in_editor};
 pub use findings::{
     Check, CheckResult, DEFAULT_COVERAGE_LIMIT, Detail, Finding, FindingState, Findings, Severity,
     Todo,
+};
+#[cfg(feature = "run")]
+pub use generate::cache as catalog_cache;
+pub use generate::catalog::{
+    Argument, Catalog, Filled, Generator, GeneratorOption, Group, MODULE_MAKE, NameRule,
+    class_name_ok, model_flag_of, module_name_ok, replace_words, shipped_mark,
 };
 pub use matcher::fuzzy;
 pub use modules::clover::Coverage;
