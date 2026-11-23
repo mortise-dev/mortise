@@ -273,6 +273,13 @@ const SHORTCUTS: &[(&str, &str, &str)] = &[
         "Command palette",
     ),
     ("Search in the next app", "Tab", "Command palette"),
+    (
+        "Run the last command again",
+        "Ctrl Shift R",
+        "Runner drawer",
+    ),
+    ("Show the history", "Ctrl Shift H", "Runner drawer"),
+    ("Copy the output", "Ctrl Shift O", "Runner drawer"),
     ("Press the focused button, cancel", "Enter  Esc", "Dialog"),
 ];
 

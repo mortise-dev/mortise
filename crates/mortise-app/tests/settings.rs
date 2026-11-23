@@ -381,9 +381,17 @@ fn the_question_mark_shows_the_shortcuts_and_they_can_be_searched() {
     harness.run();
     harness.get_by_role_and_label(Role::Heading, "Keyboard");
     harness.get_by_label("Open the command palette");
-    harness.get_by_label("33 of 33 shown.");
+    harness.get_by_label("36 of 36 shown.");
     // The runner keys, with the drawer key written Ctrl ` and Ctrl J here.
-    for keys in ["Ctrl `", "Ctrl J", "Ctrl .", "Ctrl Shift C"] {
+    for keys in [
+        "Ctrl `",
+        "Ctrl J",
+        "Ctrl .",
+        "Ctrl Shift C",
+        "Ctrl Shift R",
+        "Ctrl Shift H",
+        "Ctrl Shift O",
+    ] {
         harness.get_by_label(keys);
     }
 
@@ -395,7 +403,7 @@ fn the_question_mark_shows_the_shortcuts_and_they_can_be_searched() {
         .get_by_role_and_label(Role::TextInput, "Find a shortcut")
         .type_text("palette");
     harness.run();
-    harness.get_by_label("3 of 33 shown.");
+    harness.get_by_label("3 of 36 shown.");
     assert!(
         harness
             .query_by_label("Change the order of the index")
@@ -410,7 +418,15 @@ fn the_question_mark_shows_the_shortcuts_and_they_can_be_searched() {
     let mut harness = desk.start();
     harness.key_press(Key::Questionmark);
     harness.run();
-    for keys in ["Ctrl `", "Cmd J", "Cmd .", "Cmd Shift C"] {
+    for keys in [
+        "Ctrl `",
+        "Cmd J",
+        "Cmd .",
+        "Cmd Shift C",
+        "Cmd Shift R",
+        "Cmd Shift H",
+        "Cmd Shift O",
+    ] {
         harness.get_by_label(keys);
     }
 }
