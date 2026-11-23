@@ -47,7 +47,8 @@ pub use findings::{
 pub use generate::cache as catalog_cache;
 pub use generate::catalog::{
     Argument, Catalog, Filled, Generator, GeneratorOption, Group, MODULE_MAKE, NameRule,
-    class_name_ok, model_flag_of, module_name_ok, replace_words, shipped_mark,
+    class_name_ok, generator_gives_data, model_flag_of, module_name_ok, replace_words,
+    shipped_mark,
 };
 #[cfg(feature = "run")]
 pub use generate::output::{
@@ -65,9 +66,8 @@ pub use modules::target::Target;
 pub use package::{
     DataError, FileAction, FileResult, GeneratorReport, LangModule, LangReport, Locale,
     MigrationRow, MigrationStatus, ModuleMigrations, ModuleStatus, ModuleTests, PackageData,
-    RanMigration, ReportedFile, TestReport, document, generator_gives_data, gives_data, has_option,
-    migrate_status_args, migration_file, migrations_changed_by, whole_document, with_dry_run,
-    with_json,
+    RanMigration, ReportedFile, TestReport, document, gives_data, has_option, migrate_status_args,
+    migration_file, migrations_changed_by, whole_document, with_dry_run, with_json,
 };
 #[cfg(feature = "run")]
 pub use run::ansi;
