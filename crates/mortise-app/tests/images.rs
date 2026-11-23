@@ -533,6 +533,107 @@ fn actions() {
     }
 }
 
+// --- The Actions tab of an app with package data (13.4) ---
+
+/// Takes the window with the time of the state read cut out, where the screen shows one.
+fn read_time(shots: &mut Shots, harness: &mut Harness<'static, MortiseApp>, screen: &str) {
+    harness.run_steps(3);
+    let masks: Vec<Part> = harness
+        .query_by_label_contains("Read at ")
+        .map(|node| {
+            let rect = node.accesskit_node().bounding_box().expect("a drawn label");
+            ((rect.x0, rect.y0), (rect.x1, rect.y1))
+        })
+        .into_iter()
+        .collect();
+    shots.take_part_masked(harness, screen, WINDOW, &masks);
+}
+
+#[test]
+fn actions_with_package_data() {
+    // One set of results for the test: both themes are compared when it ends.
+    let mut shots = Shots::new();
+    for (theme, name) in THEMES {
+        shots.theme = name;
+        // The fake artisan in the app folder, so that the lines read the same on every machine.
+        let desk = drawer_desk(theme, 1280.0, "", &[]);
+        let root = desk.path().join("shop-api");
+        common::package_version(&root, "v13.4.0");
+        // The migration that ran in the recording creates a table.
+        let migrations = root.join("Modules/Checkout/database/migrations");
+        std::fs::create_dir_all(&migrations).unwrap();
+        std::fs::write(
+            migrations.join("2026_11_23_110149_create_orders_table.php"),
+            "<?php\nreturn new class extends Migration {\n    public function up(): void\n    {\n        \
+             Schema::create('orders', function (Blueprint $table) {\n            $table->id();\n        \
+             });\n    }\n};\n",
+        )
+        .unwrap();
+        let mut harness = desk.start();
+
+        // S10.1: Checkout, with the state read.
+        select(&mut harness, "Checkout");
+        harness.get_by_role_and_label(Role::Tab, "Actions").click();
+        rest(&mut harness);
+        click(&mut harness, Role::Button, "Read migration state");
+        wait_for(&mut harness, "2026_11_23_120000_create_order_items_table");
+        read_time(&mut shots, &mut harness, "s10.1-actions-state");
+        // S10.2 c: Roll back lists its last batch.
+        select(&mut harness, "Roll back");
+        read_time(&mut shots, &mut harness, "s10.2c-roll-back-state");
+        // S10.3: the dialog lists the migration.
+        harness.key_press_modifiers(Modifiers::COMMAND, Key::Enter);
+        harness.run_steps(3);
+        // The dialog covers the time.
+        shots.take(&mut harness, "s10.3-roll-back-state");
+        press(&mut harness, Key::Escape);
+        // S10.4 and S10.5 a: reset names its table.
+        select(&mut harness, "Destructive");
+        select(&mut harness, "Reset migrations");
+        read_time(&mut shots, &mut harness, "s10.4-reset-state");
+        harness.key_press_modifiers(Modifiers::COMMAND, Key::Enter);
+        harness.run_steps(3);
+        // The dialog alone: the time of the read shows beside it.
+        shots.take_part(
+            &mut harness,
+            "s10.5a-reset-state",
+            ((400.0, 120.0), (880.0, 350.0)),
+        );
+        press(&mut harness, Key::Escape);
+        // S10.2 f: "All modules".
+        select(&mut harness, "All modules");
+        read_time(&mut shots, &mut harness, "s10.2f-all-modules-state");
+        // S4.3: the Summary of Checkout.
+        select(&mut harness, "Checkout");
+        press(&mut harness, Key::Num1);
+        read_time(&mut shots, &mut harness, "s4.3-summary-module-state");
+
+        // S10.2 e: Run tests, with its options.
+        press(&mut harness, Key::Num4);
+        select(&mut harness, "Run tests");
+        fill(&mut harness, "Filter, a test name or pattern", "Order");
+        click(&mut harness, Role::CheckBox, "Run in parallel");
+        read_time(&mut shots, &mut harness, "s10.2e-run-tests-13.4");
+
+        // S6.4: Check translations, then Findings with the warning and the To do group.
+        select(&mut harness, "Check translations");
+        harness.key_press_modifiers(Modifiers::COMMAND, Key::Enter);
+        harness.run_steps(3);
+        common::wait_until(&mut harness, "the report of Checkout", |app| {
+            app.app()
+                .is_some_and(|app| app.package_data.translations.is_some())
+        });
+        wait_for(&mut harness, ": Exit code 1");
+        press(&mut harness, Key::F);
+        // The window above the runner drawer: its output and time change from run to run.
+        shots.take_part(
+            &mut harness,
+            "s6.4-findings-package-data",
+            ((0.0, 0.0), (1280.0, 600.0)),
+        );
+    }
+}
+
 // --- The destructive actions (S10.4, S10.5) ---
 
 #[test]
