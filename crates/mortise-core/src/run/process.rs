@@ -58,6 +58,11 @@ const GRACE: Duration = Duration::from_millis(250);
 #[cfg(feature = "run")]
 const DETACH: Duration = Duration::from_secs(1);
 
+/// The longest the readers may go on sending lines after the program ended. A
+/// child that writes without end is not waited for past it.
+#[cfg(feature = "run")]
+const DRAIN: Duration = Duration::from_secs(10);
+
 /// How long a stopped program has to end after it was asked to, before it is killed.
 #[cfg(feature = "run")]
 const STOP_GRACE: Duration = Duration::from_secs(3);
@@ -394,18 +399,20 @@ impl Process {
 
     /// Waits up to `wait` for a line, then gives `forward` the lines that arrived,
     /// at most [`QUEUE`], so the caller looks at the program again soon.
-    fn read(&self, wait: Duration, forward: &mut impl FnMut(Stream, String)) {
+    /// It returns whether a line came.
+    fn read(&self, wait: Duration, forward: &mut impl FnMut(Stream, String)) -> bool {
         match self.lines.recv_timeout(wait) {
             Ok((stream, text)) => forward(stream, text),
-            Err(RecvTimeoutError::Timeout) => return,
+            Err(RecvTimeoutError::Timeout) => return false,
             Err(RecvTimeoutError::Disconnected) => {
                 std::thread::sleep(wait);
-                return;
+                return false;
             }
         }
         for (stream, text) in self.lines.try_iter().take(QUEUE) {
             forward(stream, text);
         }
+        true
     }
 
     /// Whether the program has exited. On Unix it is not reaped, so its pid, which
@@ -518,8 +525,11 @@ impl Process {
     }
 
     /// Reads until both readers finished, for at most `wait`. True when they did.
+    /// A reader that waits for room in the queue is not stuck, so `wait` starts
+    /// again while lines come, up to [`DRAIN`] in all.
     fn wait_for_readers(&self, wait: Duration, forward: &mut impl FnMut(Stream, String)) -> bool {
-        let until = Instant::now() + wait;
+        let last = Instant::now() + DRAIN;
+        let mut until = Instant::now() + wait;
         loop {
             if self.readers.iter().all(JoinHandle::is_finished) {
                 return true;
@@ -528,7 +538,9 @@ impl Process {
             if left.is_zero() {
                 return false;
             }
-            self.read(left.min(TICK), forward);
+            if self.read(left.min(TICK), forward) {
+                until = (Instant::now() + wait).min(last);
+            }
         }
     }
 }

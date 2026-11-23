@@ -100,7 +100,8 @@ The end, in this order:
 1. The leader has exited (by itself or after a stop). On Unix the owner sees this with
    `waitid(.., EXITED | NOHANG | NOWAIT)` (`rustix`, safe), which does not reap the leader, so its pid,
    the id of the group, cannot be given to another process yet.
-2. The owner waits up to 250 ms for both readers to finish (`JoinHandle::is_finished`).
+2. The owner waits up to 250 ms for both readers to finish (`JoinHandle::is_finished`). The wait
+   starts again while lines come, up to 10 s in all: a reader that waits for room in the queue is not stuck.
 3. On Unix it sends SIGKILL to the group, always: a child that ignored SIGTERM and closed its pipes
    ends too. Then it reaps the leader. On Windows see D4.
 4. It joins both readers and forwards their last lines.

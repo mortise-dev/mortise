@@ -90,6 +90,8 @@ fn wait_for(harness: &mut Harness<'static, MortiseApp>, text: &str) {
         std::thread::sleep(Duration::from_millis(20));
         harness.run_steps(2);
     }
+    // The output sticks to its bottom one frame after the last lines came.
+    harness.run_steps(3);
 }
 
 fn top_of(harness: &Harness<'static, MortiseApp>, role: Role, label: &str) -> f64 {
