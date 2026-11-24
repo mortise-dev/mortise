@@ -117,10 +117,11 @@ fn highest(line: &Line) -> f64 {
 }
 
 /// The step of the scale: the smallest of 1, 2 and 5 times a power of ten that is at least a third
-/// of the highest point. With no point above 0 the step is 1.
+/// of the highest point. With no point above 0 the step is 1. A third that is not a normal number
+/// (zero, subnormal, infinite or not a number) also gives 1: a subnormal power of ten is 0.
 fn step(highest: f64) -> f64 {
     let least = highest / f64::from(STEPS);
-    if !least.is_finite() || least <= 0.0 {
+    if !least.is_normal() || least < 0.0 {
         return 1.0;
     }
     let mut power = 10f64.powf(least.log10().floor());
@@ -197,9 +198,11 @@ mod tests {
             (900.0, 500.0),
             (1_020.0, 500.0),
             (1_600.0, 1_000.0),
+            (f64::MIN_POSITIVE / 4.0, 1.0),
         ];
         for (highest, expected) in cases {
             assert_eq!(step(highest), expected, "highest {highest}");
         }
+        assert!(step(f64::MAX) >= f64::MAX / 3.0);
     }
 }
