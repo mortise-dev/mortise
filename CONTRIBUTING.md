@@ -7,7 +7,7 @@ people too. This file says how the workflows build, sign and release Mortise.
 
 | Workflow | Runs on | Does |
 |---|---|---|
-| `ci.yml` | Every pull request and every push to `main` | Commit subjects, formatting, clippy and tests on macOS, Linux and Windows, coverage on macOS, the licence list, `cargo audit`, a secret scan, OpenSpec, and the package's commands in a real app (not required) |
+| `ci.yml` | Every pull request and every push to `main` | Commit subjects, formatting, clippy and tests on macOS, Linux and Windows, coverage on macOS, the licence list, `cargo audit`, a secret scan, OpenSpec, and, not required, the package's commands in a real app and the actuator client against a real app |
 | `installers.yml` | A run by hand, a pull request that changes the packaging, and a release | Builds the DMG, the Windows setup, the AppImage and the .deb as artifacts. It never publishes |
 | `release.yml` | A run by hand on `main` | Opens the release pull request |
 | `tag-release.yml` | The merge of a release pull request | Builds the installers on the merge commit, signs the macOS app, tags and publishes the release |

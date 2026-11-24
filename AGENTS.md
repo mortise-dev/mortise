@@ -85,6 +85,25 @@ A job that is not required runs the package's commands in a Laravel app it creat
 To run it here, make the app as the job "Real PHP" in `ci.yml` does, then
 `MORTISE_REAL_APP=/path/to/app cargo test -p mortise-core --test real_php -- --ignored --test-threads=1`.
 
+Another job that is not required, "Real actuator", reads a Laravel app with laravel-actuator and
+laravel-metrics through the actuator client. `tools/real-actuator-app.sh` builds the app; it needs PHP 8.4
+and Composer. The job serves the app three times: as built, with metrics off, and with a metrics store
+that cannot be read. To run it here (the folder of the app must not exist yet):
+
+```
+tools/real-actuator-app.sh /path/to/app
+(cd /path/to/app && php artisan serve --no-reload --host=127.0.0.1 --port=8931) &
+(cd /path/to/app && METRICS_ENABLED=false php artisan serve --no-reload --host=127.0.0.1 --port=8932) &
+(cd /path/to/app && METRICS_CACHE_STORE=metrics_broken php artisan serve --no-reload --host=127.0.0.1 --port=8933) &
+for port in 8931 8932 8933; do curl -s --retry 30 --retry-delay 1 --retry-connrefused -o /dev/null http://127.0.0.1:$port/actuator/health; done
+MORTISE_REAL_ACTUATOR=http://127.0.0.1:8931/actuator \
+MORTISE_REAL_ACTUATOR_EMPTY=http://127.0.0.1:8932/actuator \
+MORTISE_REAL_ACTUATOR_503=http://127.0.0.1:8933/actuator \
+MORTISE_REAL_APP=/path/to/app \
+cargo test -p mortise-core --test real_actuator -- --ignored --test-threads=1
+kill %1 %2 %3
+```
+
 The installers come from cargo-packager, configured in `crates/mortise-app/Cargo.toml`:
 
 ```

@@ -12,10 +12,10 @@ after group 1 merged there, except where it says otherwise. The lead reviews eac
 
 ## 2. The real-actuator CI job (Opus; branch from the milestone branch, its own PR to `main`)
 
-- [ ] 2.1 Write `tools/real-actuator-app.sh` and the PHP files in `tools/real-actuator/` (D3); verify by running it on the Mac and serving the app: `health` lists `module:blog:*` and `module:billing:*`, `prometheus` answers 200 after traffic
-- [ ] 2.2 Write `crates/mortise-core/tests/real_actuator.rs` with the ignored tests of D3; verify they pass against the app of 2.1 on the Mac, the empty answer and the 503 included, and are skipped by a plain `cargo test --workspace`
+- [x] 2.1 Write `tools/real-actuator-app.sh` and the PHP files in `tools/real-actuator/` (D3); verify by running it on the Mac and serving the app: `health` lists `module:blog:*` and `module:billing:*`, `prometheus` answers 200 after traffic
+- [x] 2.2 Write `crates/mortise-core/tests/real_actuator.rs` with the ignored tests of D3; verify they pass against the app of 2.1 on the Mac, the empty answer and the 503 included, and are skipped by a plain `cargo test --workspace`
 - [ ] 2.3 Add the job "Real actuator (Linux, not required)" to `ci.yml` (D3); verify it passes on the pull request and that no required job changed
-- [ ] 2.4 Add the job and the script to `AGENTS.md` (Commands) and `CONTRIBUTING.md` if it lists jobs; verify the commands written there run as written
+- [x] 2.4 Add the job and the script to `AGENTS.md` (Commands) and `CONTRIBUTING.md` if it lists jobs; verify the commands written there run as written
 
 ## 3. The environment switch (Opus)
 
