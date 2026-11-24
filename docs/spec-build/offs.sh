@@ -9,4 +9,4 @@ TMPDIR_=$(mktemp -d "$REAL/tmp-XXXXXX") || exit 1
 trap 'rm -rf "$TMPDIR_"' EXIT
 TMP=$TMPDIR_/page.html
 sed 's#</body>#<script>window.addEventListener("load",function(){var o={};document.querySelectorAll("h2,h3,h4").forEach(function(h){o[h.textContent.slice(0,28)]=Math.round(h.getBoundingClientRect().top+scrollY)});o.END=document.documentElement.scrollHeight;o.SW=document.documentElement.scrollWidth;var p=document.createElement("pre");p.id="OFFS";p.textContent=JSON.stringify(o);document.body.appendChild(p)})</script></body>#' "$PAGES/$1.html" > "$TMP"
-"$CHROME" --headless=new --disable-gpu --window-size=1280,1000 --virtual-time-budget=6000 --dump-dom "file://$TMP" 2>/dev/null | grep -o '<pre id="OFFS">[^<]*' | sed 's/<pre id="OFFS">//'
+"$CHROME" --headless=new --disable-gpu --window-size=1280,1000 --virtual-time-budget=6000 --dump-dom "$(file_url "$TMP")" 2>/dev/null | grep -o '<pre id="OFFS">[^<]*' | sed 's/<pre id="OFFS">//'

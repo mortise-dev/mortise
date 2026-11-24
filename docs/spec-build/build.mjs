@@ -5,12 +5,13 @@ import { page } from './lib.mjs';
 // never to docs/spec, which build.py writes.
 const ROOT = fs.realpathSync(new URL('../..', import.meta.url));
 const OUT = path.join(ROOT, 'docs', 'spec-build', 'out');
-fs.mkdirSync(OUT, { recursive: true });
-const realOut = fs.realpathSync(OUT);
-if (path.relative(ROOT, realOut).startsWith('..') || path.isAbsolute(path.relative(ROOT, realOut))) {
-  console.error(`Write inside the repository: ${OUT} is outside ${ROOT}.`);
+// A link at OUT could point anywhere, docs/spec included: refuse it. ROOT is resolved and OUT is not a
+// link, so every write below stays inside the repository.
+if (fs.lstatSync(OUT, { throwIfNoEntry: false })?.isSymbolicLink()) {
+  console.error(`Write inside the repository: ${OUT} is a link.`);
   process.exit(1);
 }
+fs.mkdirSync(OUT, { recursive: true });
 const only = process.argv[2];
 const dirs = {};
 for (const f of ['f1', 'f2', 'f3']) { if (fs.existsSync(new URL(`./${f}.mjs`, import.meta.url))) dirs[f] = await import(`./${f}.mjs`); }

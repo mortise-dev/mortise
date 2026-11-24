@@ -4,4 +4,4 @@
 . "$(dirname "${BASH_SOURCE[0]}")/paths.sh"
 inside_root "$2"
 mkdir -p "$(dirname "$REAL")"
-"$CHROME" --headless=new --disable-gpu --hide-scrollbars --window-size=1280,${3:-6000} --virtual-time-budget=6000 --screenshot="$REAL" "file://$PAGES/$1" 2>/dev/null
+"$CHROME" --headless=new --disable-gpu --hide-scrollbars --window-size=1280,${3:-6000} --virtual-time-budget=6000 --screenshot="$REAL" "$(file_url "$PAGES/$1")" 2>/dev/null
