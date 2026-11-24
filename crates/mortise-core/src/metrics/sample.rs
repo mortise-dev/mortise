@@ -58,6 +58,21 @@ pub(crate) enum Subject {
 }
 
 impl Subject {
+    /// The bytes its strings hold, spare room included.
+    #[cfg(test)]
+    fn held(&self) -> usize {
+        let held = |text: &Option<String>| text.as_ref().map_or(0, String::capacity);
+        match self {
+            Subject::Request {
+                module,
+                route,
+                method,
+            } => held(module) + held(route) + method.capacity(),
+            Subject::Job { module, class } => held(module) + class.capacity(),
+            Subject::Database { module } => module.capacity(),
+        }
+    }
+
     /// The bytes of its strings.
     fn bytes(&self) -> usize {
         let len = |text: &Option<String>| text.as_deref().map_or(0, str::len);
@@ -548,12 +563,12 @@ impl MetricsStore {
                     .iter()
                     .map(|(labels, base)| labels.capacity() + numbers(&base.counters))
                     .sum();
-                column.subject.bytes()
+                column.subject.held()
                     + column.bases.capacity() * size_of::<(String, Base)>()
                     + bases
             })
             .sum();
-        let index: usize = self.index.keys().map(Subject::bytes).sum();
+        let index: usize = self.index.keys().map(Subject::held).sum();
         numbers(&self.bounds)
             + self.bound_seen.capacity() * size_of::<Duration>()
             + self.columns.capacity() * size_of::<Column>()
