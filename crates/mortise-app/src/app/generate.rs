@@ -373,7 +373,7 @@ impl MortiseApp {
         // container (Sail).
         let app = self.snapshot(index);
         let modules = app.as_ref().map_or_else(
-            || "Modules".to_owned(),
+            || crate::apps::strings::MODULES.to_owned(),
             |app| app.path_shown(&app.layout.modules_dir),
         );
         let folders = app

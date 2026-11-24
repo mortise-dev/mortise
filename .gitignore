@@ -7,3 +7,4 @@ node_modules/
 /dist
 /.claude/worktrees
 __pycache__/
+/docs/spec-build/out/

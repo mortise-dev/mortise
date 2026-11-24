@@ -75,3 +75,32 @@ pub fn app_with_problems(app: &str, problem_count: usize) -> String {
 
 /// The header of the Actions tab: `Run with` and the keys.
 pub const RUN_WITH: &str = "Run with";
+
+/// Not in the spec: the toast when the editor of the user cannot start.
+pub fn could_not_open_the_editor(error: &impl std::fmt::Display) -> String {
+    format!("Could not open the editor: \"{error}\". Choose the editor command in Settings.")
+}
+
+/// Not in the spec: the title of the dialog that removes an app.
+pub fn remove_app_title(name: &str) -> String {
+    format!("Remove {name} from Mortise?")
+}
+/// Not in the spec: the body of the dialog that removes an app.
+pub const REMOVE_APP_BODY: &str = "The folder and its files stay as they are. Mortise forgets the app, its environments and its saved credentials.";
+/// Not in the spec: the button of the dialog that removes an app.
+pub const REMOVE_APP: &str = "Remove app";
+
+/// Not in the spec: the names of the macOS menu bar and its items.
+pub const MENU_SETTINGS: &str = "Settings…";
+pub const MENU_ADD_APP: &str = "Add App…";
+pub const MENU_FILE: &str = "File";
+pub const MENU_PALETTE: &str = "Command Palette";
+pub const MENU_TOGGLE_INDEX: &str = "Collapse or Open the Module Index";
+pub const MENU_READ_AGAIN: &str = "Read the App Again";
+pub const MENU_THEME_SYSTEM: &str = "Theme: System";
+pub const MENU_THEME_LIGHT: &str = "Theme: Light";
+pub const MENU_THEME_DARK: &str = "Theme: Dark";
+pub const MENU_VIEW: &str = "View";
+pub const MENU_WINDOW: &str = "Window";
+pub const MENU_SHORTCUTS: &str = "Keyboard Shortcuts";
+pub const MENU_HELP: &str = "Help";

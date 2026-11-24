@@ -530,3 +530,41 @@ pub fn rename_in_files(dir: &Path, from: &str, to: &str) {
         }
     }
 }
+
+/// The runtime box in each of its states, by what the stub answers.
+pub fn runtime_state(letter: char) -> Option<mortise_core::testing::StubActuator> {
+    let stub = shop_api_actuator();
+    match letter {
+        'c' => return None,
+        'd' => {
+            stub.expose(&["health"]);
+            stub.set("/actuator/health", Reply::ok(r#"{"status":"UP"}"#));
+        }
+        'e' => stub.require_header("authorization", "Bearer right"),
+        'f' => stub.set("/actuator/health", Reply::ok(r#"{"status":"UP"}"#)),
+        'g' => stub.set(
+            "/actuator/health",
+            Reply::status(
+                503,
+                r#"{"status":"DOWN","components":{"ping":{"status":"UP"},"readinessState":{"status":"UP"},
+                "diskSpace":{"status":"UP","details":{"total":494384795648,"free":213212008448}},
+                "db":{"status":"DOWN","details":{"error":"Illuminate\\Database\\QueryException: SQLSTATE[HY000] [2002] Connection refused."}},
+                "cache":{"status":"UP","details":{"store":"redis"}}}}"#,
+            ),
+        ),
+        'h' => stub.set(
+            "/actuator/health",
+            Reply::status(
+                503,
+                r#"{"status":"OUT_OF_SERVICE","components":{"ping":{"status":"UP"},
+                "readinessState":{"status":"OUT_OF_SERVICE"},
+                "diskSpace":{"status":"UP","details":{"total":494384795648,"free":213212008448}},
+                "db":{"status":"UP","details":{"connection":"mysql"}},
+                "cache":{"status":"UP","details":{"store":"redis"}}}}"#,
+            ),
+        ),
+        'i' => stub.set("/actuator/health", Reply::status(500, r#"{"message":"Server Error"}"#)),
+        _ => return Some(StubActuator::healthy()),
+    }
+    Some(stub)
+}

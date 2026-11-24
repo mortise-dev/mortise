@@ -250,7 +250,7 @@ impl Dialog {
                 };
                 let cancel = Button {
                     label: &self.cancel,
-                    keys: Some("Esc"),
+                    keys: Some(crate::strings::KEY_ESC),
                     ..Default::default()
                 };
                 let y = foot.top() + 10.0;

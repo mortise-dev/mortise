@@ -807,6 +807,13 @@ fn ended_as(end: mortise_core::RunEnd) -> String {
     }
 }
 
+/// The name of the Esc key, as a keycap shows it.
+pub const KEY_ESC: &str = "Esc";
+/// The name of the Enter key, as a keycap shows it.
+pub const KEY_ENTER: &str = "Enter";
+/// The name of Settings in the rail, the menu and the palette.
+pub const SETTINGS: &str = "Settings";
+
 #[cfg(test)]
 mod tests {
     use super::*;

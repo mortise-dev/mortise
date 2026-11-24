@@ -1230,11 +1230,9 @@ impl eframe::App for MortiseApp {
                 SettingsAction::RemoveApp(index) => {
                     let name = self.settings.apps[index].display_name().to_owned();
                     let dialog = Dialog::new(
-                        format!("Remove {name} from Mortise?"),
-                        "The folder and its files stay as they are. Mortise forgets the \
-                         app, its environments and its saved credentials."
-                            .to_owned(),
-                        "Remove app".to_owned(),
+                        strings::remove_app_title(&name),
+                        strings::REMOVE_APP_BODY.to_owned(),
+                        strings::REMOVE_APP.to_owned(),
                     );
                     self.dialog = Some((dialog, Pending::RemoveApp(index)));
                     self.dialog_opened = true;

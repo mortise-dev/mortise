@@ -199,7 +199,7 @@ impl View<'_> {
             ui,
             pal,
             pos2(self.left, y),
-            "View",
+            strings::VIEW,
             &labels,
             selected,
             self.keyboard,
@@ -1136,7 +1136,7 @@ impl View<'_> {
                 ui,
                 pos2(rect.left() + 14.0, y + ROW / 2.0),
                 Align2::LEFT_CENTER,
-                "No link breaks a rule.",
+                strings::NO_LINK_BREAKS_A_RULE,
                 ty::BODY,
                 pal.ink_2,
             );

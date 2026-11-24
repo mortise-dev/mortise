@@ -1324,12 +1324,48 @@ pub fn segmented(
     selected: usize,
     keyboard: bool,
 ) -> (Rect, Option<usize>) {
-    segmented_with(ui, pal, min, name, labels, selected, None, keyboard)
+    segmented_any(
+        ui,
+        pal,
+        min,
+        f32::INFINITY,
+        name,
+        labels,
+        selected,
+        None,
+        keyboard,
+    )
+}
+
+/// A segmented control no wider than `max_w`. Segments that do not fit on a line go
+/// to the next one, 4 px under it, each line on a track of its own. It stays one
+/// control: one Tab stop, and Left and Right go through all segments in order. A
+/// segment wider than `max_w` alone is cut with an ellipsis and shows its full name
+/// on hover. Returns the rect around all lines and the segment that was clicked.
+#[expect(clippy::too_many_arguments)]
+pub fn segmented_in(
+    ui: &Ui,
+    pal: &Palette,
+    min: Pos2,
+    max_w: f32,
+    name: &str,
+    labels: &[&str],
+    selected: usize,
+    keyboard: bool,
+) -> (Rect, Option<usize>) {
+    segmented_any(ui, pal, min, max_w, name, labels, selected, None, keyboard)
 }
 
 /// The width of the track of a segmented control with `labels`, before it is painted.
 pub fn segmented_width(ui: &Ui, labels: &[&str]) -> f32 {
     track_width(&segment_widths(ui, labels))
+}
+
+/// The height of a segmented control with `labels` no wider than `max_w`, as
+/// [`segmented_in`] paints it.
+pub fn segmented_height(ui: &Ui, labels: &[&str], max_w: f32) -> f32 {
+    let lines = segment_lines(&fitted_widths(ui, labels, max_w).1, max_w).len() as f32;
+    lines * size::CONTROL_H + (lines - 1.0).max(0.0) * SEGMENT_LINE_GAP
 }
 
 /// The text of a segment.
@@ -1338,6 +1374,9 @@ const SEGMENT_LABEL: Type = Type {
     line: 12.0,
     ..ty::CONTROL
 };
+
+/// The space between two lines of a segmented control that wraps.
+const SEGMENT_LINE_GAP: f32 = 4.0;
 
 /// The width of each segment: its label and 10 px on each side.
 fn segment_widths(ui: &Ui, labels: &[&str]) -> Vec<f32> {
@@ -1348,6 +1387,33 @@ fn segment_widths(ui: &Ui, labels: &[&str]) -> Vec<f32> {
             (text.size().x + 20.0).ceil()
         })
         .collect()
+}
+
+/// The width each segment needs, and the width it gets: no more than a track
+/// `max_w` wide holds, and never under the 24 px of a target.
+fn fitted_widths(ui: &Ui, labels: &[&str], max_w: f32) -> (Vec<f32>, Vec<f32>) {
+    let natural = segment_widths(ui, labels);
+    let most = (max_w - 6.0).max(24.0);
+    let fitted = natural.iter().map(|width| width.min(most)).collect();
+    (natural, fitted)
+}
+
+/// The segments of each line: as many as fit in `max_w`, and at least one.
+fn segment_lines(widths: &[f32], max_w: f32) -> Vec<std::ops::Range<usize>> {
+    // A control with no segment still has its track.
+    let mut lines = Vec::new();
+    if widths.is_empty() {
+        lines.push(0..0);
+    }
+    let mut start = 0;
+    for end in 1..=widths.len() {
+        let next = widths.get(end).copied();
+        if next.is_none_or(|next| track_width(&widths[start..end]) + 2.0 + next > max_w) {
+            lines.push(start..end);
+            start = end;
+        }
+    }
+    lines
 }
 
 /// The track holds the segments, 2 px apart, with 3 px of padding at each end.
@@ -1368,17 +1434,57 @@ pub fn segmented_with(
     off: Option<(usize, &str)>,
     keyboard: bool,
 ) -> (Rect, Option<usize>) {
+    segmented_any(
+        ui,
+        pal,
+        min,
+        f32::INFINITY,
+        name,
+        labels,
+        selected,
+        off,
+        keyboard,
+    )
+}
+
+#[expect(clippy::too_many_arguments)]
+fn segmented_any(
+    ui: &Ui,
+    pal: &Palette,
+    min: Pos2,
+    max_w: f32,
+    name: &str,
+    labels: &[&str],
+    selected: usize,
+    off: Option<(usize, &str)>,
+    keyboard: bool,
+) -> (Rect, Option<usize>) {
     let is_off = |i: usize| off.is_some_and(|(place, _)| place == i);
-    let widths = segment_widths(ui, labels);
-    let width = track_width(&widths);
-    let track = Rect::from_min_size(min, vec2(width, size::CONTROL_H));
-    outlined(ui, track, radius::CONTROL, pal.well, pal.line_2);
+    let (natural, widths) = fitted_widths(ui, labels, max_w);
+    let mut whole = Rect::NOTHING;
+    // Where each segment goes: every line is a track of its own.
+    let mut segments = Vec::with_capacity(labels.len());
+    for (row, line) in segment_lines(&widths, max_w).into_iter().enumerate() {
+        let top = min.y + row as f32 * (size::CONTROL_H + SEGMENT_LINE_GAP);
+        let track = Rect::from_min_size(
+            pos2(min.x, top),
+            vec2(track_width(&widths[line.clone()]), size::CONTROL_H),
+        );
+        outlined(ui, track, radius::CONTROL, pal.well, pal.line_2);
+        whole = whole.union(track);
+        let mut x = track.left() + 3.0;
+        for i in line {
+            segments.push(Rect::from_min_size(
+                pos2(x, top + 3.0),
+                vec2(widths[i], 20.0),
+            ));
+            x += widths[i] + 2.0;
+        }
+    }
 
     let mut clicked = None;
-    let mut x = track.left() + 3.0;
-    for (i, label) in labels.iter().enumerate() {
-        let segment = Rect::from_min_size(pos2(x, track.top() + 3.0), vec2(widths[i], 20.0));
-        x += widths[i] + 2.0;
+    for (i, (label, &segment)) in labels.iter().zip(&segments).enumerate() {
+        let cut = natural[i] > widths[i];
         let id = ui.scope_id().with(("segment", name, i));
         // A segment is drawn 20 px high; its target is as high as the track.
         let target = segment.expand2(vec2(0.0, 3.0));
@@ -1388,6 +1494,12 @@ pub fn segmented_with(
             one_stop(i == selected)
         };
         let mut response = ui.interact(target, id, sense);
+        // A wrapped control can reach past the view: show the segment that gets focus,
+        // with its target and focus ring. It is placed after the choice is laid out, so
+        // a switch that moved with its new choice still scrolls to the right place.
+        if response.gained_focus() {
+            ui.scroll_to_rect(target, None);
+        }
         response.widget_info(|| {
             WidgetInfo::selected(Role::RadioButton, !is_off(i), i == selected, *label)
         });
@@ -1395,6 +1507,8 @@ pub fn segmented_with(
             && place == i
         {
             response = tooltip(response, pal, tip);
+        } else if cut {
+            response = tooltip(response, pal, label);
         }
         if response.clicked() {
             clicked = Some(i);
@@ -1439,19 +1553,24 @@ pub fn segmented_with(
         } else {
             pal.ink_2
         };
-        paint_text(
-            ui,
-            segment.center(),
-            Align2::CENTER_CENTER,
-            label,
-            SEGMENT_LABEL,
-            color,
-        );
+        if cut {
+            let text = galley_elided(ui, label, SEGMENT_LABEL, color, widths[i] - 20.0);
+            paint_galley(ui, segment.center(), Align2::CENTER_CENTER, text);
+        } else {
+            paint_text(
+                ui,
+                segment.center(),
+                Align2::CENTER_CENTER,
+                label,
+                SEGMENT_LABEL,
+                color,
+            );
+        }
         if keyboard && response.has_focus() {
             focus_ring(ui, pal, segment, radius::STAMP);
         }
     }
-    (track, clicked)
+    (whole, clicked)
 }
 
 // ---------------------------------------------------------------------------

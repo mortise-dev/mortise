@@ -364,3 +364,8 @@ pub fn typed_verdict(typed: &mortise_core::Typed, module: &str) -> String {
         Typed::Unknown => format!("Nothing in {module} has this name."),
     }
 }
+
+/// The accessible name of the control that switches between the links and the public surface.
+pub const VIEW: &str = "View";
+/// Not in the spec: an app whose links break no rule.
+pub const NO_LINK_BREAKS_A_RULE: &str = "No link breaks a rule.";

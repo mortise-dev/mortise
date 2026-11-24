@@ -58,6 +58,21 @@ pub(crate) enum Subject {
 }
 
 impl Subject {
+    /// The bytes its strings hold, spare room included.
+    #[cfg(test)]
+    fn held(&self) -> usize {
+        let held = |text: &Option<String>| text.as_ref().map_or(0, String::capacity);
+        match self {
+            Subject::Request {
+                module,
+                route,
+                method,
+            } => held(module) + held(route) + method.capacity(),
+            Subject::Job { module, class } => held(module) + class.capacity(),
+            Subject::Database { module } => module.capacity(),
+        }
+    }
+
     /// The bytes of its strings.
     fn bytes(&self) -> usize {
         let len = |text: &Option<String>| text.as_deref().map_or(0, str::len);
@@ -525,6 +540,45 @@ impl MetricsStore {
     #[cfg(test)]
     pub(crate) fn len(&self) -> usize {
         self.coarse.len() + self.fine.len()
+    }
+
+    /// The bytes of heap the store owns, by capacity, so slack from growth counts. A lower bound of
+    /// the real heap: what the allocator adds is not seen.
+    #[cfg(test)]
+    fn bytes_held(&self) -> usize {
+        let numbers = |values: &Vec<f64>| values.capacity() * size_of::<f64>();
+        let reads = |reads: &VecDeque<Read>| {
+            reads.capacity() * size_of::<Read>()
+                + reads
+                    .iter()
+                    .map(|read| numbers(&read.totals))
+                    .sum::<usize>()
+        };
+        let columns: usize = self
+            .columns
+            .iter()
+            .map(|column| {
+                let bases: usize = column
+                    .bases
+                    .iter()
+                    .map(|(labels, base)| labels.capacity() + numbers(&base.counters))
+                    .sum();
+                column.subject.held()
+                    + column.bases.capacity() * size_of::<(String, Base)>()
+                    + bases
+            })
+            .sum();
+        let index: usize = self.index.keys().map(Subject::held).sum();
+        numbers(&self.bounds)
+            + self.bound_seen.capacity() * size_of::<Duration>()
+            + self.columns.capacity() * size_of::<Column>()
+            + columns
+            + self.index.capacity() * size_of::<(Subject, usize)>()
+            + index
+            + reads(&self.coarse)
+            + reads(&self.fine)
+            + numbers(&self.totals)
+            + numbers(&self.scratch)
     }
 
     /// The kept reads from the oldest at most `span` before the newest, to the newest, oldest
@@ -1429,9 +1483,9 @@ mod tests {
         assert_eq!(store.push(secs(15), longer), Err(TooMany));
     }
 
-    /// An answer of 60 modules of 10 routes and 60 jobs, in the shape of the recorded lines.
-    /// The last route of each module answers 500.
-    fn large_answer() -> String {
+    /// An answer of `modules` modules, each with 10 routes and one job, in the shape of the recorded
+    /// lines. The last route of each module answers 500.
+    fn large_answer(modules: usize) -> String {
         use std::fmt::Write;
         let histogram = |text: &mut String, family: &str, bounds: &[&str], labels: &str| {
             for (at, le) in bounds.iter().enumerate() {
@@ -1450,7 +1504,7 @@ mod tests {
         let scope = r#"otel_scope_name="nwidart/laravel-metrics""#;
         let route = |module: usize, route: usize| format!("/module-{module}/route-{route}/{{id}}");
         let mut text = String::from("# TYPE http_server_request_duration_seconds histogram\n");
-        for (module, at) in (0..60).flat_map(|module| (0..10).map(move |at| (module, at))) {
+        for (module, at) in (0..modules).flat_map(|module| (0..10).map(move |at| (module, at))) {
             let status = if at == 9 { 500 } else { 200 };
             let labels = format!(
                 r#"http_request_method="GET",http_response_status_code="{status}",http_route="{}",network_protocol_version="1.1",{scope},url_scheme="http""#,
@@ -1459,12 +1513,12 @@ mod tests {
             histogram(&mut text, REQUESTS, &seconds, &labels);
         }
         text.push_str("# TYPE laravel_db_queries histogram\n");
-        for (module, at) in (0..60).flat_map(|module| (0..10).map(move |at| (module, at))) {
+        for (module, at) in (0..modules).flat_map(|module| (0..10).map(move |at| (module, at))) {
             let labels = format!(r#"http_route="{}",{scope}"#, route(module, at));
             histogram(&mut text, "laravel_db_queries", &queries, &labels);
         }
         text.push_str("# TYPE messaging_process_duration_seconds histogram\n");
-        for module in 0..60 {
+        for module in 0..modules {
             let labels = format!(
                 r#"laravel_job_name="Modules\\Module{module}\\Jobs\\Work",messaging_destination_name="default",messaging_operation_name="process",messaging_system="database",{scope}"#
             );
@@ -1475,7 +1529,7 @@ mod tests {
 
     #[test]
     fn a_large_answer_is_folded_within_the_budget() {
-        let text = large_answer();
+        let text = large_answer(60);
         let started = Instant::now();
         let reading = Reading::of(&text).unwrap();
         let took = started.elapsed();
@@ -1508,6 +1562,58 @@ mod tests {
         assert_eq!((folded.count, folded.errors, folded.sum), (14.0, 0.0, 0.25));
         assert_eq!(folded.buckets, (0..14).map(f64::from).collect::<Vec<_>>());
         assert!(took < secs(1), "took {took:?}");
+    }
+
+    /// 26 hours of reads of 8 modules of 10 routes and 8 jobs, 15 s apart (design D1 of the
+    /// hardening change). 8 modules run in under 2 s in a debug build; the 60 of `large_answer`
+    /// take 13 s.
+    #[test]
+    fn a_full_window_of_a_large_app_holds_its_bound_and_stays_flat() {
+        let template = Reading::of(&large_answer(8)).unwrap();
+        let subjects = template.series.len();
+        let row = subjects * (FIXED + template.bounds.len()) * size_of::<f64>();
+        // Each subject is held twice, in its column and in the index; its labels once.
+        let identity: usize = template
+            .series
+            .keys()
+            .map(|(subject, labels)| 2 * subject.bytes() + labels.len())
+            .sum();
+        // Per subject: its column, its entry in the index, its map of bases with room for 3 and
+        // its one base. The two queues have room for 768 reads: 512 coarse and 256 fine.
+        let per_subject = size_of::<Column>()
+            + size_of::<(Subject, usize)>()
+            + 3 * size_of::<(String, Base)>()
+            + row / subjects;
+        let maps = subjects * per_subject + 768 * size_of::<Read>();
+        let bound = 520 * row + identity + maps;
+        // Every counter grows by one each read.
+        let read = |n: u32| {
+            let mut reading = template.clone();
+            for cell in reading.series.values_mut() {
+                for counter in [&mut cell.count, &mut cell.errors, &mut cell.sum]
+                    .into_iter()
+                    .chain(&mut cell.buckets)
+                {
+                    *counter += f64::from(n);
+                }
+            }
+            reading
+        };
+        let mut store = MetricsStore::new(PACE);
+        let empty = store.bytes_held();
+        let mut full = 0;
+        for n in 0..6_240 {
+            store.push(PACE * n, read(n)).unwrap();
+            let held = store.bytes_held();
+            assert!(held <= bound, "read {n} holds {held} bytes, over {bound}");
+            match n + 1 {
+                1 => assert!(empty < held),
+                5_760 => full = held,
+                pushes if pushes > 5_760 => assert!(held <= full + row, "read {n} holds {held}"),
+                _ => {}
+            }
+        }
+        println!("{subjects} subjects hold {full} bytes, under {bound}");
     }
 
     #[test]

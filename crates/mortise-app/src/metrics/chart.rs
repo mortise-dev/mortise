@@ -5,7 +5,7 @@
 
 use std::time::Duration;
 
-use eframe::egui::{Align2, Color32, Pos2, Rect, Role, Shape, Stroke, Ui, pos2};
+use eframe::egui::{Align2, Color32, Pos2, Rect, Role, Shape, Stroke, Ui, Vec2, pos2};
 
 use mortise_core::Line;
 
@@ -91,7 +91,9 @@ pub fn chart(ui: &Ui, pal: &Palette, rect: Rect, plot: &Plot<'_>) {
 
     let area = Rect::from_min_max(pos2(left, top), pos2(right, bottom));
     let top_value = step * f64::from(STEPS);
-    draw_line(ui, area, plot.line, plot.span, top_value, pal.ink, LINE_W);
+    draw_line(
+        ui, area, plot.line, plot.span, top_value, pal.ink, LINE_W, false,
+    );
 
     let node = draw::announce(ui, rect, Role::Image, plot.name);
     ui.ctx().accesskit_node_builder(node.id, |builder| {
@@ -106,7 +108,16 @@ pub fn spark(ui: &Ui, pal: &Palette, rect: Rect, line: &Line, span: Duration, na
     // A row scrolled out of view builds no path: a module can have thousands of routes.
     if ui.is_rect_visible(rect) {
         let area = rect.shrink2(eframe::egui::vec2(1.0, 1.0));
-        draw_line(ui, area, line, span, highest(line), pal.ink_2, SPARK_W);
+        draw_line(
+            ui,
+            area,
+            line,
+            span,
+            highest(line),
+            pal.ink_2,
+            SPARK_W,
+            true,
+        );
     }
     draw::announce(ui, rect, Role::Image, name);
 }
@@ -142,7 +153,10 @@ fn step(highest: f64) -> f64 {
 }
 
 /// Draws each run of `line` in `area`: `ago` zero at the right edge, `span` at the left edge,
-/// zero at the bottom and `top_value` at the top. A run of one point is a dot.
+/// zero at the bottom and `top_value` at the top. A run of one point is a dot. With `thin`, points
+/// in the same pixel column are drawn as their average, so a line of thousands of points in a
+/// few dozen pixels stays a line and does not fill the box.
+#[allow(clippy::too_many_arguments)]
 fn draw_line(
     ui: &Ui,
     area: Rect,
@@ -151,6 +165,7 @@ fn draw_line(
     top_value: f64,
     color: Color32,
     width: f32,
+    thin: bool,
 ) {
     let span = span.as_secs_f64();
     let place = |ago: Duration, value: f64| -> Pos2 {
@@ -169,11 +184,19 @@ fn draw_line(
             area.bottom() - up as f32 * area.height(),
         )
     };
-    for run in &line.runs {
-        let points: Vec<Pos2> = run
-            .iter()
-            .map(|point| place(point.ago, point.per_minute))
-            .collect();
+    let mut runs: Vec<Vec<Pos2>> = line
+        .runs
+        .iter()
+        .map(|run| {
+            run.iter()
+                .map(|point| place(point.ago, point.per_minute))
+                .collect()
+        })
+        .collect();
+    if thin {
+        runs = one_per_column(&runs, ui.pixels_per_point());
+    }
+    for points in runs {
         match points.as_slice() {
             [] => {}
             [dot] => {
@@ -187,9 +210,75 @@ fn draw_line(
     }
 }
 
+/// The runs with the points that share a pixel column replaced by their average. The points come
+/// in order, so the ones that share a column are next to each other. A column holds one point even
+/// where a run ends in it and the next begins in it: the point stays at the end of the earlier run,
+/// so the break between the runs is kept, and a run whose points all join it is not drawn.
+fn one_per_column(runs: &[Vec<Pos2>], pixels_per_point: f32) -> Vec<Vec<Pos2>> {
+    let column = |point: &Pos2| (point.x * pixels_per_point).floor();
+    let mut thinned: Vec<Vec<Pos2>> = Vec::new();
+    // The column of the last point drawn, and the sum and count of the points in it.
+    let mut last: Option<(f32, Vec2, f32)> = None;
+    for run in runs {
+        let mut kept = Vec::new();
+        for point in run {
+            match &mut last {
+                Some((at, sum, count)) if *at == column(point) => {
+                    *sum += point.to_vec2();
+                    *count += 1.0;
+                    let average = (*sum / *count).to_pos2();
+                    // The point of the column is the end of this run, or of the run before.
+                    if let Some(end) = kept
+                        .last_mut()
+                        .or_else(|| thinned.last_mut().and_then(|run| run.last_mut()))
+                    {
+                        *end = average;
+                    }
+                }
+                _ => {
+                    last = Some((column(point), point.to_vec2(), 1.0));
+                    kept.push(*point);
+                }
+            }
+        }
+        if !kept.is_empty() {
+            thinned.push(kept);
+        }
+    }
+    thinned
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn points_in_one_pixel_column_are_averaged() {
+        let points = [
+            pos2(10.1, 4.0),
+            pos2(10.7, 8.0),
+            pos2(11.2, 2.0),
+            pos2(12.0, 6.0),
+        ];
+        let one_run = [points.to_vec()];
+        // At scale 1 the first two share column 10, and the others stand alone.
+        assert_eq!(
+            one_per_column(&one_run, 1.0),
+            [vec![pos2(10.4, 6.0), pos2(11.2, 2.0), pos2(12.0, 6.0)]]
+        );
+        // At scale 2 each of them has its own column.
+        assert_eq!(one_per_column(&one_run, 2.0), one_run);
+        // A gap inside column 10: the column keeps one point, at the end of the first run, and the
+        // second run starts in the next column.
+        let two_runs = [points[..1].to_vec(), points[1..].to_vec()];
+        assert_eq!(
+            one_per_column(&two_runs, 1.0),
+            [
+                vec![pos2(10.4, 6.0)],
+                vec![pos2(11.2, 2.0), pos2(12.0, 6.0)]
+            ]
+        );
+    }
 
     #[test]
     fn the_step_is_1_2_or_5_times_a_power_of_ten() {

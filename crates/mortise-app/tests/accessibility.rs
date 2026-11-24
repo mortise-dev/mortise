@@ -33,6 +33,10 @@ fn audit(harness: &Harness<'static, MortiseApp>, screen: &str) {
     for node in harness.query_all_by(|_| true) {
         let node = node.accesskit_node();
         let role = node.role();
+        // A chart and a sparkline are drawn: the name is all a screen reader has of them.
+        if role == Role::Image && node.label().unwrap_or_default().trim().is_empty() {
+            problems.push("an Image without a name".to_owned());
+        }
         if !CONTROLS.contains(&role) {
             continue;
         }
@@ -102,6 +106,11 @@ fn the_workbench_and_its_tabs() {
     let stub = shop_api_actuator();
     let (_desk, mut harness) = connected(&stub);
     audit(&harness, "Summary of all modules, with runtime");
+    // The runtime mark of a row is drawn, and says its status in a name.
+    assert!(
+        harness.query_by_label_contains(": Up on local").is_some(),
+        "the runtime marks of the index rows have no name"
+    );
     press(&mut harness, Key::F);
     audit(&harness, "Findings list");
     press(&mut harness, Key::Escape);
@@ -154,10 +163,22 @@ fn the_workbench_and_its_tabs() {
     audit(&harness, "index as a strip");
 }
 
-/// S7.3: the ranges, the rows of the table and the routes of a module.
+/// S7.3: the environment switch, the ranges, the chart, the rows of the table and the routes of a
+/// module.
 #[test]
 fn the_metrics_table_and_the_routes_of_a_module() {
-    let (_desk, mut harness) = connected(&mortise_core::testing::StubActuator::recorded());
+    let stub = mortise_core::testing::StubActuator::recorded();
+    let desk = Desk::new();
+    let root = desk.app("shop-api");
+    desk.knows(&[(&root, "SA")]);
+    desk.connect(&[
+        common::environment("local", &stub),
+        common::environment("staging", &stub),
+    ]);
+    let mut harness = desk.start();
+    common::wait_for_answer(&mut harness);
+    // The box of the Summary has the same switch.
+    audit(&harness, "Summary with two environments");
     press(&mut harness, Key::Num5);
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
     while harness.query_by_label_contains("Requests/min").is_none() {
@@ -165,12 +186,64 @@ fn the_metrics_table_and_the_routes_of_a_module() {
         std::thread::sleep(std::time::Duration::from_millis(20));
         harness.run_steps(2);
     }
+    // A second read draws the chart. After one read the chart only says "No rate yet.": wait for the
+    // summary of the recorded rates, which repeat, so every rate is 0.
+    chord(&mut harness, Key::R);
+    while harness
+        .query_by_role_and_label(Role::Image, "Requests per minute, all modules, last hour")
+        .and_then(|chart| chart.accesskit_node().description())
+        .as_deref()
+        != Some("Now 0, highest 0, lowest 0 requests per minute.")
+    {
+        assert!(std::time::Instant::now() < deadline, "the chart summary");
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        harness.run_steps(2);
+    }
     audit(&harness, "Metrics table of all modules");
+    // The two switches are groups of radio buttons, and the range is chosen by its name.
+    for name in ["local", "staging", "15 min", "1 hour", "24 hours"] {
+        harness.get_by_role_and_label(Role::RadioButton, name);
+    }
+    harness
+        .get_by_role_and_label(Role::RadioButton, "24 hours")
+        .click();
+    harness.run_steps(3);
+    audit(&harness, "Metrics, 24 hours");
     harness
         .get_by_role_and_label(Role::ListBoxOption, "Billing")
         .click();
     harness.run_steps(3);
     audit(&harness, "Metrics routes of a module");
+}
+
+/// S6.5 c to e: the buttons of the runtime box that tell the user what to do next.
+#[test]
+fn the_runtime_box_in_trouble() {
+    for (letter, buttons) in [
+        ('c', &["Try again", "Open settings"][..]),
+        ('d', &["Copy line", "Try again"][..]),
+        ('e', &["Open settings"][..]),
+    ] {
+        let desk = Desk::new();
+        let root = desk.app("shop-api");
+        desk.knows(&[(&root, "SA")]);
+        let environment = match common::runtime_state(letter) {
+            Some(stub) => common::environment("local", &stub),
+            None => mortise_core::Environment {
+                name: "local".into(),
+                base_url: "http://127.0.0.1:9".into(),
+                path: "actuator".into(),
+                credentials: mortise_core::Credentials::None,
+            },
+        };
+        desk.connect(&[environment]);
+        let mut harness = desk.start();
+        common::wait_for_answer(&mut harness);
+        for button in buttons {
+            harness.get_by_role_and_label(Role::Button, button);
+        }
+        audit(&harness, &format!("Runtime box, state {letter}"));
+    }
 }
 
 #[test]
