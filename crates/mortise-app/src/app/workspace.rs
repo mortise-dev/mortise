@@ -32,6 +32,8 @@ pub enum WorkAction {
     OpenInEditor { path: std::path::PathBuf, line: u32 },
     /// Something about the runtime of the app: another environment, a new try.
     Runtime(crate::runtime::view::RuntimeAction),
+    /// Another range or row of the Metrics tab.
+    Metrics(crate::metrics::view::MetricsAction),
     /// Copy a text and say so.
     Copy { text: String, said: &'static str },
     /// Open the Actions tab of the selected module on this action. Nothing runs.

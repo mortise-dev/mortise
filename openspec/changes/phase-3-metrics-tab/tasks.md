@@ -22,10 +22,10 @@ Group 1 runs first. Groups 2 and 3 run in parallel after it, each in its own wor
 
 ## 3. The tab (21.4, Opus)
 
-- [ ] 3.1 Add `MetricsTab` to `OpenApp`, and pass the scope and the range to `LiveMetrics::figures`. Work the figures out again after a read, or for another snapshot, answer, scope or range
-- [ ] 3.2 Draw S7.3 in `metrics/view.rs` as D6 says: the two switches, the line of the last read, the chart box with `chart`, the table of seven columns with `spark`, the routes of one module, the selected row, "unknown" with its tooltip. Ask for a frame after one second while the table is shown
-- [ ] 3.3 Add the text of D6 and D7 to `metrics/strings.rs`, each line not in the spec marked so, with one unit test of the number formats beside the one of M20
-- [ ] 3.4 Test the wiring in `tests/metrics.rs`, in the test that already makes two reads with a stepping clock: the seven column headers; Database time reads "unknown" with its tooltip; "last read N s ago" counts up when the clock moves with no read; the range switch keeps the figures; a row clicked, then J, moves the chart title to the next row; selecting a module in the index lists its routes. In another test, the environment switch starts the table again with no read
+- [x] 3.1 Add `MetricsTab` to `OpenApp`, and pass the scope and the range to `LiveMetrics::figures`. Work the figures out again after a read, or for another snapshot, answer, scope or range
+- [x] 3.2 Draw S7.3 in `metrics/view.rs` as D6 says: the two switches, the line of the last read, the chart box with `chart`, the table of seven columns with `spark`, the routes of one module, the selected row, "unknown" with its tooltip. Ask for a frame after one second while the table is shown
+- [x] 3.3 Add the text of D6 and D7 to `metrics/strings.rs`, each line not in the spec marked so, with one unit test of the number formats beside the one of M20
+- [x] 3.4 Test the wiring in `tests/metrics.rs`, in the test that already makes two reads with a stepping clock: the seven column headers; Database time reads "unknown" with its tooltip; "last read N s ago" counts up when the clock moves with no read; the range switch keeps the figures; a row clicked, then J, moves the chart title to the next row; selecting a module in the index lists its routes. In another test, the environment switch starts the table again with no read
 
 ## 4. Images and deviations (21.5, Sonnet)
 
