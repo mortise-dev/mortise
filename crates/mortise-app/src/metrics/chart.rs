@@ -5,7 +5,7 @@
 
 use std::time::Duration;
 
-use eframe::egui::{Align2, Color32, Pos2, Rect, Role, Shape, Stroke, Ui, pos2};
+use eframe::egui::{Align2, Color32, Pos2, Rect, Role, Shape, Stroke, Ui, Vec2, pos2};
 
 use mortise_core::Line;
 
@@ -184,14 +184,19 @@ fn draw_line(
             area.bottom() - up as f32 * area.height(),
         )
     };
-    for run in &line.runs {
-        let mut points: Vec<Pos2> = run
-            .iter()
-            .map(|point| place(point.ago, point.per_minute))
-            .collect();
-        if thin {
-            points = one_per_column(&points, ui.pixels_per_point());
-        }
+    let mut runs: Vec<Vec<Pos2>> = line
+        .runs
+        .iter()
+        .map(|run| {
+            run.iter()
+                .map(|point| place(point.ago, point.per_minute))
+                .collect()
+        })
+        .collect();
+    if thin {
+        runs = one_per_column(&runs, ui.pixels_per_point());
+    }
+    for points in runs {
         match points.as_slice() {
             [] => {}
             [dot] => {
@@ -205,23 +210,40 @@ fn draw_line(
     }
 }
 
-/// The points of a run with those that share a pixel column replaced by their average. The points
-/// come in order, so the ones that share a column are next to each other.
-fn one_per_column(points: &[Pos2], pixels_per_point: f32) -> Vec<Pos2> {
+/// The runs with the points that share a pixel column replaced by their average. The points come
+/// in order, so the ones that share a column are next to each other. A column holds one point even
+/// where a run ends in it and the next begins in it: the point stays at the end of the earlier run,
+/// so the break between the runs is kept, and a run whose points all join it is not drawn.
+fn one_per_column(runs: &[Vec<Pos2>], pixels_per_point: f32) -> Vec<Vec<Pos2>> {
     let column = |point: &Pos2| (point.x * pixels_per_point).floor();
-    let mut thinned = Vec::new();
-    let mut rest = points;
-    while let Some(first) = rest.first() {
-        let same = rest
-            .iter()
-            .take_while(|point| column(point) == column(first))
-            .count();
-        let (group, tail) = rest.split_at(same);
-        let sum = group
-            .iter()
-            .fold(Pos2::ZERO, |sum, point| sum + point.to_vec2());
-        thinned.push(sum / group.len() as f32);
-        rest = tail;
+    let mut thinned: Vec<Vec<Pos2>> = Vec::new();
+    // The column of the last point drawn, and the sum and count of the points in it.
+    let mut last: Option<(f32, Vec2, f32)> = None;
+    for run in runs {
+        let mut kept = Vec::new();
+        for point in run {
+            match &mut last {
+                Some((at, sum, count)) if *at == column(point) => {
+                    *sum += point.to_vec2();
+                    *count += 1.0;
+                    let average = (*sum / *count).to_pos2();
+                    // The point of the column is the end of this run, or of the run before.
+                    if let Some(end) = kept
+                        .last_mut()
+                        .or_else(|| thinned.last_mut().and_then(|run| run.last_mut()))
+                    {
+                        *end = average;
+                    }
+                }
+                _ => {
+                    last = Some((column(point), point.to_vec2(), 1.0));
+                    kept.push(*point);
+                }
+            }
+        }
+        if !kept.is_empty() {
+            thinned.push(kept);
+        }
     }
     thinned
 }
@@ -238,13 +260,24 @@ mod tests {
             pos2(11.2, 2.0),
             pos2(12.0, 6.0),
         ];
+        let one_run = [points.to_vec()];
         // At scale 1 the first two share column 10, and the others stand alone.
         assert_eq!(
-            one_per_column(&points, 1.0),
-            [pos2(10.4, 6.0), pos2(11.2, 2.0), pos2(12.0, 6.0)]
+            one_per_column(&one_run, 1.0),
+            [vec![pos2(10.4, 6.0), pos2(11.2, 2.0), pos2(12.0, 6.0)]]
         );
         // At scale 2 each of them has its own column.
-        assert_eq!(one_per_column(&points, 2.0), points);
+        assert_eq!(one_per_column(&one_run, 2.0), one_run);
+        // A gap inside column 10: the column keeps one point, at the end of the first run, and the
+        // second run starts in the next column.
+        let two_runs = [points[..1].to_vec(), points[1..].to_vec()];
+        assert_eq!(
+            one_per_column(&two_runs, 1.0),
+            [
+                vec![pos2(10.4, 6.0)],
+                vec![pos2(11.2, 2.0), pos2(12.0, 6.0)]
+            ]
+        );
     }
 
     #[test]
