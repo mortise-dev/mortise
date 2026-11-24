@@ -232,7 +232,8 @@ Release build, one warm-up, then the median of 21 calls of `Figures::of`, in thr
 
 ## Images not stored
 
-To be filled by task 4.
+- S6.5 e: the sentence quotes the address the stub listens on, and its port changes with every run,
+  so the image would change with it. Cutting the sentence out would leave no image of the state.
 
 ## Risks / Trade-offs
 
