@@ -154,6 +154,25 @@ fn the_workbench_and_its_tabs() {
     audit(&harness, "index as a strip");
 }
 
+/// S7.3: the ranges, the rows of the table and the routes of a module.
+#[test]
+fn the_metrics_table_and_the_routes_of_a_module() {
+    let (_desk, mut harness) = connected(&mortise_core::testing::StubActuator::recorded());
+    press(&mut harness, Key::Num5);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while harness.query_by_label_contains("Requests/min").is_none() {
+        assert!(std::time::Instant::now() < deadline, "the metrics table");
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        harness.run_steps(2);
+    }
+    audit(&harness, "Metrics table of all modules");
+    harness
+        .get_by_role_and_label(Role::ListBoxOption, "Billing")
+        .click();
+    harness.run_steps(3);
+    audit(&harness, "Metrics routes of a module");
+}
+
 #[test]
 fn the_palette_settings_and_the_add_panel() {
     let (desk, mut harness) = shop_api();

@@ -1220,18 +1220,32 @@ fn exit_time(harness: &Harness<'static, MortiseApp>) -> String {
 // --- The Metrics tab (S7.1, S7.2 and the plain table of milestone 20) ---
 
 /// The answer of `prometheus` when the counters stand at `n`: requests of Checkout and
-/// Billing, and jobs of Billing. The histograms have a total and a count, which is all
-/// the figures read.
+/// Billing, and jobs of Billing. A request has buckets from 50 ms to 1 s, and some of
+/// Checkout end in 500.
 fn prometheus(n: u32) -> String {
-    let request = |method: &str, route: &str, count: u32| {
+    let request = |status: &str, route: &str, count: u32| {
         let labels = format!(
-            r#"http_request_method="{method}",http_response_status_code="200",http_route="{route}""#
+            r#"http_request_method="GET",http_response_status_code="{status}",http_route="{route}""#
         );
-        format!(
+        let under = |share: u32| count * share / 100;
+        let mut text = String::new();
+        for (bound, share) in [
+            ("0.05", 40),
+            ("0.1", 70),
+            ("0.25", 90),
+            ("0.5", 97),
+            ("1", 99),
+        ] {
+            text += &format!(
+                "http_server_request_duration_seconds_bucket{{{labels},le=\"{bound}\"}} {}\n",
+                under(share)
+            );
+        }
+        text + &format!(
             "http_server_request_duration_seconds_bucket{{{labels},le=\"+Inf\"}} {count}\n\
              http_server_request_duration_seconds_sum{{{labels}}} {}\n\
              http_server_request_duration_seconds_count{{{labels}}} {count}\n",
-            f64::from(count) * 0.02
+            f64::from(count) * 0.12
         )
     };
     let job = |name: &str, count: u32| {
@@ -1244,14 +1258,24 @@ fn prometheus(n: u32) -> String {
         )
     };
     format!(
-        "# TYPE http_server_request_duration_seconds histogram\n{}{}{}\
+        "# TYPE http_server_request_duration_seconds histogram\n{}{}{}{}\
          # TYPE messaging_process_duration_seconds histogram\n{}{}",
-        request("GET", "/api/checkout/things/0", 100 + 30 * n),
-        request("GET", "/api/checkout/things/1", 40 + 12 * n),
-        request("GET", "/billing/things/2", 20 + 6 * n),
+        request("200", "/api/checkout/things/0", 100 + 30 * n),
+        request("500", "/api/checkout/things/0", 3 * n),
+        request("200", "/api/checkout/things/1", 40 + 12 * n),
+        request("200", "/billing/things/2", 20 + 6 * n),
         job("SendInvoice", 10 + 3 * n),
         job("ChargeInvoice", 5 + 2 * n),
     )
+}
+
+/// The counters after `reads` reads: read `k` adds `1 + (k % 240) / 60`, so the rate
+/// rises and falls in waves of 1 hour.
+fn counters_after(reads: u32) -> u32 {
+    let (whole, rest) = (reads / 240, reads % 240);
+    let (quarters, left) = (rest / 60, rest % 60);
+    // A wave of 240 reads adds 240 + 60 * (0 + 1 + 2 + 3).
+    whole * 600 + rest + 30 * quarters * quarters.saturating_sub(1) + quarters * left
 }
 
 /// shop-api connected to the stub as "local", in a theme.
@@ -1285,7 +1309,7 @@ fn the_metrics_tab() {
         rest(&mut harness);
         shots.take(&mut harness, "s7.2-metrics-not-exposed");
 
-        // The plain table: a read, then a second one 15 s later with more counted.
+        // Reads 15 s apart on a clock the test moves, with the counters growing by steps.
         let stub = common::shop_api_actuator();
         stub.expose(&["health", "info", "mappings", "scheduledtasks", "prometheus"]);
         stub.set("/actuator/prometheus", Reply::ok(&prometheus(0)));
@@ -1303,19 +1327,65 @@ fn the_metrics_tab() {
         common::wait_for_answer(&mut harness);
         press(&mut harness, Key::Num5);
         wait_for(&mut harness, "A rate needs two reads");
-        stub.set("/actuator/prometheus", Reply::ok(&prometheus(1)));
-        now.store(15, Ordering::SeqCst);
-        harness.key_press_modifiers(Modifiers::COMMAND, Key::R);
-        let deadline = std::time::Instant::now() + Duration::from_secs(20);
-        while harness
-            .query_by_label_contains("A rate needs two reads")
-            .is_some()
-        {
-            assert!(std::time::Instant::now() < deadline, "the second read");
-            std::thread::sleep(Duration::from_millis(20));
+        let mut counted = 0;
+        for read in 0..40_u32 {
+            counted += 1 + read * 7 % 9;
+            stub.set("/actuator/prometheus", Reply::ok(&prometheus(counted)));
+            now.store(15 * (u64::from(read) + 1), Ordering::SeqCst);
+            harness.key_press_modifiers(Modifiers::COMMAND, Key::R);
+            // The clock moves only once the read is kept: the sink takes the time when the
+            // answer comes. Until then the tab reads "last read 15 s ago".
             harness.run_steps(2);
+            wait_for(&mut harness, "last read 0 s ago");
         }
         rest(&mut harness);
-        shots.take(&mut harness, "s7.3-metrics-table");
+        shots.take(&mut harness, "s7.3-metrics-all");
+
+        // One module of the index: its routes, and its name over the chart.
+        select(&mut harness, "Billing");
+        shots.take(&mut harness, "s7.3-metrics-module");
+    }
+
+    // A day: 15 s per read, 5,760 reads, as fast as the stub answers. The clock of the reads
+    // counts the requests, so a read is 15 s after the one before. Reads after `DAY` have the
+    // time of read `DAY` and are not kept. The fill takes about 10 s in a debug build.
+    const DAY: u64 = 5_760;
+    for (theme, name) in THEMES {
+        shots.theme = name;
+        let stub = common::shop_api_actuator();
+        stub.expose(&["health", "info", "mappings", "scheduledtasks", "prometheus"]);
+        // The reads the stub answered, which is what the clock counts.
+        let asked = Arc::new(AtomicU64::new(0));
+        let served = Arc::clone(&asked);
+        stub.serve("/actuator/prometheus", move |_| {
+            let read = served.fetch_add(1, Ordering::SeqCst) + 1;
+            Reply::ok(&prometheus(counters_after(read.min(DAY + 1) as u32)))
+        });
+        let mut desk = Desk::new();
+        desk.theme = theme;
+        desk.pace = mortise_core::Pace {
+            metrics: Duration::from_millis(1),
+            ..mortise_core::Pace::default()
+        };
+        let counter = Arc::clone(&asked);
+        desk.metrics_clock = Some(Arc::new(move || {
+            Duration::from_secs(15 * counter.load(Ordering::SeqCst).min(DAY))
+        }));
+        let root = desk.app("shop-api");
+        desk.knows(&[(&root, "SA")]);
+        desk.connect(&[common::environment("local", &stub)]);
+        let mut harness = desk.start();
+        common::wait_for_answer(&mut harness);
+        press(&mut harness, Key::Num5);
+        let began = std::time::Instant::now();
+        while asked.load(Ordering::SeqCst) < DAY + 2 {
+            assert!(began.elapsed() < Duration::from_secs(120), "a day of reads");
+            harness.run_steps(2);
+        }
+        harness
+            .get_by_role_and_label(Role::RadioButton, "24 hours")
+            .click();
+        rest(&mut harness);
+        shots.take(&mut harness, "s7.3-metrics-day");
     }
 }

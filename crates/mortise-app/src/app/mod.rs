@@ -38,6 +38,7 @@ use crate::boundary::surface::SurfaceInputs;
 use crate::boundary::view::BoundaryState;
 use crate::generate::view::{GenerateAsk, GenerateInputs, GenerateRun, GenerateState, RunPlace};
 use crate::index::view::{self as index, IndexRuntime, IndexState, Selection};
+use crate::metrics::view::MetricsTab;
 use crate::palette::view::{self as palette_view, PaletteAction, PaletteState};
 use crate::runner::view::{self as runner_view, AppRuns, RunnerView};
 use crate::runtime::view::{Brief, RuntimeView};
@@ -125,6 +126,8 @@ struct OpenApp {
     action_run: Option<(Act, usize)>,
     /// What the Generate tab keeps: the picker, the form and the last result.
     generate: GenerateState,
+    /// What the Metrics tab keeps: the range and the selected row.
+    metrics: MetricsTab,
     /// The generator that runs, with the modules the app had when it started.
     generate_run: Option<Generating>,
     /// After `module:make`: the module to select once a snapshot has it.
@@ -815,11 +818,18 @@ impl eframe::App for MortiseApp {
                         Selection::All => None,
                     };
                     open.generate.follow(module, open.tab == Tab::Generate);
+                    open.metrics.follow(module);
                     let metrics = if open.tab == Tab::Metrics {
                         Some(metrics::tab(
                             open.runtime.as_mut(),
+                            &mut open.metrics,
                             &app,
-                            entry.display_name(),
+                            metrics::TabInputs {
+                                name: entry.display_name(),
+                                environments: &entry.environments,
+                                module,
+                                pace: self.pace.metrics,
+                            },
                         ))
                     } else {
                         None
@@ -907,6 +917,7 @@ impl eframe::App for MortiseApp {
                             open.selection = Selection::Module(module.clone());
                             self.reveal_next = true;
                         }
+                        Some(WorkAction::Metrics(action)) => open.metrics.apply(action.clone()),
                         Some(WorkAction::ShowFindings) => {
                             open.findings_open = true;
                             open.finding_row = 0;
@@ -1317,6 +1328,7 @@ fn open_app(ctx: &egui::Context, entry: &AppEntry, data_dir: Option<&Path>) -> O
         actions: ActionsState::default(),
         action_run: None,
         generate: GenerateState::default(),
+        metrics: MetricsTab::default(),
         generate_run: None,
         select_new: None,
         package: PackageData::default(),

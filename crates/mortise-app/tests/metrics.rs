@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 use common::{Desk, connected, environment, fixture, shop_api, wait_for_answer};
 use eframe::egui::{Key, Modifiers, Role};
 use egui_kittest::Harness;
-use egui_kittest::kittest::Queryable as _;
+use egui_kittest::kittest::{NodeT as _, Queryable as _};
 use mortise_app::app::MortiseApp;
 use mortise_core::Pace;
 use mortise_core::testing::{Reply, StubActuator};
@@ -209,7 +209,7 @@ fn two_reads_give_a_figure_for_every_module_and_write_nothing() {
     }));
     let root = desk.app("shop-api");
     desk.knows(&[(&root, "SA")]);
-    desk.connect(&[environment("local", &stub)]);
+    desk.connect(&[environment("local", &stub), environment("staging", &stub)]);
     let mut harness = desk.start();
     wait_for_answer(&mut harness);
     let config = desk.settings_path().parent().unwrap().to_path_buf();
@@ -223,12 +223,21 @@ fn two_reads_give_a_figure_for_every_module_and_write_nothing() {
     for module in ["Billing", "Catalog", "Notifications", "Not in a module"] {
         harness.get_by_role_and_label(Role::Cell, module);
     }
-    assert_eq!(
-        harness
-            .get_all_by_role_and_label(Role::Cell, "\u{2013}")
-            .count(),
-        2 * rows
-    );
+    for header in [
+        "Module",
+        "Requests/min",
+        "95% under",
+        "Errors",
+        "Jobs/min",
+        "Database time",
+        "Last hour",
+    ] {
+        harness.get_by_role_and_label(Role::ColumnHeader, header);
+    }
+    let count = |harness: &Harness<'static, MortiseApp>, text: &str| {
+        harness.get_all_by_role_and_label(Role::Cell, text).count()
+    };
+    assert_eq!(count(&harness, "\u{2013}"), 5 * rows);
 
     // The second read, 15 s later, asked for at once.
     now.store(15, Ordering::SeqCst);
@@ -236,11 +245,65 @@ fn two_reads_give_a_figure_for_every_module_and_write_nothing() {
     wait_while(&mut harness, "the second read", |harness| {
         harness.query_by_label(ONE_READ).is_some()
     });
+    // Nothing was asked for: requests and jobs are 0, the 95% figure and errors have no request.
+    assert_eq!(count(&harness, "0"), 2 * rows);
+    assert_eq!(count(&harness, "\u{2013}"), 2 * rows);
+    // No series has the module label.
+    assert_eq!(count(&harness, "unknown"), rows);
+    harness
+        .get_all_by_role_and_label(Role::Cell, "unknown")
+        .next()
+        .unwrap()
+        .hover();
+    harness.run_steps(12);
+    harness.get_by_label("Needs a newer nwidart/laravel-modules");
+
+    // "last read N s ago" counts up by the clock of the reads, with no read.
+    harness.get_by_label("read every 15 s, last read 0 s ago");
+    now.store(20, Ordering::SeqCst);
+    harness.run_steps(2);
+    harness.get_by_label("read every 15 s, last read 5 s ago");
+
+    // Another range keeps the reads.
+    for range in ["15 min", "1 hour"] {
+        harness
+            .get_by_role_and_label(Role::RadioButton, range)
+            .click();
+        harness.run_steps(3);
+        assert_eq!(count(&harness, "0"), 2 * rows);
+    }
+    harness.get_by_role_and_label(Role::Image, "Requests per minute, all modules, last hour");
+
+    // A row clicked shows in the chart, and J moves to the next row.
+    harness.get_by_role_and_label(Role::Row, "Catalog").click();
+    harness.run_steps(3);
+    harness.get_by_role_and_label(Role::Heading, "Requests per minute, Catalog");
+    harness.key_press(Key::J);
+    harness.run_steps(3);
+    harness.get_by_role_and_label(Role::Heading, "Requests per minute, Checkout");
+    // The line of the row is worked out once it is selected.
+    let chart =
+        harness.get_by_role_and_label(Role::Image, "Requests per minute, Checkout, last hour");
     assert_eq!(
-        harness.get_all_by_role_and_label(Role::Cell, "0").count(),
-        2 * rows
+        chart.accesskit_node().description().as_deref(),
+        Some("Now 0, highest 0, lowest 0 requests per minute.")
     );
+
+    // A module selected in the index lists its routes.
+    harness
+        .get_by_role_and_label(Role::ListBoxOption, "Billing")
+        .click();
+    harness.run_steps(3);
+    harness.get_by_role_and_label(Role::Heading, "Requests per minute, Billing");
+    harness.get_by_role_and_label(Role::ColumnHeader, "Route");
+    harness.get_by_role_and_label(Role::Cell, "GET /billing/invoices/{invoice}");
 
     // Reading metrics writes nothing: not the settings, not the history.
     assert_eq!((files(&config), files(&desk.data_dir())), before);
+
+    // Another environment starts with no read.
+    harness
+        .get_by_role_and_label(Role::RadioButton, "staging")
+        .click();
+    wait_for(&mut harness, ONE_READ);
 }
