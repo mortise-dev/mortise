@@ -415,17 +415,21 @@ fn table(
                         (galley, note.as_str())
                     })
                     .collect();
-                // The top: the environment, the range, and when the last read was. The range
-                // switch goes on a second line when it does not fit after the environment switch.
-                // The read line goes at the right of the last switch's line when it fits there,
-                // else on a line of its own under the switches.
+                // The top: the environment, the range, and when the last read was. The
+                // environment switch wraps at the width of the tab. The range switch goes
+                // under it when it does not fit after it on one line. The read line goes at
+                // the right of the last switch's line when it fits there, else on a line of
+                // its own under the switches.
                 let labels = Range::ALL.map(strings::range);
                 let environment_w = draw::segmented_width(ui, &view.environments);
+                let environment_h = draw::segmented_height(ui, &view.environments, inner);
                 let range_w = draw::segmented_width(ui, &labels);
-                let range_at = if environment_w + SWITCH_GAP + range_w <= inner {
+                let range_at = if environment_h <= size::CONTROL_H
+                    && environment_w + SWITCH_GAP + range_w <= inner
+                {
                     vec2(environment_w + SWITCH_GAP, 0.0)
                 } else {
-                    vec2(0.0, size::CONTROL_H + TOP_LINE_GAP)
+                    vec2(0.0, environment_h + TOP_LINE_GAP)
                 };
                 let switches_h = range_at.y + size::CONTROL_H;
                 let read_line = strings::read_every(view.pace, view.ago);
@@ -446,10 +450,11 @@ fn table(
                 let right = left + inner;
 
                 let top = area.top() + 14.0;
-                let (_, clicked) = draw::segmented(
+                let (_, clicked) = draw::segmented_in(
                     ui,
                     pal,
                     pos2(left, top),
+                    inner,
                     "metrics-environment",
                     &view.environments,
                     view.environments

@@ -5,7 +5,7 @@ mod common;
 use common::{Desk, connected, environment, shop_api_actuator, wait_for_answer, wait_until};
 use eframe::egui::{Key, Modifiers, Role};
 use egui_kittest::Harness;
-use egui_kittest::kittest::Queryable as _;
+use egui_kittest::kittest::{NodeT as _, Queryable as _};
 use mortise_app::app::MortiseApp;
 use mortise_core::testing::{Reply, StubActuator};
 use mortise_core::{Answer, Credentials, Environment, Status};
@@ -505,12 +505,31 @@ fn the_switch_in_the_runtime_box_chooses_the_environment() {
             r#"{"status":"DOWN","components":{"module:billing:gateway":{"status":"DOWN"}}}"#,
         ),
     );
-    let (desk, mut harness) = with_environments(&[
+    // Six more environments with long names: the switch goes under the title.
+    let long: Vec<String> = (3..=8)
+        .map(|n| format!("tenant-{n:02}-production-eu-west-2"))
+        .collect();
+    let mut environments = vec![
         environment("local", &local),
         environment("staging", &staging),
-    ]);
+    ];
+    environments.extend(long.iter().map(|name| environment(name, &local)));
+    let (desk, mut harness) = with_environments(&environments);
     wait_for_answer(&mut harness);
     assert_eq!(harness.get_all_by_label("Up on local").count(), 2);
+    // Every segment is under the title and inside the box. The box ends 16 px from the
+    // right edge of the window, its content 13 px inside that.
+    let heading = harness
+        .get_by_role_and_label(Role::Heading, "Runtime on local")
+        .accesskit_node()
+        .bounding_box()
+        .unwrap();
+    let right = f64::from(desk.size.x) - 16.0 - 13.0;
+    for node in harness.get_all_by_role(Role::RadioButton) {
+        let rect = node.accesskit_node().bounding_box().unwrap();
+        assert!(rect.y0 > heading.y1, "{rect:?}");
+        assert!(rect.x0 >= heading.x0 && rect.x1 <= right, "{rect:?}");
+    }
     // The index row of Billing, the one module with an indicator, has a runtime mark
     // with its own name, and its tooltip says when it was checked.
     assert_eq!(
@@ -545,6 +564,26 @@ fn the_switch_in_the_runtime_box_chooses_the_environment() {
     // The choice is kept.
     assert_eq!(desk.saved().apps[0].environment.as_deref(), Some("staging"));
     assert_eq!(status(&harness), Some(Status::Down));
+
+    // The switch is one Tab stop, and Right goes through the lines in order.
+    let focused = |harness: &Harness<'static, MortiseApp>| {
+        harness
+            .query_by(|node| node.is_focused())
+            .and_then(|node| node.accesskit_node().label())
+    };
+    for _ in 0..80 {
+        if focused(&harness).as_deref() == Some("staging") {
+            break;
+        }
+        harness.key_press(Key::Tab);
+        harness.run_steps(3);
+    }
+    for name in &long {
+        harness.key_press(Key::ArrowRight);
+        harness.run_steps(3);
+        assert_eq!(focused(&harness).as_ref(), Some(name));
+        assert_eq!(desk.saved().apps[0].environment.as_ref(), Some(name));
+    }
 }
 
 #[test]

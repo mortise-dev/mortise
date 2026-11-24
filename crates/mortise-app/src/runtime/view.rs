@@ -544,27 +544,75 @@ fn items(
     items
 }
 
+/// Where the heading of a runtime box has the environment switch.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum SwitchAt {
+    /// No switch: one environment or none.
+    Nowhere,
+    /// At the right end of the title's line.
+    Right,
+    /// Under the title, wrapped at the width of the box. It is this high.
+    Under(f32),
+}
+
+impl SwitchAt {
+    /// The switch goes right of the title when it fits there with 16 px between them.
+    fn of(ui: &Ui, title: &str, names: &[&str], inner: f32) -> Self {
+        if names.len() < 2 {
+            return Self::Nowhere;
+        }
+        let title_w = draw::galley(ui, title, title_type(), Color32::PLACEHOLDER)
+            .size()
+            .x;
+        if title_w + 16.0 + draw::segmented_width(ui, names) <= inner {
+            Self::Right
+        } else {
+            Self::Under(draw::segmented_height(ui, names, inner))
+        }
+    }
+
+    /// How much taller than a plain heading the heading is.
+    fn extra(self) -> f32 {
+        match self {
+            Self::Nowhere => 0.0,
+            Self::Right => size::CONTROL_H - 18.0,
+            Self::Under(height) => SWITCH_UNDER_GAP + height,
+        }
+    }
+}
+
+/// The space between the title and a switch under it.
+const SWITCH_UNDER_GAP: f32 = 8.0;
+
+fn title_type() -> Type {
+    ty::BODY.with_face(Face::Sans700)
+}
+
 /// Paints the heading of a box whose right end holds a control or a note. Returns
-/// the y where the content starts.
-fn head(ui: &Ui, pal: &Palette, rect: Rect, title: &str, tall: bool) -> (f32, f32) {
-    let extra = if tall { size::CONTROL_H - 18.0 } else { 0.0 };
-    let mid = rect.top() + 1.0 + 8.0 + 9.0 + extra / 2.0;
+/// the middle of the title's line and the y where the content starts.
+fn head(ui: &Ui, pal: &Palette, rect: Rect, title: &str, switch: SwitchAt) -> (f32, f32) {
+    let beside = if switch == SwitchAt::Right {
+        switch.extra()
+    } else {
+        0.0
+    };
+    let mid = rect.top() + 1.0 + 8.0 + 9.0 + beside / 2.0;
     let title_rect = draw::paint_text(
         ui,
         pos2(rect.left() + PAD, mid),
         Align2::LEFT_CENTER,
         title,
-        ty::BODY.with_face(Face::Sans700),
+        title_type(),
         pal.ink,
     );
     draw::announce(ui, title_rect, Role::Heading, title);
-    let line = rect.top() + 1.0 + 8.0 + 18.0 + extra + 7.0;
+    let line = rect.top() + 1.0 + 8.0 + 18.0 + switch.extra() + 7.0;
     draw::hline(ui, rect.left() + PAD..rect.right() - PAD, line, pal.line);
     (mid, line + 1.0 + 6.0)
 }
 
-fn head_height(tall: bool) -> f32 {
-    41.0 + if tall { size::CONTROL_H - 18.0 } else { 0.0 }
+fn head_height(switch: SwitchAt) -> f32 {
+    41.0 + switch.extra()
 }
 
 /// The runtime box of the Summary, in the state the connection is in (S6.5).
@@ -641,8 +689,17 @@ fn paint_box(
     paint: bool,
 ) -> (f32, Option<RuntimeAction>) {
     let inner = width - 2.0 * PAD;
+    let title = match view.chosen.filter(|_| view.installed) {
+        Some(environment) => strings::runtime_on(&environment.name),
+        None => crate::strings::RUNTIME.to_owned(),
+    };
     // The switch between environments, when there is more than one.
-    let switch = view.installed && view.environments.len() > 1;
+    let names: Vec<&str> = if view.installed {
+        view.environments.iter().map(|e| e.name.as_str()).collect()
+    } else {
+        Vec::new()
+    };
+    let switch = SwitchAt::of(ui, &title, &names, inner);
     let height = head_height(switch)
         + items
             .iter()
@@ -655,40 +712,25 @@ fn paint_box(
     }
     let mut action = None;
     draw::outlined(ui, rect, radius::CONTROL, Color32::TRANSPARENT, pal.line_2);
-    let title = match view.chosen.filter(|_| view.installed) {
-        Some(environment) => strings::runtime_on(&environment.name),
-        None => crate::strings::RUNTIME.to_owned(),
-    };
     let (mid, mut y) = head(ui, pal, rect, &title, switch);
-    if switch {
-        let names: Vec<&str> = view.environments.iter().map(|e| e.name.as_str()).collect();
+    if switch != SwitchAt::Nowhere {
         let selected = names
             .iter()
             .position(|name| *name == view.environment())
             .unwrap_or(0);
-        // Laid out once to learn its width, then painted at the right edge.
-        let label_type = Type {
-            size: 12.0,
-            line: 12.0,
-            ..ty::CONTROL
+        let at = match switch {
+            // At the right edge, on the title's line.
+            SwitchAt::Right => pos2(
+                rect.right() - PAD - draw::segmented_width(ui, &names),
+                mid - size::CONTROL_H / 2.0,
+            ),
+            _ => pos2(rect.left() + PAD, mid + 9.0 + SWITCH_UNDER_GAP),
         };
-        let track_w = 6.0
-            + names
-                .iter()
-                .map(|name| {
-                    (draw::galley(ui, name, label_type, Color32::PLACEHOLDER)
-                        .size()
-                        .x
-                        + 20.0)
-                        .ceil()
-                })
-                .sum::<f32>()
-            + 2.0 * (names.len() as f32 - 1.0);
-        let at = pos2(rect.right() - PAD - track_w, mid - size::CONTROL_H / 2.0);
-        let (_, clicked) = draw::segmented(
+        let (_, clicked) = draw::segmented_in(
             ui,
             pal,
             at,
+            inner,
             strings::ENVIRONMENT,
             &names,
             selected,
