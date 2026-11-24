@@ -17,8 +17,8 @@ Group 1 runs first. Groups 2 and 3 run in parallel after it, each in its own wor
 
 ## 2. The chart (21.3, Opus)
 
-- [ ] 2.1 Write `metrics/chart.rs` with `Plot`, `CHART_H`, `chart` and `spark` as D7 says: the painter only, straight segments in 1.5 px ink, four hairlines, the step of the scale, the accessible name and description. No interface text in the file
-- [ ] 2.2 Test the step of the scale once in `chart.rs`
+- [x] 2.1 Write `metrics/chart.rs` with `Plot`, `CHART_H`, `chart` and `spark` as D7 says: the painter only, straight segments in 1.5 px ink, four hairlines, the step of the scale, the accessible name and description. No interface text in the file
+- [x] 2.2 Test the step of the scale once in `chart.rs`
 
 ## 3. The tab (21.4, Opus)
 
