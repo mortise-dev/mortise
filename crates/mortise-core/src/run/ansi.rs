@@ -81,7 +81,7 @@ const JSON_DEPTH: usize = 32;
 /// The lines of a line that holds one JSON object or array, indented by two spaces
 /// per level, with the keys in the order the command wrote them. `None` when the
 /// line holds something else, an empty object or array, or JSON nested deeper than
-/// [`JSON_DEPTH`] levels.
+/// `JSON_DEPTH` levels.
 pub fn json_lines(line: &str) -> Option<Vec<String>> {
     let text = line.trim();
     if !(text.starts_with('{') || text.starts_with('['))

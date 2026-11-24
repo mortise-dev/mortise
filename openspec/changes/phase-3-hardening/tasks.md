@@ -40,15 +40,15 @@ after group 1 merged there, except where it says otherwise. The lead reviews eac
 
 ## 7. The look on Linux and Windows (Sonnet steps; the lead runs the box)
 
-- [ ] 7.1 Ask the orchestrator before using the box; check the lock; shoot the index with runtime marks, a module Summary with its runtime box, S7.1, and S7.3 if the recorded answers can be served (D8); look at each shot
-- [ ] 7.2 Record each difference from macOS as a deviation row checked "run on Linux"; record Windows as built and tested in CI, not looked at; look at D1 to D3 and D5 only where the look shows them
+- [x] 7.1 Ask the orchestrator before using the box; check the lock; shoot the index with runtime marks, a module Summary with its runtime box, S7.1, and S7.3 if the recorded answers can be served (D8); look at each shot
+- [x] 7.2 Record each difference from macOS as a deviation row checked "run on Linux"; record Windows as built and tested in CI, not looked at; look at D1 to D3 and D5 only where the look shows them
 
 ## 8. Docs (Sonnet)
 
-- [ ] 8.1 `README.md`: what phase 3 adds (the runtime per module, the Metrics tab) and the actuator setup an app needs; verify every command and config key named there against `fixtures/actuator/README.md`
-- [ ] 8.2 `docs/plan/phase-3.md`: section 4 says reads past the last hour are thinned to one per 5 minutes; add "What the build did" (PRs #30 to #42 and this milestone's PRs, and the differences from the plan)
-- [ ] 8.3 `docs/deviations.md`: rows added or changed by groups 3, 4 and 7; verify each says how it was checked
-- [ ] 8.4 Verify `RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps` passes, and `openspec validate phase-3-hardening --strict`
+- [x] 8.1 `README.md`: what phase 3 adds (the runtime per module, the Metrics tab) and the actuator setup an app needs; verify every command and config key named there against `fixtures/actuator/README.md`
+- [x] 8.2 `docs/plan/phase-3.md`: section 4 says reads past the last hour are thinned to one per 5 minutes; add "What the build did" (PRs #30 to #42 and this milestone's PRs, and the differences from the plan)
+- [x] 8.3 `docs/deviations.md`: rows added or changed by groups 3, 4 and 7; verify each says how it was checked
+- [x] 8.4 Verify `RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps` passes, and `openspec validate phase-3-hardening --strict`
 
 ## Workflow follow-up
 

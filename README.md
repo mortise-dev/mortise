@@ -36,14 +36,15 @@ for the app: Herd, Sail, Docker or a command of your own. Sail is off on Windows
 in WSL only; a Custom command is the way there.
 
 When the app also has [`nwidart/laravel-actuator`](https://github.com/nWidart/laravel-actuator)
-and is running, Mortise can ask it for its runtime status, its routes and its scheduled tasks.
-This is optional. Mortise asks for the actuator base path, `health`, `info`, `mappings`,
+and is running, Mortise can ask it for its runtime status, its routes, its scheduled tasks and its
+metrics. This is optional. Mortise asks for the actuator base path, `health`, `info`, `mappings`,
 `scheduledtasks` and `prometheus` only. It never asks for `env` and follows no redirect.
 A token or a password goes to the credential store of the operating system and is never written
 to a file.
 
-Status: phase 1 (read only) and phase 2 (running the package's commands) are built. The plans are
-`docs/plan/phase-1.md` and `docs/plan/phase-2.md`. Where the build differs from the specification is in
+Status: phase 1 (read only), phase 2 (running the package's commands) and phase 3 (the running app, per
+module) are built. The plans are `docs/plan/phase-1.md`, `docs/plan/phase-2.md` and
+`docs/plan/phase-3.md`. Where the build differs from the specification is in
 `docs/deviations.md`.
 
 ## What it does
@@ -53,7 +54,8 @@ Status: phase 1 (read only) and phase 2 (running the package's commands) are bui
 - Checks two rules, kept in `mortise.json` in the app folder so that a team shares them.
 - Lists findings: what breaks a rule or a check, each where it lives.
 - Scans a module and proposes its public surface. The scan writes nothing.
-- With `nwidart/laravel-actuator`: runtime status, routes by module, scheduled tasks.
+- With `nwidart/laravel-actuator`: runtime status, routes by module, scheduled tasks and metrics
+  (see "The running app" below).
 - Runs the package's commands, each one only when you start it:
   - The runner drawer shows the output as written, with Stop and a time limit. Mortise keeps
     the last 50 runs of each app in its own data folder, not in the app.
@@ -86,6 +88,40 @@ leave something out.
 
 The only file Mortise writes in an app is `mortise.json`, and it asks before it creates it.
 The package's commands write the other files. Mortise never writes them.
+
+## The running app
+
+Phase 3 reads the running app per module, over HTTP, from the actuator of the environment you
+choose. It needs no PHP and writes nothing.
+
+- Runtime status per module. The index marks each module by the worst of its own health
+  indicators: Down, Out of service, Up or Unknown. The Summary of a module has a runtime box with
+  those indicators and their detail. A module with no indicator of its own has no mark and no box.
+- The Metrics tab. It shows requests, response time, errors, jobs and database time for each
+  module, read from the `prometheus` endpoint every 15 s while the tab is open and the window is
+  visible. The ranges are 15 minutes, 1 hour and 24 hours. Select a module to see its routes.
+  The reads stay in memory and are never written to disk.
+- Scheduled tasks are listed in the module that declares their command.
+
+An app needs this setup:
+
+- `nwidart/laravel-modules` 13.4 or later. It gives each module its health indicators, named
+  `module:{lower case name}:{key}`.
+- `nwidart/laravel-actuator` 1.3 or later, with `prometheus` in `exposure.include` in
+  `config/actuator.php`, next to `health`. Mortise reads `health`, `info`, `mappings`,
+  `scheduledtasks` and `prometheus`.
+- `nwidart/laravel-metrics`, with `METRICS_ENABLED=true` and a store such as
+  `METRICS_STORE=cache`.
+- An environment in Settings: a name, the base URL of the app, the actuator path, and the
+  credentials if the actuator needs them (none, a bearer token, HTTP basic or a custom header).
+  A secret goes to the credential store of the operating system.
+
+`fixtures/actuator/README.md` lists the versions and the commands of the app that the recorded
+answers come from. `tools/real-actuator-app.sh` builds such an app.
+
+Database time reads "unknown" until `nwidart/laravel-modules` labels database metrics with the
+module. A series without a `module` label is placed by its route or job class; one that matches
+no module counts as "Not in a module" (`docs/deviations.md`, S66).
 
 ## Install
 
@@ -125,6 +161,7 @@ cargo test --workspace
 | `crates/mortise-app/tests/images.rs` | The screens in both themes against the images in `tests/snapshots`. macOS only |
 | `crates/mortise-app/tests/accessibility.rs` | Every control has a name and a target of 24 by 24 px |
 | `crates/mortise-core/tests/real_php.rs` | The package's commands in a real Laravel app. Ignored by default; a CI job that is not required runs them (see `AGENTS.md`) |
+| `crates/mortise-core/tests/real_actuator.rs` | The actuator client against a real app with the actuator and metrics. Ignored by default; a CI job that is not required runs them (see `AGENTS.md`) |
 
 After a change that is meant to be seen, make the images again and look at what changed:
 

@@ -125,7 +125,10 @@ Rules the core holds, each tested once there:
 - `prometheus` is read every 15 s, only while the Metrics tab is open and the window is visible.
 - Nothing from metrics is written: not to disk, not to `mortise.json`, not to `settings.json`.
 - A 24 hour window at 15 s is 5,760 reads. A read keeps one value per figure, per module and per route,
-  and is dropped once it leaves the longest window. Memory stays flat after 24 hours.
+  and is dropped once it leaves the longest window. Reads older than the last hour are thinned to one per
+  5 minutes: the store keeps every 15 s read of the last hour and the first read of each 5 minutes before
+  that, at most 519 reads in all. Thinning loses no request, because each read holds running totals.
+  Memory stays flat after 24 hours.
 - A counter that goes down is a reset. The read after it starts a new rate. No negative rate is drawn.
 - Switching the environment empties the window. Switching the range keeps it.
 - No figure has a colour and no limit (Q16).
@@ -344,3 +347,56 @@ No new account or secret.
   or Linux shows them.
 - The phase 2 "left out on purpose" list and its open restart questions.
 - A release: only if the owner asks.
+
+## 11. What the build did
+
+Milestone 18 to 23 as built. Each milestone is one OpenSpec change, with a pull request for the build and
+one for its archive.
+
+| PR | Milestone | What |
+|---|---|---|
+| #30 | 18 Groundwork | Phase 3 groundwork: actuator rule, recorded answers, spec text |
+| #31 | none (fix) | fix(app): keep one title across tabs and indent json in the runner |
+| #32 | none (agent rule) | docs: add the worktree rule for agents |
+| #33 | none (fix) | fix(app): keep a long component detail beside its name in the runtime box |
+| #34 | 18 | Archive the phase 3 groundwork change |
+| #35 | 22 Tasks per module | feat: place scheduled tasks in the module that declares their command |
+| #36 | 19 Runtime per module | feat: runtime status per module (milestone 19) |
+| #37 | 22 | Archive module tasks change |
+| #38 | 20 Reading metrics | feat: read metrics per module (milestone 20) |
+| #39 | 19 | Archive runtime per module |
+| #40 | 20 | Archive reading metrics |
+| #41 | 21 Metrics tab | feat: build the metrics tab of S7.3 (milestone 21) |
+| #42 | 21 | Archive metrics tab |
+| #43 | 23 Hardening | ci: real actuator job (milestone 23) |
+| #44 | 23 | Milestone 23 hardening: 24 h memory test, environment switch wrap, images and accessibility sweep, strings sweep, spec-build paths |
+| this PR | 23 | docs: README, this plan and the deviations |
+| to come | 23 | Archive of `phase-3-hardening` |
+
+### Differences from the plan
+
+- Reads past the last hour are thinned to one per 5 minutes. Section 4 first said to keep every read for
+  24 hours. That takes 517 MB for 60 modules. The owner confirmed the change on 23 November 2026
+  (`phase-3-reading-metrics`, D1).
+- Measured memory of the 24 hour run, with a fake clock. 88 subjects hold 6.34 MB; 660 subjects (60 modules)
+  hold 47.18 MB against a bound of 47.25 MB. The window is full and flat from read 5,742. The test runs
+  88 subjects, because 660 take 13.6 s in a debug build.
+- Measured cost of the figures. The slowest call of `Figures::of` took 3.06 ms (60 modules, 24 hours,
+  the total selected). That is under the 8 ms of the rule, so the figures stay on the interface thread.
+- The real-actuator job runs `php artisan serve --no-reload`. Without it, `serve` removes the process
+  variables the three servers use to switch metrics off or break the store.
+- The environment switch wraps (deviation S70). The plan had no rule for names wider than the tab.
+- S6.5 e has no stored image. Its sentence quotes the port of the stub, which changes with every run.
+- S7.3 after a choice of environment shows the waiting state, which has no switch, so keyboard focus
+  leaves the switch and Tab must reach it again. Every environment stays reachable. This was there
+  before this change. It is left for a later change.
+- Tasks per module (milestone 22) match a task to the module that declares its command. The plan asked for
+  nothing more: PKG-2 is still open.
+
+### Platforms
+
+- macOS: looked at, in both themes, through the stored images.
+- Linux: built and tested in CI. Looked at on the owner's Linux box (Hyprland 0.56.2 on Omarchy) with the
+  recorded answers served there: the index with runtime marks, a module Summary with its runtime box, S7.1
+  and S7.3, at 1920 by 1080 and 960 by 600. One difference, from a compositor plugin: deviation D8.
+- Windows: built and tested in CI. Not looked at.

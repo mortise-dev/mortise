@@ -7,7 +7,7 @@ This file lists where the current egui and eframe (0.37.0, winit 0.30.13) force 
 - **Checked** says how the fact was established.
 
 Checked on 22 November 2026 by reading the 0.37.0 source and compiling a probe crate on macOS.
-Nothing here was run on Windows or Linux.
+Nothing here was run on Windows. Rows run on Linux say so.
 
 ## Open
 
@@ -19,6 +19,7 @@ Nothing here was run on Windows or Linux.
 | D4 | Section 8: a system menu bar on macOS | eframe offers only the default app menu | Built with `muda`: Mortise, File, View, Window, Help. The items of Mortise carry no key in the menu: the window handles the keys, and a key the menu handled too would act twice. The first menu reads "mortise" until the app is a bundle with a name | Yes, milestone 9 | Run on macOS: the menus are there, and choosing an item acts |
 | D5 | Tokens 3.3: text size scales type and sizes, strokes stay 1 px | Text size is egui's zoom factor, which scales strokes too. Hairlines are drawn at 1 divided by the zoom, so they stay 1 px at 100% display scale. At 110% and 125% a line can fall between pixels | Hairlines may look slightly soft at 110% and 125% | To be looked at in milestone 6 | Source |
 | D7 | Section 11: static font files, because variable fonts were not checked | Variable fonts work in 0.37 (`FontTweak::coords`, `RichText::variation`). Font weight is still not part of `FontId` | Static files are kept as the spec says; each weight is its own named family | No | Source, compiled |
+| D8 | Section 8, T3: on Linux Mortise draws its own title bar | Mortise asks for a window with no decorations. A compositor plugin can still add its own bar: Hyprland with hyprbars, the default on Omarchy, draws one on every window | A floating or maximised window shows two title bars: the plugin's, then Mortise's. A full screen window shows only Mortise's. The plugin's window rule `plugin:hyprbars:nobar` for the class `mortise` hides its bar. Mortise cannot change it | No | Run on Linux: Hyprland 0.56.2 with hyprbars on Omarchy, a headless output, 24 November 2026 |
 
 ## Notes that are not deviations
 
@@ -28,6 +29,7 @@ Facts the spec was unsure of, which turned out to hold.
 - Screen readers: AccessKit is always part of egui 0.37 and is on by default in eframe for macOS, Windows and Linux. A painted control gives its role, name and state through `Response::widget_info`. A live region is set through `Context::accesskit_node_builder`.
 - The floating scrollbar is egui's default style.
 - The two shadows fit egui's shadow type (whole pixels, blur up to 255).
+- Run on Linux (Hyprland 0.56.2 on Omarchy, 24 November 2026, recorded actuator answers served on the box): the runtime marks of the index, the runtime box of a module Summary, S7.1 and S7.3 look as on macOS, at 1920 by 1080 and in a 960 by 600 window. The environment switch with six long names stays inside its box at both sizes. Shortcuts read `Ctrl K` and `Ctrl B`, as the spec draws them for Linux. Only D8 differs.
 - `/` and the backtick are matched as logical keys, so on some layouts they need Shift or a dead key. The spec already gives both a second binding (Ctrl F, Ctrl J).
 - egui's own Cmd or Ctrl with plus, minus and 0 zoom is turned off, because text size is a setting.
 - Numbers are tabular without a font feature: in all four Asap files and all three Inconsolata files
