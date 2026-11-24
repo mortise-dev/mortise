@@ -356,9 +356,9 @@ one for its archive.
 | PR | Milestone | What |
 |---|---|---|
 | #30 | 18 Groundwork | Phase 3 groundwork: actuator rule, recorded answers, spec text |
-| #31 | 18 | fix(app): keep one title across tabs and indent json in the runner |
-| #32 | 18 | docs: add the worktree rule for agents |
-| #33 | 18 | fix(app): keep a long component detail beside its name in the runtime box |
+| #31 | none (fix) | fix(app): keep one title across tabs and indent json in the runner |
+| #32 | none (agent rule) | docs: add the worktree rule for agents |
+| #33 | none (fix) | fix(app): keep a long component detail beside its name in the runtime box |
 | #34 | 18 | Archive the phase 3 groundwork change |
 | #35 | 22 Tasks per module | feat: place scheduled tasks in the module that declares their command |
 | #36 | 19 Runtime per module | feat: runtime status per module (milestone 19) |
