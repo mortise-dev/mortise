@@ -1333,18 +1333,10 @@ fn the_metrics_tab() {
             stub.set("/actuator/prometheus", Reply::ok(&prometheus(counted)));
             now.store(15 * (u64::from(read) + 1), Ordering::SeqCst);
             harness.key_press_modifiers(Modifiers::COMMAND, Key::R);
-            let deadline = std::time::Instant::now() + Duration::from_secs(20);
-            while stub
-                .asked()
-                .iter()
-                .filter(|path| path.ends_with("/prometheus"))
-                .count()
-                < read as usize + 2
-            {
-                assert!(std::time::Instant::now() < deadline, "read {read}");
-                std::thread::sleep(Duration::from_millis(20));
-                harness.run_steps(2);
-            }
+            // The clock moves only once the read is kept: the sink takes the time when the
+            // answer comes. Until then the tab reads "last read 15 s ago".
+            harness.run_steps(2);
+            wait_for(&mut harness, "last read 0 s ago");
         }
         rest(&mut harness);
         shots.take(&mut harness, "s7.3-metrics-all");
