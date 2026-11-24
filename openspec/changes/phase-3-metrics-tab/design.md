@@ -134,7 +134,8 @@ pub enum RowOf {
 pub struct Row {
     pub of: RowOf,
     pub rates: Rates,
-    /// Requests per minute over the range, for the chart.
+    /// Requests per minute over the range, for the chart. Built for `Figures::total` and the
+    /// selected row only: empty for every other row.
     pub line: Line,
     /// Requests per minute over the last hour, for the column "Last hour".
     pub last_hour: Line,
@@ -222,9 +223,17 @@ one every 15 s for the last hour. Thinning loses no request: each step holds the
 
 `last_hour` is the same with a span of 1 hour, whatever the range.
 
+The line over the range is built for the total and the selected row only. `LiveMetrics::figures` and
+`Figures::of` take `selected: Option<&RowOf>`; every other row has an empty `line`. `last_hour` is
+built for every row.
+
 Cost: 24 hours keep at most 519 steps. For 660 subjects that is 342,540 numbers (2.7 MB) while the
-figures are worked out, then dropped. The lines of 61 rows hold at most 61 × 760 points (1.1 MB). The
-app works the figures out again only after a read, or for another snapshot, answer, scope or range.
+figures are worked out, then dropped. The two lines over the range hold at most 2 × 760 points. The
+column "Last hour" holds at most 241 points a row: 61 rows hold at most 14,701 points (0.4 MB). A
+module with 8,000 routes, which the cap of 32,768 numbers a read allows, holds at most 1.9 million; a
+line of the day for each of its rows would be 6 million. The app works the figures out again only
+after a read, or for another snapshot, answer, scope, range or selected row. The view builds the path
+of a sparkline only when it is on screen.
 
 ### D5. The time since the last read
 
@@ -265,7 +274,8 @@ lines under the table, as in M20
   `Scope::Module`, so the total is the module and the rows are its routes. A row is selected by a
   click, or while the table has focus, where J, K, Down, Up, Home and End move it (`ListNav::over`).
   The row is kept by its `RowOf`, because rows sort again after each read. A row that is gone, or a
-  change of the index selection, clears it. The range switch keeps it.
+  change of the index selection, clears it. The range switch keeps it. A new selection works the
+  figures out again, as only the selected row has its line (D4).
 - **The table.** Columns of S7.3: the code stamp (34 px), Module (or "Route", not in the spec),
   Requests/min (90), 95% under (80), Errors (70), Jobs/min (70), Database time (100), Last hour (70).
   Figures are right aligned, 13 px ink, no colour. The selected row has the peg (`draw::peg`).
@@ -349,4 +359,13 @@ impl StubActuator {
   clock steps 15 s per request, so a day is 5,760 reads of a short answer. If it takes over 10 s in a
   debug build, the image fills fewer hours and says so in the test.
 - [Figures for 61 rows with lines are worked out on the interface thread] → Once per read (15 s) and per
-  change of scope or range, within the budget of D4.
+  change of scope, range or selected row, within the budget of D4.
+- [Two series of one subject with different bucket bounds] → The statuses of a route add into one
+  subject before the 95% carry sees them, so a route whose status series lack each other's bounds
+  reads too high. laravel-metrics writes one bucket set for every series. A carry per series at read
+  time would turn a missing bucket line into a reset (M20 "Buckets match by their bound").
+- [A row with counts and no finite buckets reads "over" the largest bound] → The store keeps bounds
+  for the whole store, not per subject, so no growth in a bucket cannot be told from no bucket.
+  laravel-metrics writes buckets for every series.
+- [Many long environment names] → The environment switch keeps its natural width, as in the runtime
+  box. Milestone 23 looks at a narrow picker.
