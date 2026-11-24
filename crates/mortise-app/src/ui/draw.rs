@@ -1494,6 +1494,12 @@ fn segmented_any(
             one_stop(i == selected)
         };
         let mut response = ui.interact(target, id, sense);
+        // A wrapped control can reach past the view: show the segment that gets focus,
+        // with its target and focus ring. It is placed after the choice is laid out, so
+        // a switch that moved with its new choice still scrolls to the right place.
+        if response.gained_focus() {
+            ui.scroll_to_rect(target, None);
+        }
         response.widget_info(|| {
             WidgetInfo::selected(Role::RadioButton, !is_off(i), i == selected, *label)
         });
@@ -1535,9 +1541,6 @@ fn segmented_any(
             if let Some(target) = target {
                 clicked = Some(target);
                 focus_soon(ui, ui.scope_id().with(("segment", name, target)));
-                // A wrapped control can reach past the view: show the segment that gets
-                // focus, with its target and focus ring.
-                ui.scroll_to_rect(segments[target].expand2(vec2(0.0, 3.0)), None);
             }
         }
         let color = if i == selected {
