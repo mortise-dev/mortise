@@ -202,7 +202,14 @@ fn a_store_that_cannot_be_read_reads_as_503_with_the_line_of_the_app() {
     };
     let (status, body) = get(&format!("{url}/prometheus"));
     assert_eq!(status, 503);
-    let line = body.lines().next().unwrap_or_default().to_owned();
+    // The client keeps at most 200 characters of the line.
+    let line: String = body
+        .lines()
+        .next()
+        .unwrap_or_default()
+        .chars()
+        .take(200)
+        .collect();
     assert!(!line.is_empty());
     assert_eq!(
         ask_metrics(&environment(&url), &None),
