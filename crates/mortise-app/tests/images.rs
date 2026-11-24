@@ -1255,6 +1255,13 @@ fn exit_time(harness: &Harness<'static, MortiseApp>) -> String {
 /// Billing, and jobs of Billing. A request has buckets from 50 ms to 1 s, and some of
 /// Checkout end in 500.
 fn prometheus(n: u32) -> String {
+    prometheus_of(n, n)
+}
+
+/// As [`prometheus`], with the counters of Checkout standing at `checkout` and those of Billing,
+/// its requests and its jobs, at `billing`.
+fn prometheus_of(checkout: u32, billing: u32) -> String {
+    let n = checkout;
     let request = |status: &str, route: &str, count: u32| {
         let labels = format!(
             r#"http_request_method="GET",http_response_status_code="{status}",http_route="{route}""#
@@ -1295,9 +1302,9 @@ fn prometheus(n: u32) -> String {
         request("200", "/api/checkout/things/0", 100 + 30 * n),
         request("500", "/api/checkout/things/0", 3 * n),
         request("200", "/api/checkout/things/1", 40 + 12 * n),
-        request("200", "/billing/things/2", 20 + 6 * n),
-        job("SendInvoice", 10 + 3 * n),
-        job("ChargeInvoice", 5 + 2 * n),
+        request("200", "/billing/things/2", 20 + 6 * billing),
+        job("SendInvoice", 10 + 3 * billing),
+        job("ChargeInvoice", 5 + 2 * billing),
     )
 }
 
@@ -1341,7 +1348,8 @@ fn the_metrics_tab() {
         rest(&mut harness);
         shots.take(&mut harness, "s7.2-metrics-not-exposed");
 
-        // Reads 15 s apart on a clock the test moves, with the counters growing by steps.
+        // The last hour: 240 reads 15 s apart on a clock the test moves. Checkout rises and falls
+        // once, Billing twice as fast and the other way up, each with a small ripple.
         let stub = common::shop_api_actuator();
         stub.expose(&["health", "info", "mappings", "scheduledtasks", "prometheus"]);
         stub.set("/actuator/prometheus", Reply::ok(&prometheus(0)));
@@ -1359,10 +1367,16 @@ fn the_metrics_tab() {
         common::wait_for_answer(&mut harness);
         press(&mut harness, Key::Num5);
         wait_for(&mut harness, "A rate needs two reads");
-        let mut counted = 0;
-        for read in 0..40_u32 {
-            counted += 1 + read * 7 % 9;
-            stub.set("/actuator/prometheus", Reply::ok(&prometheus(counted)));
+        let (mut checkout, mut billing) = (0, 0);
+        for read in 0..240_u32 {
+            let turn = f64::from(read) / 240.0 * std::f64::consts::TAU;
+            let ripple = f64::from(read * 7 % 5) / 5.0 * 4.0;
+            checkout += (30.0 + 20.0 * (turn / 2.0).sin() + ripple).round() as u32;
+            billing += (30.0 - 15.0 * turn.cos() + ripple).round() as u32;
+            stub.set(
+                "/actuator/prometheus",
+                Reply::ok(&prometheus_of(checkout, billing)),
+            );
             now.store(15 * (u64::from(read) + 1), Ordering::SeqCst);
             harness.key_press_modifiers(Modifiers::COMMAND, Key::R);
             // The clock moves only once the read is kept: the sink takes the time when the
