@@ -5,10 +5,10 @@ after group 1 merged there, except where it says otherwise. The lead reviews eac
 
 ## 1. The 24 hour memory test and the figure cost (Opus)
 
-- [ ] 1.1 Add the `#[cfg(test)]` count of bytes held to `MetricsStore` (design D1); verify with a short check in the new test that an empty store holds less than a store with one read
-- [ ] 1.2 Add the 26 hour test of D1 in `metrics/sample.rs`; verify it passes in a debug build in under 2 s and fails when the bound is lowered by one row
-- [ ] 1.3 Measure the resident size of the test binary with and without the 26 hour run (`/usr/bin/time -l`, release, three runs); write the numbers under "Measured" in `design.md`
-- [ ] 1.4 Time `Figures::of` on a full 24 hour window of the 60 module case (D2); write the numbers and the decision under "Measured"; if the slowest case is 8 ms or more, move the work as D2 says and verify with `cargo test --workspace`
+- [x] 1.1 Add the `#[cfg(test)]` count of bytes held to `MetricsStore` (design D1); verify with a short check in the new test that an empty store holds less than a store with one read
+- [x] 1.2 Add the 26 hour test of D1 in `metrics/sample.rs`; verify it passes in a debug build in under 2 s and fails when the bound is lowered by one row
+- [x] 1.3 Measure the resident size of the test binary with and without the 26 hour run (`/usr/bin/time -l`, release, three runs); write the numbers under "Measured" in `design.md`
+- [x] 1.4 Time `Figures::of` on a full 24 hour window of the 60 module case (D2); write the numbers and the decision under "Measured"; if the slowest case is 8 ms or more, move the work as D2 says and verify with `cargo test --workspace`
 
 ## 2. The real-actuator CI job (Opus; branch from the milestone branch, its own PR to `main`)
 

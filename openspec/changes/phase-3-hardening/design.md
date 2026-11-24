@@ -180,7 +180,55 @@ it; nothing is looked at by hand, and the rows say so.
 
 ## Measured
 
-To be filled by tasks 1.3 and 1.4.
+Measured on 2026-11-24 on an Apple M3 Max with 128 GB of memory (137438953472 bytes), macOS 27.2.1,
+Rust 1.99.0. Nothing ran on Windows or Linux.
+
+**The size of the test (D1).** `a_full_window_of_a_large_app_holds_its_bound_and_stays_flat` reads 8
+modules of 10 routes and 8 jobs: S = 88 subjects. It runs in 1.88 s to 1.90 s in a debug build (three
+runs). With the 60 modules of `large_answer` (S = 660) it runs in 13.6 s: `push` takes about 2 ms a read
+in a debug build, 12.2 s of the 13.6 s. 9 modules (S = 99) take 2.08 s. So S is 88, not 660. The store
+is the same code at both sizes; the bound grows with S.
+
+**Bytes held (D1), by the count of the store.** The bound of the test is `520 × row + identity + maps`.
+A row is `S × 17 × 8` bytes. `maps` is, per subject, its column, its entry in the index, its map of
+bases with room for 3 and its base, and the two queues with room for 768 reads.
+
+| S | Bytes held from read 5,760 to read 6,240 | Bound | Bound less one row |
+|---|---|---|---|
+| 88 | 6,336,648 | 6,347,952 | 6,335,984: fails at read 5,742 |
+| 660 (run once, not committed) | 47,184,882 | 47,251,866 | 47,162,106: fails at read 5,742 |
+
+Bytes held do not change from read 5,742 to read 6,240: the window is full and flat. The store keeps
+517 reads at that pace (276 coarse, 241 fine). The 660 case holds 47.2 MB, as M20 D1 said (47 MB).
+
+**Resident size (D1), outside.** `/usr/bin/time -l` on the release test binary, one test alone, three
+runs each:
+
+| Test | Maximum resident set size |
+|---|---|
+| `a_full_window_of_a_large_app_holds_its_bound_and_stays_flat`, S = 88 | 15.4 MB (15384576 to 15482880 bytes) |
+| The same test with S = 660 (run once, not committed) | 66.5 MB to 70.3 MB (66519040 to 70270976 bytes) |
+| `the_real_clock_adds_the_time_asleep_and_never_goes_back` (no read) | 7.06 MB (7061504 to 7077888 bytes) |
+
+With S = 88, the run adds 8.3 MB to 8.4 MB; the store counts 6.34 MB. With S = 660, it adds 59.5 MB to
+63.2 MB; the store counts 47.2 MB. The rest is the text of the answer and its `Reading` (built once),
+the clone of that reading for each read, and what the allocator keeps around blocks of 90 KB and more.
+So the count of the store is about 75% to 80% of what the process grows by.
+
+**The figure cost (D2).** A throwaway `#[ignore]` test in `sample.rs`, not committed, pushed 26 hours of
+reads of `large_answer(60)` (660 subjects, 517 reads kept) and placed them in an app of 60 modules
+(`Module0` to `Module59`) through 600 routes of `mappings` and the job classes. Every series was placed.
+Release build, one warm-up, then the median of 21 calls of `Figures::of`, in three runs of the test:
+
+| Case | Median of each run | Slowest call |
+|---|---|---|
+| All modules, range 24 hours, the total selected | 2.15 ms, 2.31 ms, 2.15 ms | 3.06 ms |
+| `Module7` and its 10 routes, range 24 hours, one route selected | 1.76 ms, 1.84 ms, 1.75 ms | 2.06 ms |
+| All modules, range 1 hour, the total selected | 1.13 ms, 0.96 ms, 0.96 ms | 1.82 ms |
+| `Module7`, range 1 hour, one route selected | 0.92 ms, 0.84 ms, 0.86 ms | 1.25 ms |
+
+`Placing::new` with the 600 routes adds 0.18 ms to 0.27 ms. The slowest median is 2.31 ms, under the
+8 ms of the rule. **The figures stay on the interface thread.** No code moved.
 
 ## Images not stored
 
