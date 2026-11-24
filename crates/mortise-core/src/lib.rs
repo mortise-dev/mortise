@@ -11,6 +11,8 @@ mod boundary;
 mod editor;
 mod findings;
 mod generate;
+#[cfg(feature = "actuator")]
+mod metrics;
 mod modules;
 mod package;
 mod palette;
@@ -54,6 +56,10 @@ pub use generate::catalog::{
 pub use generate::output::{
     FileOutcome, GeneratedFile, app_relative, autoload_failed, generated_files, reported_files,
 };
+#[cfg(feature = "actuator")]
+pub use metrics::figures::{Figures, LAST_MINUTE, ModuleFigures, Rates};
+#[cfg(feature = "actuator")]
+pub use metrics::sample::{LiveMetrics, MetricsClock, MetricsState, NotKept};
 pub use modules::clover::Coverage;
 pub use modules::code::{ALL_CODE, propose_codes, propose_monogram};
 pub use modules::composer::Version;
@@ -86,7 +92,8 @@ pub use run::{
 pub use run::{PhpSettings, RunnerKind};
 #[cfg(feature = "actuator")]
 pub use runtime::actuator::{
-    Answer, Component, Info, Route, Runtime, Secret, Status, Task, ask, ask_status,
+    Answer, Component, Info, METRICS_BODY_LIMIT, NoMetrics, Route, Runtime, Secret, Status, Task,
+    ask, ask_metrics, ask_status,
 };
 pub use runtime::environment::{Credentials, Environment};
 #[cfg(feature = "actuator")]

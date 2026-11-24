@@ -110,7 +110,7 @@ fn the_workbench_and_its_tabs() {
     for (digit, screen) in [
         (Key::Num3, "Generate of all modules"),
         (Key::Num4, "Actions of all modules"),
-        (Key::Num5, "a tab of a later phase"),
+        (Key::Num5, "Metrics, not exposed"),
     ] {
         press(&mut harness, digit);
         audit(&harness, screen);
@@ -253,6 +253,8 @@ fn the_first_run_and_an_app_with_many_modules() {
     audit(&harness, "30 modules, Summary");
     press(&mut harness, Key::Num2);
     audit(&harness, "30 modules, the table of links");
+    press(&mut harness, Key::Num5);
+    audit(&harness, "Metrics, not connected");
 }
 
 #[test]

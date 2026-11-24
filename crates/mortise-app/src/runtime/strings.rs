@@ -7,7 +7,6 @@ pub const OUT_OF_SERVICE: &str = "Out of service";
 pub const RUNTIME_UNKNOWN: &str = "Unknown";
 pub const NO_ANSWER: &str = "No answer";
 pub const NOT_AUTHORIZED: &str = "Not authorized";
-pub const TRY_AGAIN: &str = "Try again";
 pub const COPY_LINE: &str = "Copy line";
 /// Not in the spec: what the toast says after "Copy line".
 pub const COPIED_LINE: &str = "Copied the line.";
@@ -38,13 +37,6 @@ pub fn status_of(module: &str) -> String {
     format!("Status of {module}")
 }
 
-pub fn cannot_reach(environment: &str, url: &str, reason: &str) -> String {
-    format!(
-        "Cannot reach {environment}. No answer from {url}: {reason}. Start the app, or correct \
-         the URL in Settings."
-    )
-}
-
 pub fn not_exposed(endpoints: &[&str], environment: &str) -> String {
     let (verb, them) = if endpoints.len() == 1 {
         ("is", "it")
@@ -55,13 +47,6 @@ pub fn not_exposed(endpoints: &[&str], environment: &str) -> String {
         "{} {verb} not exposed on {environment}. Only health is exposed by default. Add {them} \
          to exposure.include in config/actuator.php.",
         crate::strings::and_list(endpoints)
-    )
-}
-
-pub fn refused_credentials(environment: &str, url: &str, status: u16) -> String {
-    format!(
-        "{environment} refused the credentials. {url} answered {status}. Replace the credentials \
-         for {environment} in Settings."
     )
 }
 
@@ -79,12 +64,6 @@ pub fn out_of_service(component: &str) -> String {
     }
 }
 
-/// The path of an address: `/actuator/health`
-fn path_of(url: &str) -> &str {
-    let rest = url.split_once("://").map_or(url, |(_, rest)| rest);
-    rest.find('/').map_or("/", |at| &rest[at..])
-}
-
 /// What a test in the environment form gave, when the app answered with a status.
 /// `http://shop.test/actuator answered 301 and sends to https://shop.test/actuator.`
 pub fn tested(url: &str, status: u16, location: Option<&str>) -> String {
@@ -92,33 +71,6 @@ pub fn tested(url: &str, status: u16, location: Option<&str>) -> String {
         // Not in the spec: a redirect, which Mortise does not follow.
         Some(location) => format!("{url} answered {status} and sends to {location}."),
         None => format!("{url} answered {status}."),
-    }
-}
-
-pub fn answered_unexpected(
-    environment: &str,
-    url: &str,
-    status: u16,
-    location: Option<&str>,
-) -> String {
-    let path = path_of(url);
-    if let Some(location) = location {
-        // Not in the spec: a redirect, which Mortise does not follow.
-        return format!(
-            "{environment} answered {status} for {path} and sends to {location}. Correct the \
-             base URL or the actuator path in Settings to match that address."
-        );
-    }
-    match status {
-        500..600 => format!(
-            "{environment} answered {status} for {path}. The actuator configuration has an \
-             error. Read the app log."
-        ),
-        // Not in the spec: an address where no actuator answers.
-        _ => format!(
-            "{environment} answered {status} for {path}. Correct the base URL or the actuator \
-             path in Settings."
-        ),
     }
 }
 
@@ -241,7 +193,7 @@ pub fn exposed(endpoints: &[String]) -> String {
 #[cfg(test)]
 mod runtime_tests {
     use super::*;
-    use crate::strings::{and_list, every};
+    use crate::strings::{and_list, answered_unexpected, every};
     use crate::summary::strings::routes_of_module;
 
     #[test]

@@ -9,6 +9,7 @@ pub mod boundary;
 pub mod findings;
 pub mod generate;
 pub mod index;
+pub mod metrics;
 pub mod palette;
 pub mod runner;
 pub mod runtime;

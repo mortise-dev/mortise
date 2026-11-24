@@ -383,10 +383,10 @@ fn items(
             // c. The app cannot be reached.
             return vec![
                 status(Some(brief), None),
-                Item::Text(strings::cannot_reach(name, url, message), false),
+                Item::Text(crate::strings::cannot_reach(name, url, message), false),
                 Item::Buttons(vec![
                     (
-                        strings::TRY_AGAIN,
+                        crate::strings::TRY_AGAIN,
                         ButtonKind::Primary,
                         RuntimeAction::TryAgain,
                     ),
@@ -402,7 +402,7 @@ fn items(
             // e. Not authorized.
             return vec![
                 status(Some(brief), None),
-                Item::Text(strings::refused_credentials(name, url, *code), false),
+                Item::Text(crate::strings::refused_credentials(name, url, *code), false),
                 Item::Buttons(vec![(
                     crate::strings::OPEN_SETTINGS,
                     ButtonKind::Primary,
@@ -419,7 +419,7 @@ fn items(
             let mut items = vec![
                 status(Some(brief), None),
                 Item::Text(
-                    strings::answered_unexpected(name, url, *code, location.as_deref()),
+                    crate::strings::answered_unexpected(name, url, *code, location.as_deref()),
                     false,
                 ),
             ];
@@ -538,7 +538,7 @@ fn items(
                     said: strings::COPIED_LINE,
                 },
             ),
-            (strings::TRY_AGAIN, default, RuntimeAction::TryAgain),
+            (crate::strings::TRY_AGAIN, default, RuntimeAction::TryAgain),
         ]));
     }
     items

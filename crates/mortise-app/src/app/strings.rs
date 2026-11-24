@@ -75,8 +75,3 @@ pub fn app_with_problems(app: &str, problem_count: usize) -> String {
 
 /// The header of the Actions tab: `Run with` and the keys.
 pub const RUN_WITH: &str = "Run with";
-
-/// The title of the Metrics tab while it cannot do its work (S7.4).
-pub const METRICS_UNAVAILABLE_TITLE: &str = "Metrics are not in this version";
-/// Not in the spec: the paragraph under the Metrics title.
-pub const METRICS_UNAVAILABLE: &str = "Metrics show requests, response time, errors, jobs and database time per module, read from the prometheus endpoint of the running app. They arrive in a later release of Mortise.";

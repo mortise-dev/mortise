@@ -389,7 +389,7 @@ fn all_modules(
                     .collect();
                 let note = crate::strings::routes_read_from(routes.len(), &environment);
                 let footer = Some((
-                    strings::NOT_IN_A_MODULE,
+                    crate::strings::NOT_IN_A_MODULE,
                     crate::strings::count(outside as u64),
                 ));
                 let title = strings::ROUTES_BY_MODULE;

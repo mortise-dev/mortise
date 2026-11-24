@@ -11,6 +11,7 @@ mod actions;
 mod apps;
 mod generate;
 mod keys;
+mod metrics;
 mod palette;
 mod runs;
 mod runtime;
@@ -23,8 +24,8 @@ use std::sync::Arc;
 use eframe::egui::{self, Key, Modifiers, Rect, Theme, Ui, pos2, vec2};
 use mortise_core::{AppEntry, AppSnapshot, LiveApp, LiveState, Settings, SettingsError};
 use mortise_core::{
-    Catalog, Environment, LiveRuntime, MODULE_MAKE, PackageData, ReadOptions, Rules, Runs,
-    RuntimeState, Secret, Secrets, Target, Version,
+    Catalog, Environment, LiveMetrics, LiveRuntime, MODULE_MAKE, MetricsClock, Pace, PackageData,
+    ReadOptions, Rules, Runs, RuntimeState, Secret, Secrets, Target, Version,
 };
 
 use crate::actions::view::{self as actions_view, Act, ActionsInputs, ActionsState};
@@ -66,6 +67,11 @@ pub struct Config {
     pub quick_read: std::time::Duration,
     /// Where Mortise keeps the history of runs. `None` keeps no history.
     pub data_dir: Option<PathBuf>,
+    /// How often an environment is asked. Tests ask faster.
+    pub pace: Pace,
+    /// The clock of the metrics reads. `None` is the clock of a real run; tests pass one
+    /// that steps, so that two reads give the same figures on every run.
+    pub metrics_clock: Option<MetricsClock>,
 }
 
 /// An environment that is asked for its runtime status, and what it was opened with.
@@ -73,6 +79,10 @@ struct Connected {
     environment: Environment,
     secret: Secret,
     live: LiveRuntime,
+    /// The metrics reads of the environment, which the worker of `live` adds to.
+    metrics: LiveMetrics,
+    /// The figures the Metrics tab drew last, and what they were worked out from.
+    figures: Option<metrics::Kept>,
 }
 
 /// An app on the rail: its live snapshot and what is selected in it.
@@ -198,6 +208,10 @@ pub struct MortiseApp {
     /// The folder of the add panel, while it is read on another thread.
     reading: Option<Reading>,
     quick_read: std::time::Duration,
+    /// How often an environment is asked.
+    pace: Pace,
+    /// The clock of the metrics reads; `None` is the real one.
+    metrics_clock: Option<MetricsClock>,
     /// What the operating system said about motion, and when it was asked.
     system_motion: Option<(bool, std::time::Instant)>,
     /// The menu bar of macOS, in the real window.
@@ -289,6 +303,8 @@ impl MortiseApp {
             adding: None,
             reading: None,
             quick_read: config.quick_read,
+            pace: config.pace,
+            metrics_clock: config.metrics_clock,
             system_motion: None,
             #[cfg(target_os = "macos")]
             menu: None,
@@ -614,6 +630,8 @@ impl eframe::App for MortiseApp {
         let mut first_run_add = false;
         let mut drawer_rect = Rect::NOTHING;
         let mut drawer_actions = Vec::new();
+        // The app whose workspace is drawn in this frame.
+        let mut drawn = None;
         let monogram = self.monogram_preview();
         if let Some(panel) = &mut self.adding {
             // The bar is drawn only after 300 ms, so quick work does not flash, and only
@@ -797,6 +815,15 @@ impl eframe::App for MortiseApp {
                         Selection::All => None,
                     };
                     open.generate.follow(module, open.tab == Tab::Generate);
+                    let metrics = if open.tab == Tab::Metrics {
+                        Some(metrics::tab(
+                            open.runtime.as_mut(),
+                            &app,
+                            entry.display_name(),
+                        ))
+                    } else {
+                        None
+                    };
 
                     // The workspace, after the index: Tab goes from the rail to the index
                     // and then to the workspace.
@@ -859,6 +886,7 @@ impl eframe::App for MortiseApp {
                             mac,
                             reduced_motion,
                         },
+                        metrics,
                     };
                     work_action = workspace::workspace(
                         ui,
@@ -869,6 +897,7 @@ impl eframe::App for MortiseApp {
                         &mut open.tab,
                         state,
                     );
+                    drawn = Some(current);
                     // A module chosen in the workspace shows in the index in the next frame.
                     if work_action.is_some() {
                         ctx.request_repaint();
@@ -1224,6 +1253,8 @@ impl eframe::App for MortiseApp {
         }
         #[cfg(target_os = "macos")]
         self.menu_actions(&ctx, menu_chosen);
+        // Last, once nothing else in the frame can change the tab or what is on screen.
+        self.follow_metrics(drawn);
     }
 
     /// Closing Mortise stops the run of each app, as Stop does, and waits for the
@@ -1550,6 +1581,8 @@ pub fn run(chrome: Chrome, folder: Option<PathBuf>) -> eframe::Result {
                 },
                 quick_read: std::time::Duration::from_millis(60),
                 data_dir: mortise_core::history::data_dir(),
+                pace: Pace::default(),
+                metrics_clock: None,
             };
             let app = MortiseApp::new(cc, config);
             // The system menu bar: Mortise, File, View, Window and Help.

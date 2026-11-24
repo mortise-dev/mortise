@@ -293,7 +293,6 @@ pub fn part_of_circle_counted_on(module: &str) -> String {
     format!("Part of a circle counted on {module}")
 }
 pub const ROUTES_BY_MODULE: &str = "Routes by module";
-pub const NOT_IN_A_MODULE: &str = "Not in a module";
 
 /// The short form, in the place of routes or scheduled tasks.
 pub fn endpoint_not_exposed(endpoint: &str, environment: &str) -> String {

@@ -129,6 +129,48 @@ impl StubActuator {
         stub
     }
 
+    /// A stub that answers as the app of `fixtures/actuator` did, with `prometheus` answering
+    /// `prometheus-busy.txt`. Its links point at the stub and also list `env`, which answers,
+    /// so that a test can see that it is never asked for.
+    pub fn recorded() -> Self {
+        let stub = Self::start();
+        let origin = stub.base_url.replace('/', r"\/");
+        let mut discovery: serde_json::Value = serde_json::from_str(
+            &include_str!("../../../fixtures/actuator/discovery.json")
+                .replace(r"http:\/\/app.test", &origin),
+        )
+        .expect("the recorded links are JSON");
+        discovery["_links"]["env"] = serde_json::json!({
+            "href": format!("{}/actuator/env", stub.base_url),
+            "templated": false,
+        });
+        stub.set("/actuator", Reply::ok(&discovery.to_string()));
+        let recorded = [
+            (
+                "health",
+                include_str!("../../../fixtures/actuator/health.json"),
+            ),
+            ("info", include_str!("../../../fixtures/actuator/info.json")),
+            (
+                "mappings",
+                include_str!("../../../fixtures/actuator/mappings.json"),
+            ),
+            (
+                "scheduledtasks",
+                include_str!("../../../fixtures/actuator/scheduledtasks.json"),
+            ),
+            (
+                "prometheus",
+                include_str!("../../../fixtures/actuator/prometheus-busy.txt"),
+            ),
+            ("env", r#"{"activeProfiles":[],"propertySources":[]}"#),
+        ];
+        for (endpoint, body) in recorded {
+            stub.set(&format!("/actuator/{endpoint}"), Reply::ok(body));
+        }
+        stub
+    }
+
     /// Sets the discovery links at the base path to these endpoints.
     pub fn expose(&self, endpoints: &[&str]) {
         let mut links = vec![format!(

@@ -12,7 +12,7 @@ use egui_kittest::Harness;
 use mortise_app::app::chrome::Chrome;
 use mortise_app::app::{Config, MortiseApp};
 use mortise_core::testing::{Reply, StubActuator};
-use mortise_core::{AppEntry, Credentials, Environment, Secrets, Settings};
+use mortise_core::{AppEntry, Credentials, Environment, MetricsClock, Pace, Secrets, Settings};
 
 pub fn fixture(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -46,6 +46,10 @@ pub struct Desk {
     /// How long the window waits for a folder before it goes on without the result.
     /// Long, so that a test sees the folder in the frame it chose it in.
     pub quick_read: Duration,
+    /// How often an environment is asked.
+    pub pace: Pace,
+    /// The clock of the metrics reads. `None` is the real one.
+    pub metrics_clock: Option<MetricsClock>,
 }
 
 impl Desk {
@@ -61,6 +65,8 @@ impl Desk {
             scale: 1.0,
             os: egui::os::OperatingSystem::Nix,
             quick_read: Duration::from_secs(30),
+            pace: Pace::default(),
+            metrics_clock: None,
         }
     }
 
@@ -137,6 +143,8 @@ impl Desk {
             secrets: Secrets::memory(),
             quick_read: self.quick_read,
             data_dir: Some(self.data_dir()),
+            pace: self.pace,
+            metrics_clock: self.metrics_clock.clone(),
         };
         let mut harness = Harness::builder()
             .with_size(self.size)

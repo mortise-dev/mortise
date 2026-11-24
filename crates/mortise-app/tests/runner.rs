@@ -35,16 +35,16 @@ fn fake(words: &str) -> String {
     format!("\"{}\"{words}", env!("CARGO_BIN_EXE_app-fake-artisan"))
 }
 
-/// Writes these runs into the history of the app, the latest first, an hour ago.
+/// Writes these runs into the history of the app, the latest first, a few seconds apart, so
+/// they fall on today also just after midnight.
 fn seed(desk: &Desk, root: &Path, runs: &[&[&str]]) {
     let history = History::open(&desk.data_dir(), root);
-    let hour_ago = std::time::SystemTime::now()
+    let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
-        .as_millis() as i64
-        - 3_600_000;
+        .as_millis() as i64;
     for (age, args) in runs.iter().enumerate().rev() {
-        let started_ms = hour_ago - age as i64 * 60_000;
+        let started_ms = now - 1_000 - age as i64 * 1_000;
         let entry = Entry {
             id: started_ms as u64,
             args: args.iter().map(|word| word.to_string()).collect(),

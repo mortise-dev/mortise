@@ -111,11 +111,11 @@ fn the_digits_open_the_tabs_and_the_tab_is_kept_while_moving() {
 }
 
 #[test]
-fn a_tab_of_a_later_phase_explains_itself() {
+fn every_tab_is_there_and_a_click_opens_it() {
     let (_desk, mut harness) = shop_api();
     harness.get_by_role_and_label(Role::Tab, "Metrics").click();
     harness.run();
-    harness.get_by_role_and_label(Role::Heading, "Metrics are not in this version");
+    assert_eq!(harness.state().tab(), Tab::Metrics);
     // Every tab is always there, and none is disabled.
     assert_eq!(harness.get_all_by_role(Role::Tab).count(), 5);
 }

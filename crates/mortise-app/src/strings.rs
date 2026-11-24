@@ -391,6 +391,7 @@ pub const PHP: &str = "PHP";
 pub const ROUTES: &str = "Routes";
 pub const SCHEDULED_TASKS: &str = "Scheduled tasks";
 pub const NONE: &str = "none";
+pub const NOT_IN_A_MODULE: &str = "Not in a module";
 
 /// `on local`
 pub fn on_environment(environment: &str) -> String {
@@ -425,6 +426,55 @@ pub fn no_environment(app: &str) -> String {
     format!(
         "No environment is connected. Add the URL of a running {app} to read its runtime status."
     )
+}
+
+pub const TRY_AGAIN: &str = "Try again";
+
+pub fn cannot_reach(environment: &str, url: &str, reason: &str) -> String {
+    format!(
+        "Cannot reach {environment}. No answer from {url}: {reason}. Start the app, or correct \
+         the URL in Settings."
+    )
+}
+
+pub fn refused_credentials(environment: &str, url: &str, status: u16) -> String {
+    format!(
+        "{environment} refused the credentials. {url} answered {status}. Replace the credentials \
+         for {environment} in Settings."
+    )
+}
+
+/// The path of an address: `/actuator/health`
+pub fn path_of(url: &str) -> &str {
+    let rest = url.split_once("://").map_or(url, |(_, rest)| rest);
+    rest.find('/').map_or("/", |at| &rest[at..])
+}
+
+pub fn answered_unexpected(
+    environment: &str,
+    url: &str,
+    status: u16,
+    location: Option<&str>,
+) -> String {
+    let path = path_of(url);
+    if let Some(location) = location {
+        // Not in the spec: a redirect, which Mortise does not follow.
+        return format!(
+            "{environment} answered {status} for {path} and sends to {location}. Correct the \
+             base URL or the actuator path in Settings to match that address."
+        );
+    }
+    match status {
+        500..600 => format!(
+            "{environment} answered {status} for {path}. The actuator configuration has an \
+             error. Read the app log."
+        ),
+        // Not in the spec: an address where no actuator answers.
+        _ => format!(
+            "{environment} answered {status} for {path}. Correct the base URL or the actuator \
+             path in Settings."
+        ),
+    }
 }
 
 /// `info, mappings and scheduledtasks`
