@@ -103,10 +103,11 @@ The job "Real actuator (Linux, not required)" sits beside "Real PHP": `continue-
 | 8932 | `METRICS_ENABLED=false` | 200, empty |
 | 8933 | `METRICS_CACHE_STORE` set to a store whose database file does not exist | 503 |
 
-A process variable wins over `.env` in Laravel, so one app serves all three. The builder checks that
-`php artisan serve` passes the variable to the worker; if it does not, it uses `php -S` with
-`server.php`. The job waits for each `health` with a bounded `curl --retry`, makes the traffic with
-`curl` (Blog route several times, one app route, one 500 if cheap), dispatches the jobs and runs
+A process variable wins over `.env` in Laravel, so one app serves all three. The servers run with
+`php artisan serve --no-reload`: without it, `serve` unsets for the PHP server each variable of `$_ENV`,
+which holds the process variables when `variables_order` has `E` (checked on the Mac with
+`-d variables_order=EGPCS`). The job waits for each `health` with a bounded `curl --retry`, makes
+the traffic with `curl` (Blog route several times, one app route, one 500 if cheap), dispatches the jobs and runs
 `php artisan queue:work --stop-when-empty`, then runs
 `cargo test -p mortise-core --test real_actuator --locked -- --ignored --test-threads=1` with
 `MORTISE_REAL_ACTUATOR=http://127.0.0.1:8931/actuator`, `MORTISE_REAL_ACTUATOR_EMPTY=...8932...`,
@@ -116,8 +117,11 @@ A process variable wins over `.env` in Laravel, so one app serves all three. The
 HTTP), reads the app with `read_app` for the modules, and checks: the base path lists `prometheus`;
 `Blog` and `Billing` read Up from their indicators, which leave the app's components; the figures place
 the Blog route in `Blog`, the Billing job in `Billing` and the app route in "Not in a module"; the empty
-answer reads as metrics off; the 503 reads as a 503 with the app's line. Each test returns early with a
-line on stderr when its variable is unset, as `real_php.rs` does, and is `#[ignore]`.
+answer reads as metrics off; the 503 reads as a 503 with the app's line. A figure is what the counters
+grew by between two reads, so the test of the figures reads, makes its own requests and runs the queue of
+the app, then reads again; the traffic of the job only shows that `prometheus` answers after traffic.
+Each test returns early with a line on stderr when its variable is unset, and is `#[ignore]`.
+(`real_php.rs` panics instead.)
 
 A failing package release then fails this job only. `fixtures/actuator/` stays as recorded; the job is
 the warning that it may be stale.
