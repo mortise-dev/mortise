@@ -4,11 +4,11 @@ ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)
 PAGES=$ROOT/docs/spec-build/out
 
 # inside_root PATH: stop with status 1 unless PATH, with `..` and links resolved, is inside ROOT.
-# PATH does not need to exist yet.
+# PATH does not need to exist yet. On success REAL holds the resolved path: use it, not PATH,
+# to make folders and files, so no step walks the original path.
 inside_root() {
-  local real
-  real=$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$1") || exit 1
-  case "$real/" in
+  REAL=$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$1") || exit 1
+  case "$REAL/" in
     "$ROOT"/*) ;;
     *) echo "Write inside the repository: $1 is outside $ROOT." >&2; exit 1 ;;
   esac
