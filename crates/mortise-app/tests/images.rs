@@ -1426,6 +1426,7 @@ fn the_metrics_tab() {
             let before = asked.load(Ordering::SeqCst);
             harness.key_press_modifiers(Modifiers::COMMAND, Key::R);
             while asked.load(Ordering::SeqCst) == before {
+                assert!(began.elapsed() < Duration::from_secs(240), "a day of reads");
                 harness.step();
             }
         }
@@ -1584,10 +1585,11 @@ fn the_tasks_box_with_its_module_column() {
                 Some((label, ((rect.x0, rect.y0), (rect.x1, rect.y1))))
             })
             .collect();
-        // A task that runs in the next hour shows the time of day, which moves with the clock.
+        // Every next run that names a time moves with the clock, and "tomorrow" turns into
+        // "today" at midnight. The column keeps "no fixed time" and the Module column.
         let masks: Vec<Part> = cells
             .iter()
-            .filter(|(label, _)| label.ends_with(" UTC") && !label.starts_with("tomorrow"))
+            .filter(|(label, _)| label.ends_with(" UTC"))
             .map(|(_, part)| *part)
             .collect();
         let last = cells
