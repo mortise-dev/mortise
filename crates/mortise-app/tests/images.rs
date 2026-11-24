@@ -1389,3 +1389,63 @@ fn the_metrics_tab() {
         shots.take(&mut harness, "s7.3-metrics-day");
     }
 }
+
+#[test]
+fn eight_long_environment_names() {
+    // One set of results for the test: both themes are compared when it ends.
+    let mut shots = Shots::new();
+    let names: Vec<String> = (1..=8)
+        .map(|n| format!("tenant-{n:02}-production-eu-west-2"))
+        .collect();
+    for (theme, name) in THEMES {
+        shots.theme = name;
+        let stub = common::shop_api_actuator();
+        stub.expose(&["health", "info", "mappings", "scheduledtasks", "prometheus"]);
+        stub.set("/actuator/prometheus", Reply::ok(&prometheus(0)));
+        let now = Arc::new(AtomicU64::new(0));
+        let clock = Arc::clone(&now);
+        let mut desk = Desk::new();
+        desk.theme = theme;
+        desk.metrics_clock = Some(Arc::new(move || {
+            Duration::from_secs(clock.load(Ordering::SeqCst))
+        }));
+        let root = desk.app("shop-api");
+        desk.knows(&[(&root, "SA")]);
+        let environments: Vec<_> = names
+            .iter()
+            .map(|name| common::environment(name, &stub))
+            .collect();
+        desk.connect(&environments);
+        let mut harness = desk.start();
+        common::wait_for_answer(&mut harness);
+
+        // S4.3: the runtime box of Billing, with the switch under its title. Cut as in
+        // `the_runtime_box_of_a_module`.
+        select(&mut harness, "Billing");
+        let mid = |(min, max): Part| (min.1 + max.1) / 2.0;
+        let heading = bounds(&harness, Role::Heading, &format!("Runtime on {}", names[0]));
+        let next = bounds(&harness, Role::Heading, "Scheduled tasks");
+        let checked = label_bounds(&harness, "checked ");
+        let part = (
+            (heading.0.0 - 13.0 - 8.0, mid(heading) - 18.0 - 8.0),
+            (checked.1.0 + 13.0 + 8.0, mid(next) - 18.0 - 12.0 + 8.0),
+        );
+        shots.take_part_masked(
+            &mut harness,
+            "s4.3-module-runtime-many-environments",
+            part,
+            &[checked],
+        );
+
+        // S7.3: the environment switch wraps at the width of the tab, the range goes under it.
+        press(&mut harness, Key::Num5);
+        wait_for(&mut harness, "A rate needs two reads");
+        stub.set("/actuator/prometheus", Reply::ok(&prometheus(10)));
+        now.store(15, Ordering::SeqCst);
+        harness.key_press_modifiers(Modifiers::COMMAND, Key::R);
+        harness.run_steps(2);
+        wait_for(&mut harness, "last read 0 s ago");
+        rest(&mut harness);
+        shots.take(&mut harness, "s7.3-metrics-many-environments");
+    }
+}
