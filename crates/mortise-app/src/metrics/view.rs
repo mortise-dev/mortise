@@ -491,7 +491,11 @@ fn table(
                     Rect::from_min_size(pos2(left, chart_box.bottom() + GAP), vec2(inner, table_h));
                 draw::outlined(ui, rect, radius::CONTROL, Color32::TRANSPARENT, pal.line_2);
                 let stamp_left = rect.left() + 14.0;
-                let name_left = stamp_left + STAMP_COLUMN + COLUMN_GAP;
+                // A route has no stamp: its name takes the room of the stamp column.
+                let name_left = match view.scope {
+                    Scope::All => stamp_left + STAMP_COLUMN + COLUMN_GAP,
+                    Scope::Module(_) => stamp_left,
+                };
                 // Each column of figures, from the right edge: its left and right.
                 let mut x = rect.right() - 10.0;
                 let mut columns = [(0.0, 0.0); 6];
@@ -605,9 +609,14 @@ fn table(
                         color,
                         name_w,
                     );
+                    let elided = galley.elided;
                     let cell =
                         draw::paint_galley(ui, pos2(name_left, mid), Align2::LEFT_CENTER, galley);
-                    draw::announce(ui, cell, Role::Cell, &shown.name);
+                    let named = draw::announce(ui, cell, Role::Cell, &shown.name);
+                    // A cut name gives the whole name on hover: two long routes can end alike.
+                    if elided {
+                        draw::tooltip(named, pal, &shown.name);
+                    }
 
                     let rates = &shown.row.rates;
                     // A route has no jobs and no database time; without the module label no
