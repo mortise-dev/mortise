@@ -3,7 +3,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use mortise_core::{Answer, AppSnapshot, Environment, Figures, NotKept, Range, Scope};
+use mortise_core::{Answer, AppSnapshot, Environment, Figures, NotKept, Range, RowOf, Scope};
 
 use super::{Connected, MortiseApp};
 use crate::app::workspace::Tab;
@@ -17,6 +17,8 @@ pub(super) struct Kept {
     /// The module of the scope, `None` for all modules.
     module: Option<String>,
     range: Range,
+    /// The selected row: only it and the total have a line over the range.
+    row: Option<RowOf>,
     figures: Figures,
 }
 
@@ -85,14 +87,16 @@ pub(super) fn tab<'a>(
         Some(Err(NotKept::TooManySeries { limit })) => MetricsView::TooMany { environment, limit },
         Some(Ok(())) => {
             let scope = inputs.module.map_or(Scope::All, Scope::Module);
-            // Worked out again only after a read, or for another snapshot, answer, scope or range.
+            // Worked out again only after a read, or for another snapshot, answer, scope, range or
+            // selected row.
             let kept = match connected.figures.take() {
                 Some(kept)
                     if kept.serial == state.serial
                         && Arc::ptr_eq(&kept.app, app)
                         && Arc::ptr_eq(&kept.answer, &answer)
                         && kept.module.as_deref() == inputs.module
-                        && kept.range == metrics.range =>
+                        && kept.range == metrics.range
+                        && kept.row == metrics.row =>
                 {
                     kept
                 }
@@ -102,11 +106,13 @@ pub(super) fn tab<'a>(
                     answer: Arc::clone(&answer),
                     module: inputs.module.map(str::to_owned),
                     range: metrics.range,
+                    row: metrics.row.clone(),
                     figures: connected.metrics.figures(
                         app,
                         runtime.routes.as_deref(),
                         scope,
                         metrics.range,
+                        metrics.row.as_ref(),
                     ),
                 },
             };

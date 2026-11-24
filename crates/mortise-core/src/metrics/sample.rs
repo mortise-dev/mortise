@@ -12,7 +12,7 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant, SystemTime};
 
 use crate::app::AppSnapshot;
-use crate::metrics::figures::{Figures, Range, Scope};
+use crate::metrics::figures::{Figures, Range, RowOf, Scope};
 use crate::metrics::place::Placing;
 use crate::metrics::prometheus::{Part, samples, typed};
 use crate::runtime::actuator::{NoMetrics, Route};
@@ -963,17 +963,19 @@ impl LiveMetrics {
     }
 
     /// The figures of `scope` over `range`, placed by `app` and `routes`.
-    /// `routes` is `None` when `mappings` is not exposed.
+    /// `routes` is `None` when `mappings` is not exposed. The line over the range is built for the
+    /// total and the `selected` row only.
     pub fn figures(
         &self,
         app: &AppSnapshot,
         routes: Option<&[Route]>,
         scope: Scope<'_>,
         range: Range,
+        selected: Option<&RowOf>,
     ) -> Figures {
         let placing = Placing::new(app, routes);
         let shared = self.lock();
-        Figures::of(app, &placing, scope, &shared.0, range)
+        Figures::of(app, &placing, scope, &shared.0, range, selected)
     }
 
     fn lock(&self) -> MutexGuard<'_, (MetricsStore, MetricsState)> {

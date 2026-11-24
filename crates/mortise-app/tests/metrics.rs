@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 use common::{Desk, connected, environment, fixture, shop_api, wait_for_answer};
 use eframe::egui::{Key, Modifiers, Role};
 use egui_kittest::Harness;
-use egui_kittest::kittest::Queryable as _;
+use egui_kittest::kittest::{NodeT as _, Queryable as _};
 use mortise_app::app::MortiseApp;
 use mortise_core::Pace;
 use mortise_core::testing::{Reply, StubActuator};
@@ -281,6 +281,13 @@ fn two_reads_give_a_figure_for_every_module_and_write_nothing() {
     harness.key_press(Key::J);
     harness.run_steps(3);
     harness.get_by_role_and_label(Role::Heading, "Requests per minute, Checkout");
+    // The line of the row is worked out once it is selected.
+    let chart =
+        harness.get_by_role_and_label(Role::Image, "Requests per minute, Checkout, last hour");
+    assert_eq!(
+        chart.accesskit_node().description().as_deref(),
+        Some("Now 0, highest 0, lowest 0 requests per minute.")
+    );
 
     // A module selected in the index lists its routes.
     harness

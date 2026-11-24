@@ -113,9 +113,11 @@ impl Line {
 pub struct Row {
     pub of: RowOf,
     pub rates: Rates,
-    /// Requests per minute over the range, for the chart.
+    /// Requests per minute over the range, for the chart. Built for `Figures::total` and the
+    /// selected row only: empty for every other row, as a day of a few thousand routes would be
+    /// millions of points.
     pub line: Line,
-    /// Requests per minute over the last hour, for the column "Last hour".
+    /// Requests per minute over the last hour, for the column "Last hour". Built for every row.
     pub last_hour: Line,
 }
 
@@ -208,8 +210,9 @@ impl Sum {
 
 /// The line of each slot: what the request subjects of the slot grew by at each step. The last
 /// slot is the total. `targets` holds a target per kept subject; one that is no request counts
-/// nowhere.
-fn lines(steps: &[Step], newest: Duration, targets: &[Target], width: usize) -> Vec<Line> {
+/// nowhere. A slot that `built` does not hold gets an empty line.
+fn lines(steps: &[Step], newest: Duration, targets: &[Target], built: &[bool]) -> Vec<Line> {
+    let width = built.len();
     let mut lines = vec![Line::default(); width];
     let mut counts = vec![0.0; width];
     for step in steps {
@@ -224,7 +227,12 @@ fn lines(steps: &[Step], newest: Duration, targets: &[Target], width: usize) -> 
         }
         let ago = newest.saturating_sub(step.at);
         let per_minute = 60.0 / step.covered.as_secs_f64();
-        for (line, &count) in lines.iter_mut().zip(&counts) {
+        for ((line, &count), _) in lines
+            .iter_mut()
+            .zip(&counts)
+            .zip(built)
+            .filter(|(_, built)| **built)
+        {
             let point = Point {
                 ago,
                 per_minute: count * per_minute,
@@ -240,13 +248,15 @@ fn lines(steps: &[Step], newest: Duration, targets: &[Target], width: usize) -> 
 
 impl Figures {
     /// Places what the store kept over `range` and works out the rows of `scope`. In the scope All,
-    /// every module of `app` has a row, also with no change.
+    /// every module of `app` has a row, also with no change. The line over the range is built for
+    /// the total and the `selected` row only.
     pub(crate) fn of(
         app: &AppSnapshot,
         placing: &Placing<'_>,
         scope: Scope<'_>,
         store: &MetricsStore,
         range: Range,
+        selected: Option<&RowOf>,
     ) -> Self {
         let subjects: Vec<&Subject> = store.subjects().collect();
         let database_known = subjects.iter().any(|subject| match subject {
@@ -353,8 +363,15 @@ impl Figures {
             })
             .collect();
         let newest = store.newest().unwrap_or_default();
-        let line = lines(&store.steps(range.span()), newest, &requests, width);
-        let last_hour = lines(&store.steps(Range::Hour.span()), newest, &requests, width);
+        // The line over the range: the total, and the selected row.
+        let built: Vec<bool> = ofs
+            .iter()
+            .enumerate()
+            .map(|(slot, of)| slot == width - 1 || Some(of) == selected)
+            .collect();
+        let line = lines(&store.steps(range.span()), newest, &requests, &built);
+        let every = vec![true; width];
+        let last_hour = lines(&store.steps(Range::Hour.span()), newest, &requests, &every);
 
         let mut rows: Vec<Row> = ofs
             .into_iter()
@@ -452,7 +469,7 @@ mod tests {
         ];
         store.push(secs(15), reading(&[0.1, 10.0], cells)).unwrap();
 
-        let figures = Figures::of(&app, &placing, Scope::All, &store, Range::Hour);
+        let figures = Figures::of(&app, &placing, Scope::All, &store, Range::Hour, None);
         assert!(figures.database_known);
         let of = |name: &str| {
             let row = figures
@@ -471,6 +488,7 @@ mod tests {
             Scope::Module("Billing"),
             &store,
             Range::Hour,
+            None,
         );
         assert_eq!(billing.rows[0].rates.database, None);
         assert_eq!(billing.total.rates.database, Some(0.25));
@@ -490,7 +508,7 @@ mod tests {
             ),
         ];
         store.push(secs(15), reading(&[1.0, 2.0], cells)).unwrap();
-        let figures = Figures::of(&app, &placing, Scope::All, &store, Range::Hour);
+        let figures = Figures::of(&app, &placing, Scope::All, &store, Range::Hour, None);
         let billing = figures
             .rows
             .iter()
@@ -525,7 +543,15 @@ mod tests {
                 .unwrap();
         }
 
-        let figures = Figures::of(&app, &placing, Scope::All, &store, Range::Day);
+        let billing = RowOf::Module("Billing".to_owned());
+        let figures = Figures::of(
+            &app,
+            &placing,
+            Scope::All,
+            &store,
+            Range::Day,
+            Some(&billing),
+        );
         let line = &figures.total.line;
         let agos = |ats: Vec<u64>| -> Vec<Duration> {
             ats.into_iter().map(|at| secs(newest - at)).collect()
@@ -568,6 +594,10 @@ mod tests {
             .filter(|point| point.ago < Range::Hour.span())
             .collect();
         assert_eq!(figures.total.last_hour.runs, [hour]);
+        // The selected row has its line over the range; another row has none.
+        assert_eq!(figures.rows[0].of, billing);
         assert_eq!(figures.rows[0].line, *line);
+        assert_eq!(figures.rows[1].line, Line::default());
+        assert!(!figures.rows[1].last_hour.runs.is_empty());
     }
 }

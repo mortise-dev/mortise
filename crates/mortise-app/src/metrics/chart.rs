@@ -100,10 +100,14 @@ pub fn chart(ui: &Ui, pal: &Palette, rect: Rect, plot: &Plot<'_>) {
 }
 
 /// Draws the sparkline of a row in `rect`, 58 by 14 px, scaled to the row's own highest point.
+/// Off screen it draws nothing and keeps its accessible node.
 pub fn spark(ui: &Ui, pal: &Palette, rect: Rect, line: &Line, span: Duration, name: &str) {
     // Room for half the stroke on every side, as the paths of S7.3 keep inside the box.
-    let area = rect.shrink2(eframe::egui::vec2(1.0, 1.0));
-    draw_line(ui, area, line, span, highest(line), pal.ink_2, SPARK_W);
+    // A row scrolled out of view builds no path: a module can have thousands of routes.
+    if ui.is_rect_visible(rect) {
+        let area = rect.shrink2(eframe::egui::vec2(1.0, 1.0));
+        draw_line(ui, area, line, span, highest(line), pal.ink_2, SPARK_W);
+    }
     draw::announce(ui, rect, Role::Image, name);
 }
 

@@ -133,7 +133,7 @@ mod tests {
         now.store(15, Ordering::Relaxed);
         sink(Ok(recorded("prometheus-busy.txt")));
 
-        let figures = metrics.figures(&app, Some(&routes), Scope::All, Range::Hour);
+        let figures = metrics.figures(&app, Some(&routes), Scope::All, Range::Hour, None);
         assert_eq!(figures.covered, Some(Duration::from_secs(15)));
         // No series has a `module` label: database time is unknown in every row.
         assert!(!figures.database_known);
@@ -185,7 +185,13 @@ mod tests {
         assert_eq!(figures.total.rates.requests_per_minute, counted * 4.0);
 
         // The routes of one module, with the figures of the module as the total.
-        let billing = metrics.figures(&app, Some(&routes), Scope::Module("Billing"), Range::Hour);
+        let billing = metrics.figures(
+            &app,
+            Some(&routes),
+            Scope::Module("Billing"),
+            Range::Hour,
+            None,
+        );
         let route = |path: &str, requests: f64, errors: f64| {
             let of = RowOf::Route {
                 route: Some(path.to_owned()),
@@ -237,14 +243,14 @@ mod tests {
             }
         );
         assert_eq!(
-            metrics.figures(&app, Some(&routes), Scope::All, Range::Hour),
+            metrics.figures(&app, Some(&routes), Scope::All, Range::Hour, None),
             figures
         );
         // Nor does a 200 with no `# TYPE` line, such as a sign-in page.
         sink(Ok("<!doctype html>\n<title>Sign in</title>\n".to_owned()));
         assert_eq!(metrics.state().last, Some(Err(NotKept::NotMetrics)));
         assert_eq!(
-            metrics.figures(&app, Some(&routes), Scope::All, Range::Hour),
+            metrics.figures(&app, Some(&routes), Scope::All, Range::Hour, None),
             figures
         );
 
