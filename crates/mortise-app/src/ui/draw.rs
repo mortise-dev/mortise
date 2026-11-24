@@ -1483,7 +1483,7 @@ fn segmented_any(
     }
 
     let mut clicked = None;
-    for (i, (label, segment)) in labels.iter().zip(segments).enumerate() {
+    for (i, (label, &segment)) in labels.iter().zip(&segments).enumerate() {
         let cut = natural[i] > widths[i];
         let id = ui.scope_id().with(("segment", name, i));
         // A segment is drawn 20 px high; its target is as high as the track.
@@ -1535,6 +1535,9 @@ fn segmented_any(
             if let Some(target) = target {
                 clicked = Some(target);
                 focus_soon(ui, ui.scope_id().with(("segment", name, target)));
+                // A wrapped control can reach past the view: show the segment that gets
+                // focus, with its target and focus ring.
+                ui.scroll_to_rect(segments[target].expand2(vec2(0.0, 3.0)), None);
             }
         }
         let color = if i == selected {

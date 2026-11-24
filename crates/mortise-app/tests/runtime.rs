@@ -565,7 +565,11 @@ fn the_switch_in_the_runtime_box_chooses_the_environment() {
     assert_eq!(desk.saved().apps[0].environment.as_deref(), Some("staging"));
     assert_eq!(status(&harness), Some(Status::Down));
 
-    // The switch is one Tab stop, and Right goes through the lines in order.
+    // The switch is one Tab stop, and Right goes through the lines in order. In a low
+    // window the lower lines are past the view: the chosen segment is scrolled into it.
+    let height = 330.0;
+    harness.set_size(eframe::egui::vec2(desk.size.x, height));
+    harness.run_steps(3);
     let focused = |harness: &Harness<'static, MortiseApp>| {
         harness
             .query_by(|node| node.is_focused())
@@ -583,6 +587,15 @@ fn the_switch_in_the_runtime_box_chooses_the_environment() {
         harness.run_steps(3);
         assert_eq!(focused(&harness).as_ref(), Some(name));
         assert_eq!(desk.saved().apps[0].environment.as_ref(), Some(name));
+        let rect = harness
+            .get_by_role_and_label(Role::RadioButton, name)
+            .accesskit_node()
+            .bounding_box()
+            .unwrap();
+        assert!(
+            rect.y0 >= 0.0 && rect.y1 <= f64::from(height),
+            "{name}: {rect:?}"
+        );
     }
 }
 
