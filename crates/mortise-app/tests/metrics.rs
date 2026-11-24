@@ -307,3 +307,55 @@ fn two_reads_give_a_figure_for_every_module_and_write_nothing() {
         .click();
     wait_for(&mut harness, ONE_READ);
 }
+
+#[test]
+fn eight_long_environment_names_wrap_inside_the_tab_and_each_can_be_clicked() {
+    let stub = StubActuator::recorded();
+    let mut desk = Desk::new();
+    // The rail and the index take 319 px: the tab is 900 px wide.
+    desk.size.x = 319.0 + 900.0;
+    let root = desk.app("shop-api");
+    desk.knows(&[(&root, "SA")]);
+    let names: Vec<String> = (1..=8)
+        .map(|n| format!("tenant-{n:02}-production-eu-west-2"))
+        .collect();
+    let environments: Vec<_> = names.iter().map(|name| environment(name, &stub)).collect();
+    desk.connect(&environments);
+    let mut harness = desk.start();
+    wait_for_answer(&mut harness);
+    open_metrics(&mut harness);
+    wait_for(&mut harness, ONE_READ);
+
+    // Every segment of both switches is inside the tab. The environments take two lines,
+    // the range a third.
+    let mut tops = Vec::new();
+    for node in harness.get_all_by_role(Role::RadioButton) {
+        let rect = node.accesskit_node().bounding_box().unwrap();
+        assert!(
+            rect.x0 >= 319.0 && rect.x1 <= f64::from(desk.size.x),
+            "{rect:?}"
+        );
+        tops.push(rect.y0);
+    }
+    tops.dedup();
+    assert!(tops.len() > 2, "{tops:?}");
+
+    // Each environment can be chosen by pointer, and the choice is kept. A chosen
+    // environment is read anew: the switch is back with its first read.
+    let chosen = || desk.saved().apps.remove(0).environment;
+    let switch_back = |harness: &mut Harness<'static, MortiseApp>, name: &str| {
+        wait_while(harness, name, |harness| {
+            harness
+                .query_by_role_and_label(Role::RadioButton, name)
+                .is_none()
+        });
+    };
+    for name in names.iter().rev() {
+        switch_back(&mut harness, name);
+        harness
+            .get_by_role_and_label(Role::RadioButton, name)
+            .click();
+        harness.run_steps(3);
+        assert_eq!(chosen().as_ref(), Some(name));
+    }
+}
