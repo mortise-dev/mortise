@@ -507,12 +507,12 @@ mod tests {
         let placing = Placing::new(&app, None);
         let route = request("billing", "/billing/invoices");
         let mut store = MetricsStore::new(PACE);
-        // A read every 15 s for 25 hours, one request each, with no read for 10 minutes after
-        // 10 hours. The newest read counts 3.
+        // A read every 15 s for 25 hours, one request each, with no read for 75 s after 5 hours
+        // and for 10 minutes after 10 hours. The newest read counts 3.
         let newest = 90_000;
         let mut count = 0.0;
         for at in (0..=newest).step_by(15) {
-            if (36_015..36_600).contains(&at) {
+            if (18_015..18_090).contains(&at) || (36_015..36_600).contains(&at) {
                 continue;
             }
             count += if at == newest { 3.0 } else { 1.0 };
@@ -535,12 +535,14 @@ mod tests {
             .iter()
             .map(|run| run.iter().map(|point| point.ago).collect())
             .collect();
-        // A point every 5 minutes before the last hour and every 15 s in it. The read after the
-        // gap starts the second run, and gives no point.
+        // A point every 5 minutes before the last hour and every 15 s in it. The read after a
+        // gap starts a run, and gives no point. Thinning drops the read at 18,090 s, as 18,000 s
+        // holds its 5 minute step, and the line still breaks before 18,300 s.
         assert_eq!(
             runs,
             [
-                agos((3_900..=36_000).step_by(300).collect()),
+                agos((3_900..=18_000).step_by(300).collect()),
+                agos((18_600..=36_000).step_by(300).collect()),
                 agos(
                     (36_900..=86_400)
                         .step_by(300)
@@ -560,7 +562,7 @@ mod tests {
         assert_eq!(*last, 12.0);
         assert_eq!(line.now(), Some(12.0));
         // The column "Last hour" is the same line over 1 hour, whatever the range.
-        let hour: Vec<Point> = line.runs[1]
+        let hour: Vec<Point> = line.runs[2]
             .iter()
             .copied()
             .filter(|point| point.ago < Range::Hour.span())

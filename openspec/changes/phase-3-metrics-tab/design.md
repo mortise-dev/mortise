@@ -205,10 +205,13 @@ pub(crate) struct Step {
 
 impl MetricsStore {
     /// The steps between neighbouring kept reads from the oldest read that `change(span)` uses to
-    /// the newest. A pair whose later read starts a run, or that covers no time, is no step.
+    /// the newest. A pair whose two reads are of different runs, or that covers no time, is no step.
     pub(crate) fn steps(&self, span: Duration) -> Vec<Step>;
 }
 ```
+
+Each kept read holds the number of its run. Thinning can drop the first read of a run when a read
+before the gap holds its 5 minute step, so `starts_run` alone would join the line across the gap.
 
 `Change` also gains `pub bounds: &'a [f64]`, the bounds of the store, lowest first.
 

@@ -274,6 +274,8 @@ struct Read {
     covered: Duration,
     /// `true` for the first read of a run.
     starts_run: bool,
+    /// The number of the run of this read.
+    run: u64,
     /// The running totals, one row of `FIXED + bounds` numbers per subject, in the order of the
     /// columns. A subject that was not known yet has no row here, which reads as zero.
     totals: Vec<f64>,
@@ -479,6 +481,7 @@ impl MetricsStore {
             at,
             covered,
             starts_run: first,
+            run,
             totals,
         });
         self.latest = Some((at, covered));
@@ -577,7 +580,8 @@ impl MetricsStore {
     }
 
     /// The steps between neighbouring kept reads from the oldest read that `change(span)` uses to
-    /// the newest. A pair whose later read starts a run, or that covers no time, is no step.
+    /// the newest. A pair whose two reads are of different runs, or that covers no time, is no step.
+    /// Thinning can drop the first read of a run, so the run number tells a gap, not `starts_run`.
     pub(crate) fn steps(&self, span: Duration) -> Vec<Step> {
         let width = self.width();
         let mut steps = Vec::new();
@@ -588,7 +592,7 @@ impl MetricsStore {
         };
         for read in reads {
             let covered = read.covered.saturating_sub(before.covered);
-            if read.starts_run || covered.is_zero() {
+            if read.run != before.run || covered.is_zero() {
                 starts = true;
             } else {
                 let counts = (0..self.columns.len())
