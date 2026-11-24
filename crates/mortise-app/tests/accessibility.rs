@@ -186,26 +186,20 @@ fn the_metrics_table_and_the_routes_of_a_module() {
         std::thread::sleep(std::time::Duration::from_millis(20));
         harness.run_steps(2);
     }
-    // A second read draws the chart.
+    // A second read draws the chart. After one read the chart only says "No rate yet.": wait for the
+    // summary of the recorded rates, which repeat, so every rate is 0.
     chord(&mut harness, Key::R);
     while harness
         .query_by_role_and_label(Role::Image, "Requests per minute, all modules, last hour")
-        .is_none()
+        .and_then(|chart| chart.accesskit_node().description())
+        .as_deref()
+        != Some("Now 0, highest 0, lowest 0 requests per minute.")
     {
-        assert!(std::time::Instant::now() < deadline, "the chart");
+        assert!(std::time::Instant::now() < deadline, "the chart summary");
         std::thread::sleep(std::time::Duration::from_millis(20));
         harness.run_steps(2);
     }
     audit(&harness, "Metrics table of all modules");
-    let chart =
-        harness.get_by_role_and_label(Role::Image, "Requests per minute, all modules, last hour");
-    assert!(
-        chart
-            .accesskit_node()
-            .description()
-            .is_some_and(|summary| !summary.trim().is_empty()),
-        "the chart has no text summary"
-    );
     // The two switches are groups of radio buttons, and the range is chosen by its name.
     for name in ["local", "staging", "15 min", "1 hour", "24 hours"] {
         harness.get_by_role_and_label(Role::RadioButton, name);
