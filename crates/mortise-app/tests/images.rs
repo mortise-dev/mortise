@@ -45,6 +45,12 @@ impl Shots {
 
     fn take(&mut self, harness: &mut Harness<'static, MortiseApp>, screen: &str) {
         harness.run_steps(3);
+        self.take_frozen(harness, screen);
+    }
+
+    /// As [`Shots::take`], without the frames that let the window settle: a scan that goes on
+    /// frame by frame is caught where it stands.
+    fn take_frozen(&mut self, harness: &mut Harness<'static, MortiseApp>, screen: &str) {
         // A few pixels may differ where an edge is rounded.
         let options = SnapshotOptions::new().max_failed_pixels(40);
         let name = format!("{screen}-{}", self.theme);
@@ -307,6 +313,16 @@ fn boundary_and_the_public_surface() {
         press(&mut harness, Key::J);
         press(&mut harness, Key::J);
         shots.take(&mut harness, "s5.1-boundary-module");
+        // S5.2: the files of the circle with Shipping. The first Shipping in the workspace is the
+        // one Checkout uses; the index holds the one before it.
+        harness
+            .get_all_by_role_and_label(Role::ListBoxOption, "Shipping")
+            .nth(1)
+            .unwrap()
+            .click();
+        // The pointer rests on the title bar, away from the buttons under the files.
+        harness.hover_at(eframe::egui::pos2(700.0, 20.0));
+        shots.take(&mut harness, "s5.2-boundary-circle");
 
         // A neighbour whose name does not fit shows its stamp, not a cut name.
         let mut desk = Desk::new();
@@ -328,6 +344,22 @@ fn boundary_and_the_public_surface() {
             (1264.0, files.1 - 12.0),
         );
         shots.take_part(&mut harness, "s5.1-long-neighbour", part);
+
+        // S5.6: a scan in a module of 96 files, after the first frame. A frame reads 8 files.
+        let mut desk = Desk::new();
+        desk.theme = theme;
+        let root = desk.app("shop-api");
+        common::pad_module(&root, "Billing", 81);
+        desk.knows(&[(&root, "SA")]);
+        let mut harness = desk.start();
+        select(&mut harness, "Billing");
+        press(&mut harness, Key::Num2);
+        press(&mut harness, Key::P);
+        harness.key_press_modifiers(Modifiers::COMMAND, Key::Enter);
+        for _ in 0..3 {
+            harness.step();
+        }
+        shots.take_frozen(&mut harness, "s5.6-surface-scanning");
     }
 }
 
@@ -1346,7 +1378,7 @@ fn the_metrics_tab() {
         shots.take(&mut harness, "s7.3-metrics-module");
     }
 
-    // A day: 15 s per read, 5,760 reads, as fast as the stub answers. The clock of the reads
+    // A day: 15 s per read, 5,760 reads, as fast as the stub answers and Ctrl R asks. The clock of the reads
     // counts the requests, so a read is 15 s after the one before. Reads after `DAY` have the
     // time of read `DAY` and are not kept. The fill takes about 10 s in a debug build.
     const DAY: u64 = 5_760;
@@ -1363,10 +1395,6 @@ fn the_metrics_tab() {
         });
         let mut desk = Desk::new();
         desk.theme = theme;
-        desk.pace = mortise_core::Pace {
-            metrics: Duration::from_millis(1),
-            ..mortise_core::Pace::default()
-        };
         let counter = Arc::clone(&asked);
         desk.metrics_clock = Some(Arc::new(move || {
             Duration::from_secs(15 * counter.load(Ordering::SeqCst).min(DAY))
@@ -1377,15 +1405,262 @@ fn the_metrics_tab() {
         let mut harness = desk.start();
         common::wait_for_answer(&mut harness);
         press(&mut harness, Key::Num5);
+        // Ctrl R reads at once, so the pace stays 15 s and the tab says so.
         let began = std::time::Instant::now();
         while asked.load(Ordering::SeqCst) < DAY + 2 {
-            assert!(began.elapsed() < Duration::from_secs(120), "a day of reads");
-            harness.run_steps(2);
+            assert!(began.elapsed() < Duration::from_secs(240), "a day of reads");
+            let before = asked.load(Ordering::SeqCst);
+            harness.key_press_modifiers(Modifiers::COMMAND, Key::R);
+            while asked.load(Ordering::SeqCst) == before {
+                harness.step();
+            }
         }
         harness
             .get_by_role_and_label(Role::RadioButton, "24 hours")
             .click();
         rest(&mut harness);
         shots.take(&mut harness, "s7.3-metrics-day");
+    }
+}
+
+/// The runtime box of the Summary of all modules, which stands in the right column: from its
+/// heading to its last line, and the time of the answer when there is one. The boxes under it
+/// are as wide as the workspace, so the column ends at the first heading under the box.
+fn runtime_box(harness: &Harness<'static, MortiseApp>) -> (Part, Vec<Part>) {
+    let (heading, _) = bounds(harness, Role::Heading, "Runtime on local");
+    let end = ["Scheduled tasks", "By module"]
+        .into_iter()
+        .filter_map(|next| harness.query_by_role_and_label(Role::Heading, next))
+        .filter_map(|node| node.accesskit_node().bounding_box())
+        .map(|rect| rect.y0)
+        .fold(f64::MAX, f64::min);
+    let last = harness
+        .query_all_by_label_contains("")
+        .filter_map(|node| node.accesskit_node().bounding_box())
+        .filter(|rect| rect.x0 >= heading.0 && rect.y0 > heading.1 && rect.y0 < end)
+        .map(|rect| rect.y1)
+        .fold(0.0, f64::max);
+    // A heading is 9 px under the top of its box, and a box ends 12 px under its last line.
+    let part = (
+        (heading.0 - 13.0 - 8.0, heading.1 - 9.0 - 8.0),
+        (1264.0, last + 12.0 + 8.0),
+    );
+    let checked = harness
+        .query_by_label_contains("checked ")
+        .map(|_| label_bounds(harness, "checked "));
+    (part, checked.into_iter().collect())
+}
+
+#[test]
+fn the_runtime_box_in_each_state() {
+    // One set of results for the test: both themes are compared when it ends.
+    let mut shots = Shots::new();
+    for (theme, name) in THEMES {
+        shots.theme = name;
+        for letter in ['b', 'c', 'd', 'f', 'g', 'h', 'i'] {
+            let mut desk = Desk::new();
+            desk.theme = theme;
+            let root = desk.app("shop-api");
+            desk.knows(&[(&root, "SA")]);
+            // S6.5 b has no environment yet; c answers nothing; the others answer as the stub says.
+            match (letter, common::runtime_state(letter)) {
+                ('b', _) => {}
+                (_, Some(stub)) => desk.connect(&[common::environment("local", &stub)]),
+                (_, None) => desk.connect(&[mortise_core::Environment {
+                    name: "local".into(),
+                    base_url: "http://127.0.0.1:9".into(),
+                    path: "actuator".into(),
+                    credentials: mortise_core::Credentials::None,
+                }]),
+            }
+            let mut harness = desk.start();
+            if letter != 'b' {
+                common::wait_for_answer(&mut harness);
+            }
+            rest(&mut harness);
+            let screen = format!("s6.5{letter}-runtime");
+            if letter == 'b' {
+                // The box without a name of an environment, and no boxes of routes under it.
+                let heading = bounds(&harness, Role::Heading, "Runtime");
+                let add = bounds(&harness, Role::Button, "Add environment");
+                let part = (
+                    (heading.0.0 - 13.0 - 8.0, heading.0.1 - 8.0 - 8.0),
+                    (1264.0, add.1.1 + 13.0 + 8.0),
+                );
+                shots.take_part(&mut harness, &screen, part);
+                continue;
+            }
+            let (part, masks) = runtime_box(&harness);
+            shots.take_part_masked(&mut harness, &screen, part, &masks);
+        }
+    }
+}
+
+#[test]
+fn the_rail_and_the_home_screen() {
+    // One set of results for the test: both themes are compared when it ends.
+    let mut shots = Shots::new();
+    for (theme, name) in THEMES {
+        shots.theme = name;
+        // S4.1: two apps, and the rail marks the one with problems. crm turns two rules off.
+        let mut desk = Desk::new();
+        desk.theme = theme;
+        let shop = desk.app("shop-api");
+        let crm = desk.app("crm");
+        std::fs::write(
+            crm.join("mortise.json"),
+            r#"{"rules": {"no-circular-use": false, "public-surface-only": {"enabled": false}}}"#,
+        )
+        .unwrap();
+        desk.knows(&[(&shop, "SA"), (&crm, "CR")]);
+        let mut harness = desk.start();
+        press(&mut harness, Key::S);
+        shots.take(&mut harness, "s4.1-home");
+
+        // S2.1: ten apps in the rail, which stays 52 px wide.
+        let mut desk = Desk::new();
+        desk.theme = theme;
+        let names = [
+            "shop-api", "crm", "billing", "booking", "cms", "forum", "helpdesk", "lms", "portal",
+            "wiki",
+        ];
+        let roots: Vec<_> = names.iter().map(|folder| desk.app(folder)).collect();
+        let apps: Vec<(&std::path::Path, &str)> = roots
+            .iter()
+            .zip(["SA", "CR", "BI", "BK", "CM", "FO", "HD", "LM", "PO", "WI"])
+            .map(|(root, monogram)| (root.as_path(), monogram))
+            .collect();
+        desk.knows(&apps);
+        let mut harness = desk.start();
+        rest(&mut harness);
+        shots.take_part(
+            &mut harness,
+            "s2.1-rail-10-apps",
+            ((0.0, 34.0), (52.0, 800.0)),
+        );
+    }
+}
+
+#[test]
+fn the_tasks_box_with_its_module_column() {
+    // One set of results for the test: both themes are compared when it ends.
+    let mut shots = Shots::new();
+    for (theme, name) in THEMES {
+        shots.theme = name;
+        // S4.2: the box of scheduled tasks of the Summary of all modules. The window is tall
+        // enough to hold it.
+        let stub = common::shop_api_actuator();
+        let mut desk = Desk::new();
+        desk.theme = theme;
+        desk.size = eframe::egui::vec2(1280.0, 1100.0);
+        let root = desk.app("shop-api");
+        desk.knows(&[(&root, "SA")]);
+        desk.connect(&[common::environment("local", &stub)]);
+        let mut harness = desk.start();
+        common::wait_for_answer(&mut harness);
+        // The pointer rests on the title bar, away from the table.
+        harness.hover_at(eframe::egui::pos2(700.0, 20.0));
+        harness.run_steps(3);
+        let (heading, _) = bounds(&harness, Role::Heading, "Scheduled tasks");
+        let cells: Vec<(String, Part)> = harness
+            .query_all_by_role(Role::Cell)
+            .filter_map(|cell| {
+                let rect = cell.accesskit_node().bounding_box()?;
+                let label = cell.accesskit_node().label()?;
+                Some((label, ((rect.x0, rect.y0), (rect.x1, rect.y1))))
+            })
+            .collect();
+        // A task that runs in the next hour shows the time of day, which moves with the clock.
+        let masks: Vec<Part> = cells
+            .iter()
+            .filter(|(label, _)| label.ends_with(" UTC") && !label.starts_with("tomorrow"))
+            .map(|(_, part)| *part)
+            .collect();
+        let last = cells
+            .iter()
+            .filter(|(_, part)| part.0.1 > heading.1 && part.0.1 < heading.1 + 200.0)
+            .map(|(_, part)| part.1.1)
+            .fold(0.0, f64::max);
+        let part = (
+            (heading.0 - 13.0 - 8.0, heading.1 - 9.0 - 8.0),
+            (1264.0, last + 12.0 + 8.0),
+        );
+        shots.take_part_masked(&mut harness, "s4.2-tasks-module-column", part, &masks);
+    }
+}
+
+#[test]
+fn the_environments_of_an_app_in_settings() {
+    use mortise_core::{Credentials, Environment};
+    // The addresses are fixed. The app on screen asks its first environment, and port 9 refuses
+    // at once, without a name to look up; the others are never asked.
+    let environment = |name: &str, credentials| Environment {
+        name: name.into(),
+        base_url: match name {
+            "local" => "http://127.0.0.1:9".into(),
+            _ => format!("https://{name}.shop-api.test"),
+        },
+        path: "actuator".into(),
+        credentials,
+    };
+    // One set of results for the test: both themes are compared when it ends.
+    let mut shots = Shots::new();
+    for (theme, name) in THEMES {
+        shots.theme = name;
+        let mut desk = Desk::new();
+        desk.theme = theme;
+        let root = desk.app("shop-api");
+        desk.knows(&[(&root, "SA")]);
+        desk.connect(&[
+            environment("local", Credentials::None),
+            environment("staging", Credentials::Bearer),
+            environment(
+                "production",
+                Credentials::Basic {
+                    user: "mortise".into(),
+                },
+            ),
+        ]);
+        let mut harness = desk.start();
+        common::wait_for_answer(&mut harness);
+        chord(&mut harness, Key::Comma);
+        click(&mut harness, Role::Row, "Environment staging");
+        // S8.5: the token as it is typed, hidden. Leaving the field keeps it in the store.
+        harness
+            .get_by_role_and_label(Role::PasswordInput, "Token")
+            .focus();
+        harness.run_steps(2);
+        harness
+            .get_by_role_and_label(Role::PasswordInput, "Token")
+            .type_text("s3cret-token");
+        // The folder of the app is a temporary one, so the parts start under it. The pointer
+        // rests on the title bar.
+        let credentials = |harness: &Harness<'static, MortiseApp>| {
+            // The column of the table has the same name: the label of the form is the lower one.
+            let from = harness
+                .get_all_by_role_and_label(Role::Label, "Credentials")
+                .filter_map(|node| node.accesskit_node().bounding_box())
+                .map(|rect| rect.y0)
+                .fold(0.0, f64::max);
+            let (_, to) = label_bounds(harness, "Kept in the credential store");
+            ((316.0, from - 8.0), (1264.0, to.1 + 8.0))
+        };
+        harness.hover_at(eframe::egui::pos2(700.0, 20.0));
+        let part = credentials(&harness);
+        shots.take_part(&mut harness, "s8.5-credentials-token", part);
+        harness
+            .get_by_role_and_label(Role::TextInput, "Environment name")
+            .focus();
+        harness.run_steps(3);
+        // S8.1: the environments of the app, staging being edited.
+        let (from, _) = label_bounds(&harness, "Environments of shop-api");
+        let (_, to) = bounds(&harness, Role::Button, "Remove environment");
+        let part = ((316.0, from.1 - 12.0), (1280.0, to.1 + 12.0));
+        shots.take_part(&mut harness, "s8.1-settings-environments", part);
+        // S8.5: HTTP basic holds a user name and a password.
+        click(&mut harness, Role::Row, "Environment production");
+        harness.hover_at(eframe::egui::pos2(700.0, 20.0));
+        let part = credentials(&harness);
+        shots.take_part(&mut harness, "s8.5-credentials-basic", part);
     }
 }

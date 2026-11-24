@@ -379,45 +379,6 @@ fn milestone_6_settings() {
     save("text-size-150-light", &mut harness);
 }
 
-/// The runtime box in each of its states, by what the stub answers.
-fn runtime_state(letter: char) -> Option<mortise_core::testing::StubActuator> {
-    use mortise_core::testing::{Reply, StubActuator};
-    let stub = common::shop_api_actuator();
-    match letter {
-        'c' => return None,
-        'd' => {
-            stub.expose(&["health"]);
-            stub.set("/actuator/health", Reply::ok(r#"{"status":"UP"}"#));
-        }
-        'e' => stub.require_header("authorization", "Bearer right"),
-        'f' => stub.set("/actuator/health", Reply::ok(r#"{"status":"UP"}"#)),
-        'g' => stub.set(
-            "/actuator/health",
-            Reply::status(
-                503,
-                r#"{"status":"DOWN","components":{"ping":{"status":"UP"},"readinessState":{"status":"UP"},
-                "diskSpace":{"status":"UP","details":{"total":494384795648,"free":213212008448}},
-                "db":{"status":"DOWN","details":{"error":"Illuminate\\Database\\QueryException: SQLSTATE[HY000] [2002] Connection refused."}},
-                "cache":{"status":"UP","details":{"store":"redis"}}}}"#,
-            ),
-        ),
-        'h' => stub.set(
-            "/actuator/health",
-            Reply::status(
-                503,
-                r#"{"status":"OUT_OF_SERVICE","components":{"ping":{"status":"UP"},
-                "readinessState":{"status":"OUT_OF_SERVICE"},
-                "diskSpace":{"status":"UP","details":{"total":494384795648,"free":213212008448}},
-                "db":{"status":"UP","details":{"connection":"mysql"}},
-                "cache":{"status":"UP","details":{"store":"redis"}}}}"#,
-            ),
-        ),
-        'i' => stub.set("/actuator/health", Reply::status(500, r#"{"message":"Server Error"}"#)),
-        _ => return Some(StubActuator::healthy()),
-    }
-    Some(stub)
-}
-
 #[test]
 #[ignore = "writes PNG files for a person to look at"]
 fn milestone_7_summary() {
@@ -476,7 +437,7 @@ fn milestone_7_states() {
         save(&format!("s6.5b-{suffix}"), &mut harness);
 
         for letter in ['c', 'd', 'e', 'f', 'g', 'h', 'i'] {
-            let stub = runtime_state(letter);
+            let stub = common::runtime_state(letter);
             let mut desk = Desk::new();
             desk.theme = theme;
             let root = desk.app("shop-api");
