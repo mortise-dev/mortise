@@ -1344,7 +1344,8 @@ fn segment_widths(ui: &Ui, labels: &[&str]) -> Vec<f32> {
     labels
         .iter()
         .map(|label| {
-            (galley(ui, label, SEGMENT_LABEL, Color32::PLACEHOLDER).size().x + 20.0).ceil()
+            let text = galley(ui, label, SEGMENT_LABEL, Color32::PLACEHOLDER);
+            (text.size().x + 20.0).ceil()
         })
         .collect()
 }

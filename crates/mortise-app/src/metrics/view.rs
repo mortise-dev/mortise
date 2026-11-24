@@ -499,10 +499,8 @@ fn table(
                 draw::announce(ui, read_rect, Role::Label, &read_line);
 
                 // The chart of the selected row, or of everything in the scope.
-                let chart_box = Rect::from_min_size(
-                    pos2(left, top + top_h + GAP),
-                    vec2(inner, chart_h),
-                );
+                let chart_box =
+                    Rect::from_min_size(pos2(left, top + top_h + GAP), vec2(inner, chart_h));
                 let content = draw::box_head(ui, pal, chart_box, &title, &note);
                 let name = strings::chart_name(&title, view.range);
                 let plot = Plot {
