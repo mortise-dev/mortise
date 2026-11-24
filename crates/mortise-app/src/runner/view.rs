@@ -1116,7 +1116,7 @@ fn open(
     let (label, status, buttons) = if history {
         let today = runs.entries.iter().filter(|listed| listed.today).count();
         let buttons = vec![
-            run_again(Some("Enter")),
+            run_again(Some(crate::strings::KEY_ENTER)),
             copy(),
             history_button(true),
             hide(),
@@ -1349,7 +1349,7 @@ fn migration_steps(
         steps.push(BarButton {
             pressed: true,
             ..BarButton::new(strings::OPEN_MIGRATION, DrawerAction::OpenMigration(path))
-                .keys("Enter")
+                .keys(crate::strings::KEY_ENTER)
         });
     }
     steps.push(BarButton {

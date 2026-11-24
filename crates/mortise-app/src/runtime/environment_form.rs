@@ -225,7 +225,7 @@ pub fn environment_form(
         ui,
         pal,
         name_rect,
-        &field_name("Environment name"),
+        &field_name(strings::ENVIRONMENT_NAME),
         &mut form.name,
         false,
         keyboard,
@@ -445,7 +445,7 @@ pub fn environment_form(
                 );
                 let text = match answer {
                     Answer::Answered(runtime) => strings::exposed(&runtime.exposed),
-                    Answer::NoAnswer { url, message } => format!("{url}: {message}."),
+                    Answer::NoAnswer { url, message } => strings::no_answer_at(url, message),
                     Answer::NotAuthorized { url, status } => strings::tested(url, *status, None),
                     Answer::Unexpected {
                         url,

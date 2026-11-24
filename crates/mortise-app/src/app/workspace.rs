@@ -175,7 +175,7 @@ pub fn workspace(
             label: strings::BACK_TO_SUMMARY,
             kind: ButtonKind::Ghost,
             small: true,
-            keys: Some("Esc"),
+            keys: Some(crate::strings::KEY_ESC),
             ..Default::default()
         };
         let at = pos2(head.right() - 16.0 - back.width(ui), head.top() + 12.0);

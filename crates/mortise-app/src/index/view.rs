@@ -592,7 +592,11 @@ fn head(
             pal.ink_3
         },
     );
-    let keys = if focused || has_text { "Esc" } else { "/" };
+    let keys = if focused || has_text {
+        crate::strings::KEY_ESC
+    } else {
+        "/"
+    };
     let cap = draw::keycap(ui, pal, pos2(field.right() - 8.0, field.center().y), keys);
 
     let text_rect = Rect::from_min_max(

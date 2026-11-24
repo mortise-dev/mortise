@@ -190,6 +190,19 @@ pub fn exposed(endpoints: &[String]) -> String {
     format!("Exposed: {}.", endpoints.join(", "))
 }
 
+/// The Laravel version in the Environment line.
+pub fn laravel(version: &str) -> String {
+    format!("Laravel {version}")
+}
+/// The word between a git branch and its commit.
+pub const AT: &str = " at ";
+/// The name of the field of the environment name.
+pub const ENVIRONMENT_NAME: &str = "Environment name";
+/// The line of an environment that gave no answer: `http://localhost: connection refused.`
+pub fn no_answer_at(url: &str, message: &str) -> String {
+    format!("{url}: {message}.")
+}
+
 #[cfg(test)]
 mod runtime_tests {
     use super::*;

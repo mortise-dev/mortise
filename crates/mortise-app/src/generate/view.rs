@@ -1119,7 +1119,11 @@ fn filter_field(
     };
     draw::icon(ui, glass, Icon::Search, glass_color);
     // G gets into the field: / is the filter of the index (deviation S45).
-    let keys = if focused || has_text { "Esc" } else { "G" };
+    let keys = if focused || has_text {
+        crate::strings::KEY_ESC
+    } else {
+        "G"
+    };
     let cap = draw::keycap(ui, pal, pos2(field.right() - 8.0, field.center().y), keys);
     let text_rect = Rect::from_min_max(
         pos2(glass.right() + 7.0, field.top() + 1.0),
@@ -2793,7 +2797,7 @@ fn result_view(
             let open = Button {
                 label: &label,
                 kind: ButtonKind::Primary,
-                keys: Some("Enter"),
+                keys: Some(crate::strings::KEY_ENTER),
                 ..Default::default()
             };
             let response = open.show(ui, pal, pos2(x, y), inputs.keyboard);

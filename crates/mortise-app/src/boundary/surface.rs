@@ -611,7 +611,7 @@ fn scanning(
     let stop = Button {
         label: strings::STOP_THE_SCAN,
         icon: Some(Icon::Stop),
-        keys: Some("Esc"),
+        keys: Some(crate::strings::KEY_ESC),
         ..Default::default()
     };
     let stopped = stop.show(ui, pal, pos2(left, y), place.keyboard).clicked();

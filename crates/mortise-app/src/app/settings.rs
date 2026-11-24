@@ -8,6 +8,7 @@ use mortise_core::ThemeChoice;
 use super::MortiseApp;
 #[cfg(target_os = "macos")]
 use super::index_width;
+use super::strings;
 use crate::app::chrome::Chrome;
 #[cfg(target_os = "macos")]
 use crate::palette::view::Command;
@@ -138,9 +139,7 @@ impl MortiseApp {
     pub(super) fn open_in_editor(&mut self, path: &Path, line: u32) {
         let command = self.settings.general.editor_command().to_owned();
         if let Err(error) = mortise_core::open_in_editor(&command, path, line) {
-            self.toast = Some(Toast::failed(format!(
-                "Could not open the editor: \"{error}\". Choose the editor command in Settings."
-            )));
+            self.toast = Some(Toast::failed(strings::could_not_open_the_editor(&error)));
         }
     }
 }
