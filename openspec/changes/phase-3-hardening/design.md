@@ -129,15 +129,16 @@ already use: S2.1, S4.1, S5.2, S5.6, S6.5 b to i, S8.1, S8.5, and the scheduled 
 column (S4.2). An id the app cannot reach without a state the tests cannot make gets a line in
 "Images not stored" below.
 
-S7.3 day: the image uses a 1 ms metrics pace so 5,760 reads take seconds, and the tab reads that pace.
-The fix stays in the test: the pace shown is the pace of `Config`; the test fills the day with the fast
-pace, then sets the pace back to 15 s before the shot, or the clock and pace are arranged so the label is
-"read every 15 s". The view does not learn about tests.
+S7.3 day: the image used a 1 ms metrics pace so 5,760 reads took seconds, and the tab read that pace.
+The fix stays in the test: it keeps the 15 s pace of `Config` and asks each read with Ctrl R, while the
+fake clock steps 15 s per read. The view does not learn about tests. The test that makes the S7.3 images
+now takes about 55 s on the M3 Max.
 
-S7.3 sparklines: a "Last hour" line has up to 241 points in a cell about 80 px wide, so a jagged line
+S7.3 sparklines: a "Last hour" line has up to 241 points in a cell about 58 px wide, so a jagged line
 fills its box. The drawing keeps at most one point per pixel column: points that fall in one column are
-averaged. The chart already has more pixels than points. The test data of the image stays as it is,
-so the image shows the fix.
+averaged. The chart already has more pixels than points. The test data of the images covered 10 minutes
+with a sharp zigzag; it now fills the whole hour with a smooth rise and fall per module, so the chart
+and each sparkline read as lines.
 
 ### D5. A switch that wraps
 
@@ -248,4 +249,8 @@ Release build, one warm-up, then the median of 21 calls of `Figures::of`, in thr
   sparkline is a summary.
 - [A wrapped switch makes the heading of the runtime box taller] → Only with names that do not fit; the
   image shows it.
+- [In S7.3, choosing an environment shows the waiting state, which has no switch] → Keyboard focus
+  leaves the switch after one arrow key, and Tab must reach it again. Every environment stays
+  reachable. Found in group 3; it was there before this change. The runtime box keeps its switch while
+  it waits, so its test checks the arrow keys in full. Left for a later change.
 - [The Linux box can be locked] → No window opens on a locked screen. The look waits for the owner.

@@ -19,24 +19,24 @@ after group 1 merged there, except where it says otherwise. The lead reviews eac
 
 ## 3. The environment switch (Opus)
 
-- [ ] 3.1 Give `draw::segmented` the wrapping form of D5 with its height; verify with a unit or screen test that eight 30-character names at 900 px wrap and every segment is inside the width
-- [ ] 3.2 Use it in S7.3 and in the runtime box (D5); verify in `tests/metrics.rs` or `tests/runtime.rs` (the test that already builds environments) that each environment can be chosen by pointer and by keyboard
-- [ ] 3.3 Add one image of S7.3 and of a runtime box with eight long environment names, both themes; look at each
+- [x] 3.1 Give `draw::segmented` the wrapping form of D5 with its height; verify with a unit or screen test that eight 30-character names at 900 px wrap and every segment is inside the width
+- [x] 3.2 Use it in S7.3 and in the runtime box (D5); verify in `tests/metrics.rs` or `tests/runtime.rs` (the test that already builds environments) that each environment can be chosen by pointer and by keyboard
+- [x] 3.3 Add one image of S7.3 and of a runtime box with eight long environment names, both themes; look at each
 
 ## 4. Images and the accessibility sweep (Sonnet)
 
-- [ ] 4.1 Store images for S2.1, S4.1, S5.2, S5.6, S6.5 b to i, S8.1, S8.5 and the S4.2 tasks box with its Module column (D4); look at each, light and dark; list any id left out with its reason under "Images not stored" in `design.md`
-- [ ] 4.2 Fix the S7.3 day image so it reads "read every 15 s" (D4, in the test only); look at it
-- [ ] 4.3 Draw at most one point per pixel column in a sparkline (D4); regenerate `s7.3-metrics-all-*` and look at the "Last hour" column
-- [ ] 4.4 Add every phase 3 control to `tests/accessibility.rs` that is not there (runtime marks, runtime box, environment switch, range switch, chart, table, "Try again", "Open settings"); verify the test passes
+- [x] 4.1 Store images for S2.1, S4.1, S5.2, S5.6, S6.5 b to i, S8.1, S8.5 and the S4.2 tasks box with its Module column (D4); look at each, light and dark; list any id left out with its reason under "Images not stored" in `design.md`
+- [x] 4.2 Fix the S7.3 day image so it reads "read every 15 s" (D4, in the test only); look at it
+- [x] 4.3 Draw at most one point per pixel column in a sparkline (D4); regenerate `s7.3-metrics-all-*` and look at the "Last hour" column
+- [x] 4.4 Add every phase 3 control to `tests/accessibility.rs` that is not there (runtime marks, runtime box, environment switch, range switch, chart, table, "Try again", "Open settings"); verify the test passes
 
 ## 5. The interface text sweep (Sonnet)
 
-- [ ] 5.1 Grep every `view.rs`, `app/*.rs` and drawing file of `mortise-app/src` for literal interface text (D7) and move each to its `strings.rs`; verify with the grep that none is left and with `cargo test --workspace` and the images that nothing visible changed
+- [x] 5.1 Grep every `view.rs`, `app/*.rs` and drawing file of `mortise-app/src` for literal interface text (D7) and move each to its `strings.rs`; verify with the grep that none is left and with `cargo test --workspace` and the images that nothing visible changed
 
 ## 6. The spec-build scripts (Sonnet)
 
-- [ ] 6.1 Make `build.mjs`, `shoot.sh` and `offs.sh` write inside the repository or stop (D6); verify each with an output path outside the repository (stops with the message, writes nothing) and one inside (writes there)
+- [x] 6.1 Make `build.mjs`, `shoot.sh` and `offs.sh` write inside the repository or stop (D6); verify each with an output path outside the repository (stops with the message, writes nothing) and one inside (writes there)
 
 ## 7. The look on Linux and Windows (Sonnet steps; the lead runs the box)
 
