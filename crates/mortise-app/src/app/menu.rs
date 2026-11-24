@@ -46,7 +46,7 @@ impl MenuBar {
         };
         let separator = PredefinedMenuItem::separator;
 
-        let settings = item("Settings…", MenuAction::Settings);
+        let settings = item(strings::MENU_SETTINGS, MenuAction::Settings);
         let app = Submenu::with_items(
             strings::BRAND,
             true,
@@ -64,19 +64,28 @@ impl MenuBar {
         )
         .ok()?;
 
-        let add = item("Add App…", MenuAction::AddApp);
-        let file = Submenu::with_items("File", true, &[&add]).ok()?;
+        let add = item(strings::MENU_ADD_APP, MenuAction::AddApp);
+        let file = Submenu::with_items(strings::MENU_FILE, true, &[&add]).ok()?;
 
-        let palette = item("Command Palette", MenuAction::Palette);
+        let palette = item(strings::MENU_PALETTE, MenuAction::Palette);
         let all = item(crate::strings::ALL_MODULES, MenuAction::AllModules);
         let findings = item(crate::strings::FINDINGS, MenuAction::Findings);
-        let index = item("Collapse or Open the Module Index", MenuAction::ToggleIndex);
-        let read = item("Read the App Again", MenuAction::ReadAgain);
-        let system = item("Theme: System", MenuAction::Theme(ThemeChoice::System));
-        let light = item("Theme: Light", MenuAction::Theme(ThemeChoice::Light));
-        let dark = item("Theme: Dark", MenuAction::Theme(ThemeChoice::Dark));
+        let index = item(strings::MENU_TOGGLE_INDEX, MenuAction::ToggleIndex);
+        let read = item(strings::MENU_READ_AGAIN, MenuAction::ReadAgain);
+        let system = item(
+            strings::MENU_THEME_SYSTEM,
+            MenuAction::Theme(ThemeChoice::System),
+        );
+        let light = item(
+            strings::MENU_THEME_LIGHT,
+            MenuAction::Theme(ThemeChoice::Light),
+        );
+        let dark = item(
+            strings::MENU_THEME_DARK,
+            MenuAction::Theme(ThemeChoice::Dark),
+        );
         let view = Submenu::with_items(
-            "View",
+            strings::MENU_VIEW,
             true,
             &[
                 &palette,
@@ -95,7 +104,7 @@ impl MenuBar {
         .ok()?;
 
         let window = Submenu::with_items(
-            "Window",
+            strings::MENU_WINDOW,
             true,
             &[
                 &PredefinedMenuItem::minimize(None),
@@ -106,8 +115,8 @@ impl MenuBar {
         )
         .ok()?;
 
-        let shortcuts = item("Keyboard Shortcuts", MenuAction::Shortcuts);
-        let help = Submenu::with_items("Help", true, &[&shortcuts]).ok()?;
+        let shortcuts = item(strings::MENU_SHORTCUTS, MenuAction::Shortcuts);
+        let help = Submenu::with_items(strings::MENU_HELP, true, &[&shortcuts]).ok()?;
 
         let menu = Menu::with_items(&[&app, &file, &view, &window, &help]).ok()?;
         menu.init_for_nsapp();

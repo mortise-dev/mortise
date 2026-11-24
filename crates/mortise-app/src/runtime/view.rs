@@ -491,7 +491,7 @@ fn items(
             .chain(
                 info.laravel
                     .as_ref()
-                    .map(|laravel| format!("Laravel {laravel}")),
+                    .map(|laravel| strings::laravel(laravel)),
             )
             .collect();
         if !environment.is_empty() {
@@ -503,7 +503,7 @@ fn items(
         match (&info.git_branch, &info.git_commit) {
             (Some(branch), Some(commit)) => items.push(line(
                 crate::strings::GIT,
-                vec![mono(branch), plain(" at ".to_owned()), mono(commit)],
+                vec![mono(branch), plain(strings::AT.to_owned()), mono(commit)],
             )),
             (Some(one), None) | (None, Some(one)) => {
                 items.push(line(crate::strings::GIT, vec![mono(one)]));

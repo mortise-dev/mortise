@@ -1503,9 +1503,8 @@ fn dependencies(
             .map(|link| link.refs.len().to_string())
             .collect();
         let total: usize = used_by.iter().map(|link| link.refs.len()).sum();
-        let plural = if total == 1 { "ref" } else { "refs" };
         let name = format!("{} {}", strings::USED_BY, names.join(", "));
-        let value = format!("{} {plural}", counts.join(", "));
+        let value = strings::refs(&counts, total);
         lines.push(DependencyLine::new(ui, pal, room, name, None, value, false));
     }
     let height: f32 = lines.iter().map(|line| line.height).sum();

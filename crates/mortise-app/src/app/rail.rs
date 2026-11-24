@@ -282,7 +282,9 @@ fn add_tile(ui: &Ui, pal: &Palette, rect: Rect, active: bool) -> bool {
 /// The Settings tile: an icon without an outline. Selected, it is a key block.
 fn settings_tile(ui: &Ui, pal: &Palette, rect: Rect, selected: bool) -> bool {
     let response = ui.interact(rect, ui.scope_id().with("rail-settings"), Sense::click());
-    response.widget_info(|| WidgetInfo::selected(Role::Button, true, selected, "Settings"));
+    response.widget_info(|| {
+        WidgetInfo::selected(Role::Button, true, selected, crate::strings::SETTINGS)
+    });
     let (fill, color) = if selected {
         (pal.key, pal.key_fg)
     } else if response.is_pointer_button_down_on() {
@@ -304,6 +306,6 @@ fn settings_tile(ui: &Ui, pal: &Palette, rect: Rect, selected: bool) -> bool {
     }
     let clicked = response.clicked();
     let keys = format!("{} ,", command_key(ui));
-    draw::tooltip_keys(response, pal, "Settings", &keys);
+    draw::tooltip_keys(response, pal, crate::strings::SETTINGS, &keys);
     clicked
 }

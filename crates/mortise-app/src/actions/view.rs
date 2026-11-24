@@ -1414,7 +1414,7 @@ fn tests_text(
     let mut parts = vec![(count.as_str(), ty::BODY, pal.ink_2)];
     let after = match (&folder, package_data) {
         (Some(folder), _) => {
-            parts.push((" in ", ty::BODY, pal.ink_2));
+            parts.push((strings::IN, ty::BODY, pal.ink_2));
             parts.push((folder.as_str(), mono, pal.ink_2));
             if package_data {
                 ".".to_owned()

@@ -210,7 +210,7 @@ pub fn add_panel(
         label: strings::BACK,
         kind: ButtonKind::Ghost,
         small: true,
-        keys: Some("Esc"),
+        keys: Some(crate::strings::KEY_ESC),
         ..Default::default()
     };
     let back_min = pos2(

@@ -111,7 +111,11 @@ pub struct Source<'a> {
 pub fn entries(query: &str, source: &Source<'_>) -> Vec<Entry> {
     let query = query.trim();
     let command = crate::strings::command_key(source.mac);
-    let option = if source.mac { "Option" } else { "Alt" };
+    let option = if source.mac {
+        strings::KEY_OPTION
+    } else {
+        strings::KEY_ALT
+    };
     let mut entries = Vec::new();
     // The best matches of a group, at most four, in the order of their score.
     let mut add = |group: &str, mut found: Vec<(u32, Entry)>| {
@@ -150,7 +154,7 @@ pub fn entries(query: &str, source: &Source<'_>) -> Vec<Entry> {
                 state,
                 ..entry(
                     module.name.clone(),
-                    "Open",
+                    strings::OPEN,
                     Command::Module(module.name.clone()),
                 )
             })
@@ -190,7 +194,7 @@ pub fn entries(query: &str, source: &Source<'_>) -> Vec<Entry> {
             });
             let recent = modules.next().into_iter().chain(runs).chain(modules);
             add(
-                "Recent",
+                strings::GROUP_RECENT,
                 recent
                     .enumerate()
                     .map(|(i, entry)| (i as u32, entry))
@@ -208,7 +212,7 @@ pub fn entries(query: &str, source: &Source<'_>) -> Vec<Entry> {
                 (problems, _) => Some((crate::strings::problems(problems), true)),
             };
             let settings = entry(
-                "Settings".to_owned(),
+                crate::strings::SETTINGS.to_owned(),
                 &format!("{command} ,"),
                 Command::Settings,
             );
@@ -217,7 +221,10 @@ pub fn entries(query: &str, source: &Source<'_>) -> Vec<Entry> {
                 crate::strings::SUMMARY,
                 Command::AllModules,
             );
-            add("Go to", vec![(0, all), (1, findings), (2, settings)]);
+            add(
+                strings::GROUP_GO_TO,
+                vec![(0, all), (1, findings), (2, settings)],
+            );
         } else {
             let modules = app.modules.iter().filter_map(|module| {
                 let score = fuzzy(query, &format!("{} {}", module.name, module.code))?;
@@ -342,10 +349,7 @@ pub fn entries(query: &str, source: &Source<'_>) -> Vec<Entry> {
                         (label, other)
                     }
                     Detail::ReadsInternals { of, files, .. } => (
-                        format!(
-                            "{} in {module} read {of} internals",
-                            crate::strings::files(*files as u64)
-                        ),
+                        strings::reads_internals(*files as u64, &module, of),
                         Some(of.clone()),
                     ),
                     _ => (crate::strings::finding(finding, app, app_name), None),
@@ -407,12 +411,16 @@ pub fn entries(query: &str, source: &Source<'_>) -> Vec<Entry> {
     if query.is_empty() {
         apps.truncate(GROUP_LIMIT - 1);
         apps.push((u32::MAX, add_app));
-        add("Apps", apps);
+        add(strings::GROUP_APPS, apps);
     } else {
-        add("Apps", apps);
+        add(strings::GROUP_APPS, apps);
         // Mortise's own commands. The theme has no shortcut, so it is found here.
         let commands = [
-            ("Settings", format!("{command} ,"), Command::Settings),
+            (
+                crate::strings::SETTINGS,
+                format!("{command} ,"),
+                Command::Settings,
+            ),
             (strings::SETTINGS_PHP, String::new(), Command::PhpSettings),
             (
                 crate::strings::ADD_APP,
@@ -425,17 +433,17 @@ pub fn entries(query: &str, source: &Source<'_>) -> Vec<Entry> {
                 Command::Runner,
             ),
             (
-                "Theme: follow the system",
+                strings::THEME_SYSTEM,
                 String::new(),
                 Command::Theme(ThemeChoice::System),
             ),
             (
-                "Theme: light",
+                strings::THEME_LIGHT,
                 String::new(),
                 Command::Theme(ThemeChoice::Light),
             ),
             (
-                "Theme: dark",
+                strings::THEME_DARK,
                 String::new(),
                 Command::Theme(ThemeChoice::Dark),
             ),
@@ -446,7 +454,7 @@ pub fn entries(query: &str, source: &Source<'_>) -> Vec<Entry> {
                 entry(label.to_owned(), &hint, command),
             ))
         });
-        add("Mortise", found.collect());
+        add(crate::app::strings::BRAND, found.collect());
     }
     entries
 }
@@ -588,13 +596,19 @@ pub fn palette(
 
     let id = egui::Id::unique("palette");
     let area = egui::Modal::default_area(id).anchor(Align2::CENTER_TOP, vec2(0.0, 58.0));
-    let modal = egui::Modal::new(id).frame(egui::Frame::NONE).backdrop_color(pal.scrim).area(area).show(
-        ui.ctx(),
-        |ui| {
+    let modal = egui::Modal::new(id)
+        .frame(egui::Frame::NONE)
+        .backdrop_color(pal.scrim)
+        .area(area)
+        .show(ui.ctx(), |ui| {
             ui.spacing_mut().item_spacing = Vec2::ZERO;
             // The height: the query row, the groups and rows, the footer.
             const GROUP_H: f32 = 28.0;
-            let groups = rows.iter().map(|entry| &entry.group).collect::<std::collections::BTreeSet<_>>().len();
+            let groups = rows
+                .iter()
+                .map(|entry| &entry.group)
+                .collect::<std::collections::BTreeSet<_>>()
+                .len();
             let list_h = if rows.is_empty() {
                 64.0
             } else {
@@ -605,19 +619,45 @@ pub fn palette(
             let height = 1.0 + size::PALETTE_INPUT_H + list_h + foot_h + 1.0;
             let (rect, _) = ui.allocate_exact_size(vec2(size::PALETTE_W, height), Sense::hover());
 
-            let shadow = Shadow { offset: [0, 14], blur: 34, spread: 0, color: pal.shadow };
+            let shadow = Shadow {
+                offset: [0, 14],
+                blur: 34,
+                spread: 0,
+                color: pal.shadow,
+            };
             ui.painter().add(shadow.as_shape(rect, radius::OVERLAY));
             draw::outlined(ui, rect, radius::OVERLAY, pal.surface, pal.ink);
 
             // The query.
-            let input = Rect::from_min_size(rect.min + vec2(1.0, 1.0), vec2(rect.width() - 2.0, size::PALETTE_INPUT_H));
-            draw::hline(ui, input.left()..input.right(), input.bottom() - 1.0, pal.line_2);
-            let glass = Rect::from_min_size(pos2(input.left() + 14.0, input.center().y - 8.0), Vec2::splat(16.0));
+            let input = Rect::from_min_size(
+                rect.min + vec2(1.0, 1.0),
+                vec2(rect.width() - 2.0, size::PALETTE_INPUT_H),
+            );
+            draw::hline(
+                ui,
+                input.left()..input.right(),
+                input.bottom() - 1.0,
+                pal.line_2,
+            );
+            let glass = Rect::from_min_size(
+                pos2(input.left() + 14.0, input.center().y - 8.0),
+                Vec2::splat(16.0),
+            );
             draw::icon(ui, glass, Icon::Search, pal.ink);
-            let cap = draw::keycap(ui, pal, pos2(input.right() - 14.0, input.center().y), "Esc");
-            let text_rect = Rect::from_min_max(pos2(glass.right() + 10.0, input.top()), pos2(cap.left() - 10.0, input.bottom() - 1.0));
+            let cap = draw::keycap(
+                ui,
+                pal,
+                pos2(input.right() - 14.0, input.center().y),
+                crate::strings::KEY_ESC,
+            );
+            let text_rect = Rect::from_min_max(
+                pos2(glass.right() + 10.0, input.top()),
+                pos2(cap.left() - 10.0, input.bottom() - 1.0),
+            );
             let font = FontId::new(ty::PALETTE_INPUT.size, ty::PALETTE_INPUT.face.family());
-            let hint = RichText::new("Search modules, findings and apps").color(pal.ink_3).font(font.clone());
+            let hint = RichText::new(strings::SEARCH_HINT)
+                .color(pal.ink_3)
+                .font(font.clone());
             let edit = egui::TextEdit::singleline(&mut state.query)
                 .id(ui.scope_id().with("palette-query"))
                 .frame(egui::Frame::NONE)
@@ -628,52 +668,95 @@ pub fn palette(
                 .align(Align2::LEFT_CENTER)
                 .hint_text(hint);
             let response = ui.put(text_rect, edit);
-            response.widget_info(|| WidgetInfo::labeled(Role::TextInput, true, crate::strings::SEARCH));
+            response
+                .widget_info(|| WidgetInfo::labeled(Role::TextInput, true, crate::strings::SEARCH));
             // The palette holds focus: Tab, Enter and the arrows do not leave the field.
             response.request_focus();
 
             // The rows, in their groups.
-            let list = Rect::from_min_size(pos2(rect.left() + 1.0, input.bottom()), vec2(rect.width() - 2.0, list_h));
+            let list = Rect::from_min_size(
+                pos2(rect.left() + 1.0, input.bottom()),
+                vec2(rect.width() - 2.0, list_h),
+            );
             ui.scope_builder(egui::UiBuilder::new().max_rect(list), |ui| {
-                ScrollArea::vertical().id_salt("palette-rows").auto_shrink(false).show(ui, |ui| {
-                    ui.spacing_mut().item_spacing = Vec2::ZERO;
-                    if rows.is_empty() {
-                        let text = format!(
-                            "Nothing matches \"{}\". Try a module name, the name of an app, or a word of a finding.",
-                            state.query.trim()
-                        );
-                        let (slot, _) = ui.allocate_exact_size(vec2(ui.available_width(), list_h), Sense::hover());
-                        draw::paragraph(ui, slot.min + vec2(14.0, 14.0), &text, ty::BODY, pal.ink_2, slot.width() - 28.0);
-                        return;
-                    }
-                    let mut group = "";
-                    for (index, entry) in rows.iter().enumerate() {
-                        if entry.group != group {
-                            group = &entry.group;
-                            let (slot, _) = ui.allocate_exact_size(vec2(ui.available_width(), GROUP_H), Sense::hover());
-                            draw::label(ui, pos2(slot.left() + 14.0, slot.top() + 9.0), Align2::LEFT_TOP, group, ty::LABEL, pal.ink_2);
+                ScrollArea::vertical()
+                    .id_salt("palette-rows")
+                    .auto_shrink(false)
+                    .show(ui, |ui| {
+                        ui.spacing_mut().item_spacing = Vec2::ZERO;
+                        if rows.is_empty() {
+                            let text = strings::nothing_matches(state.query.trim());
+                            let (slot, _) = ui.allocate_exact_size(
+                                vec2(ui.available_width(), list_h),
+                                Sense::hover(),
+                            );
+                            draw::paragraph(
+                                ui,
+                                slot.min + vec2(14.0, 14.0),
+                                &text,
+                                ty::BODY,
+                                pal.ink_2,
+                                slot.width() - 28.0,
+                            );
+                            return;
                         }
-                        let (row, _) = ui.allocate_exact_size(vec2(ui.available_width(), size::PALETTE_ROW_H), Sense::hover());
-                        let current = index == state.row;
-                        if palette_row(ui, pal, row, entry, index, current) {
-                            action = Some(PaletteAction::Run(entry.command.clone()));
+                        let mut group = "";
+                        for (index, entry) in rows.iter().enumerate() {
+                            if entry.group != group {
+                                group = &entry.group;
+                                let (slot, _) = ui.allocate_exact_size(
+                                    vec2(ui.available_width(), GROUP_H),
+                                    Sense::hover(),
+                                );
+                                draw::label(
+                                    ui,
+                                    pos2(slot.left() + 14.0, slot.top() + 9.0),
+                                    Align2::LEFT_TOP,
+                                    group,
+                                    ty::LABEL,
+                                    pal.ink_2,
+                                );
+                            }
+                            let (row, _) = ui.allocate_exact_size(
+                                vec2(ui.available_width(), size::PALETTE_ROW_H),
+                                Sense::hover(),
+                            );
+                            let current = index == state.row;
+                            if palette_row(ui, pal, row, entry, index, current) {
+                                action = Some(PaletteAction::Run(entry.command.clone()));
+                            }
+                            if current && (pressed(Key::ArrowDown) || pressed(Key::ArrowUp)) {
+                                ui.scroll_to_rect(row.expand2(vec2(0.0, GROUP_H)), None);
+                            }
                         }
-                        if current && (pressed(Key::ArrowDown) || pressed(Key::ArrowUp)) {
-                            ui.scroll_to_rect(row.expand2(vec2(0.0, GROUP_H)), None);
-                        }
-                    }
-                });
+                    });
             });
 
             // Footer: the keys, and the app that is searched.
-            let foot = Rect::from_min_max(pos2(rect.left() + 1.0, rect.bottom() - 1.0 - foot_h), pos2(rect.right() - 1.0, rect.bottom() - 1.0));
+            let foot = Rect::from_min_max(
+                pos2(rect.left() + 1.0, rect.bottom() - 1.0 - foot_h),
+                pos2(rect.right() - 1.0, rect.bottom() - 1.0),
+            );
             ui.painter().rect_filled(foot, 0, pal.panel);
             draw::hline(ui, foot.left()..foot.right(), foot.top(), pal.line);
-            let keys = "Up and Down to move, Enter to run, Tab to switch app";
-            draw::label(ui, pos2(foot.left() + 14.0, foot.center().y), Align2::LEFT_CENTER, keys, ty::SECONDARY, pal.ink_2);
-            draw::label(ui, pos2(foot.right() - 14.0, foot.center().y), Align2::RIGHT_CENTER, scope_name, ty::SECONDARY, pal.ink_2);
-        },
-    );
+            let keys = strings::FOOTER_KEYS;
+            draw::label(
+                ui,
+                pos2(foot.left() + 14.0, foot.center().y),
+                Align2::LEFT_CENTER,
+                keys,
+                ty::SECONDARY,
+                pal.ink_2,
+            );
+            draw::label(
+                ui,
+                pos2(foot.right() - 14.0, foot.center().y),
+                Align2::RIGHT_CENTER,
+                scope_name,
+                ty::SECONDARY,
+                pal.ink_2,
+            );
+        });
     if modal.should_close() {
         action = Some(PaletteAction::Close);
     }
@@ -714,12 +797,12 @@ fn palette_row(
     // on the other rows.
     let mut right = row.right() - 14.0;
     if current {
-        right = draw::keycap(ui, pal, pos2(right, mid), "Enter").left() - 6.0;
+        right = draw::keycap(ui, pal, pos2(right, mid), crate::strings::KEY_ENTER).left() - 6.0;
     }
     let chord = entry.keys;
     // A current row with no hint of its own says what Enter does.
     let hint = if current && entry.hint.is_empty() {
-        "Open"
+        strings::OPEN
     } else {
         entry.hint.as_str()
     };
@@ -884,7 +967,7 @@ mod tests {
             mac: false,
         };
         let found = entries("dark", &source);
-        assert_eq!(labels(&found), [("Mortise", "Theme: dark")]);
+        assert_eq!(labels(&found), [("Mortise", strings::THEME_DARK)]);
         assert_eq!(found[0].command, Command::Theme(ThemeChoice::Dark));
     }
 }

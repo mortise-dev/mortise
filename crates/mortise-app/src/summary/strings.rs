@@ -338,6 +338,12 @@ pub fn routes_of_module(total: usize, api: usize, web: usize) -> String {
     }
 }
 
+/// The count of references in a line of used by: `3, 1 refs`.
+pub fn refs(counts: &[String], total: usize) -> String {
+    let word = if total == 1 { "ref" } else { "refs" };
+    format!("{} {word}", counts.join(", "))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

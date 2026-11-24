@@ -556,3 +556,6 @@ pub fn translations_not_read(reason: &str) -> String {
          report."
     )
 }
+
+/// The word between the count of tests and their folder: `12 tests in Modules/Billing/tests`.
+pub const IN: &str = " in ";
