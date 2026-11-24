@@ -93,7 +93,9 @@ pub enum Under {
 ```
 
 The cells of every subject placed in a row are added: `count`, `errors`, `sum` and each bucket. Buckets
-add bound by bound, as every cell of a `Change` has one bucket per bound of the store.
+add bound by bound, as every cell of a `Change` has one bucket per bound of the store. A series that
+lacks a bound of the store has 0 there. Buckets are cumulative, so before a cell is added each bucket
+takes the largest bucket at or below its bound.
 
 - **95% under** (decision 5). Buckets are cumulative: the bucket of a bound counts the requests at or
   under it. The figure is the first bound, lowest first, whose bucket is at least `0.95 × count`. When

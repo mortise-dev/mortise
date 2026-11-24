@@ -163,8 +163,13 @@ impl Sum {
                 if requests.buckets.len() < cell.buckets.len() {
                     requests.buckets.resize(cell.buckets.len(), 0.0);
                 }
-                for (bucket, grew) in requests.buckets.iter_mut().zip(&cell.buckets) {
-                    *bucket += grew;
+                // Buckets are cumulative, so a bucket holds at least every bucket below it. A
+                // series that lacks a bound the store holds has 0 there: the running maximum
+                // gives it the bucket of the bound below.
+                let mut below = 0.0_f64;
+                for (bucket, &grew) in requests.buckets.iter_mut().zip(&cell.buckets) {
+                    below = below.max(grew);
+                    *bucket += below;
                 }
             }
             Subject::Job { .. } => self.jobs += cell.count,
@@ -469,6 +474,31 @@ mod tests {
         );
         assert_eq!(billing.rows[0].rates.database, None);
         assert_eq!(billing.total.rates.database, Some(0.25));
+
+        // Two series of one row give different bounds: each lacks the bound of the other. All
+        // 200 requests are at or under 2 s.
+        let mut store = MetricsStore::new(PACE);
+        store.push(secs(0), reading(&[], Vec::new())).unwrap();
+        let cells = vec![
+            (
+                request("billing", "/billing/a"),
+                cell(100.0, 10.0, vec![100.0, f64::NAN]),
+            ),
+            (
+                request("billing", "/billing/b"),
+                cell(100.0, 150.0, vec![f64::NAN, 100.0]),
+            ),
+        ];
+        store.push(secs(15), reading(&[1.0, 2.0], cells)).unwrap();
+        let figures = Figures::of(&app, &placing, Scope::All, &store, Range::Hour);
+        let billing = figures
+            .rows
+            .iter()
+            .find(|row| row.of == RowOf::Module("Billing".to_owned()));
+        assert_eq!(
+            billing.and_then(|row| row.rates.under_95),
+            Some(Under::Bound(2.0))
+        );
     }
 
     #[test]
