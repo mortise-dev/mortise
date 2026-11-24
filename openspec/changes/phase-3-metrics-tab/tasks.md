@@ -29,6 +29,6 @@ Group 1 runs first. Groups 2 and 3 run in parallel after it, each in its own wor
 
 ## 4. Images and deviations (21.5, Sonnet)
 
-- [ ] 4.1 Replace `s7.3-metrics-table` in `tests/images.rs` with three images in both themes, with a fixed clock: all modules, one module, a 24 hour range. Use `StubActuator::serve` and a clock that steps 15 s per request for the 24 hour range. Run `UPDATE_SNAPSHOTS=1 cargo test -p mortise-app --test images` and look at each new and changed image
-- [ ] 4.2 Check that every new control has an accessible name and a target of 24 by 24 px (`tests/accessibility.rs`)
-- [ ] 4.3 In `docs/deviations.md`, add S68 (the 95% figure is a bucket bound) and S69 (the time labels of the chart, "Route" as the first column of one module, an en dash for jobs and database time of a route, the tooltip of "unknown"), and close S67. Say how each fact was checked
+- [x] 4.1 Replace `s7.3-metrics-table` in `tests/images.rs` with three images in both themes, with a fixed clock: all modules, one module, a 24 hour range. Use `StubActuator::serve` and a clock that steps 15 s per request for the 24 hour range. Run `UPDATE_SNAPSHOTS=1 cargo test -p mortise-app --test images` and look at each new and changed image
+- [x] 4.2 Check that every new control has an accessible name and a target of 24 by 24 px (`tests/accessibility.rs`)
+- [x] 4.3 In `docs/deviations.md`, add S68 (the 95% figure is a bucket bound) and S69 (the time labels of the chart, "Route" as the first column of one module, an en dash for jobs and database time of a route, the tooltip of "unknown"), and close S67. Say how each fact was checked
