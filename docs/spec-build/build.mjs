@@ -1,7 +1,16 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { page } from './lib.mjs';
-const OUT = '/Users/nicolaswidart/Sites/php/packages/LaravelModules/docs/companion-app/design-fable';
+// The root comes from this file's own path. Pages go to docs/spec-build/out (ignored by git),
+// never to docs/spec, which build.py writes.
+const ROOT = fs.realpathSync(new URL('../..', import.meta.url));
+const OUT = path.join(ROOT, 'docs', 'spec-build', 'out');
+fs.mkdirSync(OUT, { recursive: true });
+const realOut = fs.realpathSync(OUT);
+if (path.relative(ROOT, realOut).startsWith('..') || path.isAbsolute(path.relative(ROOT, realOut))) {
+  console.error(`Write inside the repository: ${OUT} is outside ${ROOT}.`);
+  process.exit(1);
+}
 const only = process.argv[2];
 const dirs = {};
 for (const f of ['f1', 'f2', 'f3']) { if (fs.existsSync(new URL(`./${f}.mjs`, import.meta.url))) dirs[f] = await import(`./${f}.mjs`); }
