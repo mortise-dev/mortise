@@ -1327,6 +1327,33 @@ pub fn segmented(
     segmented_with(ui, pal, min, name, labels, selected, None, keyboard)
 }
 
+/// The width of the track of a segmented control with `labels`, before it is painted.
+pub fn segmented_width(ui: &Ui, labels: &[&str]) -> f32 {
+    track_width(&segment_widths(ui, labels))
+}
+
+/// The text of a segment.
+const SEGMENT_LABEL: Type = Type {
+    size: 12.0,
+    line: 12.0,
+    ..ty::CONTROL
+};
+
+/// The width of each segment: its label and 10 px on each side.
+fn segment_widths(ui: &Ui, labels: &[&str]) -> Vec<f32> {
+    labels
+        .iter()
+        .map(|label| {
+            (galley(ui, label, SEGMENT_LABEL, Color32::PLACEHOLDER).size().x + 20.0).ceil()
+        })
+        .collect()
+}
+
+/// The track holds the segments, 2 px apart, with 3 px of padding at each end.
+fn track_width(widths: &[f32]) -> f32 {
+    3.0 + widths.iter().sum::<f32>() + 2.0 * (widths.len() as f32 - 1.0) + 3.0
+}
+
 /// A segmented control in which one segment can be off: `off` is its place and its
 /// tooltip. An off segment cannot be clicked, and Left and Right pass over it.
 #[expect(clippy::too_many_arguments)]
@@ -1341,16 +1368,8 @@ pub fn segmented_with(
     keyboard: bool,
 ) -> (Rect, Option<usize>) {
     let is_off = |i: usize| off.is_some_and(|(place, _)| place == i);
-    let label_type = Type {
-        size: 12.0,
-        line: 12.0,
-        ..ty::CONTROL
-    };
-    let widths: Vec<f32> = labels
-        .iter()
-        .map(|label| (galley(ui, label, label_type, Color32::PLACEHOLDER).size().x + 20.0).ceil())
-        .collect();
-    let width = 3.0 + widths.iter().sum::<f32>() + 2.0 * (labels.len() as f32 - 1.0) + 3.0;
+    let widths = segment_widths(ui, labels);
+    let width = track_width(&widths);
     let track = Rect::from_min_size(min, vec2(width, size::CONTROL_H));
     outlined(ui, track, radius::CONTROL, pal.well, pal.line_2);
 
@@ -1424,7 +1443,7 @@ pub fn segmented_with(
             segment.center(),
             Align2::CENTER_CENTER,
             label,
-            label_type,
+            SEGMENT_LABEL,
             color,
         );
         if keyboard && response.has_focus() {

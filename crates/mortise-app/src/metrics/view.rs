@@ -306,6 +306,11 @@ const COLUMN_GAP: f32 = 12.0;
 const GAP: f32 = 12.0;
 /// The size of the sparkline of a row.
 const SPARK: Vec2 = vec2(58.0, 14.0);
+/// The space between the two switches, and the least space before the read line on their line.
+const SWITCH_GAP: f32 = 10.0;
+const READ_GAP: f32 = 16.0;
+/// The space between two lines of the top, when the switches or the read line do not fit on one.
+const TOP_LINE_GAP: f32 = 8.0;
 
 /// A row of the table as it is shown.
 struct Shown<'f> {
@@ -410,18 +415,38 @@ fn table(
                         (galley, note.as_str())
                     })
                     .collect();
+                // The top: the environment, the range, and when the last read was. The range
+                // switch goes on a second line when it does not fit after the environment switch.
+                // The read line goes at the right of the last switch's line when it fits there,
+                // else on a line of its own under the switches.
+                let labels = Range::ALL.map(strings::range);
+                let environment_w = draw::segmented_width(ui, &view.environments);
+                let range_w = draw::segmented_width(ui, &labels);
+                let range_at = if environment_w + SWITCH_GAP + range_w <= inner {
+                    vec2(environment_w + SWITCH_GAP, 0.0)
+                } else {
+                    vec2(0.0, size::CONTROL_H + TOP_LINE_GAP)
+                };
+                let switches_h = range_at.y + size::CONTROL_H;
+                let read_line = strings::read_every(view.pace, view.ago);
+                let read = draw::galley(ui, &read_line, ty::SECONDARY, pal.ink_2);
+                let read_apart = range_at.x + range_w + READ_GAP + read.size().x > inner;
+                let top_h = if read_apart {
+                    switches_h + TOP_LINE_GAP + read.size().y
+                } else {
+                    switches_h
+                };
+
                 let chart_h = 41.0 + draw::box_head_extra(ui, inner, &title, &note) + CHART_H + 8.0;
                 let table_h = size::TABLE_HEAD_H + rows.len() as f32 * size::TABLE_ROW_H + 1.0;
                 let notes_h: f32 = notes.iter().map(|(galley, _)| 8.0 + galley.size().y).sum();
-                let height =
-                    14.0 + size::CONTROL_H + GAP + chart_h + GAP + table_h + notes_h + 16.0;
+                let height = 14.0 + top_h + GAP + chart_h + GAP + table_h + notes_h + 16.0;
                 let (area, _) = ui.allocate_exact_size(vec2(width, height), Sense::hover());
                 let left = area.left() + 16.0;
                 let right = left + inner;
 
-                // The top line: the environment, the range, and when the last read was.
                 let top = area.top() + 14.0;
-                let (track, clicked) = draw::segmented(
+                let (_, clicked) = draw::segmented(
                     ui,
                     pal,
                     pos2(left, top),
@@ -439,15 +464,15 @@ fn table(
                 {
                     asked = Some(WorkAction::Runtime(RuntimeAction::Choose(name.to_owned())));
                 }
-                let labels = Range::ALL.map(strings::range);
                 let chosen = Range::ALL
                     .iter()
                     .position(|range| *range == view.range)
                     .unwrap_or(1);
+                let range_min = pos2(left, top) + range_at;
                 let (_, clicked) = draw::segmented(
                     ui,
                     pal,
-                    pos2(track.right() + 10.0, top),
+                    range_min,
                     "metrics-range",
                     &labels,
                     chosen,
@@ -456,18 +481,26 @@ fn table(
                 if let Some(at) = clicked.filter(|at| *at != chosen) {
                     asked = Some(WorkAction::Metrics(MetricsAction::Range(Range::ALL[at])));
                 }
-                draw::label(
-                    ui,
-                    pos2(right, top + size::CONTROL_H / 2.0),
-                    Align2::RIGHT_CENTER,
-                    &strings::read_every(view.pace, view.ago),
-                    ty::SECONDARY,
-                    pal.ink_2,
-                );
+                let read_rect = if read_apart {
+                    draw::paint_galley(
+                        ui,
+                        pos2(left, top + switches_h + TOP_LINE_GAP),
+                        Align2::LEFT_TOP,
+                        read,
+                    )
+                } else {
+                    draw::paint_galley(
+                        ui,
+                        pos2(right, range_min.y + size::CONTROL_H / 2.0),
+                        Align2::RIGHT_CENTER,
+                        read,
+                    )
+                };
+                draw::announce(ui, read_rect, Role::Label, &read_line);
 
                 // The chart of the selected row, or of everything in the scope.
                 let chart_box = Rect::from_min_size(
-                    pos2(left, top + size::CONTROL_H + GAP),
+                    pos2(left, top + top_h + GAP),
                     vec2(inner, chart_h),
                 );
                 let content = draw::box_head(ui, pal, chart_box, &title, &note);

@@ -253,7 +253,10 @@ lines under the table, as in M20
 
 - **Top line.** The environment switch lists the environments of the app; the chosen one is selected.
   A click returns `RuntimeAction::Choose`, as the runtime box does. The range switch returns the range.
-  Both are `draw::segmented`. The line at the right is 11.5 px in ink-2.
+  Both are `draw::segmented`. The line at the right is 11.5 px in ink-2. When the two switches do not
+  fit on one line, the range switch goes on a second line. The read line stays at the right of the
+  last switch's line when it fits there, else it goes on a line of its own under the switches (not in
+  the spec).
 - **The chart box.** `draw::box_head` with the title "Requests per minute, all modules", "Requests per
   minute, Billing" or "Requests per minute, GET /billing/invoices/{invoice}", and the note "842 now"
   from `Line::now()`, empty without it.
@@ -267,7 +270,9 @@ lines under the table, as in M20
   Requests/min (90), 95% under (80), Errors (70), Jobs/min (70), Database time (100), Last hour (70).
   Figures are right aligned, 13 px ink, no colour. The selected row has the peg (`draw::peg`).
   "unknown" has the tooltip "Needs a newer nwidart/laravel-modules" (not in the spec).
-  "Not in a module" is the last row in the scope All.
+  "Not in a module" is the last row in the scope All. A route has no stamp, so in the scope of a
+  module the name starts where the stamp would. A name cut with an ellipsis has the whole name as its
+  tooltip.
 - **Text.** 95% under: under 1 s in whole ms ("100 ms"), else seconds with at most one decimal
   ("2.5 s"); `Above` reads "over 10 s". Errors: a percent with one decimal ("2.4%", "0.0%"). Database
   time: a whole percent ("31%"). Before two reads every figure is an en dash, as in M20.
