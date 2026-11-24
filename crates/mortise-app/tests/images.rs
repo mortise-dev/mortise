@@ -1275,7 +1275,7 @@ fn counters_after(reads: u32) -> u32 {
     let (whole, rest) = (reads / 240, reads % 240);
     let (quarters, left) = (rest / 60, rest % 60);
     // A wave of 240 reads adds 240 + 60 * (0 + 1 + 2 + 3).
-    whole * 420 + rest + 30 * quarters * quarters.saturating_sub(1) + quarters * left
+    whole * 600 + rest + 30 * quarters * quarters.saturating_sub(1) + quarters * left
 }
 
 /// shop-api connected to the stub as "local", in a theme.
@@ -1354,12 +1354,10 @@ fn the_metrics_tab() {
         shots.take(&mut harness, "s7.3-metrics-module");
     }
 
-    // A day: 15 s per read, 5,700 reads, as fast as the stub answers. The clock of the reads
-    // counts the requests, so a read is 15 s after the one before. The clock is read before
-    // the request, so the read of number `DAY + 1` is the last one with new counters. Later
-    // reads have its time and are not kept. The fill takes about 10 s in a debug build.
-    // 5,700 reads, not 5,760: the chart of 5,760 ends in a read that shows 0 now (see the report).
-    const DAY: u64 = 5_700;
+    // A day: 15 s per read, 5,760 reads, as fast as the stub answers. The clock of the reads
+    // counts the requests, so a read is 15 s after the one before. Reads after `DAY` have the
+    // time of read `DAY` and are not kept. The fill takes about 10 s in a debug build.
+    const DAY: u64 = 5_760;
     for (theme, name) in THEMES {
         shots.theme = name;
         let stub = common::shop_api_actuator();
@@ -1392,7 +1390,6 @@ fn the_metrics_tab() {
             assert!(began.elapsed() < Duration::from_secs(120), "a day of reads");
             harness.run_steps(2);
         }
-        eprintln!("a day of reads took {:?}", began.elapsed());
         harness
             .get_by_role_and_label(Role::RadioButton, "24 hours")
             .click();
