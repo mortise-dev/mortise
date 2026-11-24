@@ -290,3 +290,69 @@ jobs:
         env:
           MORTISE_REAL_APP: ${{ runner.temp }}/app
         run: cargo test -p mortise-core --test real_php --locked -- --ignored --test-threads=1
+
+  # The actuator client, the runtime per module and the placing of metrics, against a real app
+  # with laravel-modules, laravel-actuator and laravel-metrics. A new release that changes an
+  # answer fails this job only. The script prints the package versions.
+  real-actuator:
+    name: Real actuator (Linux, not required)
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # v2
+        with:
+          php-version: '8.4'
+          extensions: sqlite3, pdo_sqlite
+          tools: composer
+
+      - name: Create a Laravel app with the actuator and metrics
+        run: tools/real-actuator-app.sh "$RUNNER_TEMP/app"
+
+      # One app, three servers. A process variable wins over .env. `--no-reload` hands it to the
+      # PHP server: without it, `serve` drops each variable of $_ENV when variables_order has E.
+      - name: Serve the app three times
+        working-directory: ${{ runner.temp }}/app
+        run: |
+          php artisan serve --no-reload --host=127.0.0.1 --port=8931 > "$RUNNER_TEMP/serve-8931.log" 2>&1 &
+          METRICS_ENABLED=false php artisan serve --no-reload --host=127.0.0.1 --port=8932 > "$RUNNER_TEMP/serve-8932.log" 2>&1 &
+          METRICS_CACHE_STORE=metrics_broken php artisan serve --no-reload --host=127.0.0.1 --port=8933 > "$RUNNER_TEMP/serve-8933.log" 2>&1 &
+          for port in 8931 8932 8933; do
+            curl -sSf --retry 30 --retry-delay 1 --retry-connrefused --max-time 10 -o /dev/null "http://127.0.0.1:$port/actuator/health"
+          done
+
+      - name: Make traffic and run the queue
+        working-directory: ${{ runner.temp }}/app
+        run: |
+          base=http://127.0.0.1:8931
+          for path in /blog/posts/1 /blog/posts/2 /blog/posts/3 /blog/posts/1/publish /billing/invoices/1 /billing/invoices/1/charge /hello/ci; do
+            curl -sSf --max-time 10 -o /dev/null "$base$path"
+          done
+          test "$(curl -sS --max-time 10 -o /dev/null -w '%{http_code}' "$base/blog/boom")" = 500
+          php artisan queue:work --stop-when-empty
+          curl -sSf --max-time 10 "$base/actuator/prometheus" | grep -q '^messaging_process_duration_seconds_count'
+
+      - name: Run the ignored tests
+        env:
+          MORTISE_REAL_ACTUATOR: http://127.0.0.1:8931/actuator
+          MORTISE_REAL_ACTUATOR_EMPTY: http://127.0.0.1:8932/actuator
+          MORTISE_REAL_ACTUATOR_503: http://127.0.0.1:8933/actuator
+          MORTISE_REAL_APP: ${{ runner.temp }}/app
+        run: cargo test -p mortise-core --test real_actuator --locked -- --ignored --test-threads=1
+
+      - name: Show the server logs
+        if: failure()
+        run: tail -n 50 "$RUNNER_TEMP"/serve-*.log
+
+      - name: Stop the servers
+        if: always()
+        run: |
+          pkill -f -- '--port=893[123]' || true
+          pkill -f '127[.]0[.]0[.]1:893[123] ' || true
