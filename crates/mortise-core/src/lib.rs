@@ -57,7 +57,7 @@ pub use generate::output::{
     FileOutcome, GeneratedFile, app_relative, autoload_failed, generated_files, reported_files,
 };
 #[cfg(feature = "actuator")]
-pub use metrics::figures::{Figures, LAST_MINUTE, ModuleFigures, Rates};
+pub use metrics::figures::{Figures, Line, Point, Range, Rates, Row, RowOf, Scope, Under};
 #[cfg(feature = "actuator")]
 pub use metrics::sample::{LiveMetrics, MetricsClock, MetricsState, NotKept};
 pub use modules::clover::Coverage;

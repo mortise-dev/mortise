@@ -7,13 +7,13 @@ Group 1 runs first. Groups 2 and 3 run in parallel after it, each in its own wor
 
 ## 1. Core (21.2, Opus)
 
-- [ ] 1.1 Add `Range` and `Scope` to `metrics/figures.rs` as D1 and D3 say. Remove `LAST_MINUTE`
-- [ ] 1.2 Add `bounds` to `Change` and `MetricsStore::steps` with `Step` to `metrics/sample.rs`, as D4 says
-- [ ] 1.3 Add `Under`, the fields of `Rates`, `RowOf`, `Row`, `Point`, `Line` with `Line::now`, and the fields of `Figures`, as D2 to D4 say. Remove `ModuleFigures`. Work out the 95% bound, the error share and the database share as D2 says, per module and per route
-- [ ] 1.4 Change `LiveMetrics::figures` to take a `Scope` and a `Range`. Add `MetricsState::ago` as D5 says. Re-export the new names in `lib.rs`
-- [ ] 1.5 Add `StubActuator::serve` to `testing.rs`
-- [ ] 1.6 Change the app lines the renames break, with no new drawing: the plain table reads `Figures::rows` and `Figures::outside` over `Range::Hour`
-- [ ] 1.7 Test in the core, once each: on the recorded quiet and busy answers 15 s apart, the 95% figure, the error share and "unknown" database time of each module, and the routes of one module (add the assertions to the placing test of M20 that already reads those answers); with written readings, `Above` past the largest bound, a database share with the label, and the line of a day of reads (a point every 5 minutes before the last hour and every 15 s in it, a break at a gap, and `Line::now`). Verify with `cargo test -p mortise-core metrics::`
+- [x] 1.1 Add `Range` and `Scope` to `metrics/figures.rs` as D1 and D3 say. Remove `LAST_MINUTE`
+- [x] 1.2 Add `bounds` to `Change` and `MetricsStore::steps` with `Step` to `metrics/sample.rs`, as D4 says
+- [x] 1.3 Add `Under`, the fields of `Rates`, `RowOf`, `Row`, `Point`, `Line` with `Line::now`, and the fields of `Figures`, as D2 to D4 say. Remove `ModuleFigures`. Work out the 95% bound, the error share and the database share as D2 says, per module and per route
+- [x] 1.4 Change `LiveMetrics::figures` to take a `Scope` and a `Range`. Add `MetricsState::ago` as D5 says. Re-export the new names in `lib.rs`
+- [x] 1.5 Add `StubActuator::serve` to `testing.rs`
+- [x] 1.6 Change the app lines the renames break, with no new drawing: the plain table reads `Figures::rows` and `Figures::outside` over `Range::Hour`
+- [x] 1.7 Test in the core, once each: on the recorded quiet and busy answers 15 s apart, the 95% figure, the error share and "unknown" database time of each module, and the routes of one module (add the assertions to the placing test of M20 that already reads those answers); with written readings, `Above` past the largest bound, a database share with the label, and the line of a day of reads (a point every 5 minutes before the last hour and every 15 s in it, a break at a gap, and `Line::now`). Verify with `cargo test -p mortise-core metrics::`
 
 ## 2. The chart (21.3, Opus)
 

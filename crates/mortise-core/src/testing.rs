@@ -4,7 +4,7 @@
 //! The bodies of the actuator are those of the tests of `nwidart/laravel-actuator` 1.0.0.
 //! The module components of `healthy` are those of `fixtures/actuator/health.json`.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::io::{BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
 use std::process::ExitCode;
@@ -47,9 +47,15 @@ impl Reply {
     }
 }
 
+/// A reply made for each request from how many times its path was asked before.
+type Made = Arc<dyn Fn(usize) -> Reply + Send + Sync>;
+
 #[derive(Default)]
 struct Routes {
     replies: BTreeMap<String, Reply>,
+    made: HashMap<String, Made>,
+    /// How many times each path was asked for.
+    times: HashMap<String, usize>,
     /// A header every request must carry, as `name: value` in lower case.
     required_header: Option<String>,
     /// The paths that were asked for, in order.
@@ -197,26 +203,34 @@ impl StubActuator {
 
     /// Sets what the stub answers for a path.
     pub fn set(&self, path: &str, reply: Reply) {
-        self.routes
-            .lock()
-            .expect("the routes")
-            .replies
-            .insert(path.to_owned(), reply);
+        let mut routes = self.routes.lock().expect("the routes");
+        routes.made.remove(path);
+        routes.replies.insert(path.to_owned(), reply);
+    }
+
+    /// Serves `path` with a reply made for each request from how many times it was asked before.
+    pub fn serve(&self, path: &str, reply: impl Fn(usize) -> Reply + Send + Sync + 'static) {
+        let mut routes = self.routes.lock().expect("the routes");
+        routes.replies.remove(path);
+        routes.made.insert(path.to_owned(), Arc::new(reply));
     }
 
     /// What the stub answers for a path now.
     pub fn reply(&self, path: &str) -> Option<Reply> {
-        self.routes
-            .lock()
-            .expect("the routes")
-            .replies
-            .get(path)
-            .cloned()
+        let routes = self.routes.lock().expect("the routes");
+        if let Some(made) = routes.made.get(path).cloned() {
+            let times = routes.times.get(path).copied().unwrap_or(0);
+            drop(routes);
+            return Some(made(times));
+        }
+        routes.replies.get(path).cloned()
     }
 
     /// Stops answering for a path: it is 404 again, as an endpoint that is not exposed.
     pub fn remove(&self, path: &str) {
-        self.routes.lock().expect("the routes").replies.remove(path);
+        let mut routes = self.routes.lock().expect("the routes");
+        routes.replies.remove(path);
+        routes.made.remove(path);
     }
 
     /// From now on every request must carry this header, or it is answered 401.
@@ -252,12 +266,19 @@ fn serve(mut stream: TcpStream, routes: &Mutex<Routes>) {
     let reply = {
         let mut routes = routes.lock().expect("the routes");
         routes.asked.push(path.clone());
+        let times = routes.times.entry(path.clone()).or_default();
+        let before = *times;
+        *times += 1;
         let authorized = routes
             .required_header
             .as_ref()
             .is_none_or(|required| headers.contains(required));
         if !authorized {
             Reply::status(401, r#"{"message":"Unauthenticated."}"#)
+        } else if let Some(made) = routes.made.get(&path).cloned() {
+            // Made outside the lock.
+            drop(routes);
+            made(before)
         } else {
             routes.replies.get(&path).cloned().unwrap_or_else(|| {
                 let message = format!(

@@ -96,7 +96,7 @@ mod tests {
     use std::time::Duration;
 
     use super::*;
-    use crate::metrics::figures::{LAST_MINUTE, Rates};
+    use crate::metrics::figures::{Range, Rates, RowOf, Scope, Under};
     use crate::metrics::sample::{LiveMetrics, MetricsState, NotKept};
     use crate::runtime::actuator::NoMetrics;
 
@@ -133,35 +133,45 @@ mod tests {
         now.store(15, Ordering::Relaxed);
         sink(Ok(recorded("prometheus-busy.txt")));
 
-        let figures = metrics.figures(&app, Some(&routes), LAST_MINUTE);
+        let figures = metrics.figures(&app, Some(&routes), Scope::All, Range::Hour);
         assert_eq!(figures.covered, Some(Duration::from_secs(15)));
-        // What 15 s counted, per minute.
-        let rates = |requests: f64, jobs: f64| Rates {
+        // No series has a `module` label: database time is unknown in every row.
+        assert!(!figures.database_known);
+        // What 15 s counted, per minute. Every request took 10 to 25 ms, but 2 of `/api/v1/posts`
+        // and 1 of `/up`: the 95% figure is the bound of 25 ms.
+        let fast = Some(Under::Bound(0.025));
+        let rates = |requests: f64, jobs: f64, errors: f64| Rates {
             requests_per_minute: requests * 4.0,
             jobs_per_minute: jobs * 4.0,
+            under_95: fast,
+            errors: Some(errors / requests),
+            database: None,
         };
-        let rows: Vec<(&str, Rates)> = figures
-            .modules
+        let rows: Vec<(&RowOf, Rates)> = figures
+            .rows
             .iter()
-            .map(|row| (row.module.as_str(), row.rates.clone()))
+            .map(|row| (&row.of, row.rates.clone()))
             .collect();
+        let module = |name: &str| RowOf::Module(name.to_owned());
         let zero = Rates::default();
         assert_eq!(
             rows,
             [
-                ("Blog", rates(57.0, 4.0)),
-                // `/portal` is a route of Billing on its own domain.
-                ("Billing", rates(26.0, 4.0)),
-                ("Catalog", zero.clone()),
-                ("Checkout", zero.clone()),
-                ("Inventory", zero.clone()),
-                ("Notifications", zero.clone()),
-                ("Shipping", zero.clone()),
-                ("Users", zero.clone()),
+                // `/blog/boom` answers 500.
+                (&module("Blog"), rates(57.0, 4.0, 3.0)),
+                // `/portal` is a route of Billing on its own domain. `/billing/fail` answers 503.
+                (&module("Billing"), rates(26.0, 4.0, 3.0)),
+                (&module("Catalog"), zero.clone()),
+                (&module("Checkout"), zero.clone()),
+                (&module("Inventory"), zero.clone()),
+                (&module("Notifications"), zero.clone()),
+                (&module("Shipping"), zero.clone()),
+                (&module("Users"), zero.clone()),
             ]
         );
         // `/`, `/hello/{name}`, `/status`, `/up`, the 404 and the 405.
-        assert_eq!(figures.outside, rates(20.0, 0.0));
+        let outside = figures.outside.as_ref().map(|row| row.rates.clone());
+        assert_eq!(outside, Some(rates(20.0, 0.0, 0.0)));
         let counted: f64 = recorded("prometheus-busy.txt")
             .lines()
             .filter(|line| line.starts_with("http_server_request_duration_seconds_count"))
@@ -171,11 +181,50 @@ mod tests {
             .iter()
             .map(|(_, rates)| rates.requests_per_minute)
             .sum();
-        assert_eq!(placed + figures.outside.requests_per_minute, counted * 4.0);
+        assert_eq!(placed + 20.0 * 4.0, counted * 4.0);
+        assert_eq!(figures.total.rates.requests_per_minute, counted * 4.0);
 
+        // The routes of one module, with the figures of the module as the total.
+        let billing = metrics.figures(&app, Some(&routes), Scope::Module("Billing"), Range::Hour);
+        let route = |path: &str, requests: f64, errors: f64| {
+            let of = RowOf::Route {
+                route: Some(path.to_owned()),
+                method: "GET".to_owned(),
+            };
+            (of, rates(requests, 0.0, errors))
+        };
+        let routes_of: Vec<(RowOf, Rates)> = billing
+            .rows
+            .iter()
+            .map(|row| (row.of.clone(), row.rates.clone()))
+            .collect();
+        assert_eq!(
+            routes_of,
+            [
+                route("/billing/invoices/{invoice}", 10.0, 0.0),
+                route("/billing/invoices/{invoice}/lines/{line?}", 6.0, 0.0),
+                route("/billing/invoices/{invoice}/charge", 4.0, 0.0),
+                route("/billing/fail", 3.0, 3.0),
+                route("/portal", 3.0, 0.0),
+            ]
+        );
+        assert_eq!(billing.outside, None);
+        assert_eq!(billing.total.of, module("Billing"));
+        assert_eq!(billing.total.rates, rates(26.0, 4.0, 3.0));
+
+        // The time since the newest read counts up between reads.
+        now.store(20, Ordering::Relaxed);
+        assert_eq!(metrics.state().ago, Some(Duration::from_secs(5)));
         // Rates are old once the newest read is older than a gap: the tab waits for a fresh read.
         now.store(15 + 46, Ordering::Relaxed);
-        assert_eq!(metrics.state().last, None);
+        assert_eq!(
+            metrics.state(),
+            MetricsState {
+                last: None,
+                serial: 2,
+                ago: None,
+            }
+        );
 
         // A read with no metrics ends a read and adds nothing.
         sink(Err(NoMetrics::Off));
@@ -184,13 +233,20 @@ mod tests {
             MetricsState {
                 last: Some(Err(NotKept::NoMetrics(NoMetrics::Off))),
                 serial: 3,
+                ago: None,
             }
         );
-        assert_eq!(metrics.figures(&app, Some(&routes), LAST_MINUTE), figures);
+        assert_eq!(
+            metrics.figures(&app, Some(&routes), Scope::All, Range::Hour),
+            figures
+        );
         // Nor does a 200 with no `# TYPE` line, such as a sign-in page.
         sink(Ok("<!doctype html>\n<title>Sign in</title>\n".to_owned()));
         assert_eq!(metrics.state().last, Some(Err(NotKept::NotMetrics)));
-        assert_eq!(metrics.figures(&app, Some(&routes), LAST_MINUTE), figures);
+        assert_eq!(
+            metrics.figures(&app, Some(&routes), Scope::All, Range::Hour),
+            figures
+        );
 
         // Written input.
         let placing = Placing::new(&app, Some(&routes));

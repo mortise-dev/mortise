@@ -12,7 +12,7 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant, SystemTime};
 
 use crate::app::AppSnapshot;
-use crate::metrics::figures::Figures;
+use crate::metrics::figures::{Figures, Range, Scope};
 use crate::metrics::place::Placing;
 use crate::metrics::prometheus::{Part, samples, typed};
 use crate::runtime::actuator::{NoMetrics, Route};
@@ -246,9 +246,24 @@ impl Reading {
 pub(crate) struct Change<'a> {
     /// The time between reads that the span covers. Never zero.
     pub covered: Duration,
+    /// The bounds of the store, lowest first. Each cell has one bucket per bound.
+    pub bounds: &'a [f64],
     /// Every kept subject with what it grew by. Zero is included. Each cell has one bucket per bound
     /// of the store.
     pub cells: Vec<(&'a Subject, Cell)>,
+}
+
+/// What changed between two neighbouring kept reads: one point of a line.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct Step {
+    /// The time of the later read.
+    pub at: Duration,
+    /// The covered time between the two reads. Never zero.
+    pub covered: Duration,
+    /// What the request count of each kept subject grew by, in the order of `Change::cells`.
+    pub counts: Vec<f64>,
+    /// `true` for the first step, and for a step after a pair that is no step: a new run of the line.
+    pub starts: bool,
 }
 
 /// One kept read.
@@ -509,6 +524,22 @@ impl MetricsStore {
         self.coarse.len() + self.fine.len()
     }
 
+    /// The kept reads from the oldest at most `span` before the newest, to the newest, oldest
+    /// first. Empty with no read.
+    fn since(&self, span: Duration) -> impl Iterator<Item = &Read> {
+        let from = self
+            .fine
+            .back()
+            .map_or(Duration::ZERO, |newest| newest.at.saturating_sub(span));
+        let coarse = self.coarse.partition_point(|read| read.at < from);
+        let fine = if coarse < self.coarse.len() {
+            0
+        } else {
+            self.fine.partition_point(|read| read.at < from)
+        };
+        self.coarse.range(coarse..).chain(self.fine.range(fine..))
+    }
+
     /// The newest read against the oldest kept read at most `span` before it.
     /// `None` when no time is covered between them, or when the newest read starts a run.
     pub(crate) fn change(&self, span: Duration) -> Option<Change<'_>> {
@@ -516,12 +547,7 @@ impl MetricsStore {
         if newest.starts_run {
             return None;
         }
-        let from = newest.at.saturating_sub(span);
-        let coarse = self.coarse.partition_point(|read| read.at < from);
-        let oldest = match self.coarse.get(coarse) {
-            Some(read) => read,
-            None => &self.fine[self.fine.partition_point(|read| read.at < from)],
-        };
+        let oldest = self.since(span).next()?;
         let covered = newest
             .covered
             .checked_sub(oldest.covered)
@@ -543,7 +569,52 @@ impl MetricsStore {
                 (&kept.subject, cell)
             })
             .collect();
-        Some(Change { covered, cells })
+        Some(Change {
+            covered,
+            bounds: &self.bounds,
+            cells,
+        })
+    }
+
+    /// The steps between neighbouring kept reads from the oldest read that `change(span)` uses to
+    /// the newest. A pair whose later read starts a run, or that covers no time, is no step.
+    pub(crate) fn steps(&self, span: Duration) -> Vec<Step> {
+        let width = self.width();
+        let mut steps = Vec::new();
+        let mut starts = true;
+        let mut reads = self.since(span);
+        let Some(mut before) = reads.next() else {
+            return steps;
+        };
+        for read in reads {
+            let covered = read.covered.saturating_sub(before.covered);
+            if read.starts_run || covered.is_zero() {
+                starts = true;
+            } else {
+                let counts = (0..self.columns.len())
+                    .map(|column| read.total(column * width) - before.total(column * width))
+                    .collect();
+                steps.push(Step {
+                    at: read.at,
+                    covered,
+                    counts,
+                    starts,
+                });
+                starts = false;
+            }
+            before = read;
+        }
+        steps
+    }
+
+    /// Every kept subject, in the order of `Change::cells` and `Step::counts`.
+    pub(crate) fn subjects(&self) -> impl Iterator<Item = &Subject> {
+        self.columns.iter().map(|column| &column.subject)
+    }
+
+    /// The time of the newest read.
+    pub(crate) fn newest(&self) -> Option<Duration> {
+        self.latest.map(|(at, _)| at)
     }
 
     /// The numbers per subject in a row.
@@ -820,6 +891,9 @@ pub struct MetricsState {
     pub last: Option<Result<(), NotKept>>,
     /// Goes up by one when a read ends.
     pub serial: u64,
+    /// The time from the newest kept read to now, by the clock of the reads. `Some` exactly when
+    /// `last` is `Some(Ok(()))`.
+    pub ago: Option<Duration>,
 }
 
 /// The reads of one environment, shared between the worker and the interface.
@@ -878,15 +952,24 @@ impl LiveMetrics {
         if state.last == Some(Ok(())) && !shared.0.fresh(now) {
             state.last = None;
         }
+        if state.last == Some(Ok(())) {
+            state.ago = shared.0.newest().map(|newest| now.saturating_sub(newest));
+        }
         state
     }
 
-    /// The figures per module over the last `span`, placed by `app` and `routes`.
+    /// The figures of `scope` over `range`, placed by `app` and `routes`.
     /// `routes` is `None` when `mappings` is not exposed.
-    pub fn figures(&self, app: &AppSnapshot, routes: Option<&[Route]>, span: Duration) -> Figures {
+    pub fn figures(
+        &self,
+        app: &AppSnapshot,
+        routes: Option<&[Route]>,
+        scope: Scope<'_>,
+        range: Range,
+    ) -> Figures {
         let placing = Placing::new(app, routes);
         let shared = self.lock();
-        Figures::of(app, &placing, shared.0.change(span))
+        Figures::of(app, &placing, scope, &shared.0, range)
     }
 
     fn lock(&self) -> MutexGuard<'_, (MetricsStore, MetricsState)> {

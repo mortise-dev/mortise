@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use mortise_core::{Answer, AppSnapshot, Figures, LAST_MINUTE, NotKept};
+use mortise_core::{Answer, AppSnapshot, Figures, NotKept, Range, Scope};
 
 use super::{Connected, MortiseApp};
 use crate::app::workspace::Tab;
@@ -81,9 +81,12 @@ pub(super) fn tab<'a>(
                     serial: state.serial,
                     app: Arc::clone(app),
                     answer: Arc::clone(&answer),
-                    figures: connected
-                        .metrics
-                        .figures(app, runtime.routes.as_deref(), LAST_MINUTE),
+                    figures: connected.metrics.figures(
+                        app,
+                        runtime.routes.as_deref(),
+                        Scope::All,
+                        Range::Hour,
+                    ),
                 },
             };
             MetricsView::Table {

@@ -6,7 +6,7 @@ use std::sync::Arc;
 use eframe::egui::{
     Align2, Color32, Rect, Role, ScrollArea, Sense, Ui, UiBuilder, Vec2, pos2, vec2,
 };
-use mortise_core::{Answer, AppSnapshot, Figures, NoMetrics, Rates};
+use mortise_core::{Answer, AppSnapshot, Figures, NoMetrics, Rates, RowOf};
 
 use crate::app::workspace::WorkAction;
 use crate::metrics::strings;
@@ -37,7 +37,7 @@ pub enum MetricsView<'a> {
     NotMetrics { environment: &'a str },
     /// The last answer had more series than a read keeps. `limit` is the most numbers a read keeps.
     TooMany { environment: &'a str, limit: usize },
-    /// The figures of the last minute. `placed` is false when `mappings` is not exposed.
+    /// The figures of the last hour. `placed` is false when `mappings` is not exposed.
     Table {
         environment: &'a str,
         figures: &'a Figures,
@@ -257,7 +257,7 @@ const STAMP_COLUMN: f32 = 34.0;
 const REQUESTS_COLUMN: f32 = 90.0;
 const JOBS_COLUMN: f32 = 70.0;
 
-/// The table of the last minute: one row per module, then the row of what is in no module,
+/// The table of the last hour: one row per module, then the row of what is in no module,
 /// in a box that scrolls. Lines under it say why a figure is missing.
 fn table(
     ui: &mut Ui,
@@ -277,18 +277,23 @@ fn table(
     }
     // The modules, each with its code, then the row of what is in no module.
     let mut rows: Vec<(Option<&str>, &str, &Rates)> = figures
-        .modules
+        .rows
         .iter()
-        .map(|row| {
+        .filter_map(|row| {
+            let RowOf::Module(name) = &row.of else {
+                return None;
+            };
             let code = app
                 .modules
                 .iter()
-                .find(|module| module.name == row.module)
+                .find(|module| &module.name == name)
                 .map(|module| module.code.as_str());
-            (code, row.module.as_str(), &row.rates)
+            Some((code, name.as_str(), &row.rates))
         })
         .collect();
-    rows.push((None, crate::strings::NOT_IN_A_MODULE, &figures.outside));
+    if let Some(outside) = &figures.outside {
+        rows.push((None, crate::strings::NOT_IN_A_MODULE, &outside.rates));
+    }
     let figure = |rate: f64| match figures.covered {
         Some(_) => strings::per_minute(rate),
         None => strings::NO_RATE.to_owned(),
