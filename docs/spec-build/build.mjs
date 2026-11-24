@@ -16,14 +16,16 @@ const only = process.argv[2];
 const dirs = {};
 for (const f of ['f1', 'f2', 'f3']) { if (fs.existsSync(new URL(`./${f}.mjs`, import.meta.url))) dirs[f] = await import(`./${f}.mjs`); }
 const titles = { f1: 'F1 Site plan: Laravel Modules companion', f2: 'F2 Crosstab: Laravel Modules companion', f3: 'F3 Logbook: Laravel Modules companion' };
-// Write one page. A destination that is a link is refused: a write would follow it.
+// Write one page to a new file beside it, then rename it over the page. The rename replaces a link
+// (symbolic or hard) instead of writing through it, so no file outside OUT changes.
 function write(name, content) {
-  const dest = path.join(OUT, name);
-  if (fs.lstatSync(dest, { throwIfNoEntry: false })?.isSymbolicLink()) {
-    console.error(`Write inside the repository: ${dest} is a link.`);
-    process.exit(1);
+  const temp = fs.mkdtempSync(path.join(OUT, '.page-'));
+  try {
+    fs.writeFileSync(path.join(temp, name), content);
+    fs.renameSync(path.join(temp, name), path.join(OUT, name));
+  } finally {
+    fs.rmSync(temp, { recursive: true, force: true });
   }
-  fs.writeFileSync(dest, content);
 }
 for (const [f, d] of Object.entries(dirs)) {
   if (only && only !== f) continue;
