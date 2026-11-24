@@ -40,8 +40,8 @@ after group 1 merged there, except where it says otherwise. The lead reviews eac
 
 ## 7. The look on Linux and Windows (Sonnet steps; the lead runs the box)
 
-- [ ] 7.1 Ask the orchestrator before using the box; check the lock; shoot the index with runtime marks, a module Summary with its runtime box, S7.1, and S7.3 if the recorded answers can be served (D8); look at each shot
-- [ ] 7.2 Record each difference from macOS as a deviation row checked "run on Linux"; record Windows as built and tested in CI, not looked at; look at D1 to D3 and D5 only where the look shows them
+- [x] 7.1 Ask the orchestrator before using the box; check the lock; shoot the index with runtime marks, a module Summary with its runtime box, S7.1, and S7.3 if the recorded answers can be served (D8); look at each shot
+- [x] 7.2 Record each difference from macOS as a deviation row checked "run on Linux"; record Windows as built and tested in CI, not looked at; look at D1 to D3 and D5 only where the look shows them
 
 ## 8. Docs (Sonnet)
 

@@ -396,6 +396,7 @@ one for its archive.
 ### Platforms
 
 - macOS: looked at, in both themes, through the stored images.
-- Linux: built and tested in CI. Not looked at on a Linux screen in this milestone: the owner's Linux box
-  was not available.
+- Linux: built and tested in CI. Looked at on the owner's Linux box (Hyprland 0.56.2 on Omarchy) with the
+  recorded answers served there: the index with runtime marks, a module Summary with its runtime box, S7.1
+  and S7.3, at 1920 by 1080 and 960 by 600. One difference, from a compositor plugin: deviation D8.
 - Windows: built and tested in CI. Not looked at.
