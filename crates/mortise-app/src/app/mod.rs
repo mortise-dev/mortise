@@ -1492,12 +1492,14 @@ fn index_edge(
     change
 }
 
-/// What the user set for an app, as the reader takes it.
+/// What the user set for an app, as the reader takes it. The coverage of `mortise.json`
+/// wins over the coverage settings of the window.
 fn read_options(entry: &AppEntry, package: &PackageData) -> ReadOptions {
     ReadOptions {
         coverage_limit: entry.coverage_limit,
         coverage_report: entry.coverage_report.as_ref().map(PathBuf::from),
         package: package.clone(),
+        ..ReadOptions::default()
     }
 }
 

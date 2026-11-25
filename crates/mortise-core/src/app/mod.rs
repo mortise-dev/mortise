@@ -7,7 +7,7 @@ use std::time::UNIX_EPOCH;
 use serde::{Deserialize, Serialize};
 
 use crate::boundary::links::{self, Cycle, Link, ModuleSource};
-use crate::boundary::rules::{Rules, RulesSource};
+use crate::boundary::rules::{self, CoverageSettings, Rules, RulesSource};
 use crate::findings::{self, DEFAULT_COVERAGE_LIMIT, Findings, Subject};
 use crate::modules::clover::{self, Coverage};
 use crate::modules::code::propose_codes;
@@ -267,6 +267,9 @@ pub fn read_app_with(
 }
 
 /// What the user set for an app in Mortise, as far as reading it is concerned.
+///
+/// The coverage limit and report come, first to last, from `coverage_given`, from the
+/// `coverage` object of `mortise.json`, and from `coverage_limit` and `coverage_report`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReadOptions {
     /// A module covered less than this many per cent is a warning.
@@ -274,6 +277,9 @@ pub struct ReadOptions {
     /// The clover report, relative to the app folder or absolute. `None` looks in
     /// `phpunit.xml` and the usual places.
     pub coverage_report: Option<PathBuf>,
+    /// Coverage given for this read only, such as the flags of `mortise check`. A value
+    /// that is set wins over `mortise.json`.
+    pub coverage_given: CoverageSettings,
     /// What the package said in the reads the user started. Kept in memory only.
     pub package: PackageData,
 }
@@ -283,6 +289,7 @@ impl Default for ReadOptions {
         Self {
             coverage_limit: DEFAULT_COVERAGE_LIMIT,
             coverage_report: None,
+            coverage_given: CoverageSettings::default(),
             package: PackageData::default(),
         }
     }
@@ -350,10 +357,21 @@ pub fn read_app_cached(
         .map(|module| shown(&root, &module.dir))
         .collect();
 
+    // The rules, and the coverage settings that the app keeps beside them.
+    let (rules, in_file, rules_source) = rules::load_file(&root);
+    let coverage_limit = options
+        .coverage_given
+        .limit
+        .or(in_file.limit)
+        .unwrap_or(options.coverage_limit);
+
     // The report the user named, if it is there; else the one Mortise finds.
     let report_path = options
-        .coverage_report
+        .coverage_given
+        .report
         .as_ref()
+        .or(in_file.report.as_ref())
+        .or(options.coverage_report.as_ref())
         .map(|path| root.join(path))
         .filter(|path| path.is_file())
         .or_else(|| clover::find_report(&root));
@@ -376,7 +394,6 @@ pub fn read_app_cached(
     };
 
     // Which module uses which, checked against the rules of the app.
-    let (rules, rules_source) = Rules::load(&root);
     let sources: Vec<ModuleSource<'_>> = found
         .iter()
         .zip(&folders)
@@ -457,7 +474,7 @@ pub fn read_app_cached(
         status_entries: &status_entries,
         statuses_file: &shown(&root, &layout.statuses_file),
         has_coverage_report: report_path.is_some(),
-        coverage_limit: options.coverage_limit,
+        coverage_limit,
         package: &options.package,
     });
 
@@ -489,7 +506,7 @@ pub fn read_app_cached(
         rules,
         rules_source,
         findings,
-        coverage_limit: options.coverage_limit,
+        coverage_limit,
         package_data,
         root,
     })
