@@ -5,7 +5,6 @@ pub const ALL_LINKS: &str = "All links";
 pub const PROBLEMS_ONLY: &str = "Problems only";
 pub const LINKS_THAT_BREAK: &str = "Links that break a rule";
 pub const RULE_FAIL_CI: &str = "Fail CI when a rule breaks";
-pub const RULE_FAIL_CI_HINT: &str = "Needs the command line tool, which does not exist yet.";
 pub const RULES_KEPT: &str = "kept in mortise.json in the app folder";
 pub const GRAPH_CAPTION: &str = "Arrow points at the module that is used. A square with a cross marks a link that breaks a rule.";
 pub const COPY_PATH: &str = "Copy path";

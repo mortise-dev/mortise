@@ -300,6 +300,15 @@ fn the_first_change_of_a_rule_asks_before_mortise_json_is_created() {
             .is_none()
     );
     harness.get_by_label("No link breaks a rule.");
+
+    // "Fail CI" is kept beside the rules, for `mortise check`.
+    harness
+        .get_by_role_and_label(Role::CheckBox, "Fail CI when a rule breaks")
+        .click();
+    wait_until(&mut harness, "CI does not fail", |app| {
+        app.app().is_some_and(|app| !app.rules.fail_ci)
+    });
+    assert!(!Rules::load(&root).0.fail_ci);
 }
 
 #[test]
