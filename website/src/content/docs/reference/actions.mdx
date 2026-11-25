@@ -1,0 +1,188 @@
+---
+title: Actions tab
+description: Every action of the Actions tab, the artisan command it runs, its options, and when Mortise asks first.
+sidebar:
+  order: 5
+---
+
+import Screen from '../../../components/Screen.astro';
+
+The Actions tab is tab 4 of the workspace. Press <kbd>4</kbd> in the main window to open it.
+It runs the package's commands for the selected module, or for **All modules**.
+
+<Screen
+  id="s10.1-actions"
+  alt="The Actions tab of the module Checkout: the list of actions on the left, the selected action Migrate on the right with its options, the command line and the run button."
+/>
+
+## Layout
+
+- On the left, a list of the actions. The first rows are the everyday actions. Under them is the
+  group **Destructive**, which is closed until you open it.
+- On the right, the selected action: its title, a sentence on what it does, its options, the
+  line under **Command**, and the buttons.
+- The line under **Command** is the exact line the run button starts. It holds the prefix of the
+  runner of the app and `--no-interaction --ansi`, for example
+  `herd php artisan module:migrate --no-interaction --ansi Checkout`. It is quoted for the shell of
+  the platform: POSIX quoting on macOS and Linux, PowerShell quoting on Windows.
+- With no runner chosen for the app, the line reads `php artisan` and the words, and the run button
+  is off.
+
+## Keys
+
+| Keys | Does |
+|---|---|
+| <kbd>Ctrl</kbd> <kbd>Enter</kbd> (<kbd>Cmd</kbd> <kbd>Enter</kbd> on macOS) | Runs the selected action. It runs only a line that was whole on screen in the last frame. |
+| <kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>C</kbd> (<kbd>Cmd</kbd> <kbd>Shift</kbd> <kbd>C</kbd> on macOS) | Copies the command. |
+| <kbd>J</kbd> <kbd>K</kbd> or <kbd>Down</kbd> <kbd>Up</kbd> | Moves in the list. |
+
+While a command runs in the app, the run button is off with the tooltip "`<command>` is running".
+Mortise runs one command at a time per app.
+
+## Everyday actions
+
+A module shows six actions. The first is **Turn off** when the module is on, else **Turn on**.
+**All modules** shows four: Migrate, Seed, Run tests and Check translations.
+
+| Action | Command for a module | Command for all modules | Options | Asks first |
+|---|---|---|---|---|
+| **Turn on** | `module:enable <Module>` | none | none | Never |
+| **Turn off** | `module:disable <Module>` | none | none | When modules that are on use the module |
+| **Migrate** | `module:migrate <Module>` | `module:migrate --all` | `--pretend`, `--seed`, `--database` (module only) | In production |
+| **Roll back** | `module:migrate-rollback <Module>` | none | `--pretend` | Always, except a dry run outside production |
+| **Seed** | `module:seed <Module>` | `module:seed --all` | `--database`, `--class` | In production |
+| **Run tests** | `module:test <Module>` on 13.4 and later | `module:test --all` on 13.4 and later | `--filter`, `--parallel` (13.4 and later) | Never |
+| **Check translations** | `module:lang <Module>` | `module:lang --all` | none | Never |
+
+In the list, **All modules** labels its rows **Migrate all modules**, **Seed all modules** and
+**Run all module tests**.
+
+On a package with version 13.4.0 or later, Run tests and Check translations also carry `--json`.
+Mortise reads the answer of the package from it. See [Package versions](/mortise/reference/package-versions/).
+
+Before 13.4, the package has no command for the tests of one module. **Run tests** then shows the
+placeholder `[the package's command for the tests of one module]` and the sentence
+"The package has no command for the tests of one module yet." It runs nothing.
+
+## Options
+
+The options of an action, as the panel labels them, and the word each adds to the command.
+
+| Label | Word | Actions |
+|---|---|---|
+| **Dry run: print the SQL, run none of it** | `--pretend` | Migrate, Roll back, Reset migrations |
+| **Seed afterwards** | `--seed` | Migrate, Refresh migrations, Drop all tables and migrate |
+| **Database connection** | `--database=<value>` | Migrate of one module, Seed, Reset, Refresh, Drop all tables and migrate |
+| **Seeder class** | `--class=<value>` | Seed |
+| **Filter, a test name or pattern** | `--filter=<value>` | Run tests, 13.4 and later |
+| **Run in parallel** | `--parallel` | Run tests, 13.4 and later |
+| **Also drop views** | `--drop-views` | Drop all tables and migrate |
+| **Also drop types** | `--drop-types` | Drop all tables and migrate. Postgres only |
+
+Rules for the words:
+
+- A text option is trimmed and becomes one word, such as `--database=testing`. An empty one is left out.
+- A dry run of Migrate leaves out `--seed`, because the package seeds after a pretend migrate.
+- A module name that starts with `-` goes last, after `--`, so artisan does not read it as an option.
+- `--force` is added only where the package asks for confirmation and Mortise has asked you first.
+
+## Destructive actions
+
+The group **Destructive** holds the actions that lose data. It is closed by default.
+Reset, refresh and delete belong to one module. Drop all tables and migrate belongs to **All modules**,
+because it drops every table.
+
+<Screen
+  id="s10.4-reset"
+  alt="The Destructive group open on Reset migrations of Checkout, with the box What is lost and the command line."
+/>
+
+| Action | Command | Target | Options | Question |
+|---|---|---|---|---|
+| **Reset migrations** | `module:migrate-reset <Module>` | One module | `--pretend`, `--database` | A dialog that names the tables. A dry run asks nothing |
+| **Refresh migrations** | `module:migrate-refresh <Module>` | One module | `--seed`, `--database` | A dialog that names the tables. The command has no dry run |
+| **Delete module** | `module:delete <Module> --force` | One module | none | You type the module name |
+| **Drop all tables and migrate** | `module:migrate-fresh --all` | All modules | `--seed`, `--drop-views`, `--drop-types`, `--database` | You type the app name. The command refuses a dry run |
+
+Each destructive action shows a box **What is lost**, and what stays.
+The package always asks before `module:delete`, so Mortise asks, then passes `--force`.
+
+## The dialogs
+
+Focus starts on **Cancel** in every dialog, so <kbd>Enter</kbd> never confirms an action.
+
+| Question | Title | Confirm button |
+|---|---|---|
+| Turn off a module that others use | Turn off `<Module>`? | Turn off `<Module>` |
+| Roll back | Roll back `<Module>`? | **Roll back**, or Roll back `<n>` migrations with the migration state. **Dry run** sits on the left |
+| Migrate or Seed in production | Migrate `<Module>` in production? or Seed `<Module>` in production? | **Migrate in production** or **Seed in production** |
+| Reset | Reset the migrations of `<Module>`? | **Reset migrations**, or Reset `<n>` migrations with the migration state. **Dry run** sits on the left |
+| Refresh | Refresh the migrations of `<Module>`? | **Refresh migrations**, or Refresh `<n>` migrations with the migration state |
+| Drop all tables | Drop all tables of `<app>`? | **Drop all tables and migrate** |
+| Delete | Delete the module `<Module>`? | **Delete module** |
+
+With the migration state of 13.4 and later, the dialogs of roll back, reset and refresh list the
+migrations of the last batch or the tables that change. Without it, they leave the list out.
+
+### Typed confirmations
+
+**Drop all tables and migrate** and **Delete module** ask you to type a name: "Type `<name>` to confirm".
+
+- Drop all tables and migrate asks for the name of the app, as Mortise shows it.
+- Delete module asks for the name of the module.
+- The text must match exactly: same case, no space trimmed. An empty text never matches.
+- The confirm button stays off until the name matches.
+
+The delete dialog names the folder, its count of files, and its line in the statuses file of the
+package. It says which modules that are on use the module. It also says how many files have changes
+that are not committed to git, or that Mortise cannot tell.
+
+<Screen
+  id="s10.5d-delete-typed"
+  alt="The dialog Delete the module Checkout with the name Checkout typed in the field and the Delete module button enabled."
+/>
+
+### Run again
+
+**Run again** in the runner drawer or in History asks again before a line it asked about the
+first time: a command with `--force`, a roll back or reset that is not a dry run, and every refresh,
+fresh and delete. The destructive ones open their full dialog, with the typed name.
+
+## The production rule
+
+Mortise reads `APP_ENV` from the `.env` file of the app. `APP_URL` and `APP_ENV` are the only lines
+it reads from that file. The app is in production when `APP_ENV` is `production`, exactly.
+
+In production:
+
+- **Migrate**, **Seed** and **Roll back** ask first. The command runs with `--force`, because the
+  package asks for confirmation in production.
+- **Reset migrations**, **Refresh migrations**, **Drop all tables and migrate** and **Delete module**
+  do not run. Mortise shows the line and offers **Copy command** only. The panel says:
+  "`<app>` reports the environment production. Mortise does not run this command there. Copy it and
+  run it where you can watch the database."
+- Mortise reads `APP_ENV` again just before a destructive command starts.
+- Run again of a destructive command in production runs nothing. It opens the Actions tab on that
+  action, where you can copy the line.
+
+<Screen
+  id="s10.4d-production"
+  alt="Reset migrations in an app that reports production: the panel explains that Mortise does not run the command there and offers Copy command only."
+/>
+
+**Delete module** is also refused when Mortise cannot read where the app keeps its modules. The
+package could then delete another folder than the one on screen. Mortise shows the line to copy.
+
+## After a run
+
+A run ends with a toast, such as "Migrated Checkout: 1 migration ran." or "Turned off Checkout."
+The output shows in the [runner drawer](/mortise/reference/runner/).
+On 13.4 and later, Mortise forgets the migration state that a migrate, roll back, reset, refresh or
+fresh may have changed. A dry run keeps it.
+
+## Related pages
+
+- [How to run module actions](/mortise/how-to/run-module-actions/)
+- [How to run destructive actions](/mortise/how-to/run-destructive-actions/)
+- [How to run tests](/mortise/how-to/run-tests/)
+- [About safety](/mortise/explanation/safety/)
