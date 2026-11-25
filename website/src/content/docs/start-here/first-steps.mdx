@@ -1,0 +1,87 @@
+---
+title: First steps
+description: Start Mortise, add your first app, choose how PHP runs for it and find your way around the window.
+sidebar:
+  order: 3
+---
+
+import { Steps } from '@astrojs/starlight/components';
+import Screen from '../../../components/Screen.astro';
+
+This page takes you from a fresh install to an open app. It ends with a short map of the window.
+
+## What you need
+
+- Mortise, installed. See [Installation](/mortise/start-here/installation/).
+- A Laravel app of your own that uses `nwidart/laravel-modules`, with at least two modules.
+  The app folder holds `artisan` and a `composer.lock` that lists the package.
+  Run `composer install` in it first if you have not.
+- A way to run PHP in that app: Herd, Sail, Docker or a `php` on your path. Mortise reads the app
+  without PHP, but its commands need it.
+
+## Add your app
+
+<Steps>
+
+1. Start Mortise. The window reads **No apps yet**.
+
+   <Screen id="s1.1-first-run" alt="The first window of Mortise: No apps yet, with the button Add app folder" />
+
+2. Select **Add app folder**. The **Add app** panel opens.
+
+   <Screen id="s1.2-add-app" alt="The Add app panel before a folder is chosen: the field App folder and the button Choose folder" />
+
+3. Select **Choose folder** and pick the folder of your app: the one that holds `artisan`.
+   You can also type the path into the field and press <kbd>Enter</kbd>.
+
+   Mortise reads the folder. Under **Found in this folder** it shows the Laravel version, the
+   modules and the git branch. The note says "read from disk, nothing run".
+
+4. Under **Run PHP with**, choose how PHP runs for this app: **Herd**, **Sail**, **Docker** or
+   **Custom**. Mortise proposes one when it finds a Herd site, Sail or a compose file.
+   If you run `php` directly, choose **Custom**; the field then reads `php artisan`.
+
+5. Select **Test**. Mortise runs the line under the field, `artisan --version`, in the app folder.
+   The answer shows next to **Answered**. If the test fails, the sentence under it says why;
+   [Choose the PHP for an app](/mortise/how-to/choose-php/) covers each choice.
+
+   <Screen id="s1.3-run-php-with" alt="The choice Run PHP with: Herd, Sail, Docker and Custom, the command line under it and the Test button" />
+
+6. Leave **Runtime, optional** empty for now. [Connect the actuator of an app](/mortise/how-to/connect-actuator/) fills it later.
+
+7. Select **Add** followed by the name of your app, or press <kbd>Cmd</kbd> <kbd>Enter</kbd> on macOS
+   (<kbd>Ctrl</kbd> <kbd>Enter</kbd> on Windows and Linux).
+
+</Steps>
+
+A message reads "Added", the name of the app and the number of modules read. The app gets a tile in
+the rail on the left.
+
+
+## Find your way around
+
+<Screen id="s4.1-home" alt="The Mortise window with the app shop-api open: the rail of apps, the module index with seven modules and the Summary of All modules" />
+
+| Part | Where | What it holds |
+|---|---|---|
+| Title bar | Top | The entry to the command palette, and the name of the open app |
+| Rail | Left edge | One tile per app. The tile with a plus, **Add app**, adds another |
+| Module index | Next to the rail | **All modules**, then one row per module. <kbd>/</kbd> filters it |
+| Workspace | Middle | The tabs **Summary**, **Boundary**, **Generate**, **Actions** and **Metrics**, keys <kbd>1</kbd> to <kbd>5</kbd> |
+| Runner drawer | Bottom | The output of the command that runs. <kbd>Ctrl</kbd> <kbd>&#96;</kbd> shows or hides it |
+
+A few keys help from the start. On macOS use <kbd>Cmd</kbd> in place of <kbd>Ctrl</kbd>.
+
+| Key | Does |
+|---|---|
+| <kbd>Ctrl</kbd> <kbd>K</kbd> | Opens the command palette |
+| <kbd>J</kbd> <kbd>K</kbd> | Selects the next or previous module |
+| <kbd>F</kbd> | Opens the findings of the app |
+| <kbd>?</kbd> | Shows every shortcut |
+
+[The window](/mortise/reference/window/) and [Keyboard](/mortise/reference/keyboard/) describe each part and each key.
+
+## Next
+
+- Learn Mortise step by step in the [tutorial](/mortise/tutorial/first-app/).
+- Or go to a goal in the how-to guides, such as [Add boundary rules to an app](/mortise/how-to/add-boundary-rules/).

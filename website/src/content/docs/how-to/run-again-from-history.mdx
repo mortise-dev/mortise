@@ -1,0 +1,84 @@
+---
+title: Run a command again from the history
+description: Open the history of the runner drawer, read a past run, run its command again, and copy its output.
+sidebar:
+  order: 14
+---
+import { Steps, Aside } from '@astrojs/starlight/components';
+import Screen from '../../../components/Screen.astro';
+
+Mortise keeps the last 50 runs of each app. You can read each one and run its command again.
+You need to have [chosen the PHP for the app](/mortise/how-to/choose-php/).
+
+## Open the history
+
+<Steps>
+
+1. Show the runner drawer with <kbd>Ctrl</kbd> <kbd>`</kbd>, on macOS too, or with <kbd>Ctrl</kbd> <kbd>J</kbd> (<kbd>Cmd</kbd> <kbd>J</kbd> on macOS).
+
+2. Press **History** on the bar of the drawer, or <kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>H</kbd> (<kbd>Cmd</kbd> <kbd>Shift</kbd> <kbd>H</kbd> on macOS).
+   If no command has run in the app since Mortise opened, the drawer shows the history at once.
+
+</Steps>
+
+<Screen id="s11.1d-history" alt="The History of the runner drawer: the runs of the app, the latest first, each with its time, command and result, and the output of the selected run." />
+
+## Read a past run
+
+The list shows the runs of the app, the latest first. Each row has its clock time, its command and its result.
+The bar counts the runs of the day, such as "5 runs today in shop-api".
+
+<Steps>
+
+1. Press <kbd>Up</kbd> or <kbd>Down</kbd>, or click a row, to select the run.
+
+2. Read its output beside the list. The `$` line above the output is the line that runs again,
+   through how PHP runs for the app now.
+
+</Steps>
+
+## Run the command again
+
+<Steps>
+
+1. Select the run and check the `$` line.
+   If no `$` line shows, Mortise has no way to run PHP for the app. Choose one in Settings first.
+
+2. Press **Run again**, or <kbd>Enter</kbd> while the list has focus.
+
+3. If Mortise asked before the command ran last time, it asks again:
+   - A line with `--force`, or a roll back that is not a dry run, asks "Run `<command>` again?".
+     Read it, then press **Run again**. Focus starts on **Cancel**.
+   - Reset migrations, Refresh migrations, Drop all tables and migrate and Delete module open their full question,
+     with the typed name where the action needs one. Continue as in [Run a destructive action](/mortise/how-to/run-destructive-actions/).
+     A dry run of Reset migrations runs at once.
+
+</Steps>
+
+The output of the new run replaces the history in the drawer. Press **History** to go back to the list.
+
+Outside the history, **Run again** on the bar, or <kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>R</kbd>
+(<kbd>Cmd</kbd> <kbd>Shift</kbd> <kbd>R</kbd> on macOS), runs the last command of the app again.
+If how PHP runs for the app changed since that run, the first press shows the history with the new line.
+Press again to run it.
+
+<Aside type="caution">
+If the app reports the environment `production`, Run again of a destructive command runs nothing.
+It opens the Actions tab on that action, where **Copy command** copies the line. Run it where you can watch the database.
+</Aside>
+
+## Copy a command or its output
+
+- **Copy output**, or <kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>O</kbd> (<kbd>Cmd</kbd> <kbd>Shift</kbd> <kbd>O</kbd> on macOS),
+  copies the output of the selected run as plain text. It does not copy the `$` line.
+- The history has no button to copy the command itself. To copy a command line, open the action or the generator
+  and press **Copy command**, or <kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>C</kbd> (<kbd>Cmd</kbd> <kbd>Shift</kbd> <kbd>C</kbd> on macOS).
+
+## Where the history lives
+
+The history lives in the data folder of Mortise, never in the app. Each app keeps its last 50 runs,
+with the output of each up to 1 MB. The 51st run drops the oldest.
+A read that only gives data, such as the migration state, is not kept.
+
+The folder for each platform is in [Files and folders](/mortise/reference/files-and-folders/#history-of-runs).
+The drawer, its states and its keys are in [Runner drawer](/mortise/reference/runner/).

@@ -1,0 +1,88 @@
+---
+title: Work through the findings
+description: Open the findings of an app or a module, go to where each one lives, fix it or change the limit that raises it, and watch the list update.
+sidebar:
+  order: 12
+---
+import { Steps, Aside } from '@astrojs/starlight/components';
+import Screen from '../../../components/Screen.astro';
+
+A finding is a problem or a warning that Mortise works out from the files of the app.
+Each kind, and what raises it, is in [Findings](/mortise/reference/findings/).
+
+## Open the findings
+
+<Steps>
+
+1. For every finding of the app, press <kbd>F</kbd> when no text field has focus.
+   You can also press **Show all** *n* **findings** under the alert of the Summary of **All modules**,
+   or choose "Findings in" and the name of the app in the [command palette](/mortise/how-to/use-the-palette/).
+
+2. For the findings of one module, select the module in the module index and open the **Summary** tab, or press <kbd>1</kbd>.
+   The alert at the top names its problems or warnings. A module with no finding shows no alert.
+
+</Steps>
+
+<Screen id="s6.4-findings" alt="The list titled Findings in shop-api, with a group of problems, a group of warnings, and the box Checks without a finding." />
+
+## Read a row
+
+The list holds the groups **Problems**, **Warnings** and **To do, not counted as findings**.
+Each row shows the code stamp of the module under **Module**, the sentence under **Finding**,
+the check that raised it under **Check**, and the tab it goes to under **Enter opens**.
+The box **Checks without a finding** lists the checks that ran and found nothing.
+
+## Go to where a finding lives
+
+<Steps>
+
+1. Press <kbd>J</kbd> or <kbd>K</kbd> to move to the row.
+
+2. Press <kbd>Enter</kbd>, or click the row.
+   - A circle or a module that reads internals opens **Boundary**, on the link between the two modules.
+   - A translation warning opens **Actions**, on Check translations of the module.
+   - A waiting migration opens **Actions**, on Migrate of the module.
+   - Any other finding of a module opens the **Summary** of the module.
+   - A finding of the app itself, such as one about `modules_statuses.json`, opens nothing. Fix it in the file.
+
+3. To go back to the list, press **Back to Summary** or <kbd>Esc</kbd>, then <kbd>F</kbd> again.
+
+</Steps>
+
+## Fix the usual kinds
+
+- **Rule: no circular use**: on the **Boundary** tab, read the files of the link.
+  Every file is marked. Remove the use in either direction to end the circle.
+  Select a file and press **Open in editor**, or <kbd>Enter</kbd>, to open it at its line.
+- **Rule: … only**: the files that read internals come first in the table of the link.
+  Make them use a class in a public folder of the other module, such as `Contracts` or `Events`.
+- **Valid module.json**: correct the JSON, or add the `name` the package needs.
+- **Namespace**: make the namespace of the module end in the name of its folder.
+- **Statuses file**: remove the module that has no folder from `modules_statuses.json`.
+- **Coverage limit**: add tests to the module, then write the coverage report again.
+- **Translations**: add the missing keys or files to the locale the sentence names.
+- A waiting migration: press **Migrate** on the panel that <kbd>Enter</kbd> opened.
+
+<Screen id="s5.2-boundary-circle" alt="The files of the circular link between Checkout and Shipping, in two sections, one per direction, with every file marked." />
+
+## Change the rule or the limit instead
+
+If the finding is not something the app needs to fix, change what raises it.
+
+- **Coverage limit**: open **Settings** with <kbd>Ctrl</kbd> <kbd>,</kbd> (<kbd>Cmd</kbd> <kbd>,</kbd> on macOS).
+  In **Apps**, select the app and type a new per cent in **Coverage limit**. The default is 50%.
+  The value applies when the field loses focus.
+- **Rule: no circular use** and **Rule: … only**: turn a rule off, or add a folder that counts as public.
+  See [Add boundary rules to an app](/mortise/how-to/add-boundary-rules/).
+
+## See the list update
+
+Mortise watches the files of the app on screen. A save in your editor, or a new coverage report,
+reads the app again, and the list follows. <kbd>Ctrl</kbd> <kbd>R</kbd> (<kbd>Cmd</kbd> <kbd>R</kbd> on macOS)
+reads the app again at once.
+
+Translation warnings come from the report of `module:lang`, not from the files.
+After you fix a translation, press **Check translations** on the Actions tab of the module again.
+This runs a command, so you need to have [chosen the PHP for the app](/mortise/how-to/choose-php/).
+
+When nothing is left, the list says, for example, "No findings. 7 modules checked against 2 rules and 4 checks."

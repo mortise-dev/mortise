@@ -1,0 +1,89 @@
+---
+title: Use the command palette
+description: Open the command palette, find an action or a generator of a module, start a recent run again, and handle destructive actions.
+sidebar:
+  order: 13
+---
+import { Steps, Aside } from '@astrojs/starlight/components';
+import Screen from '../../../components/Screen.astro';
+
+The command palette finds modules, actions, generators, findings, apps and commands of Mortise.
+A row that runs a command opens its panel or its form first. The command runs from there,
+so you need to have [chosen the PHP for the app](/mortise/how-to/choose-php/).
+
+## Open and close the palette
+
+Press <kbd>Ctrl</kbd> <kbd>K</kbd> (<kbd>Cmd</kbd> <kbd>K</kbd> on macOS) from anywhere,
+or click the entry in the middle of the title bar. Press <kbd>Esc</kbd> or the same key again to close it.
+
+## Run an action or a generator of a module
+
+<Steps>
+
+1. Open the palette.
+
+2. Type part of the module name and a word of what you want, such as `checkout migrate` or `bil model`.
+   Letters only need to come in order: `mm bil` finds `module:make-model` in Billing.
+
+3. Press <kbd>Up</kbd> or <kbd>Down</kbd> to move to the row.
+   - Rows under "Actions for Checkout", such as "Migrate Checkout", show the hint **Action**.
+   - Rows under **Generators**, such as "Generate a model in Checkout", show the hint **Form**.
+
+4. Press <kbd>Enter</kbd>. An action opens the **Actions** tab on its panel. A generator opens its form.
+
+5. Read the command line, set the options, then press the run button, or <kbd>Ctrl</kbd> <kbd>Enter</kbd> (<kbd>Cmd</kbd> <kbd>Enter</kbd> on macOS).
+
+</Steps>
+
+<Screen id="s12.1-palette-query" alt="The command palette with the query check: a group of modules, actions for Checkout, a generator, and two findings." />
+
+If no module name matches, the palette lists the actions of the module selected in the index.
+With **All modules** selected, it lists **Actions for all modules**.
+
+To search another app, press <kbd>Tab</kbd>. The footer names the app the palette searches.
+
+## Start a recent run again
+
+<Steps>
+
+1. Open the palette and leave the query empty.
+
+2. Under **Recent**, find the action or generator. An action row says when it ran, such as "ran 2 minutes ago". A generator row shows **Form**.
+
+3. Press <kbd>Enter</kbd>. The panel of the action, or the form of the generator, opens.
+
+4. Check the options and press the run button.
+
+</Steps>
+
+<Screen id="s12.2a-palette-empty" alt="The palette with an empty query: recent rows, the Go to group and the Apps group." />
+
+**Recent** shows up to three actions and generators that ran last in the app, from its history of runs. To run the exact same line again,
+use the history of the runner drawer instead: see [Run a command again from the history](/mortise/how-to/run-again-from-history/).
+
+## Find a destructive action
+
+The palette lists a destructive action only when the query holds its own word:
+`reset`, `refresh`, `fresh` or `delete`.
+
+- `checkout reset`, `checkout refresh` and `checkout delete` find Reset migrations,
+  Refresh migrations and Delete module of Checkout.
+- `fresh` finds Drop all tables and migrate, for all modules.
+- `refresh` does not find fresh.
+
+<Steps>
+
+1. Type the module name and the word, such as `checkout delete`. The destructive row comes first in its group.
+
+2. Press <kbd>Enter</kbd>. The Actions tab opens on its panel. Nothing runs yet.
+
+3. Continue as in [Run a destructive action](/mortise/how-to/run-destructive-actions/). Mortise asks before the command runs.
+
+</Steps>
+
+<Aside type="caution">
+If the app reports the environment `production`, Mortise does not run a destructive action. The panel offers **Copy command** only.
+</Aside>
+
+Every group, row and key is listed in [Command palette](/mortise/reference/palette/).
+All shortcuts are in [Keyboard](/mortise/reference/keyboard/).

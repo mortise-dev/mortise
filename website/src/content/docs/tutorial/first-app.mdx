@@ -1,6 +1,6 @@
 ---
 title: Your first app
-description: Open a Laravel app in Mortise, read its modules and their links, add a boundary rule and run one command.
+description: Read the modules of a Laravel app in Mortise and their links, add a boundary rule and run one command.
 sidebar:
   order: 1
 ---
@@ -8,54 +8,17 @@ sidebar:
 import { Steps, Aside, LinkCard, CardGrid } from '@astrojs/starlight/components';
 import Screen from '../../../components/Screen.astro';
 
-In this tutorial we open one of your Laravel apps in Mortise. We look at its modules and at the links
+In this tutorial we explore one of your Laravel apps in Mortise. We look at its modules and at the links
 between them. We add a boundary rule and see the finding it raises. Then we run one command of the
 package and read its output.
 
 It takes about fifteen minutes. Nothing in it changes your code. The only file Mortise writes is
 `mortise.json`, and it asks first.
 
-## What you need
+## Before we start
 
-- Mortise, installed. [How to install Mortise](/mortise/how-to/install/) has the steps for macOS,
-  Windows and Linux.
-- A Laravel app of your own that uses `nwidart/laravel-modules`, with at least two modules.
-  The app folder holds `artisan` and a `composer.lock` that lists the package.
-  Run `composer install` in it first if you have not.
-- A way to run PHP in that app: Herd, Sail, Docker or a `php` on your path. Mortise reads the app
-  without PHP, but the command at the end of this tutorial needs it.
-
-## Open the app
-
-<Steps>
-
-1. Start Mortise. The window reads **No apps yet**.
-
-2. Select **Add app folder**. The **Add app** panel opens.
-
-3. Select **Choose folder** and pick the folder of your app: the one that holds `artisan`.
-   You can also type the path into the field and press <kbd>Enter</kbd>.
-
-   Mortise reads the folder. Under **Found in this folder** it shows the Laravel version, the
-   modules and the git branch. The note says "read from disk, nothing run".
-
-4. Under **Run PHP with**, choose how PHP runs for this app: **Herd**, **Sail**, **Docker** or
-   **Custom**. Mortise proposes one when it finds a Herd site, Sail or a compose file.
-   If you run `php` directly, choose **Custom**; the field then reads `php artisan`.
-
-5. Select **Test**. Mortise runs the line under the field, `artisan --version`, in the app folder.
-   The answer shows next to **Answered**. If the test fails, the sentence under it says why;
-   [How to choose how PHP runs](/mortise/how-to/choose-php/) covers each choice.
-
-6. Leave **Runtime, optional** empty. We do not need a running app in this tutorial.
-
-7. Select **Add** followed by the name of your app, or press <kbd>Cmd</kbd> <kbd>Enter</kbd> on macOS
-   (<kbd>Ctrl</kbd> <kbd>Enter</kbd> on Windows and Linux).
-
-</Steps>
-
-A message reads "Added", the name of the app and the number of modules read. The app gets a tile in
-the rail on the left.
+Follow [First steps](/mortise/start-here/first-steps/) first. At its end Mortise is installed and
+one of your apps is open, with at least two modules and a way to run PHP.
 
 ## Look at the whole app
 
