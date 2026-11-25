@@ -1565,7 +1565,8 @@ pub fn run(chrome: Chrome, folder: Option<PathBuf>) -> eframe::Result {
     let viewport = chrome.viewport(
         egui::ViewportBuilder::default()
             .with_title(strings::BRAND)
-            .with_app_id("mortise")
+            // The name of the binary: cargo-packager names the `.desktop` file of Linux after it.
+            .with_app_id("mortise-desktop")
             .with_inner_size([1280.0, 800.0])
             .with_min_inner_size([size::WINDOW_MIN_W, size::WINDOW_MIN_H])
             .with_drag_and_drop(true)
