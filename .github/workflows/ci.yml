@@ -223,6 +223,43 @@ jobs:
           path: target/llvm-cov/html
           if-no-files-found: error
 
+  # Builds the command line tool alone, so mortise-core comes without its default features and
+  # nothing of the window is built: Linux gets no window packages here. Then it checks the fixture
+  # shop-api, which has two problems, so the tool must exit 1. The text format, so that the fixture's
+  # problems do not mark the pull request.
+  cli:
+    name: Command line tool (${{ matrix.name }})
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS
+            os: macos-latest
+          - name: Linux
+            os: ubuntu-latest
+          - name: Windows
+            os: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+      - run: cargo build -p mortise-cli --locked
+      - name: Check shop-api
+        shell: bash
+        run: |
+          status=0
+          target/debug/mortise check fixtures/shop-api || status=$?
+          if [ "$status" -ne 1 ]; then
+            echo "::error::mortise check fixtures/shop-api exited $status, not 1."
+            exit 1
+          fi
+
   # Feature gates do not depend on the platform, so Linux is enough. Each feature builds alone,
   # so a gate on the wrong file fails here and not only in a build with the default features.
   # It checks the library and the binaries only: the tests depend on the crate itself with its
