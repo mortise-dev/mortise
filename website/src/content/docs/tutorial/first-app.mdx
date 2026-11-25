@@ -1,5 +1,192 @@
 ---
 title: Your first app
-description: Placeholder.
+description: Open a Laravel app in Mortise, read its modules and their links, add a boundary rule and run one command.
+sidebar:
+  order: 1
 ---
-Placeholder.
+
+import { Steps, Aside, LinkCard, CardGrid } from '@astrojs/starlight/components';
+import Screen from '../../../components/Screen.astro';
+
+In this tutorial we open one of your Laravel apps in Mortise. We look at its modules and at the links
+between them. We add a boundary rule and see the finding it raises. Then we run one command of the
+package and read its output.
+
+It takes about fifteen minutes. Nothing in it changes your code. The only file Mortise writes is
+`mortise.json`, and it asks first.
+
+## What you need
+
+- Mortise, installed. [How to install Mortise](/mortise/how-to/install/) has the steps for macOS,
+  Windows and Linux.
+- A Laravel app of your own that uses `nwidart/laravel-modules`, with at least two modules.
+  The app folder holds `artisan` and a `composer.lock` that lists the package.
+  Run `composer install` in it first if you have not.
+- A way to run PHP in that app: Herd, Sail, Docker or a `php` on your path. Mortise reads the app
+  without PHP, but the command at the end of this tutorial needs it.
+
+## Open the app
+
+<Steps>
+
+1. Start Mortise. The window reads **No apps yet**.
+
+2. Select **Add app folder**. The **Add app** panel opens.
+
+3. Select **Choose folder** and pick the folder of your app: the one that holds `artisan`.
+   You can also type the path into the field and press <kbd>Enter</kbd>.
+
+   Mortise reads the folder. Under **Found in this folder** it shows the Laravel version, the
+   modules and the git branch. The note says "read from disk, nothing run".
+
+4. Under **Run PHP with**, choose how PHP runs for this app: **Herd**, **Sail**, **Docker** or
+   **Custom**. Mortise proposes one when it finds a Herd site, Sail or a compose file.
+   If you run `php` directly, choose **Custom**; the field then reads `php artisan`.
+
+5. Select **Test**. Mortise runs the line under the field, `artisan --version`, in the app folder.
+   The answer shows next to **Answered**. If the test fails, the sentence under it says why;
+   [How to choose how PHP runs](/mortise/how-to/choose-php/) covers each choice.
+
+6. Leave **Runtime, optional** empty. We do not need a running app in this tutorial.
+
+7. Select **Add** followed by the name of your app, or press <kbd>Cmd</kbd> <kbd>Enter</kbd> on macOS
+   (<kbd>Ctrl</kbd> <kbd>Enter</kbd> on Windows and Linux).
+
+</Steps>
+
+A message reads "Added", the name of the app and the number of modules read. The app gets a tile in
+the rail on the left.
+
+## Look at the whole app
+
+<Steps>
+
+1. Look at the module index, the column next to the rail. The first row is **All modules**. Under it
+   each module has a row with its three-letter code, its files and its coverage. A mark at the right
+   says whether the module has a problem or a warning.
+
+2. Keep **All modules** selected and look at the **Summary** tab. The first row counts the modules
+   that are on, the lines of PHP, the test coverage and the findings. Below it are the coverage of each
+   module and a table **By module**.
+
+   <Screen id="s4.2-summary-all" alt="The Summary of All modules: Modules on 7 of 7, Lines of PHP 861, Test coverage 68%, Findings 2 problems and 1 warning, an alert about Checkout, the coverage of each module and the table By module" />
+
+   If a module has a problem, a red box names the module and says what is wrong.
+
+</Steps>
+
+## Read the links of one module
+
+<Steps>
+
+1. In the index, select a module that uses another module. The **Uses** column of the table
+   **By module** tells you which ones do.
+
+2. Select the **Boundary** tab, or press <kbd>2</kbd>.
+
+   The graph puts the module in the middle. The modules that use it are on the left, under
+   **Used by**. The modules it uses are on the right, under **Uses**. Each box counts the references.
+
+3. Select one of the modules on the right. The table under the graph lists each file that makes the
+   link, the line, and the class it reads.
+
+   <Screen id="s5.1-boundary-module" alt="The Boundary tab of Checkout: Shipping and Notifications use it; it uses Billing, Shipping, Catalog and Users. The table lists six files of Checkout that read classes of Billing, three of them marked as reading internals" />
+
+   A file marked with a cross reads a class of the other module that is not public. The line under
+   the table names the rule and the folders that count as public.
+
+</Steps>
+
+## Add a boundary rule
+
+By default two rules apply, and the classes in the folders `Contracts` and `Events` of a module count
+as public. We make the rule stricter: only `Contracts` counts.
+
+<Steps>
+
+1. Select **All modules** in the index. The **Boundary** tab now shows the graph of the whole app and,
+   on the right, the box **Rules for** your app.
+
+   <Screen id="s5.3-boundary-all" alt="The Boundary tab of All modules: the graph of seven modules, the box Links that break a rule with 2 problems, and the box Rules for shop-api with No circular use and Other modules use only a module's public surface checked, and the folders Contracts, Events" />
+
+2. In the field under **Other modules use only a module's public surface**, change `Contracts, Events`
+   to `Contracts`. Then press <kbd>Tab</kbd> to leave the field.
+
+3. Mortise asks before it creates `mortise.json`. The dialog reads "Create mortise.json in" and the
+   name of your app. It says that the file keeps the boundary rules, so that a team shares them, and
+   that it is the only file Mortise writes into the app without a command.
+
+4. Select **Create mortise.json**.
+
+</Steps>
+
+Mortise writes `mortise.json` in the app folder and reads the app again. The rule now treats a class
+in `Events` as internal. Later changes to the rules save to the same file without a question.
+
+## See the finding
+
+<Steps>
+
+1. With **All modules** selected, press <kbd>F</kbd>. You can also select the button in the alert of the
+   Summary that reads "Show all" and the number of findings. The list **Findings in** your app opens.
+
+   <Screen id="s6.4-findings" alt="Findings in shop-api: two problems, a circular use between Checkout and Shipping and three files in Checkout that read a class of Billing directly, a coverage warning for Notifications, and three checks without a finding" />
+
+2. Look at the rows under **Problems**. If a module reads an `Events` class of another module, a row
+   now says how many files read it directly and that the other module offers `Contracts`. Its
+   **Check** column reads "Rule: Contracts only".
+
+   If no module does, the rule shows under **Checks without a finding** instead.
+
+3. Select a row and press <kbd>Enter</kbd>. The **Boundary** tab opens on that link.
+
+</Steps>
+
+To go back to the default, type `Contracts, Events` in the field again.
+
+## Run one command
+
+Check translations is a safe command to start with. It reads the language files of a module and
+changes nothing.
+
+<Steps>
+
+1. Select a module in the index.
+
+2. Select the **Actions** tab, or press <kbd>4</kbd>.
+
+3. Select the row **Check translations**. The panel reads "Check translations of" and the module name.
+
+4. Read the line under **Command**. It is the exact line that runs: the PHP you chose, then
+   `artisan module:lang --no-interaction --ansi` and the name of the module.
+
+5. Select **Check translations**, or press <kbd>Cmd</kbd> <kbd>Enter</kbd> on macOS
+   (<kbd>Ctrl</kbd> <kbd>Enter</kbd> on Windows and Linux).
+
+</Steps>
+
+The runner drawer opens at the bottom of the window. Its header reads **Runner** and the artisan words.
+The line that starts with `$` is the command that ran. The output follows, as the command wrote it.
+
+<Screen id="s11.1b-done" alt="The runner drawer after a run: the header Runner module:migrate Blog with a check mark, the buttons Run again, Copy output, History and Hide, the $ line and the output of the migration" />
+
+A check mark in the header means the command ended with exit code 0. **Hide** closes the drawer;
+<kbd>Ctrl</kbd> <kbd>{'`'}</kbd> opens it again. With `nwidart/laravel-modules` 13.4 or later, the missing
+keys also show as warnings in Findings.
+
+## What we did
+
+We added an app, read its modules and the links between them, and made a boundary rule stricter.
+Mortise wrote `mortise.json` after it asked. We saw the finding the rule raised, then ran one command
+with the line on screen first.
+
+## Next steps
+
+<CardGrid>
+  <LinkCard title="Add boundary rules" href="/mortise/how-to/add-boundary-rules/" description="Set the rules and the public folders for your team." />
+  <LinkCard title="Scan the public surface" href="/mortise/how-to/scan-public-surface/" description="Let Mortise propose what other modules may use." />
+  <LinkCard title="Run module actions" href="/mortise/how-to/run-module-actions/" description="Migrate, seed, roll back and turn modules on or off." />
+  <LinkCard title="Generate code" href="/mortise/how-to/generate-code/" description="Run the generators of the package from a form." />
+  <LinkCard title="Connect the actuator" href="/mortise/how-to/connect-actuator/" description="Read the runtime status of each module from a running app." />
+  <LinkCard title="Run tests" href="/mortise/how-to/run-tests/" description="Run the tests of one module or of all of them." />
+</CardGrid>
