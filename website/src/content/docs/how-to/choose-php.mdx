@@ -1,0 +1,55 @@
+---
+title: Choose the PHP for an app
+description: Set how Mortise runs PHP for one app, with Herd, Sail, Docker or a command of your own, and test it.
+sidebar:
+  order: 2
+---
+import { Steps, Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+import Screen from '../../../components/Screen.astro';
+
+Mortise reads an app without PHP. To generate files or run an action, it needs to know how PHP runs for that app.
+You choose this once per app. Why reading needs no PHP is in [About reading without PHP](/mortise/explanation/reading-without-php/).
+
+<Steps>
+
+1. Open Settings with <kbd>Ctrl</kbd> <kbd>,</kbd> (<kbd>Cmd</kbd> <kbd>,</kbd> on macOS), then choose **PHP**.
+   If you are adding the app, the add panel has the same field, **Run PHP with**. Use it there instead.
+
+2. Select the app in the table. The column **Runs with** says **Not chosen** for an app with no choice yet.
+
+3. Under **Run PHP with**, pick one of **Herd**, **Sail**, **Docker** or **Custom**.
+   Mortise proposes one from the files of the app folder, and the hint says what it found, such as "Found: this folder is a Herd site."
+
+   - If the app is a Herd site, pick **Herd**. On Windows the command starts with `herd.bat`.
+   - If the app folder holds `vendor/bin/sail` and a compose file, pick **Sail**.
+     On Windows, Sail is off: it runs in WSL only. Pick **Custom** there.
+   - If PHP runs in a Docker Compose service, pick **Docker**. The command is `docker compose exec -T app php artisan`.
+     If your service is not named `app`, change that word in the command field.
+   - Otherwise, pick **Custom** and type the words before the command name, for example `/usr/bin/php artisan`.
+
+   <Tabs syncKey="os">
+   <TabItem label="macOS">
+   All four choices are available.
+   </TabItem>
+   <TabItem label="Windows">
+   **Sail** is off, with the hint "Sail runs in WSL, not on Windows itself". **Herd** runs `herd.bat php artisan`.
+   </TabItem>
+   <TabItem label="Linux">
+   All four choices are available.
+   </TabItem>
+   </Tabs>
+
+4. If the command must start in another folder than the app folder, fill **Working folder**. Empty means **The app folder**.
+
+5. If a command can take longer than the default, change **Stop a command after**. It takes a number of minutes, from 1 to 120.
+
+6. Press **Test**. Mortise shows the line it runs under **Test runs**, then runs `artisan --version` through it.
+
+</Steps>
+
+<Screen id="s8.2-settings-php" alt="The PHP section of Settings. The app shop-api runs with Custom. Its test failed with the message that php-none did not answer, and the box at the right lists what each choice runs." />
+
+When the test works, **Answered** shows the first line of the answer, and the table shows it under **Last test**.
+If PHP did not answer, the sentence under the field says why. Choose another way, or correct the command, then press **Test** again.
+
+Every field is listed in [Settings](/mortise/reference/settings/).

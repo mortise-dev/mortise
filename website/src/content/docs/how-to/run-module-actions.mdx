@@ -1,0 +1,86 @@
+---
+title: Run an action on a module
+description: Turn a module on or off, migrate, roll back, seed, check translations and read the migration state from the Actions tab.
+sidebar:
+  order: 6
+---
+import { Steps, Aside } from '@astrojs/starlight/components';
+import Screen from '../../../components/Screen.astro';
+
+The Actions tab runs the package's commands for one module or for all modules. Mortise shows the exact command first.
+You need to have [chosen the PHP for the app](/mortise/how-to/choose-php/).
+For reset, refresh, drop all tables and delete, see [Run a destructive action](/mortise/how-to/run-destructive-actions/).
+
+## Run an action
+
+<Steps>
+
+1. Select the module in the module index. For migrate, seed or check translations of every module, select **All modules**.
+
+2. Open the **Actions** tab, or press <kbd>4</kbd>.
+
+3. Select the action in the list. The panel at the right says what it does and shows its options.
+
+4. Set the options. Each one adds a flag to the line under **Command**.
+
+5. Read the line under **Command**. The run button stays off until the whole line is on screen.
+
+6. Press the button named after the action, or <kbd>Ctrl</kbd> <kbd>Enter</kbd> (<kbd>Cmd</kbd> <kbd>Enter</kbd> on macOS).
+   To run the command yourself, press **Copy command** instead.
+
+</Steps>
+
+<Screen id="s10.1-actions" alt="The Actions tab of the module Checkout: the list of actions at the left, and the panel of Migrate with its options and command at the right." />
+
+The runner drawer shows the output as the command writes it, and a message says how it ended, such as "Migrated Checkout: 2 migrations ran."
+To stop a command, press **Stop** in the runner drawer, or <kbd>Ctrl</kbd> <kbd>.</kbd>.
+
+## Turn a module on or off
+
+The first action is **Turn off** for a module that is on, and **Turn on** for a module that is off.
+If modules that are on use the module, turning it off asks first. Press the button **Turn off** with the module name to confirm.
+Turning a module on does not run its migrations.
+
+## Migrate
+
+Select **Migrate**. Check **Dry run: print the SQL, run none of it** to read the SQL first. Check **Seed afterwards** to run the seeders after the migrations.
+For one module, **Database connection** takes the connection. Empty is the default.
+The **Migrate** button in the module header opens this panel too.
+
+## Roll back
+
+Select **Roll back**. It runs the down method of the last migration batch of the module.
+Mortise asks first. Press **Dry run** in the question to read the SQL, or the button **Roll back** to run it.
+With the dry run checked, the command changes nothing and runs at once.
+
+## Seed
+
+Select **Seed**. Set **Database connection** and **Seeder class** if you need others than the defaults.
+Running a seeder twice can add its rows twice.
+
+## Check translations
+
+Select **Check translations**. It lists the translation keys that a language of the module lacks. The output shows in the runner.
+On `nwidart/laravel-modules` 13.4 or later, Findings also lists the missing keys.
+
+## Read the migration state
+
+This needs `nwidart/laravel-modules` 13.4 or later.
+
+<Steps>
+
+1. Select **Migrate**, **Roll back**, **Reset migrations** or **Refresh migrations**.
+
+2. Press **Read migration state**. Mortise runs the line shown above the button and lists the migrations under **Waiting**, **Last batch** or **Ran**.
+
+</Steps>
+
+The panel then shows the state, and the buttons count it, such as **Migrate (3)**. Mortise reads it again after a migrate, roll back, reset, refresh or fresh.
+Press **Read again** to read it by hand.
+
+## In production
+
+If the app reports the environment `production`, migrate, seed and roll back ask first, and the command runs with `--force`.
+Press **Migrate in production** or **Seed in production** to confirm.
+
+Every action and option is in [Actions](/mortise/reference/actions/). Why Mortise asks before some commands is in [About safety](/mortise/explanation/safety/).

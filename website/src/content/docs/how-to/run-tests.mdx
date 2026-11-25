@@ -1,0 +1,33 @@
+---
+title: Run the tests of a module
+description: Run the tests of one module or of all modules with module:test, with a filter and in parallel.
+sidebar:
+  order: 8
+---
+import { Steps, Aside } from '@astrojs/starlight/components';
+import Screen from '../../../components/Screen.astro';
+
+**Run tests** runs `module:test` of `nwidart/laravel-modules`. The command exists from 13.4 on.
+On an older package the button stays off, and the panel says "The package has no command for the tests of one module yet."
+You need to have [chosen the PHP for the app](/mortise/how-to/choose-php/).
+
+<Steps>
+
+1. Select the module in the module index. For the tests of every module, select **All modules**.
+
+2. Open the **Actions** tab, or press <kbd>4</kbd>, and select **Run tests**, or **Run all module tests** for all modules.
+   The **Run tests** button in the module header opens the same panel.
+
+3. To run only some tests, type a test name or a pattern in **Filter, a test name or pattern**.
+
+4. To run the tests in parallel, check **Run in parallel**.
+
+5. Read the line under **Command**, then press **Run tests**, or <kbd>Ctrl</kbd> <kbd>Enter</kbd> (<kbd>Cmd</kbd> <kbd>Enter</kbd> on macOS).
+
+</Steps>
+
+<Screen id="s10.2e-run-tests-13.4" alt="The panel of Run tests on a 13.4 app: the count of tests in the module, the filter field, the parallel option and the command." />
+
+The runner drawer shows the output. A message counts the tests, such as "12 tests passed in Billing." or "2 of 12 tests failed in Billing."
+
+The panel is described in [Actions](/mortise/reference/actions/). The output and the history of runs are in [Runner](/mortise/reference/runner/).

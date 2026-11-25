@@ -1,0 +1,55 @@
+---
+title: Run a destructive action
+description: Reset or refresh the migrations of a module, drop all tables and migrate, or delete a module, after Mortise asks.
+sidebar:
+  order: 7
+---
+import { Steps, Aside } from '@astrojs/starlight/components';
+import Screen from '../../../components/Screen.astro';
+
+Four actions lose data: **Reset migrations**, **Refresh migrations**, **Drop all tables and migrate** and **Delete module**.
+They sit in the closed group **Destructive** of the Actions tab, and each one asks first.
+You need to have [chosen the PHP for the app](/mortise/how-to/choose-php/).
+
+<Steps>
+
+1. Select the target in the module index:
+   - For **Reset migrations**, **Refresh migrations** or **Delete module**, select the module.
+   - For **Drop all tables and migrate**, select **All modules**. It drops every table of the database.
+
+2. Open the **Actions** tab, or press <kbd>4</kbd>.
+
+3. Select **Destructive** to open the group, then select the action.
+
+4. Read the box **What is lost**. On `nwidart/laravel-modules` 13.4 or later, press **Read migration state** first: the box and the question then name the tables and count the migrations.
+
+5. Set the options. For a reset, check **Dry run: print the SQL, run none of it** to read the SQL without a question. Refresh and drop have no dry run.
+
+6. Press the red button named after the action, or <kbd>Ctrl</kbd> <kbd>Enter</kbd> (<kbd>Cmd</kbd> <kbd>Enter</kbd> on macOS).
+
+7. Read the question. Focus starts on **Cancel**, so <kbd>Enter</kbd> alone never confirms.
+   - For **Drop all tables and migrate**, type the name of the app where the question says "Type" and the name "to confirm".
+   - For **Delete module**, type the name of the module. The name must match exactly, with the same case.
+
+8. Press the button of the question that names the action, such as **Delete module**, to run the command.
+
+</Steps>
+
+<Screen id="s10.5d-delete-typed" alt="The question before Delete module: what the command removes, the modules that use it, and the module name typed to confirm." />
+
+The runner drawer shows the output, and a message says what happened, such as "Deleted the module Legacy."
+
+## In production
+
+If the app reports the environment `production`, Mortise does not run any of these four actions.
+The panel says so, and only **Copy command** works. Copy the command and run it where you can watch the database.
+
+<Screen id="s10.4d-production" alt="A destructive action of an app that reports production: the run button is off and the panel says to copy the command and run it where you can watch the database." />
+
+Mortise also does not run **Delete module** when it cannot read where the app keeps its modules. Copy the command and run it where you can check the folder.
+
+<Aside type="caution">
+Mortise cannot bring back what these commands drop or delete. If the module has changes that are not committed, the box **What is lost** says so. Commit them first.
+</Aside>
+
+Each action is described in [Actions](/mortise/reference/actions/). Why Mortise asks and refuses is in [About safety](/mortise/explanation/safety/).

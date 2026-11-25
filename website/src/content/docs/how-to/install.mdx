@@ -1,0 +1,78 @@
+---
+title: Install Mortise
+description: Download the installer for your platform, check its SHA-256 sum and install Mortise.
+sidebar:
+  order: 1
+---
+import { Steps, Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+
+Install Mortise from a release. To build it yourself, see [Build Mortise from source](/mortise/how-to/build-from-source/).
+
+<Steps>
+
+1. Open the [latest release](https://github.com/nWidart/mortise/releases/latest).
+
+2. Download the file for your platform and the sums file `Mortise-vX.Y.Z-SHA256SUMS.txt`, into the same folder.
+
+   | Platform | File |
+   |---|---|
+   | macOS, Apple silicon | `Mortise-macos-arm64.dmg` |
+   | Windows, x64 | `Mortise-windows-x64-setup.exe` |
+   | Linux, x86_64 | `Mortise-linux-x86_64.AppImage`, or `Mortise-linux-amd64.deb` for Debian and Ubuntu |
+
+3. Check the SHA-256 sum. Run the command in the folder of the downloads, with the version of the release in place of `vX.Y.Z`.
+
+   <Tabs syncKey="os">
+   <TabItem label="macOS">
+   ```sh
+   shasum -a 256 -c --ignore-missing Mortise-vX.Y.Z-SHA256SUMS.txt
+   ```
+   The line of the DMG must end in `OK`.
+   </TabItem>
+   <TabItem label="Windows">
+   In PowerShell:
+   ```powershell
+   (Get-FileHash -Algorithm SHA256 .\Mortise-windows-x64-setup.exe).Hash.ToLower()
+   Select-String Mortise-windows-x64-setup.exe .\Mortise-vX.Y.Z-SHA256SUMS.txt
+   ```
+   The two sums must be the same.
+   </TabItem>
+   <TabItem label="Linux">
+   ```sh
+   sha256sum -c --ignore-missing Mortise-vX.Y.Z-SHA256SUMS.txt
+   ```
+   The line of your file must end in `OK`.
+   </TabItem>
+   </Tabs>
+
+   If a sum differs, delete the file and download it again.
+
+4. Install Mortise.
+
+   <Tabs syncKey="os">
+   <TabItem label="macOS">
+   Open the DMG and drag Mortise to the Applications folder. The app is signed with a Developer ID and notarized by Apple, so macOS opens it without a warning.
+   </TabItem>
+   <TabItem label="Windows">
+   Run `Mortise-windows-x64-setup.exe`. The installer is not signed, so SmartScreen warns once. Choose **More info**, then **Run anyway**.
+   </TabItem>
+   <TabItem label="Linux">
+   For the AppImage, make the file executable, then run it:
+   ```sh
+   chmod +x Mortise-linux-x86_64.AppImage
+   ./Mortise-linux-x86_64.AppImage
+   ```
+   For the .deb, install it with apt:
+   ```sh
+   sudo apt install ./Mortise-linux-amd64.deb
+   ```
+   Neither file is signed.
+   </TabItem>
+   </Tabs>
+
+5. Start Mortise. The first window says **No apps yet** and offers **Add app folder**.
+
+</Steps>
+
+Mortise is installed. To open your first app, follow [the tutorial](/mortise/tutorial/first-app/).
+Where Mortise keeps its settings and its history is in [Files and folders](/mortise/reference/files-and-folders/).
