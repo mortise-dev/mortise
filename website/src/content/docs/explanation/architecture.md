@@ -108,5 +108,5 @@ Some behaviour differs by platform on purpose:
 The screenshots on this site come from the image tests, which run on macOS only. Some screens were also
 looked at on Linux. Windows is checked by CI, not by eye.
 
-[How to install Mortise](/mortise/how-to/install/) and [How to build Mortise from source](/mortise/how-to/build-from-source/)
+[How to install Mortise](/mortise/start-here/installation/) and [How to build Mortise from source](/mortise/how-to/build-from-source/)
 have the steps.

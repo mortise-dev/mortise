@@ -28,6 +28,8 @@ const dropUnusedSnapshots = {
 export default defineConfig({
   site: 'https://nwidart.github.io',
   base: '/mortise',
+  // Pages that moved keep their old address.
+  redirects: { '/how-to/install': '/mortise/start-here/installation/' },
   // The screenshots, the fonts and the logo come from outside this folder.
   vite: { server: { fs: { allow: ['..'] } } },
   integrations: [
@@ -50,6 +52,7 @@ export default defineConfig({
         },
       },
       sidebar: [
+        { label: 'Start here', items: [{ autogenerate: { directory: 'start-here' } }] },
         { label: 'Tutorial', items: [{ autogenerate: { directory: 'tutorial' } }] },
         { label: 'How-to guides', items: [{ autogenerate: { directory: 'how-to' } }] },
         { label: 'Reference', items: [{ autogenerate: { directory: 'reference' } }] },
