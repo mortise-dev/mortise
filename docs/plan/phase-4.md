@@ -3,7 +3,7 @@
 Outline, version 2, 26 November 2026. Version 1 was dated 23 November.
 
 Status: approved, 26 November 2026. The owner accepts every recommendation in section 4. Milestone 24 and the P6 package work have started. A crates.io token is in the `release` environment, and the repository `nWidart/setup-mortise` exists. Version 2 draws the line between Mortise and Mortise Cloud, takes in the requests of the cloud, and renumbers the milestones after phase 3.
-The published copy is https://6h4zaivwsd5c.postplan.dev/phase-4.html (version 13).
+The published copy is https://6h4zaivwsd5c.postplan.dev/phase-4.html (version 14).
 
 Phase 4 makes the boundary rules a contract that CI enforces. It adds one program, the command line tool `mortise`, with two commands. `mortise check` reads an app and fails the build when a rule breaks (M1). `mortise push` sends what it read to Mortise Cloud. The window gets the accepted public surface of a module (P6).
 Everything reads the files of one app at one commit, as phase 1 does. Screen ids refer to the specification.
