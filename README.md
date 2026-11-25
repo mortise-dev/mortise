@@ -45,8 +45,8 @@ to a file.
 
 Status: phase 1 (read only), phase 2 (running the package's commands) and phase 3 (the running app, per
 module) are built. The plans are `docs/plan/phase-1.md`, `docs/plan/phase-2.md` and
-`docs/plan/phase-3.md`. Where the build differs from the specification is in
-`docs/deviations.md`.
+`docs/plan/phase-3.md`. The plan for phase 4 is `docs/plan/phase-4.md`. Where the build differs from
+the specification is in `docs/deviations.md`.
 
 ## What it does
 
