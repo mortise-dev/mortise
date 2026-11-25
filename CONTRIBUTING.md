@@ -21,6 +21,8 @@ differs, the job keeps the new image and the difference as the artifact `images-
 ## Package
 
 cargo-packager builds the installers from `[package.metadata.packager]` in `crates/mortise-app/Cargo.toml`.
+They hold the window, binary `mortise-desktop`, under the name Mortise. The command line tool, binary
+`mortise` of `crates/mortise-cli`, is not in them.
 To build the macOS app and DMG on a Mac:
 
 ```

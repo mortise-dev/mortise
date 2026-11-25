@@ -45,7 +45,8 @@ Why these two rules exist is in [About boundaries](/mortise/explanation/boundari
 <Screen id="s5.3-boundary-all" alt="The Boundary tab of all modules: the graph of the modules, the links that break a rule, and the box Rules for shop-api with the two rules checked." />
 
 The graph and the list **Links that break a rule** now follow your rules, and so does Findings.
-**Fail CI when a rule breaks** stays off: it needs a command line tool that does not exist yet.
+**Fail CI when a rule breaks** is on until you turn it off. It tells the command line tool whether a
+problem fails CI; see [How to check the rules in CI](/mortise/how-to/check-rules-in-ci/).
 
 If `mortise.json` is not valid, Mortise says so and applies the default rules until the file is corrected.
 The format of the file is in [mortise.json](/mortise/reference/mortise-json/). The Boundary tab is in [Boundary](/mortise/reference/boundary/).

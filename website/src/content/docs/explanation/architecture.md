@@ -17,12 +17,15 @@ The workspace has two crates.
   finds the links between modules, checks the rules, runs commands, talks to the actuator and keeps
   the settings. It has no interface dependency at all.
 - **`mortise-app`** is the window. It draws the screens and wires each control to the core. Its binary
-  is `mortise`.
+  is `mortise-desktop`; the installers and the app are named Mortise.
+- **`mortise-cli`** is the command line tool `mortise`. It uses the core without its optional
+  features: no watcher, no actuator client, no credential store and no PHP runner. It reads an app and
+  prints what it found.
 
 The line between them is strict, and it pays in three ways. The core can be tested without a screen:
 reading an app, the file watcher, the actuator client and the scan all have tests that run in plain
-Rust. The core could serve another front end, such as the command line tool that **Fail CI when a rule
-breaks** waits for. And the interface stays thin: it asks for the current snapshot and draws it.
+Rust. The core serves a second front end, the command line tool, which checks
+the rules exactly as the window does. And the interface stays thin: it asks for the current snapshot and draws it.
 
 A snapshot is never changed. A read on a worker thread produces a new one and tells the window that it
 is there. So the window never shows an app that is half read, and a slow read never freezes it.
