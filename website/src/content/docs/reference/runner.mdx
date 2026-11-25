@@ -1,0 +1,181 @@
+---
+title: Runner drawer
+description: The runner drawer, the states of a run, Stop, the time limit, the history of runs and what closing Mortise does.
+sidebar:
+  order: 8
+---
+
+import { Aside } from '@astrojs/starlight/components';
+import Screen from '../../../components/Screen.astro';
+
+The runner drawer sits at the bottom of the workspace. It shows the command that runs, or ran last,
+in the app on screen, with its output as the command writes it.
+
+## How a command runs
+
+- Mortise starts a command only when you start it, with its line on screen first.
+- The command runs through the runner of the app: Herd, Sail, Docker or a Custom line.
+  See [Settings](/mortise/reference/settings/#php).
+- Mortise adds `--no-interaction --ansi` after the first artisan word. It does not add a flag that
+  the line already holds.
+- The command never goes through a shell. The process gets a program and a list of arguments.
+- Standard input is closed. A command that asks a question reads the end of its input and goes on
+  without waiting for you.
+- One command runs at a time in an app. A second start in that app is refused with the name of the
+  command that runs. Runs in different apps do not block each other.
+
+## Showing and hiding
+
+The drawer opens when a command starts. It stays until you hide it.
+
+| Keys | Does |
+|---|---|
+| <kbd>Ctrl</kbd> <kbd>`</kbd>, on macOS too | Shows or hides the drawer |
+| <kbd>Ctrl</kbd> <kbd>J</kbd> (<kbd>Cmd</kbd> <kbd>J</kbd> on macOS) | Shows or hides the drawer |
+
+On macOS <kbd>Cmd</kbd> <kbd>`</kbd> cycles the windows, so the drawer keeps <kbd>Ctrl</kbd> <kbd>`</kbd> there.
+
+- Hidden, the drawer is one line of 28 px with **Show**. Shown, its bar has **Hide**.
+- Until the drawer is first shown, it takes no room.
+- With no run in the app, it reads "No command has run yet. Output of generators and actions appears here."
+
+### Height
+
+The top edge of the drawer is a handle, named "Height of the runner drawer".
+
+- Drag it to set the height between 120 px and half the height of the workspace. The default is 200 px.
+- With focus on the handle, <kbd>Up</kbd> and <kbd>Down</kbd> change the height by 24 px.
+  <kbd>Home</kbd> and <kbd>End</kbd> jump to the highest and the lowest.
+- A double click collapses the drawer.
+
+## What the drawer shows
+
+<Screen
+  id="s11.1a-running"
+  alt="The runner drawer while module:migrate Checkout runs: the command line, the output so far and the status Running, 2.4 s with Stop."
+/>
+
+- The `$` line: the exact command line, quoted for the shell of the platform.
+- The output of standard output and standard error, line by line, as it arrives.
+- Colours of the output map to four styles: text, dim, success and error. Other escape sequences are removed.
+- The status of the run, on the bar.
+
+A run keeps at most 1 MB of output. Output past that is read and dropped, so the command never
+blocks. The drawer then says "Output past 1 MB is not kept."
+
+### States
+
+| State | Status on the bar | Example |
+|---|---|---|
+| Running | Running, and the time with one decimal | Running, 2.4 s |
+| Done | Done in, and the time | Done in 186 ms |
+| Failed | The exit code, and the time | Exit code 1, 412 ms |
+| Ended by a signal | Ended by a signal | |
+| Stopped | Stopped after, and the time | Stopped after 3.1 s |
+| Stopped at the time limit | Stopped, with a line that names the limit | Stopped at the time limit of 10 minutes. |
+| Did not start | The command did not start, with the reason | The command did not start: "herd: command not found". Choose how PHP runs for shop-api in Settings. |
+
+A time under a second is written in ms, else in seconds with one decimal.
+
+A failure ends with one sentence from Mortise under a rule:
+
+- A `module:migrate` run whose output marks a migration as failed names it:
+  "module:migrate Checkout stopped with exit code 1 at `<migration>`. The error from the database is
+  quoted above. Fix the migration, or try a dry run to read the SQL." The steps are
+  **Open migration file**, **Dry run** and **Copy output**. **Dry run** opens the Migrate panel
+  with the dry run checked. It does not run.
+- A run the app prohibits says: "The app prohibits this command, so the package refused to run it.
+  Its message is quoted above."
+- A command that did not start offers **Open settings**, which opens how PHP runs for the app.
+
+<Screen
+  id="s11.1c-failed"
+  alt="The runner drawer after a failed migration: the output with the error from the database, the sentence that names the migration, and the buttons Open migration file, Dry run and Copy output."
+/>
+
+### Buttons and keys of the bar
+
+| Button | Keys | Does |
+|---|---|---|
+| **Stop** | <kbd>Ctrl</kbd> <kbd>.</kbd> (<kbd>Cmd</kbd> <kbd>.</kbd> on macOS) | Stops the running command |
+| **Run again** | <kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>R</kbd> | Runs the last command again through the current runner of the app |
+| **History** | <kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>H</kbd> | Shows the history of runs |
+| **Copy output** | <kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>O</kbd> | Copies the output |
+
+On macOS, <kbd>Cmd</kbd> takes the place of <kbd>Ctrl</kbd> in these keys.
+
+While a command runs in an app, every control that starts a command in that app is off, with the
+tooltip "`<command>` is running".
+
+Run again asks first before a line that Mortise asked about the first time. The dialog
+"Run `<command>` again?" says "Mortise asked before this command ran last time. It runs the same line
+again." A destructive command opens its full dialog instead. See [Actions tab](/mortise/reference/actions/#run-again).
+
+## Stop
+
+**Stop** ends the command and every process it started.
+
+- For `module:migrate`, `module:migrate-rollback`, `module:migrate-refresh`, `module:migrate-reset`,
+  `module:migrate-fresh` and `module:seed`, Mortise asks first. The dialog
+  "Stop `<command>`?" says "A migration that stops half way can leave the database between two
+  states." Its buttons are **Keep running** and **Stop command**.
+- Through Sail or Docker, the stop reaches the `docker` program only. The drawer says
+  "PHP in the container may still run."
+
+How a stop ends the process tree:
+
+| Platform | Stop |
+|---|---|
+| macOS, Linux | SIGTERM to the process group. SIGKILL 3 s later to what is left of the group |
+| Windows | `taskkill /PID <pid> /T /F` on the program Mortise started, which ends its tree |
+
+<Aside type="caution">
+On Windows, a launcher such as `herd.bat` can start `php.exe` and exit at once. A stop then reaches
+no tree, and the PHP child goes on: after Stop, after the time limit and after Mortise closes.
+The run still ends as stopped. This is deviation S53 in `docs/deviations.md`.
+</Aside>
+
+## Time limit
+
+Each app has a time limit, set in Settings under **Stop a command after**. The default is 10 minutes.
+The field takes 1 to 120 minutes.
+
+A run that goes past the limit is stopped as Stop does. It ends as stopped, with the line
+"Stopped at the time limit of `<n>` minutes." The limit is there so that a command that waits for
+input cannot hang.
+
+## History
+
+<Screen
+  id="s11.1d-history"
+  alt="The History of the runner drawer: the runs of the app, the latest first, each with its time, command and result, and the output of the selected run."
+/>
+
+History lists the runs of the app, the latest first. Each row has its clock time, its command and its
+result. The output of the selected run shows beside the list.
+
+- <kbd>Up</kbd> and <kbd>Down</kbd> move the selection.
+- <kbd>Enter</kbd> runs the selected command again through the current runner of the app.
+- The bar says, for example, "5 runs today in shop-api".
+
+Mortise keeps the last 50 runs of each app: the command, the start time, how the run ended and its
+output up to 1 MB. The 51st run drops the oldest. The history lives in Mortise's data folder, never
+in the app. A history that is missing or not valid reads as empty.
+See [Files and folders](/mortise/reference/files-and-folders/#history-of-runs).
+
+A read that only gives data, such as the migration state or the list of generators, is not kept in
+the history.
+
+## Closing Mortise
+
+Closing Mortise stops the run of each app as Stop does. It waits until each run ends, for at most
+4.75 s: 3 s until SIGKILL, 1.25 s for the readers of the output, and 0.5 s for checks. Each run that
+ends this way is kept in the history as stopped. With no run, Mortise closes at once.
+
+On Windows, the PHP child of a launcher that already exited goes on after Mortise closes (S53).
+
+## Related pages
+
+- [How to choose PHP](/mortise/how-to/choose-php/)
+- [Actions tab](/mortise/reference/actions/)
+- [Generate tab](/mortise/reference/generate/)

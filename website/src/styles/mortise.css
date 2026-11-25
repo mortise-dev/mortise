@@ -1,0 +1,171 @@
+/* The Mortise look for Starlight.
+   Colours are the Slate tokens of docs/spec/tokens.html, in both themes, and the oak of the app icon.
+   Text is Asap and code is Inconsolata, the fonts of the app (assets/fonts, read from there). */
+
+@font-face { font-family: Asap; font-weight: 400; font-display: swap; src: url(../../../assets/fonts/asap/Asap-Regular.ttf) format('truetype'); }
+@font-face { font-family: Asap; font-weight: 500; font-display: swap; src: url(../../../assets/fonts/asap/Asap-Medium.ttf) format('truetype'); }
+@font-face { font-family: Asap; font-weight: 600; font-display: swap; src: url(../../../assets/fonts/asap/Asap-SemiBold.ttf) format('truetype'); }
+@font-face { font-family: Asap; font-weight: 700; font-display: swap; src: url(../../../assets/fonts/asap/Asap-Bold.ttf) format('truetype'); }
+@font-face { font-family: Inconsolata; font-weight: 400; font-display: swap; src: url(../../../assets/fonts/inconsolata/Inconsolata-Regular.ttf) format('truetype'); }
+@font-face { font-family: Inconsolata; font-weight: 500; font-display: swap; src: url(../../../assets/fonts/inconsolata/Inconsolata-Medium.ttf) format('truetype'); }
+@font-face { font-family: Inconsolata; font-weight: 600; font-display: swap; src: url(../../../assets/fonts/inconsolata/Inconsolata-SemiBold.ttf) format('truetype'); }
+
+/* Dark: Slate dark. */
+:root {
+  --sl-font: Asap, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --sl-font-mono: Inconsolata, ui-monospace, Menlo, Consolas, monospace;
+  --sl-text-code: 0.9375rem;
+  --sl-text-code-sm: 0.875rem;
+  --sl-text-h2: 1.625rem;
+  --sl-text-h3: 1.3125rem;
+  --sl-text-h4: 1.125rem;
+
+  --sl-color-white: #F9FAFC;
+  --sl-color-gray-1: #E5EBF4;
+  --sl-color-gray-2: #CDD5E0;
+  --sl-color-gray-3: #A1AEBE;
+  --sl-color-gray-4: #657180;
+  --sl-color-gray-5: #2E353E;
+  --sl-color-gray-6: #15191E;
+  --sl-color-black: #0F1216;
+
+  /* Oak. */
+  --sl-color-accent-low: #3A2E1A;
+  --sl-color-accent: #E2BF86;
+  --sl-color-accent-high: #F1DDB8;
+
+  /* State colours of the app, used by the asides. */
+  --sl-color-green-low: #1C2E21;
+  --sl-color-green: #84CC90;
+  --sl-color-green-high: #BFE6C6;
+  --sl-color-orange-low: #33280F;
+  --sl-color-orange: #E5B152;
+  --sl-color-orange-high: #F2D59E;
+  --sl-color-red-low: #3A201B;
+  --sl-color-red: #F28B7F;
+  --sl-color-red-high: #F8C3BC;
+  --sl-color-blue-low: #1D2229;
+  --sl-color-blue: #A1AEBE;
+  --sl-color-blue-high: #E5EBF4;
+  --sl-color-purple-low: #3A2E1A;
+  --sl-color-purple: #E2BF86;
+  --sl-color-purple-high: #F1DDB8;
+
+  --sl-color-bg-inline-code: #1D2229;
+  --sl-color-hairline-light: #2E353E;
+  --sl-color-hairline: #2E353E;
+  --sl-color-hairline-shade: #0B0E12;
+
+  --mortise-well: #11151B;
+  --mortise-line: #2E353E;
+  --mortise-line-2: #657180;
+}
+
+/* Light: Slate light. Accent text uses the deep oak, so that it keeps a contrast of 4.5:1 on the page. */
+:root[data-theme='light'] {
+  --sl-color-white: #1A1E25;
+  --sl-color-gray-1: #1A1E25;
+  --sl-color-gray-2: #2C333D;
+  --sl-color-gray-3: #48515C;
+  --sl-color-gray-4: #5B6570;
+  --sl-color-gray-5: #BCC6D3;
+  --sl-color-gray-6: #E5EAF0;
+  --sl-color-gray-7: #EEF1F5;
+  --sl-color-black: #F9FAFC;
+
+  --sl-color-accent-low: #F3E6CF;
+  --sl-color-accent: #C59855;
+  --sl-color-accent-high: #6B4A17;
+  --sl-color-text-accent: var(--sl-color-accent-high);
+  --sl-color-bg-accent: var(--sl-color-accent-high);
+  --sl-color-text-invert: #F9FAFC;
+
+  --sl-color-green-low: #DCEDDF;
+  --sl-color-green: #2C6A37;
+  --sl-color-green-high: #1F4D27;
+  --sl-color-orange-low: #F5E8CC;
+  --sl-color-orange: #855600;
+  --sl-color-orange-high: #5E3D00;
+  --sl-color-red-low: #F8E2DD;
+  --sl-color-red: #B02A20;
+  --sl-color-red-high: #7E1D16;
+  --sl-color-blue-low: #E5EAF0;
+  --sl-color-blue: #48515C;
+  --sl-color-blue-high: #1A1E25;
+  --sl-color-purple-low: #F3E6CF;
+  --sl-color-purple: #C59855;
+  --sl-color-purple-high: #6B4A17;
+
+  --sl-color-bg-inline-code: #E5EAF0;
+  --sl-color-hairline-light: #D1D8E2;
+  --sl-color-hairline: #BCC6D3;
+  --sl-color-hairline-shade: #BCC6D3;
+
+  --mortise-well: #DBE1E9;
+  --mortise-line: #BCC6D3;
+  --mortise-line-2: #747F8C;
+}
+
+/* Headings: Asap bold, tight like the title of a module in the app. */
+.sl-markdown-content :is(h1, h2, h3, h4, h5),
+h1#_top {
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+/* Inline code reads as the mono of the app, on a surface with a hairline. */
+.sl-markdown-content :not(pre) > code {
+  border: 1px solid var(--mortise-line);
+  border-radius: 3px;
+  padding: 0.05em 0.3em;
+}
+
+/* Tables follow table.spec of the specification: hairlines, no stripes. */
+.sl-markdown-content table {
+  font-size: var(--sl-text-sm);
+}
+.sl-markdown-content :is(th, td) {
+  border: 0;
+  border-bottom: 1px solid var(--mortise-line);
+  padding: 0.45rem 1rem 0.45rem 0;
+  vertical-align: top;
+}
+.sl-markdown-content th {
+  color: var(--sl-color-gray-3);
+  font-weight: 500;
+  background: none;
+}
+.sl-markdown-content tr:nth-child(2n) {
+  background: none;
+}
+
+/* Keys, as in the app: <kbd>Ctrl</kbd> <kbd>K</kbd>. */
+.sl-markdown-content kbd {
+  font: 500 0.8em/1 var(--sl-font-mono);
+  padding: 0.15em 0.4em;
+  border: 1px solid var(--mortise-line-2);
+  border-bottom-width: 2px;
+  border-radius: 3px;
+  background: var(--sl-color-bg-inline-code);
+  color: var(--sl-color-white);
+}
+
+/* The home page hero sits on the faint joinery grid of the banner. */
+[data-has-hero] .hero {
+  position: relative;
+}
+[data-has-hero] .hero::before {
+  content: '';
+  position: absolute;
+  inset: -2rem -50vw;
+  z-index: -1;
+  background-image:
+    linear-gradient(var(--mortise-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--mortise-line) 1px, transparent 1px);
+  background-size: 32px 32px;
+  opacity: 0.35;
+  mask-image: radial-gradient(ellipse 60% 70% at 50% 50%, #000 20%, transparent 75%);
+}
+[data-has-hero] .hero img {
+  filter: drop-shadow(0 18px 30px rgba(0, 0, 0, 0.35));
+}

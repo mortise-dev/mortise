@@ -1,0 +1,79 @@
+---
+title: Build Mortise from source
+description: Install the Rust toolchain, run Mortise from a clone of the repository, and build the installers with cargo-packager.
+sidebar:
+  order: 11
+---
+import { Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Build Mortise yourself to run a version that has no release, or to work on it.
+To install a release instead, see [Install Mortise](/mortise/how-to/install/).
+
+## Run Mortise from source
+
+<Steps>
+
+1. Install [rustup](https://rustup.rs). Mortise needs Rust 1.99. The file `rust-toolchain.toml` in the repository selects it, and rustup installs it on the first build.
+
+2. On Linux, install the libraries the window needs. On Debian and Ubuntu:
+
+   ```sh
+   sudo apt-get install -y libxkbcommon-dev libwayland-dev
+   ```
+
+   macOS and Windows need nothing more.
+
+3. Clone the repository:
+
+   ```sh
+   git clone https://github.com/nWidart/mortise.git
+   cd mortise
+   ```
+
+4. Run Mortise. The path of a Laravel app is optional:
+
+   ```sh
+   cargo run -p mortise-app -- /path/to/laravel-app
+   ```
+
+</Steps>
+
+The window opens. For a build without the debug checks, add `--release` after `run`.
+To keep the settings of this build apart from those of your installed Mortise, see the environment variables in [Files and folders](/mortise/reference/files-and-folders/).
+
+## Build the installers
+
+<Steps>
+
+1. Install cargo-packager, at the version the project uses:
+
+   ```sh
+   cargo install cargo-packager --locked --version 0.11.8
+   ```
+
+2. Build the installers of your platform. cargo-packager builds Mortise in release mode first.
+
+   <Tabs syncKey="os">
+   <TabItem label="macOS">
+   ```sh
+   cargo packager -p mortise-app --release --formats app,dmg
+   ```
+   A local build is signed ad hoc, not with a Developer ID.
+   </TabItem>
+   <TabItem label="Windows">
+   ```sh
+   cargo packager -p mortise-app --release --formats nsis
+   ```
+   The setup is not signed.
+   </TabItem>
+   <TabItem label="Linux">
+   ```sh
+   cargo packager -p mortise-app --release --formats appimage,deb
+   ```
+   The release builds these on Ubuntu 22.04. They are not signed.
+   </TabItem>
+   </Tabs>
+
+</Steps>
+
+The installers are in `target/packages`.

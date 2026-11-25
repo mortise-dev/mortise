@@ -1,0 +1,142 @@
+---
+title: Files and folders
+description: Where Mortise keeps its settings, its data and its secrets on each platform, and the environment variables that move them.
+sidebar:
+  order: 13
+---
+
+import { Tabs, TabItem, FileTree } from '@astrojs/starlight/components';
+
+Mortise keeps what it needs between runs on this computer, outside the apps. The only file it writes
+in an app is [`mortise.json`](/mortise/reference/mortise-json/).
+
+| What | Where |
+|---|---|
+| Settings | `settings.json` in the config folder |
+| History of runs | `runs/` in the data folder |
+| Generators read from an app | `catalogs/` in the data folder |
+| Tokens, passwords and header values | The credential store of the operating system |
+| Metrics | Memory only. Never written to disk |
+
+## Config and data folders
+
+Mortise finds the folders of the platform with the Rust crate `directories` 6, for the application
+name `Mortise`.
+
+<Tabs syncKey="os">
+  <TabItem label="macOS">
+    | Folder | Path |
+    |---|---|
+    | Config folder | `~/Library/Application Support/Mortise` |
+    | Data folder | `~/Library/Application Support/Mortise` |
+
+    On macOS both are the same folder.
+  </TabItem>
+  <TabItem label="Windows">
+    | Folder | Path |
+    |---|---|
+    | Config folder | `%APPDATA%\Mortise\config`, such as `C:\Users\<you>\AppData\Roaming\Mortise\config` |
+    | Data folder | `%APPDATA%\Mortise\data`, such as `C:\Users\<you>\AppData\Roaming\Mortise\data` |
+  </TabItem>
+  <TabItem label="Linux">
+    | Folder | Path |
+    |---|---|
+    | Config folder | `$XDG_CONFIG_HOME/mortise`, else `~/.config/mortise` |
+    | Data folder | `$XDG_DATA_HOME/mortise`, else `~/.local/share/mortise` |
+
+    The folder name is in lower case on Linux.
+  </TabItem>
+</Tabs>
+
+<FileTree>
+- config folder
+  - settings.json
+- data folder
+  - runs
+    - 0123456789abcdef the key of one app
+      - runs.json
+      - 1764060000000.log
+  - catalogs
+    - 0123456789abcdef.json
+</FileTree>
+
+## settings.json
+
+`settings.json` holds the apps Mortise knows and the General settings. It holds no secret.
+
+| Key | Holds |
+|---|---|
+| `apps` | The apps, in the order of the rail |
+| `apps[].root` | The app folder, absolute |
+| `apps[].name` | The name shown for the app |
+| `apps[].monogram` | The two letters on the tile of the app |
+| `apps[].codes` | The code of each module, by module name |
+| `apps[].problems_first` | The order of the module index: problems first, or by name |
+| `apps[].coverage_limit` | The coverage limit in per cent. Default `50` |
+| `apps[].coverage_report` | The clover report, or `null` to look in `phpunit.xml` and the usual places |
+| `apps[].environments` | The environments: `name`, `base_url`, `path` and `credentials` |
+| `apps[].environment` | The name of the environment the runtime box shows |
+| `apps[].php` | How PHP runs: `runner`, `working_folder` and `time_limit_minutes` (default `10`) |
+| `current` | The app that was open last, as a place in `apps` |
+| `general` | `theme`, `text_size`, `motion`, `index_rows`, `editor`, `editor_command`, `window_controls_left`, `system_title_bar` and `index_width` (default `264`) |
+
+`credentials` holds the kind and, for HTTP basic, the user name, or, for a custom header, the header
+name. For example `{ "kind": "basic", "user": "mortise" }`. The secret itself is never in the file.
+
+A file that does not exist reads as empty settings. Mortise saves the file through
+`settings.json.partial` beside it, then moves that over `settings.json`, so a crash cannot leave
+half a file.
+
+## History of runs
+
+Mortise keeps the last 50 runs of each app in the data folder.
+
+- `runs/<key>/runs.json` holds the entries, the latest first: the artisan words, the label, the start
+  time, how the run ended and whether the output was cut.
+- `runs/<key>/<id>.log` holds the output lines of one run, up to 1 MB. The id is the start time in
+  milliseconds since 1970.
+- `<key>` is 16 hexadecimal digits worked out from the path of the app folder (FNV-1a, 64 bits).
+  The same app folder always gives the same key.
+
+A history that is missing or not valid reads as empty. The palette lists your recent actions and
+generators from this history.
+
+## Generators read from an app
+
+`catalogs/<key>.json` holds the generators read from an app with `nwidart/laravel-modules` 13.4.0 or
+later, with the package version and the time of the read. `<key>` is the key of the history of runs.
+Mortise uses the file only while the app has that package version. Mortise writes it through a
+temporary file beside it, then renames it.
+
+## Environment variables
+
+| Variable | Effect |
+|---|---|
+| `MORTISE_CONFIG_DIR` | Names another folder for `settings.json`. An empty value is ignored |
+| `MORTISE_DATA_DIR` | Names another data folder for the history of runs and the generators read from apps. An empty value is ignored |
+| `MORTISE_SECRETS=memory` | Keeps secrets in memory, out of the credential store, until Mortise closes. For work on Mortise itself |
+
+## Credential store
+
+A token, a password or a header value goes to the credential store of the operating system through
+the Rust crate `keyring`. It is never written to a file or a log.
+
+<Tabs syncKey="os">
+  <TabItem label="macOS">Keychain.</TabItem>
+  <TabItem label="Windows">Credential Manager.</TabItem>
+  <TabItem label="Linux">Secret Service, over D-Bus.</TabItem>
+</Tabs>
+
+Each entry has:
+
+- the service `Mortise`,
+- the account `<app folder>#<environment name>`, such as `/code/shop-api#staging`.
+
+When no credential store is running, Mortise keeps the secret in memory until it closes, and says so
+in the form of the environment. Removing an environment removes its secret from the store.
+
+## Related pages
+
+- [Settings](/mortise/reference/settings/)
+- [Runner drawer](/mortise/reference/runner/)
+- [Actuator endpoints](/mortise/reference/actuator-endpoints/)

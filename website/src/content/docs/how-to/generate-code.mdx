@@ -1,0 +1,82 @@
+---
+title: Generate a module or a file
+description: Create a new module, or a file in a module, with the generators of nwidart/laravel-modules, and replace a file that exists.
+sidebar:
+  order: 5
+---
+import { Steps, Aside } from '@astrojs/starlight/components';
+import Screen from '../../../components/Screen.astro';
+
+The Generate tab runs the generators of `nwidart/laravel-modules`. Mortise shows the exact command first, and the package writes the files.
+You need to have [chosen the PHP for the app](/mortise/how-to/choose-php/).
+
+## Create a new module
+
+<Steps>
+
+1. Press **New module** at the foot of the module index, or press <kbd>Ctrl</kbd> <kbd>N</kbd> (<kbd>Cmd</kbd> <kbd>N</kbd> on macOS).
+
+2. Type the name in **Module names**. To create more than one module, separate the names with spaces.
+
+3. Choose the **Kind**: **Web**, **API** or **Plain**. Web is the default.
+
+4. Set the **Options**:
+   - Check **Inertia controller and pages, no Blade views** for an Inertia module.
+   - Clear **Turn the module on after creation** to create it turned off.
+   - Check **Replace the module if it exists** only to generate a module again over one that exists. See [Replace a file or a module](#replace-a-file-or-a-module).
+
+5. If you want an author in `composer.json` of the module, fill **Author**. It is optional.
+
+6. Read the line under **Command**, then press **Create module**, or <kbd>Ctrl</kbd> <kbd>Enter</kbd>.
+
+</Steps>
+
+<Screen id="s9.4-new-module" alt="The form of a new module: module names, kind, options, author, and the command that Create module runs." />
+
+The runner drawer shows the output. The result lists the files the command wrote, and the module appears in the index.
+
+## Create a file in a module
+
+<Steps>
+
+1. Select the module in the module index.
+
+2. Open the **Generate** tab. Press <kbd>3</kbd>, or <kbd>G</kbd> to put focus in the filter.
+
+3. Type in **Find a generator**, then select the generator and press <kbd>Enter</kbd> to open its form.
+
+4. Type the name in the name field, such as **Model name**, and set the options you need.
+
+5. If the app has `nwidart/laravel-modules` 13.4 or later, press **List files**. Mortise runs the generator as a dry run and lists the files it would write, under **Files this creates**.
+   On an older package, the files are listed after the run.
+
+6. Read the line under **Command**, then press **Create files**, or <kbd>Ctrl</kbd> <kbd>Enter</kbd>. After **List files**, the button counts the files, such as **Create 3 files**.
+
+</Steps>
+
+<Screen id="s9.2-model-form" alt="The form of the Model generator in a module, with the name, the fillable attributes, the files to also create and the command." />
+
+The result says **Created in** and the module, and lists each file with a button to open it.
+Press **Generate another** to empty the form for the next file.
+
+## Replace a file or a module
+
+A generator does not write over a file. When the file exists, Mortise says so and offers to replace it.
+
+<Steps>
+
+1. If the generator's own file exists, press **Replace** and the file name, such as **Replace Invoice.php**.
+   After a run that left a file as it was, the result offers the same button for that file.
+
+2. Read the question. Press **Replace file** to write a new file over the old one, or **Cancel**.
+
+</Steps>
+
+To replace a whole module, check **Replace the module if it exists** in the new module form, then press **Create module**.
+Mortise asks first, and **Replace module** confirms. The command deletes the module folder and generates it again, so files you wrote in it are lost.
+
+<Aside type="caution">
+Mortise cannot bring back a replaced file or module. Commit your work to git first.
+</Aside>
+
+Every generator and option is listed in [Generate](/mortise/reference/generate/). What 13.4 adds is in [Package versions](/mortise/reference/package-versions/).

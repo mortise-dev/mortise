@@ -1,0 +1,44 @@
+---
+title: Scan the public surface of a module
+description: Scan one module for the classes, routes and commands other code may use, adjust the proposal and copy it.
+sidebar:
+  order: 4
+---
+import { Steps, Aside } from '@astrojs/starlight/components';
+import Screen from '../../../components/Screen.astro';
+
+A scan reads the files of one module and proposes its public surface: what other modules, HTTP clients and the command line may use.
+The scan writes nothing. What a public surface is for is in [About boundaries](/mortise/explanation/boundaries/).
+
+<Steps>
+
+1. Select the module in the module index.
+
+2. Open the **Boundary** tab, or press <kbd>2</kbd>.
+
+3. Switch from **Links** to **Public surface**, or press <kbd>P</kbd>.
+
+4. Press **Scan** and the name of the module, for example **Scan Billing**. The shortcut is <kbd>Ctrl</kbd> <kbd>Enter</kbd> (<kbd>Cmd</kbd> <kbd>Enter</kbd> on macOS).
+   To end the scan early, press **Stop the scan**.
+
+5. Read the proposal. Each entry says why it is there, under **Why it is here**, and who uses it, under **Used today by**.
+   Clear an entry to leave it out. An entry that is used from outside and not proposed says so. Include it to allow those reads.
+
+6. If something is missing, type a class, a route or a command in **Add a class, a route or a command** and press <kbd>Enter</kbd>.
+   The shortcut <kbd>A</kbd> moves focus to this field.
+
+7. Press **Copy as text**. Mortise copies the checked entries, by kind.
+
+</Steps>
+
+<Screen id="s5.7-surface-proposal" alt="The proposed public surface of a module: interfaces, events, classes that other modules use and console commands, each with why it is here and which module uses it today." />
+
+You have the proposal as text, to keep with the module or to discuss with your team.
+
+<Aside>
+The button that accepts the entries, such as **Accept 12 entries**, stays off: the package cannot store a public surface yet. Until it can, the rule uses the folders that count as public. See [Add boundary rules to an app](/mortise/how-to/add-boundary-rules/).
+</Aside>
+
+If the proposal says "Routes were not read", connect an environment or set how PHP runs, then press **Scan again**.
+See [Connect the actuator of an app](/mortise/how-to/connect-actuator/) and [Choose the PHP for an app](/mortise/how-to/choose-php/).
+The view is described in [Boundary](/mortise/reference/boundary/).

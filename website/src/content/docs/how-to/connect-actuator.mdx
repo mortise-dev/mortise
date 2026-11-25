@@ -1,0 +1,97 @@
+---
+title: Connect the actuator of an app
+description: Set up laravel-actuator and laravel-metrics in a Laravel app, then add its environment and credentials in Mortise.
+sidebar:
+  order: 9
+---
+import { Steps, Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+import Screen from '../../../components/Screen.astro';
+
+Mortise reads the runtime status, the routes, the scheduled tasks and the metrics of a running app from its actuator, over HTTP.
+This is optional. What it gives per module is in [About the runtime per module](/mortise/explanation/runtime-per-module/).
+
+## Set up the app
+
+<Steps>
+
+1. Check the versions. The app needs:
+   - `nwidart/laravel-modules` 13.4 or later, for the health indicators of each module.
+   - `nwidart/laravel-actuator` 1.3 or later.
+   - `nwidart/laravel-metrics`, for the Metrics tab. Mortise is tested with 1.1.
+
+2. Install the packages and publish their configuration, in the app folder:
+
+   ```sh
+   composer require 'nwidart/laravel-modules:^13.4' 'nwidart/laravel-actuator:^1.3' 'nwidart/laravel-metrics:^1.1' -W
+   php artisan vendor:publish --tag=actuator-config
+   php artisan vendor:publish --tag=metrics-config
+   ```
+
+3. In `config/actuator.php`, add the endpoints Mortise reads to `exposure.include`, next to `health`:
+
+   ```php
+   'exposure' => [
+       'include' => ['health', 'info', 'mappings', 'scheduledtasks', 'prometheus'],
+   ],
+   ```
+
+   Do not expose `env`. Mortise never asks for it.
+
+4. If you want the components of the health status, set `health.show_details` to `when_authorized` or `always` in `config/actuator.php`. It is off by default.
+
+5. In the `.env` of the app, turn on the metrics and choose a store:
+
+   ```ini
+   METRICS_ENABLED=true
+   METRICS_STORE=cache
+   ```
+
+6. Start the app, and note its base URL, such as `APP_URL` in `.env`.
+
+</Steps>
+
+## Add the environment in Mortise
+
+<Steps>
+
+1. Open Settings with <kbd>Ctrl</kbd> <kbd>,</kbd> (<kbd>Cmd</kbd> <kbd>,</kbd> on macOS), choose **Apps**, and select the app.
+   The runtime box of the Summary also offers **Add environment**.
+
+2. Under **Environments of** your app, press **Add environment**.
+   Mortise names the first one `local`, and fills **Base URL** from `APP_URL` in `.env`.
+
+3. Correct **Name**, **Base URL** and **Actuator path** if needed. The path is `actuator` by default.
+   Mortise saves a field when you leave it.
+
+4. Choose the **Credentials**, as the app's middleware asks for them:
+   - **None** for a local app whose actuator is open.
+   - **Bearer token**: type the **Token**. It is sent as `Authorization: Bearer`.
+   - **HTTP basic**: type the **User name** and the **Password**.
+   - **Custom header**: type the **Header name** and the **Header value**.
+
+   Mortise saves the secret to the credential store of the operating system when you leave the field. The field then says "Saved. Not shown again."
+
+   <Tabs syncKey="os">
+   <TabItem label="macOS">
+   The secret goes to the Keychain.
+   </TabItem>
+   <TabItem label="Windows">
+   The secret goes to the Credential Manager.
+   </TabItem>
+   <TabItem label="Linux">
+   The secret goes to the Secret Service. If no credential store is running, Mortise says so and keeps the secret until it closes.
+   </TabItem>
+   </Tabs>
+
+5. Press **Test**. Mortise asks the actuator once and shows what it exposes.
+
+</Steps>
+
+<Screen id="s8.1-settings-environments" alt="The environments of shop-api in Settings: local, staging and production, with the form of staging, its bearer token saved and the Test button." />
+
+The column **Last answer** shows how the environment answered. The Summary of a module shows its runtime box, and the [Metrics tab](/mortise/how-to/read-metrics/) reads its figures.
+
+To change a secret, press **Replace** and type the new one. To forget it, press **Remove**.
+If the test fails, the message says what happened and what to correct, such as the base URL or the actuator path.
+
+The endpoints Mortise asks for are in [Actuator endpoints](/mortise/reference/actuator-endpoints/). Where the secret lives is in [Files and folders](/mortise/reference/files-and-folders/).

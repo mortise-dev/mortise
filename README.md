@@ -18,6 +18,7 @@
 
 <p align="center">
   <a href="https://github.com/nWidart/mortise/releases/latest"><b>Download</b></a> &middot;
+  <a href="https://nwidart.github.io/mortise/"><b>Documentation</b></a> &middot;
   <a href="#what-it-does">What it does</a> &middot;
   <a href="#run">Build from source</a>
 </p>
@@ -183,6 +184,7 @@ UPDATE_SNAPSHOTS=1 cargo test -p mortise-app --test images
 | `assets/icon` | The app icon: two drawings, `mortise.svg` and `mortise-16.svg`, and the files made from them for macOS (`.icns`), Windows (`.ico`) and Linux (hicolor PNGs). |
 | `fixtures` | Laravel apps for the tests. They are never installed or run. |
 | `docs/spec` | The design specification of phase 0. |
+| `website` | The documentation site, built with Astro Starlight and published to GitHub Pages by `.github/workflows/docs.yml`. |
 | `docs/deviations.md` | Where the build differs from the specification, and why. |
 | `licenses` | The licences of the crates Mortise is built from. |
 | `tools` | `third-party-licenses.py` writes that list. `app-icon.mjs` makes the icon files from the drawings; it needs macOS and Google Chrome. `brand-images.sh` draws the images in `assets/brand`; it needs Google Chrome. `release.sh`, `pack-installer.sh` and `verify-macos-app.sh` serve the release workflows. |

@@ -1,0 +1,51 @@
+---
+title: Add boundary rules to an app
+description: Turn the two boundary rules on or off, set the folders that count as public, and share the rules through git.
+sidebar:
+  order: 3
+---
+import { Steps, Aside } from '@astrojs/starlight/components';
+import Screen from '../../../components/Screen.astro';
+
+Mortise checks two rules: **No circular use**, and **Other modules use only a module's public surface**.
+Both are on by default. The rules live in `mortise.json` in the app folder, so a team shares them.
+Why these two rules exist is in [About boundaries](/mortise/explanation/boundaries/).
+
+<Steps>
+
+1. Select **All modules** at the top of the module index.
+
+2. Open the **Boundary** tab, or press <kbd>2</kbd>.
+
+3. Find the box **Rules for** your app, "kept in mortise.json in the app folder".
+   In an app with more than 12 modules, the box is under the table of links.
+
+4. Check or clear **No circular use**.
+
+5. Check or clear **Other modules use only a module's public surface**.
+
+6. If this rule is on, type the folders that count as public in **Folders that count as public**, separated by commas.
+   The default is `Contracts, Events`. Mortise takes the new list when you leave the field.
+
+7. The first change in an app without `mortise.json` asks "Create mortise.json in" your app.
+   Press **Create mortise.json**. Mortise writes the file and reads the app again.
+   If the file exists already, Mortise saves the change at once.
+
+8. Commit `mortise.json` to the git repository of the app, so the rest of the team gets the same rules:
+
+   ```sh
+   git add mortise.json
+   git commit -m "chore: add the boundary rules of mortise"
+   ```
+
+   When a teammate pulls the commit, Mortise reads the rules from the file.
+
+</Steps>
+
+<Screen id="s5.3-boundary-all" alt="The Boundary tab of all modules: the graph of the modules, the links that break a rule, and the box Rules for shop-api with the two rules checked." />
+
+The graph and the list **Links that break a rule** now follow your rules, and so does Findings.
+**Fail CI when a rule breaks** stays off: it needs a command line tool that does not exist yet.
+
+If `mortise.json` is not valid, Mortise says so and applies the default rules until the file is corrected.
+The format of the file is in [mortise.json](/mortise/reference/mortise-json/). The Boundary tab is in [Boundary](/mortise/reference/boundary/).

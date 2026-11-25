@@ -1,0 +1,43 @@
+---
+title: Read the metrics of a module
+description: Read requests, response time, errors, jobs and database time per module and per route in the Metrics tab.
+sidebar:
+  order: 10
+---
+import { Steps, Aside } from '@astrojs/starlight/components';
+import Screen from '../../../components/Screen.astro';
+
+The Metrics tab reads the `prometheus` endpoint of the running app.
+You need an environment whose actuator exposes `prometheus`. See [Connect the actuator of an app](/mortise/how-to/connect-actuator/).
+
+<Steps>
+
+1. Open the **Metrics** tab, or press <kbd>5</kbd>. With **All modules** selected, the table has one row per module.
+
+2. If the app has more than one environment, pick the environment in the switch at the top.
+
+3. Pick the range: **15 min**, **1 hour** or **24 hours**.
+
+4. Select a row to show it in the chart.
+
+5. To see the routes of one module, select the module in the module index. The table then has one row per route.
+
+</Steps>
+
+<Screen id="s7.3-metrics-all" alt="The Metrics tab of all modules: a chart of requests per minute, and a table with requests per minute, the time 95% of requests stay under, errors, jobs per minute and database time for each module." />
+
+The table shows **Requests/min**, **95% under**, **Errors**, **Jobs/min** and **Database time**.
+Mortise reads the metrics every 15 s while the tab is open and the window is visible. A rate needs two reads, so the first figures come 15 s after the first read.
+The reads stay in memory. Mortise never writes them to disk.
+
+## If the tab shows no figures
+
+- **Metrics are not connected**: no environment is set for the app. Press **Connect an environment**.
+- "Metrics are not exposed on" the environment: add `prometheus` to `exposure.include` in `config/actuator.php`, next to `health`.
+- "Metrics are off on" the environment: set `METRICS_ENABLED=true` in the `.env` of the app.
+- "Metrics cannot be read on" the environment: check the metrics store of the app, then try again.
+
+**Database time** reads "unknown" until `nwidart/laravel-modules` labels database metrics with the module.
+Requests that match no module count as **Not in a module**.
+
+Every column is described in [Metrics](/mortise/reference/metrics/).

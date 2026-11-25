@@ -120,6 +120,14 @@ UPDATE_SNAPSHOTS=1 cargo test -p mortise-app --test images
 
 `cargo test -p mortise-app --test screens -- --ignored` writes every screen to `target/screens`.
 
+The documentation site builds with Node 22 or later:
+
+```
+cd website && npm ci && npm run build
+```
+
+A change to a screen, a label or a behaviour that the site describes also changes the page that describes it.
+
 Environment for work on Mortise itself:
 
 - `MORTISE_CONFIG_DIR` names another folder for `settings.json`.
@@ -144,6 +152,7 @@ Environment for work on Mortise itself:
 | `docs/spec` | The design specification (HTML). Screen ids such as S4.2 refer to it |
 | `docs/spec-build` | The scripts that build `docs/spec` |
 | `docs/deviations.md` | Where the build differs from the specification, and why |
+| `website` | The documentation site (Astro Starlight), sorted by Diátaxis: tutorial, how-to guides, reference, explanation. Its screenshots are the snapshots of `tests/images.rs`. `docs.yml` publishes it to GitHub Pages |
 | `licenses`, `tools` | Third-party licences, the script that writes the list, the icon script and the release scripts |
 | `.github/workflows` | `ci.yml` checks every change. `installers.yml` builds the installers. `release.yml` and `tag-release.yml` make a release (see `CONTRIBUTING.md`) |
 | `openspec` | Specifications and change proposals (see below) |
