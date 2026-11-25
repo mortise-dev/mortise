@@ -1,0 +1,118 @@
+---
+title: Metrics
+description: The Metrics tab, its series, ranges, columns, reads and states, and how a series is placed in a module.
+sidebar:
+  order: 7
+---
+import Screen from '../../../components/Screen.astro';
+
+The **Metrics** tab is the fifth tab of the workspace (<kbd>5</kbd>).
+It shows requests, response time, errors, jobs and database time per module of a running app.
+The figures come from the `prometheus` endpoint of the actuator of the environment that is connected.
+Metrics use the same environment, URL and credentials as the runtime box. There is no separate Prometheus address.
+The steps to connect are in [How to read metrics](/mortise/how-to/read-metrics/).
+
+## Series
+
+Mortise reads three families of the Prometheus text format. It skips every other family.
+
+| Family | Gives |
+|---|---|
+| `http_server_request_duration_seconds` | Requests: their count, the count with a 5xx status, the total time and the buckets of the histogram |
+| `messaging_process_duration_seconds` | Jobs: their count |
+| `db_client_operation_duration_seconds` | Database time. Kept only for a series with a `module` label |
+
+## Placing a series in a module
+
+Each series counts for one module, or for **Not in a module**.
+
+| Series | Placed by |
+|---|---|
+| With a `module` label | The label wins. It matches a module name without regard to case. The value `none`, or a name the app does not have, counts as **Not in a module**. An empty label counts as no label |
+| A request without the label | Its `http_route` through the `mappings` of the app. It matches the routes whose path equals the route and whose methods hold its method. When none holds the method, every route with that path counts |
+| A job without the label | The namespace of its `laravel_job_name` |
+
+A request counts as **Not in a module** when:
+
+- its routes are in two modules, such as one path on two domains (the metric drops the domain);
+- it has no `http_route`, such as a 404 or a 405;
+- its route belongs to no module, such as a closure or a route of a package;
+- the app does not expose `mappings`. The tab then says
+  "Requests without a module label are not placed in a module, because mappings is not exposed on local."
+
+Placing runs on the files and the `mappings` of now. A read kept from before a change of routes is placed by the new routes.
+
+## Reads
+
+| Fact | Value |
+|---|---|
+| Pace | One read every 15 s |
+| When | Only while the Metrics tab is drawn and the window is visible |
+| Kept | In memory, for 24 hours. Nothing is written to disk |
+| Thinned | In the last hour, every read is kept. Before that, one read per 5 minutes |
+| Gap | A read more than three paces after the one before starts a new run. The chart draws no segment across the gap |
+| Limits | An answer over 16 MB, or one that needs more than 32,768 figures or 4 MB of series names, is not read |
+
+A rate needs two reads. Until the second read every figure is an en dash, and a line says
+"A rate needs two reads. The second read comes 15 s after the first."
+
+## Connected with data
+
+<Screen id="s7.3-metrics-all" alt="The Metrics tab for All modules: the environment and range switches, a line chart of requests per minute, and a table with one row per module." />
+
+### Top line
+
+| Control | What it does |
+|---|---|
+| Environment switch | Chooses the environment. It is the same choice as the runtime box and the index header. It shows with one environment too |
+| Range switch | **15 min**, **1 hour** (the default) or **24 hours**. Changing it keeps the reads |
+| Read line | "read every 15 s, last read 8 s ago" |
+
+### Chart
+
+The chart shows the requests per minute of the selected row. With no row selected it shows the whole scope:
+"Requests per minute, all modules", or "Requests per minute, Billing" for one module.
+The note at the right reads "842 now". Under the axis, the left end reads "1 hour ago" (or "15 min ago", "24 hours ago")
+and the right end reads "now".
+For a screen reader the chart has a summary: "Now 842, highest 910, lowest 12 requests per minute." With no point: "No rate yet."
+
+### Table
+
+For **All modules**, one row per module of the app, then **Not in a module**.
+For one module, one row per route of the module.
+Rows sort by most requests first, then by name.
+
+| Column | Value |
+|---|---|
+| **Module**, or **Route** for one module | The code stamp and the name, or the method and route, such as `GET /billing/invoices/{invoice}`. A request with a `module` label and no route reads "GET without a route" |
+| **Requests/min** | Over the range. One decimal under 10, such as "4.0", else a whole number |
+| **95% under** | The smallest bucket bound under which 95% of the requests fall, such as "100 ms", or "over 10 s" past the largest bound. It is a bound of the histogram, not an exact time |
+| **Errors** | The share of requests answered with a 5xx status, such as "2.4%" |
+| **Jobs/min** | Over the range. An en dash for a route |
+| **Database time** | Database time against request time, such as "31%". **unknown**, with the tooltip "Needs a newer nwidart/laravel-modules", when no series has a `module` label. An en dash for a route |
+| **Last hour** | A sparkline of the requests per minute over the last hour |
+
+A click on a row shows it in the chart. <kbd>J</kbd>, <kbd>K</kbd> and the arrows move the selected row while the table has focus.
+The colour of the figures is ink only: this version has no limits, so nothing on the tab is a state.
+
+<Screen id="s7.3-metrics-module" alt="The Metrics tab for the module Billing: the chart of Billing and a table with one row per route." />
+
+## States
+
+| State | Title | Text | Controls |
+|---|---|---|---|
+| No environment | **Metrics are not connected** | "Metrics come from the actuator of the running app. Connect an environment for shop-api to read requests, response time and errors per module." | **Connect an environment** |
+| Before the first read | "Reading metrics from local" | none | none |
+| `prometheus` not exposed | "Metrics are not exposed on local" | "Add prometheus to exposure.include in config/actuator.php, next to health." | **Try again**, **Open settings** |
+| A 200 with no text | "Metrics are off on local" | "The app answers with no metrics. Set METRICS_ENABLED=true in its .env to turn them on." | **Try again** |
+| A 503 | "Metrics cannot be read on local" | "local answered 503 for /actuator/prometheus: "…" Check the metrics store of the app, then try again." | **Try again** |
+| Text with no `# TYPE` line | "The answer of local is not metrics" | "local answered prometheus with text that holds no metrics. Check that the address points to the actuator of the app." | **Try again**, **Open settings** |
+| Over 16 MB | "The metrics of local are too large" | "The answer is larger than 16 MB, so Mortise does not read it. Export fewer series from the app." | **Try again** |
+| Too many series | "The metrics of local have too many series" | "Mortise keeps at most 32,768 figures per read. Export fewer series from the app." | **Try again** |
+| No answer, refused credentials, another status | The word of the index header, such as "No answer on local" | The sentence of the runtime box | **Try again**, **Open settings** |
+
+<Screen id="s7.1-metrics-not-connected" alt="The Metrics tab with no environment: the title Metrics are not connected and the button Connect an environment." />
+<Screen id="s7.2-metrics-not-exposed" alt="The Metrics tab when the prometheus endpoint is not exposed, with the line to add to config/actuator.php." />
+
+The endpoints Mortise asks for are listed in [Actuator endpoints](/mortise/reference/actuator-endpoints/).
+Which package versions give a `module` label is in [Package versions](/mortise/reference/package-versions/).

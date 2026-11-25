@@ -1,0 +1,102 @@
+---
+title: Findings
+description: The kinds of finding Mortise raises, what raises each one, and the Findings list of an app.
+sidebar:
+  order: 4
+---
+import Screen from '../../../components/Screen.astro';
+
+A finding is what Mortise works out from the files of an app. It is a **problem** or a **warning**.
+A problem breaks a rule or a check. A warning is under a limit the app set.
+Findings are not the runtime status: that is what the running app reports through the actuator.
+
+## Kinds of finding
+
+| Check | Severity | Raised when | Sentence |
+|---|---|---|---|
+| Rule: no circular use | Problem | Modules that are on use each other, directly or in a circle | "Checkout and Shipping use each other. 2 files in Checkout, 4 files in Shipping." |
+| Rule: Contracts and Events only | Problem | Files of a module read classes of another module outside its public folders | "3 files in Checkout read Modules\Billing\Models\Invoice directly. Billing offers Contracts and Events." |
+| Valid module.json | Problem | A `module.json` is not valid JSON | "Modules/Loyalty/module.json is not valid JSON: unexpected end of file at line 14." |
+| Valid module.json | Problem | A `module.json` has no `name` | "Modules/Loyalty/module.json has no name. The package needs one." |
+| Namespace | Problem | The namespace a module declares does not end in the name of its folder | "Blog declares the namespace Modules\Blogs. Its folder is Modules/Blog." |
+| Statuses file | Problem | The statuses file lists a module that has no folder | "modules_statuses.json lists Legacy, which has no folder." |
+| Coverage limit | Warning | A module that is not off is covered less than the limit of the app | "Notifications is 39% covered. The limit for shop-api is 50%." |
+| Translations | Warning | A locale of a module lacks keys or files that its other locales have | "Checkout: 4 keys in en are missing in fr." |
+
+Notes on each check:
+
+- **Rule: no circular use** runs only while the rule is on. A circle is counted once, on the module with the fewest files in it,
+  because that is the cheaper side to cut. The other modules of the circle show "Part of a circle counted on Checkout" on their Summary.
+- **Rule: … only** runs only while the rule is on. Its name lists the public folders of the app, such as "Rule: Contracts and Events only".
+  With more than one class it reads "2 classes of Billing" instead of the class name.
+- **Coverage limit** runs only when the app has a coverage report. Without a report, coverage is unknown, which is not a finding.
+  The limit is 50% until it is changed in **Settings** > **Apps** > **Coverage limit**.
+- **Translations** comes from the report of `module:lang`. It runs only after you run **Check translations** on the Actions tab.
+  With two locales the sentence names both ("2 keys in en are missing in fr"). With more it names the locale only ("4 keys are missing in de").
+  Missing files are counted too ("1 key and 2 files in en are missing in fr").
+- **Statuses file** is a finding of the app itself. It counts on no module.
+
+The rules are set on the [Boundary](/mortise/reference/boundary/) tab and kept in [mortise.json](/mortise/reference/mortise-json/).
+
+## Finding state of a module
+
+The finding state of a module is its worst finding: a problem with its count, a warning, or good.
+It shows as a solid mark on the index row, in the **Findings** column of the Summary table, and in the palette.
+A module that is off has no finding state. The rail raises a pip on an app with at least one problem; warnings raise none.
+
+## To do
+
+A waiting migration is work in progress. It is not a finding: it changes no mark and no count.
+It shows in the Findings list under **To do, not counted as findings**:
+"Checkout has 1 migration waiting." The migration state comes from the package, through PHP.
+
+## Findings list
+
+The list is a second view of the Summary of **All modules**. It opens from the Findings figure of the Summary,
+from **Show all 3 findings**, from <kbd>F</kbd>, and from the palette row "Findings in shop-api".
+**Back to Summary** and <kbd>Esc</kbd> close it.
+
+<Screen id="s6.4-findings" alt="The list titled Findings in shop-api, with a group of problems, a group of warnings, and the box Checks without a finding." />
+
+The title is "Findings in shop-api". The rows stand in groups, each with its count:
+
+1. **Problems**
+2. **Warnings**
+3. **To do, not counted as findings**
+
+| Column | Shows |
+|---|---|
+| **Module** | The code stamp of the module the finding counts on |
+| **Finding** | The sentence of the finding |
+| **Check** | The name of the check, such as "Rule: no circular use", "Coverage limit" or "Migrations" |
+| **Enter opens** | Where <kbd>Enter</kbd> goes |
+
+| Finding | Enter opens |
+|---|---|
+| A circle | **Boundary**, on the link to the other module of the circle |
+| Reads internals | **Boundary**, on the link to the module it reads |
+| Translations | **Actions**, on Check translations of the module |
+| A waiting migration | **Actions**, on Migrate of the module |
+| Any other finding of a module | **Summary** of the module |
+| A finding of the app itself | Nothing |
+
+<kbd>J</kbd> and <kbd>K</kbd> move through the list.
+
+### Checks without a finding
+
+A box under the list, with the note "4 of 7 checks". One line per check that ran and found nothing,
+with what it looked at:
+
+| Check | Line | Looked at |
+|---|---|---|
+| Rule: no circular use | "No circular use" | "7 modules" |
+| Rule: public surface | "Other modules use only a module's public surface" | "7 modules" |
+| Valid module.json | "Every module.json is valid JSON" | "7 modules" |
+| Namespace | "Declared namespace matches the folder" | "7 modules" |
+| Statuses file | "No entry in modules_statuses.json without a module" | "7 entries" |
+| Coverage limit | "Every module is covered 50% or more" | "7 modules" |
+| Translations | "Translations are complete", then `module:lang` | "5 modules with lang files" |
+
+An app with no finding says "No findings. 7 modules checked against 2 rules and 4 checks."
+
+<Screen id="s6.4-findings-package-data" alt="The Findings list with a translation warning and a To do group that lists a waiting migration." />

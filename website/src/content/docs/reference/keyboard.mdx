@@ -1,0 +1,115 @@
+---
+title: Keyboard
+description: Every keyboard shortcut of Mortise, with its keys on macOS and on Windows and Linux, and where it works.
+sidebar:
+  order: 11
+---
+import Screen from '../../../components/Screen.astro';
+
+Shortcuts are fixed in this version. They cannot be changed.
+On macOS <kbd>Cmd</kbd> takes the place of <kbd>Ctrl</kbd>, and <kbd>Option</kbd> the place of <kbd>Alt</kbd>,
+with one exception: the runner drawer key stays <kbd>Ctrl</kbd> <kbd>&#96;</kbd>, because <kbd>Cmd</kbd> <kbd>&#96;</kbd>
+cycles windows on macOS.
+
+## Anywhere
+
+| Does | macOS | Windows and Linux |
+|---|---|---|
+| Open or close the command palette | <kbd>Cmd</kbd> <kbd>K</kbd> | <kbd>Ctrl</kbd> <kbd>K</kbd> |
+| Show or hide the runner drawer | <kbd>Ctrl</kbd> <kbd>&#96;</kbd> or <kbd>Cmd</kbd> <kbd>J</kbd> | <kbd>Ctrl</kbd> <kbd>&#96;</kbd> or <kbd>Ctrl</kbd> <kbd>J</kbd> |
+| Collapse or open the module index | <kbd>Cmd</kbd> <kbd>B</kbd> | <kbd>Ctrl</kbd> <kbd>B</kbd> |
+| Select app 1 to 9 on the rail | <kbd>Cmd</kbd> <kbd>Option</kbd> <kbd>1</kbd> to <kbd>9</kbd> | <kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>1</kbd> to <kbd>9</kbd> |
+| Add app | <kbd>Cmd</kbd> <kbd>O</kbd> | <kbd>Ctrl</kbd> <kbd>O</kbd> |
+| New module | <kbd>Cmd</kbd> <kbd>N</kbd> | <kbd>Ctrl</kbd> <kbd>N</kbd> |
+| Settings | <kbd>Cmd</kbd> <kbd>,</kbd> | <kbd>Ctrl</kbd> <kbd>,</kbd> |
+| Read the app again, from disk and from the actuator | <kbd>Cmd</kbd> <kbd>R</kbd> | <kbd>Ctrl</kbd> <kbd>R</kbd> |
+| Stop the running command | <kbd>Cmd</kbd> <kbd>.</kbd> | <kbd>Ctrl</kbd> <kbd>.</kbd> |
+| Close the topmost thing | <kbd>Esc</kbd> | <kbd>Esc</kbd> |
+| Move focus to the next or previous region | <kbd>F6</kbd>, <kbd>Shift</kbd> <kbd>F6</kbd> | <kbd>F6</kbd>, <kbd>Shift</kbd> <kbd>F6</kbd> |
+
+**Add app** opens the folder dialog of the operating system at once.
+**New module** opens the new module form; nothing runs.
+**Stop the running command** asks first when the command is a migration, which can leave the database between two states. See [Runner](/mortise/reference/runner/).
+
+The regions for <kbd>F6</kbd> are the rail, the module index, the workspace and, while it is open, the runner drawer.
+
+## Main window
+
+These keys act while no text field has focus.
+
+| Does | macOS | Windows and Linux |
+|---|---|---|
+| Next or previous module | <kbd>J</kbd> <kbd>K</kbd> or <kbd>Down</kbd> <kbd>Up</kbd> | <kbd>J</kbd> <kbd>K</kbd> or <kbd>Down</kbd> <kbd>Up</kbd> |
+| First or last row of the index | <kbd>Home</kbd> <kbd>End</kbd> | <kbd>Home</kbd> <kbd>End</kbd> |
+| Filter modules | <kbd>/</kbd> or <kbd>Cmd</kbd> <kbd>F</kbd> | <kbd>/</kbd> or <kbd>Ctrl</kbd> <kbd>F</kbd> |
+| Change the order of the index | <kbd>S</kbd> | <kbd>S</kbd> |
+| Summary, Boundary, Generate, Actions, Metrics | <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> <kbd>4</kbd> <kbd>5</kbd> | <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> <kbd>4</kbd> <kbd>5</kbd> |
+| Generate, with the generator filter focused | <kbd>G</kbd> | <kbd>G</kbd> |
+| Findings list of the app | <kbd>F</kbd> | <kbd>F</kbd> |
+| Open the selected module in the editor | <kbd>E</kbd> | <kbd>E</kbd> |
+| Show the shortcuts | <kbd>?</kbd> | <kbd>?</kbd> |
+
+<kbd>Cmd</kbd> <kbd>F</kbd> or <kbd>Ctrl</kbd> <kbd>F</kbd> also works where <kbd>/</kbd> needs <kbd>Shift</kbd>.
+<kbd>Enter</kbd> in the filter keeps the first match and gives the keys back to the list.
+<kbd>Down</kbd>, <kbd>Up</kbd>, <kbd>Home</kbd> and <kbd>End</kbd> move in the index while it has focus.
+A list or table that has focus keeps <kbd>J</kbd> and <kbd>K</kbd> for itself.
+
+## Parts of the window
+
+| Does | macOS | Windows and Linux | Where |
+|---|---|---|---|
+| Move focus into the workspace | <kbd>Enter</kbd> or <kbd>Right</kbd> | <kbd>Enter</kbd> or <kbd>Right</kbd> | Module index |
+| Set the width of the index | <kbd>Left</kbd> <kbd>Right</kbd> | <kbd>Left</kbd> <kbd>Right</kbd> | Edge of the module index |
+| Move an app on the rail | <kbd>Option</kbd> <kbd>Up</kbd>, <kbd>Option</kbd> <kbd>Down</kbd> | <kbd>Alt</kbd> <kbd>Up</kbd>, <kbd>Alt</kbd> <kbd>Down</kbd> | Rail |
+| Move in a table or list | <kbd>J</kbd> <kbd>K</kbd> or <kbd>Down</kbd> <kbd>Up</kbd> | <kbd>J</kbd> <kbd>K</kbd> or <kbd>Down</kbd> <kbd>Up</kbd> | Workspace |
+| Change a segmented control or the tab | <kbd>Left</kbd> <kbd>Right</kbd> | <kbd>Left</kbd> <kbd>Right</kbd> | Workspace |
+| Run the generator or the action | <kbd>Cmd</kbd> <kbd>Enter</kbd> | <kbd>Ctrl</kbd> <kbd>Enter</kbd> | Workspace |
+| Copy the command | <kbd>Cmd</kbd> <kbd>Shift</kbd> <kbd>C</kbd> | <kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>C</kbd> | Workspace |
+| Switch between Links and Public surface | <kbd>P</kbd> | <kbd>P</kbd> | Boundary, one module |
+| Scan the public surface | <kbd>Cmd</kbd> <kbd>Enter</kbd> | <kbd>Ctrl</kbd> <kbd>Enter</kbd> | Boundary, Public surface |
+| Add an entry to the proposal by hand | <kbd>A</kbd> | <kbd>A</kbd> | Boundary, Public surface |
+| Move, run, close | <kbd>Up</kbd> <kbd>Down</kbd> <kbd>Enter</kbd> <kbd>Esc</kbd> | <kbd>Up</kbd> <kbd>Down</kbd> <kbd>Enter</kbd> <kbd>Esc</kbd> | Command palette |
+| Search in the next app | <kbd>Tab</kbd> | <kbd>Tab</kbd> | Command palette |
+| Run the last command again | <kbd>Cmd</kbd> <kbd>Shift</kbd> <kbd>R</kbd> | <kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>R</kbd> | Runner drawer |
+| Show the history | <kbd>Cmd</kbd> <kbd>Shift</kbd> <kbd>H</kbd> | <kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>H</kbd> | Runner drawer |
+| Copy the output | <kbd>Cmd</kbd> <kbd>Shift</kbd> <kbd>O</kbd> | <kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>O</kbd> | Runner drawer |
+| Press the focused button, cancel | <kbd>Enter</kbd> <kbd>Esc</kbd> | <kbd>Enter</kbd> <kbd>Esc</kbd> | Dialog |
+
+<kbd>Space</kbd> takes an entry of the public surface proposal in or out.
+
+## What Esc closes
+
+<kbd>Esc</kbd> closes the topmost thing, in this order:
+
+1. A dialog.
+2. The command palette.
+3. The panel that adds an app.
+4. The message (toast).
+5. Settings. In a field of Settings, the first <kbd>Esc</kbd> leaves the field and the next one closes Settings.
+6. A scan of the public surface that is on screen: <kbd>Esc</kbd> stops it.
+7. The filter of the generator picker on the Generate tab.
+8. The text of the module filter, then the filter field itself.
+9. The Findings list, back to the Summary.
+
+## When keys rest
+
+- A dialog, the command palette and the add panel hold the keys until they close.
+- While Settings are open, the keys of the main window rest until <kbd>Esc</kbd>.
+- Single keys, such as <kbd>J</kbd>, <kbd>S</kbd> or <kbd>1</kbd>, never act while a text field has focus.
+  The drawer keys, <kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>R</kbd>, <kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>H</kbd>,
+  <kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>O</kbd> and <kbd>Ctrl</kbd> <kbd>.</kbd> do not act while you type either.
+
+## Settings > Keyboard
+
+<Screen id="s8.4-settings-keyboard" alt="The Keyboard section of Settings: a field to find a shortcut and a table with the columns Does, Keys and Where." />
+
+The **Keyboard** section of [Settings](/mortise/reference/settings/) lists every shortcut above.
+<kbd>?</kbd> opens it, and so does **Help** > **Keyboard Shortcuts** on macOS.
+
+| Part | What it is |
+|---|---|
+| **Find a shortcut** | A field that filters the list. The count reads "3 of 12 shown." |
+| Note | "On macOS Ctrl is Cmd. Shortcuts are fixed in this version." |
+| **Does** | What the shortcut does |
+| **Keys** | Its keys, written as they are pressed on the platform the app runs on |
+| **Where** | **Anywhere**, **Main window**, or the part of the window |

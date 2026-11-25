@@ -1,0 +1,185 @@
+---
+title: Boundary
+description: The Boundary tab, for one module, for All modules and for an app with many modules, and the public surface view.
+sidebar:
+  order: 3
+---
+import Screen from '../../../components/Screen.astro';
+
+The **Boundary** tab is the second tab of the workspace (<kbd>2</kbd>).
+It shows the links between modules and the rules they are checked against.
+A link is one module using another: Mortise finds it in the `use` statements and the fully qualified class names
+of the PHP files of each module. Reading needs no PHP.
+Why the rules exist is in [About boundaries](/mortise/explanation/boundaries/).
+
+## Rules
+
+An app has two rules. Both are on by default.
+
+| Rule | Breaks when |
+|---|---|
+| **No circular use** | Modules use each other, directly or in a circle of three or more |
+| **Other modules use only a module's public surface** | A file of one module reads a class of another module outside its public folders. The default folders are `Contracts` and `Events` |
+
+A module that is off does not run, so its links break no rule.
+The rules are kept in `mortise.json` in the app folder. See [mortise.json](/mortise/reference/mortise-json/).
+If `mortise.json` cannot be read as rules, the tab says
+"mortise.json is not valid: …. The default rules apply until it is corrected."
+
+## One module
+
+With a module selected, the tab shows a graph of its links and the files of one link.
+
+<Screen id="s5.1-boundary-module" alt="The Boundary of Checkout: a graph with Checkout in the middle, the modules that use it at the left and the modules it uses at the right, and under it the files of the link to Billing." />
+
+### Graph
+
+| Column | Caption | Holds |
+|---|---|---|
+| Left | "Used by, 2" | The modules that use this one |
+| Middle | **Selected** | The module, with its number of files |
+| Right | "Uses, 4" | The modules this one uses |
+
+Each neighbour node has its code stamp, its name when it fits, and a second line such as "6 refs, 3 to internals" or "2 refs, circular".
+The arrow points at the module that is used. A link that breaks a rule is 2 px, in the problem colour, and carries a problem mark on the line.
+
+At most eight nodes stand on one side. With more neighbours, the seven with the most references are drawn
+and an eighth node reads "12 more". Links that break a rule come first, so the "more" node never hides one.
+
+A module with no link says "Checkout uses no other module, and no other module uses it."
+
+### Files of a link
+
+Under the graph are the files of the link with the selected neighbour.
+The first link that breaks a rule is selected at first.
+
+The head names the link and how much of it breaks a rule:
+
+| Link | Head |
+|---|---|
+| One way, reads internals | "Checkout uses Billing" and "3 of 6 files read internals" |
+| One way, breaks nothing | "Checkout uses Billing" and "6 files" |
+| Two modules that use each other | "Checkout and Shipping use each other" and "Circular, 6 files" |
+
+The table has the columns **File**, **Line** and **Reads**. Files that break the rule come first and carry the problem mark.
+For a circle, every file is marked: removing either direction ends it.
+
+The footer gives the rule of the link and two buttons:
+
+- For a link that reads internals: "Rule: other modules use only a module's public surface. Billing has none yet, so the folders Contracts and Events count."
+- For a circle of two: "Reported on Checkout, the side with fewer files to change. Every file in a circle is marked: removing either direction ends it."
+- For a circle of three or more: "Reported on Checkout, the module of the circle with the fewest files to change. Every file of a link in a circle is marked."
+- **Open in editor** with <kbd>Enter</kbd>: opens the selected file at its line.
+- **Copy path**: copies the path of the selected file and says "Copied the path."
+
+<Screen id="s5.2-boundary-circle" alt="The files of the circular link between Checkout and Shipping, in two sections, one per direction, with every file marked." />
+
+## All modules, up to 12 modules
+
+<Screen id="s5.3-boundary-all" alt="The Boundary of All modules: a graph of seven modules in columns with arrows, a list of links that break a rule, and the rules of the app." />
+
+### App graph
+
+The head reads "9 links between 7 modules", with the switch **All links** or **Problems only**.
+Modules stand in columns from left to right: a module sits left of what it uses.
+Modules in a circle share a column. When the columns need more room than the tab has, the graph scrolls sideways.
+The caption reads "Arrow points at the module that is used. A square with a cross marks a link that breaks a rule."
+
+An app whose modules do not use each other says "No module of shop-api uses another."
+
+### Links that break a rule
+
+A box with one row per broken rule: a circle once ("Checkout and Shipping use each other")
+and each link that reads internals ("Checkout reads Billing internals"), with the number of files.
+Without one it says "No link breaks a rule."
+<kbd>J</kbd> and <kbd>K</kbd> move through the rows. <kbd>Enter</kbd> opens the Boundary of the first module on that link.
+
+### Rules box
+
+Titled "Rules for shop-api", with the note "kept in mortise.json in the app folder".
+
+| Control | What it does |
+|---|---|
+| **No circular use** | Turns the first rule on or off |
+| **Other modules use only a module's public surface** | Turns the second rule on or off. Under it: "Accepted for 0 of 7 modules. For a module without one, these folders count:" and a field with the folders |
+| **Fail CI when a rule breaks** | Always off: "Needs the command line tool, which does not exist yet." |
+
+The first change asks before Mortise creates `mortise.json`: "Create mortise.json in shop-api?" with **Create mortise.json**.
+If the file cannot be written: "The rules were not saved: …."
+
+## All modules, above 12 modules
+
+Above 12 modules the app graph gives way to a table of links.
+
+<Screen id="s5.4-links-table" alt="A table of links for an app with sixty modules, with a filter, the switch All links or Problems only, and the columns From, Uses, Refs, Files and State." />
+
+The note reads "platform has 60 modules. Above 12 modules the graph of the whole app gives way to this table. Select one module for its own graph."
+
+| Control or column | What it is |
+|---|---|
+| **Filter links** | A field that filters the rows |
+| **All links**, **Problems only** | Which links the table lists |
+| Count | "214 links, 5 problems, 14 shown" |
+| **From** | The module that uses |
+| **Uses** | The module that is used |
+| **Refs** | The number of references |
+| **Files** | The number of files |
+| **State** | **Circular**, "3 files read internals", or **Good** |
+
+Problems come first, then the links with the most references. The rules box stands under the table.
+
+## Public surface view
+
+A module has a second view: its public surface.
+The surface is what something outside the module may use: classes for other modules, routes for HTTP clients,
+and console commands for the command line and the scheduler.
+The control **View** switches between **Links** and **Public surface**. <kbd>P</kbd> does the same.
+
+### Not scanned yet
+
+<Screen id="s5.5-surface-not-scanned" alt="The public surface view of Billing before a scan, with a sentence about what a scan does and the button Scan Billing." />
+
+The title reads "Billing has no public surface yet". The text says what a scan reads and that
+"Nothing is written until you accept the proposal." It names the folders the rule uses until then.
+The button **Scan Billing** starts the scan. <kbd>Ctrl</kbd> <kbd>Enter</kbd> (<kbd>Cmd</kbd> <kbd>Enter</kbd> on macOS)
+and the palette row "Scan the public surface of Billing" do the same. A scan never starts by itself.
+
+### Scanning
+
+The view shows "Scanning Billing", the note "nothing is written", a bar "Reading 61 of 96 files"
+and one line per kind of thing it looks for. **Stop the scan**, or <kbd>Esc</kbd>, stops it. A scan writes nothing.
+
+| Kind | Where it comes from |
+|---|---|
+| Classes that other modules use | The links Mortise already has |
+| **Contracts** | Interfaces declared in the module |
+| **Events** | Classes in the events folder of the module |
+| **Console commands** | Command classes of the module, with the name in their signature |
+| Routes | The `mappings` of a connected environment. Without them: "Routes were not read. Connect an environment or set how PHP runs, then scan again." |
+
+### Proposal
+
+<Screen id="s5.7-surface-proposal" alt="The proposed public surface of Billing: entries grouped by kind, each with a checkbox, why it is here and who uses it today." />
+
+The head reads "Proposed public surface of Billing", "22 found, 21 proposed" and "scanned just now".
+Entries are grouped by kind. The columns are **Entry**, **Why it is here** and **Used today by**.
+
+| Group | Checked at first |
+|---|---|
+| **Classes that other modules use** | Contracts and events |
+| **Other classes that other modules use** | No. A class that is used and left out says "Used from outside, not proposed. Include it to allow these reads, or leave it out and keep the finding on Checkout." |
+| "Routes, read from local" | Named routes |
+| **Console commands** | Yes |
+
+<kbd>Space</kbd> on a row includes it or leaves it out. <kbd>J</kbd> and <kbd>K</kbd> move through the entries.
+
+| Control | What it does |
+|---|---|
+| **Add a class, a route or a command** (<kbd>A</kbd>) | Adds an entry by hand. As you type it says what the name is, such as "A class in Models. Enter adds it.", or "Nothing in Billing has this name." |
+| **Copy as text** | Copies the proposal and says "Copied the proposal." |
+| **Scan again** | Runs the scan again and keeps your choices where the entry still exists |
+| "Accept 21 entries" | Always off: "The package cannot store a public surface yet" |
+
+A scan that finds nothing says "The scan found no interface, no event and no console command in Billing, and no class that another module uses."
+
+The steps are in [How to scan the public surface](/mortise/how-to/scan-public-surface/).
