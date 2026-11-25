@@ -1,0 +1,188 @@
+---
+title: The window
+description: The parts of the Mortise window, from the title bar to the workspace header, and what each one shows.
+sidebar:
+  order: 1
+---
+import Screen from '../../../components/Screen.astro';
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+The window has five parts, from left to right and top to bottom:
+the title bar, the rail of apps, the module index, the workspace and the runner drawer.
+This page describes the first three and the header of the workspace.
+The tabs of the workspace have their own pages: [Summary](/mortise/reference/summary/),
+[Boundary](/mortise/reference/boundary/), [Generate](/mortise/reference/generate/),
+[Actions](/mortise/reference/actions/) and [Metrics](/mortise/reference/metrics/).
+The drawer is on the [runner](/mortise/reference/runner/) page.
+
+<Screen id="s4.1-home" alt="The Mortise window with the app shop-api open: the title bar at the top, the rail of app tiles at the left, the module index with seven modules, and the Summary of All modules." />
+
+## Title bar
+
+The title bar is 34 px high. It holds three things:
+
+| Place | Shows |
+|---|---|
+| Left | The mark and the name **Mortise** |
+| Middle | The entry to the [command palette](/mortise/reference/palette/): "Search or run a command" and the key <kbd>Ctrl</kbd> <kbd>K</kbd> (<kbd>Cmd</kbd> <kbd>K</kbd> on macOS). Under 1100 px of window width it reads "Search or run" |
+| Right | The name of the app that is open, or "No app" |
+
+An empty part of the bar drags the window. A double click on it zooms or maximises the window.
+
+<Tabs syncKey="os">
+<TabItem label="macOS">
+The system draws its three window buttons at the left, over the bar of Mortise.
+
+Mortise also fills the menu bar of macOS. The items have no shortcuts of their own.
+
+| Menu | Items |
+|---|---|
+| Mortise | About, **Settings…**, Hide, Hide Others, Show All, Quit |
+| File | **Add App…** |
+| View | **Command Palette**, **All modules**, **Findings**, **Collapse or Open the Module Index**, **Read the App Again**, **Theme: System**, **Theme: Light**, **Theme: Dark** |
+| Window | Minimize, Zoom, Bring All to Front |
+| Help | **Keyboard Shortcuts** |
+</TabItem>
+<TabItem label="Windows">
+Mortise draws the window without the system frame. It draws three controls at the right of its bar:
+**Minimise**, **Maximise** (**Restore** while the window is maximised) and **Close**. Each is 44 px wide.
+
+The Snap layouts flyout of Windows 11 does not open from the drawn maximise button.
+Dragging the window to an edge, and <kbd>Win</kbd> with the arrow keys, still snap it.
+Windows keeps a 1 px line above the bar.
+</TabItem>
+<TabItem label="Linux">
+Mortise draws the window without the system frame. It draws three controls in its bar:
+**Minimise**, **Maximise** (**Restore** while the window is maximised) and **Close**. Each is 44 px wide.
+
+**Settings** > **General** > **Window controls on Linux** puts them at the **Right** (the default) or the **Left**.
+</TabItem>
+</Tabs>
+
+**Settings** > **General** > **Title bar** chooses who draws the frame. **Mortise** is the frame described above.
+**Platform** keeps the title bar of the system, with the bar of Mortise under it.
+See [Settings](/mortise/reference/settings/).
+
+## Rail of apps
+
+The rail is the 52 px column at the left. It never changes width.
+
+<Screen id="s2.1-rail-10-apps" alt="The rail with ten app tiles, each with a two-letter monogram, an add tile with a plus, and the Settings icon at the bottom." />
+
+| Part | What it is |
+|---|---|
+| App tile | A 34 px square with the two-letter monogram of the app. The selected app is a filled block |
+| Pip | A small problem mark on a tile. The app has at least one finding of the kind problem. Warnings and a runtime that is down raise no pip |
+| Add tile | A dashed square with a plus. It opens the panel that adds an app. Its tooltip is **Add app** with <kbd>Ctrl</kbd> <kbd>O</kbd> |
+| Settings | An icon at the bottom of the rail. It opens [Settings](/mortise/reference/settings/). Its tooltip is **Settings** with <kbd>Ctrl</kbd> <kbd>,</kbd> |
+
+The tooltip of a tile names the app and its problems, such as "shop-api, 2 problems".
+
+The tiles are in the order the apps were added. Drag a tile over another to move it.
+<kbd>Alt</kbd> <kbd>Up</kbd> and <kbd>Alt</kbd> <kbd>Down</kbd> move the focused tile.
+<kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>1</kbd> to <kbd>9</kbd> select the first nine apps
+(<kbd>Cmd</kbd> <kbd>Option</kbd> on macOS).
+
+When the tiles do not fit, they scroll with the wheel and with <kbd>Up</kbd> and <kbd>Down</kbd>.
+The add tile and Settings stay at the bottom. No scrollbar is drawn: a 1 px line at the top or bottom edge
+shows that there is more.
+
+## Module index
+
+The index lists the modules of the app that is open. It is 264 px wide by default.
+Drag its right edge, or focus that edge and press <kbd>Left</kbd> or <kbd>Right</kbd>,
+to set a width from 220 to 320 px. The edge is named "Width of the module index".
+
+<Screen id="s3.1-index-30-modules" alt="The module index of an app with thirty modules, one line per row, with the header, the filter field and the footer." />
+
+### Header
+
+| Line | Example |
+|---|---|
+| App name and modules on | `shop-api` and "7 of 7 on". When the on or off state cannot be read from a file, it reads "7 modules" |
+| Versions | "Laravel 13.2, package 13.3.0", from `composer.lock` |
+| Runtime | A stroke mark, the word of the status and the environment, such as "Up on local". Shown only while an environment is connected. "No answer" when the app gives none or refuses the credentials |
+
+Below the header is the field **Filter modules**. Its key hint is <kbd>/</kbd>; once inside, it is <kbd>Esc</kbd>.
+The filter keeps a module when its letters are in the name or in the code, in any case.
+"All modules" always stays. When nothing matches, the list says
+"No module matches "paym". Press Esc to clear the filter."
+
+### Rows
+
+The first row is **All modules**. Then one row per module.
+
+| Part | What it shows |
+|---|---|
+| Code stamp | The three-letter code of the module, such as `CHK` for Checkout. Dashed when the module is off |
+| Name | The module name. Lighter when the module is off |
+| Second line | "84 files, 54% covered", or "84 files" without a coverage report, or "38 files, turned off" |
+| Finding mark | At the right. The worst finding of the module: a problem mark with the count, a warning mark, or the good mark. A module that is off shows the word **Off** and no finding state |
+| Runtime mark | Left of the finding mark, while an environment is connected and the module reports a status. A stroke mark: **Up**, **Down**, **Out of service** or **Unknown**. Its tooltip reads "Up on local, checked 8 s ago" |
+
+The row of **All modules** carries the problems of the whole app and the coverage of the app.
+
+Rows have two lines up to 20 modules and one line above.
+**Settings** > **General** > **Module index rows** sets **Automatic** (the default), **Two lines** or **One line**.
+
+<Screen id="s3.1-index-runtime" alt="The module index with runtime marks: a stroke mark left of the finding mark on each row, and Billing marked Down." />
+
+### Footer
+
+| Control | What it does |
+|---|---|
+| **Sorted: by name** or **Sorted: problems first** | Changes the order. Its tooltip is **Change the order** with <kbd>S</kbd>. The choice is kept per app |
+| Count | Takes the place of the order while a filter is on: "1 of 7 modules" |
+| **New module** | Opens the new module form of [Generate](/mortise/reference/generate/). Nothing runs until you run the form |
+
+By name is the default. Problems first puts modules with a problem first, then those with a warning,
+then the rest; each group stays in order by name. With one line per row and problems first,
+the modules with a finding are pinned under the heading **Needs attention**.
+
+### Index strip
+
+The index collapses to a strip of stamps and marks, 76 px wide.
+It is 96 px wide while a row has a runtime mark, so the two marks sit side by side.
+The strip has the key <kbd>Ctrl</kbd> <kbd>B</kbd> (<kbd>Cmd</kbd> <kbd>B</kbd> on macOS) at its foot.
+
+The index becomes the strip when the window is narrower than 1032 px.
+<kbd>Ctrl</kbd> <kbd>B</kbd> collapses or opens it by hand. Mortise then stops choosing until the window is resized.
+Opened by hand in a narrow window, the index takes 220 px and the workspace gives way.
+
+<Screen id="s13.1-index-strip" alt="The window at its smallest size, with the module index collapsed to a strip of code stamps and finding marks." />
+
+## Workspace header
+
+The header names what is selected and holds the tabs.
+
+| Part | What it shows |
+|---|---|
+| Title | **All modules**, or the module name |
+| Code stamp | For a module. Its tooltip reads "CHK is the code for Checkout" |
+| Folder | For a module: its folder, such as `Modules/Checkout`. A long folder ends with an ellipsis |
+| Buttons | For a module, except on Actions and Generate: **Run tests**, **Migrate** and **Open in editor**. **Migrate** reads "Migrate (1)" once the migration state is read and a migration waits |
+| Run key | On Actions, and on a generator form: "Run with" and <kbd>Ctrl</kbd> <kbd>Enter</kbd> (<kbd>Cmd</kbd> <kbd>Enter</kbd> on macOS) |
+| Tabs | **Summary** <kbd>1</kbd>, **Boundary** <kbd>2</kbd>, **Generate** <kbd>3</kbd>, **Actions** <kbd>4</kbd>, **Metrics** <kbd>5</kbd> |
+
+The chosen tab stays while you move from module to module.
+While the [Findings list](/mortise/reference/findings/) is open, the title reads "All modules / Findings in shop-api"
+and a **Back to Summary** button with <kbd>Esc</kbd> sits at the right.
+
+## Empty and error states
+
+| State | Title | Text and controls |
+|---|---|---|
+| No app added | **No apps yet** | "Add the folder of a Laravel app that uses nwidart/laravel-modules. Mortise reads its modules from disk and changes nothing until you run a command." and **Add app folder** with <kbd>Ctrl</kbd> <kbd>O</kbd> |
+| An app that cannot be read | "shop-api cannot be read" | Why, and what to do next. For example: "No composer.lock in ~/code/shop-api. Mortise reads versions from it. Run composer install in the app, then choose the folder again." |
+| A large app on its first read | none | A bar: "Reading 61 of 96 files" |
+| Broken `settings.json` | none | "Mortise could not read its settings, so it starts without apps. The old file is kept as …" |
+
+The read errors are:
+
+- No Laravel app: the folder has no `artisan` file and no `composer.json` that requires `laravel/framework`.
+- No `composer.lock`.
+- The app does not use `nwidart/laravel-modules`: `composer.lock` has no entry for it.
+- `composer.lock` is not valid JSON.
+- The system could not read a file.
+
+See also [Keyboard](/mortise/reference/keyboard/) for every key of the window.
