@@ -110,7 +110,7 @@ The tool reads the app through the same core as the window. A rule is checked in
 | # | Milestone | Core and tool | Screens | Needs |
 |---|---|---|---|---|
 | 24 | Command line rule check | `mortise-cli`, `mortise check`, its formats and exit codes. `ci.fail` and `coverage` in `mortise.json`. The desktop binary renamed. Cloud R1, R2, R3, R6 | The switch of S5.3 | nothing |
-| 25 | Push document and `mortise push` | The push document in `mortise-core`, its frozen shape and schema test. `mortise push` with `--dry-run`. Cloud R4, R5, R8 | none | The cloud's host (cloud Q1) for the default; its staging for the last test |
+| 25 | Push document and `mortise push` | The push document in `mortise-core`, its frozen shape and schema test. `mortise push` with `--dry-run`. Cloud R4, R5, R8 | none | The cloud's staging for the last test. The default host is `https://mortisecloud.com`, read from `MORTISE_CLOUD_URL` when set |
 | 26 | Distribution | Release binaries with sums, signed on macOS. `nwidart/setup-mortise`. crates.io. Cloud R7 | none | nothing: token and repository exist |
 | 27 | Accepted public surface | Read the `surface` key. The second rule checks it in the window and in the tool | Accept on S5.7, S5.8, S5.9 | P6 in a laravel-modules release |
 | 28 | Hardening | The tool on three platforms in CI, on the fixture apps. Paths on Windows | Images for S5.8 and S5.9 in both themes, accessibility, docs site, deviations | nothing |
@@ -122,7 +122,7 @@ Cloud request R9, a rule of allowed dependencies, is a free rule and fits after 
 | Dependency | What phase 4 needs from it | Exists today | Owner | Blocks |
 |---|---|---|---|---|
 | `nwidart/laravel-modules` | P6: the `surface` key and `module:surface` | In progress | nwidart | Milestone 27 |
-| Mortise Cloud | Its host name (Q1), a staging environment, and the push schema version 1 | Schema written, host not chosen | nwidart | The default host and the last test of milestone 25 |
+| Mortise Cloud | A staging environment and the push schema version 1. Host `https://mortisecloud.com` (cloud Q1, answered 26 November 2026): `POST /api/v1/snapshots` and `POST /api/v1/deploys` | Schema written, host chosen | nwidart | The last test of milestone 25 |
 | `nwidart/setup-mortise` | A repository for the action | Exists, empty | nwidart | Milestone 26 |
 | crates.io token | To publish `mortise-cli`, as a secret of the `release` environment | `CARGO_REGISTRY_TOKEN` set | nwidart | Publishing there only |
 | Apple secrets | Signing the macOS binary | Exist | nwidart | nothing |
