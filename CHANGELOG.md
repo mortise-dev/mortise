@@ -2,6 +2,107 @@
 
 All notable changes to this project are listed here.
 <!-- git-cliff: end of header -->
+## [0.2.0] - 2026-11-25
+
+### Features
+
+- *(core)* Place a scheduled task in the module that declares its command
+- *(app)* Show the module of an artisan task on the summaries
+- *(core)* Work out the runtime status of each module from health
+- *(app)* Show the runtime mark of each module in the index
+- *(app)* Show the runtime of a module in its summary
+- *(core)* Read prometheus while the metrics tab is open
+- *(core)* Read the prometheus text format
+- *(core)* Keep metrics reads in memory with rates and resets
+- *(core)* Place metrics in modules and work out rates per module
+- *(app)* Show metrics per module on the metrics tab
+- *(core)* Work out the figures of the metrics tab per scope and range
+- *(app)* Draw the metrics chart and sparkline with the painter
+- *(app)* Draw the metrics tab of s7.3 with ranges, routes and a selected row
+
+### Bug fixes
+
+- *(app)* Move interface text into strings files
+- *(app)* Keep a long component detail beside its name in the runtime box
+- *(app)* Keep one title across tabs and indent json in the runner
+- *(app)* Bound json depth, clear the scroll bar and elide the header folder
+- *(core)* Accept an artisan path and scan only the tasks of the module
+- Keep a failed modules check and give each module indicator its own line
+- *(core)* Take the modules component only in the shape of laravel-modules
+- Keep every detail of a down module indicator and take an empty key
+- *(core)* Find resets per series and bound what a read keeps
+- *(core)* Skip a label line with no comma between two labels
+- *(core)* Key a series by its labels and find a bound in constant time
+- *(core)* Bound what the metrics store keeps and show no old rates
+- Start no metrics read after the tab closes
+- *(core)* Match buckets by bound and carry the totals over a long gap
+- *(core)* Read the metrics body only for a 200 or a 503
+- *(app)* Close the metrics tab from the state at the end of the frame
+- *(core)* Skip a sample line with a bad timestamp or a word after it
+- *(app)* Say that only requests without a module label are not placed
+- *(core)* Refuse a metrics answer with no type line as not metrics
+- *(core)* Drop a bucket bound once no kept read gave it
+- *(app)* Give the chart a step of 1 for a subnormal highest point
+- *(core)* Carry each bucket up to the bounds a series lacks before the 95% bound
+- *(core)* Break the line between reads of different runs
+- *(app)* Give routes the stamp column and the whole name of a cut row on hover
+- *(app)* Wrap the range switch and the read line when the top of the metrics tab is too narrow
+- *(spec-build)* Write inside the repository or stop
+- *(app)* Draw one point per pixel column in a sparkline
+- *(app)* Wrap the environment switch when the names do not fit
+- *(spec-build)* Refuse symlinks and unchecked folders, use a unique temporary file
+- *(app)* Scroll to the segment the arrow keys choose
+- *(spec-build)* Refuse a link at the output folder, compare paths in one convention, encode file URLs
+- *(spec-build)* Replace pages by rename, check the height, write paths with no line end
+- *(app)* Scroll to a segment once it has focus in its new place
+- *(app)* Keep one sparkline point per pixel column across a gap
+
+### Performance
+
+- *(core,app)* Build the range line for the total and the selected row only
+
+### Refactoring
+
+- *(app)* Move text two features show to the shared strings
+- *(app)* Move the text left in views into strings.rs
+
+### Documentation
+
+- Propose the phase 3 groundwork change
+- Add prometheus to the actuator rule
+- Bring spec 2.5, 12.2 and S7.2 up to the released packages
+- Describe how metrics are placed without a module label
+- Add the worktree rule for agents
+- Archive the phase 3 groundwork change
+- Propose the phase 3 module tasks change
+- Say which scheduled tasks s4.2 places before p10
+- Archive the phase 3 module tasks change
+- Propose the runtime per module change
+- Record the deviations of the runtime per module
+- Archive the phase 3 runtime per module change
+- Propose the phase 3 reading metrics change
+- Keep the bounds when a read has no request histogram
+- Record how the metrics store takes its first bounds
+- Record the measured fold of a 60 module answer
+- Record how metrics are placed and what the metrics tab shows
+- Record bases per series, stale bases, fine thinning and the cap of a read
+- State the metrics caps, absent counters, run starts, closing the tab and old rates
+- State matching buckets by bound, totals over long gaps, closing the tab, thinned spans and error bodies
+- Archive the phase 3 reading metrics change
+- Propose the phase 3 metrics tab
+- Record the 95% bucket bound and what the metrics tab adds to s7.3
+- Record the range line of the selected row and three declined review findings
+- Archive the phase 3 metrics tab change
+- Propose the phase 3 hardening change
+- Record the image fixes and the keyboard gap of the waiting state
+- Say how to run the real actuator check and record what serve passes
+- Tick the real actuator job
+- Describe phase 3 in the readme and record what the build did in the plan
+- *(core)* Drop an intra-doc link to a private constant
+- Mark the fixes that belong to no milestone in the phase 3 plan
+- Record the linux look of phase 3 and the second title bar of hyprbars
+- Archive the phase 3 hardening change
+
 ## [0.1.0] - 2026-11-23
 
 ### Features
