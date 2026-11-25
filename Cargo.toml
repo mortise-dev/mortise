@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/mortise-core", "crates/mortise-app"]
+members = ["crates/mortise-core", "crates/mortise-app", "crates/mortise-cli"]
 
 [workspace.package]
 version = "0.2.0"

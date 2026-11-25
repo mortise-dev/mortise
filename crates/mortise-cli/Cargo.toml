@@ -1,0 +1,23 @@
+[package]
+name = "mortise-cli"
+description = "The Mortise command line tool: checks the boundary rules of a Laravel app in CI."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "mortise"
+path = "src/main.rs"
+
+[dependencies]
+# Reading only: no watch, no actuator, no credential store and no PHP runner.
+mortise-core = { path = "../mortise-core", default-features = false }
+serde_json.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true
