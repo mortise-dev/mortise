@@ -16,6 +16,9 @@
   --sl-font-mono: Inconsolata, ui-monospace, Menlo, Consolas, monospace;
   --sl-text-code: 0.9375rem;
   --sl-text-code-sm: 0.875rem;
+  --sl-text-h2: 1.625rem;
+  --sl-text-h3: 1.3125rem;
+  --sl-text-h4: 1.125rem;
 
   --sl-color-white: #F9FAFC;
   --sl-color-gray-1: #E5EBF4;
@@ -108,10 +111,6 @@
 h1#_top {
   font-weight: 700;
   letter-spacing: -0.01em;
-}
-.sl-markdown-content h2 {
-  padding-top: 0.75rem;
-  border-top: 1px solid var(--mortise-line);
 }
 
 /* Inline code reads as the mono of the app, on a surface with a hairline. */
