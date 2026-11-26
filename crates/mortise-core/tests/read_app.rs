@@ -756,6 +756,16 @@ fn an_accepted_surface_decides_what_other_modules_may_read() {
     let read = with_surface(r#"{"classes": "Modules\\Billing\\Models\\Invoice"}"#);
     let billing = read.module("Billing").unwrap();
     assert_eq!(billing.surface, None);
+    // So is a surface as an array, and an entry that is not in its stored form.
+    for refused in [
+        r#"[["Modules\\Billing\\Models\\Invoice"], [], []]"#,
+        r#"{"classes": ["\\Modules\\Billing\\Models\\Invoice"]}"#,
+        r#"{"routes": ["/billing/*"]}"#,
+        r#"{"commands": ["billing: send"]}"#,
+    ] {
+        let read = with_surface(refused);
+        assert_eq!(read.module("Billing").unwrap().surface, None, "{refused}");
+    }
     assert_eq!(
         read.link("Checkout", "Billing").unwrap().internal_files(),
         3

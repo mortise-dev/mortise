@@ -166,6 +166,15 @@ fn without_routes_the_proposal_says_that_they_were_not_read() {
     assert!(!proposal.routes_read);
     assert_eq!(proposal.of(SurfaceKind::Route).count(), 0);
     assert_eq!(proposal.found(), 8);
+
+    // A change keeps the accepted routes it could not check.
+    let mut changed = proposal.clone();
+    let accepted = AcceptedSurface {
+        routes: vec!["api/billing/*".to_owned()],
+        ..Default::default()
+    };
+    changed.take_choices_of(&accepted);
+    assert_eq!(changed.surface(), accepted);
 }
 
 #[test]
@@ -264,6 +273,12 @@ fn a_proposal_becomes_a_surface_and_a_later_scan_is_compared_with_it() {
         r#"{"classes":["Modules\\Billing\\Contracts\\InvoiceNumbering","Modules\\Billing\\Contracts\\PaymentGateway","Modules\\Billing\\Events\\InvoiceIssued","Modules\\Billing\\Events\\InvoicePaid","Modules\\Billing\\Events\\PaymentFailed"],"routes":["api/billing/*","billing/*"],"commands":["billing:retry-failed-payments","billing:send-invoices"]}"#
     );
     assert!(proposal.differences(&surface).is_empty());
+    // Narrower routes that cover every route of the code are not a difference.
+    let narrower = AcceptedSurface {
+        routes: vec!["api/billing/invoices/*".to_owned(), "billing/*".to_owned()],
+        ..surface.clone()
+    };
+    assert!(proposal.differences(&narrower).is_empty());
 
     // Later: the code has a new event, and an accepted command and class are gone.
     let mut accepted = surface.clone();
@@ -274,6 +289,12 @@ fn a_proposal_becomes_a_surface_and_a_later_scan_is_compared_with_it() {
         .classes
         .push(r"Modules\Billing\Models\Refund".to_owned());
     accepted.commands.push("billing:old".to_owned());
+    // A leading backslash is the same class, so it is neither new nor gone.
+    for class in &mut accepted.classes {
+        if class.ends_with("InvoicePaid") {
+            class.insert(0, '\\');
+        }
+    }
     let differences = proposal.differences(&accepted);
     let found: Vec<(&str, bool)> = differences
         .iter()
@@ -303,7 +324,7 @@ fn a_proposal_becomes_a_surface_and_a_later_scan_is_compared_with_it() {
     // A change of the accepted surface starts from what it holds.
     let mut only = AcceptedSurface::default();
     only.classes
-        .push(r"modules\billing\models\invoice".to_owned());
+        .push(r"\modules\billing\models\invoice".to_owned());
     proposal.take_choices_of(&only);
     assert_eq!(
         proposal.surface().classes,
