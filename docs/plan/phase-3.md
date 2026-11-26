@@ -14,8 +14,8 @@ of phase 1: the runtime mark per row of S3.1 (its sixth drawing), the runtime bo
 and the Module column of scheduled tasks on S4.2.
 
 Milestones are numbered 18 to 23, because phase 2 used 17 for the package-by-feature refactor.
-The phase 4 outline on the published site numbers its milestones 22 to 24; they move to 24 to 26 when
-phase 4 is planned.
+The phase 4 outline on the published site numbered its milestones 22 to 24. Phase 4 is milestones 24 to 28
+(see `docs/plan/phase-4.md`).
 
 ## 1. What was checked before writing this
 
@@ -391,9 +391,9 @@ one for its archive.
   variables the three servers use to switch metrics off or break the store.
 - The environment switch wraps (deviation S70). The plan had no rule for names wider than the tab.
 - S6.5 e has no stored image. Its sentence quotes the port of the stub, which changes with every run.
-- S7.3 after a choice of environment shows the waiting state, which has no switch, so keyboard focus
-  leaves the switch and Tab must reach it again. Every environment stays reachable. This was there
-  before this change. It is left for a later change.
+- S7.3 after a choice of environment showed the waiting state, which had no switch, so keyboard focus
+  left the switch and Tab had to reach it again. Fixed: the waiting state keeps the environment switch,
+  and the focus stays on the chosen environment (deviation S77).
 - Tasks per module (milestone 22) match a task to the module that declares its command. The plan asked for
   nothing more: PKG-2 was still open.
 - After phase 3, Mortise reads the `module` tag of PKG-2 on each task of `scheduledtasks`. The tag wins;

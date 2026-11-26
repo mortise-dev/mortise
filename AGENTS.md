@@ -45,8 +45,8 @@ Phase 1 (read only) is built. The plan is `docs/plan/phase-1.md`.
 - A token or a password goes to the credential store of the operating system. It is never written to a file or a log.
 - `unsafe` code is forbidden in the workspace (`unsafe_code = "forbid"`). Find a safe route or record a deviation.
 - `mortise-core` has no interface dependency. Drawing belongs in `mortise-app` only.
-- All use of the PHP parser (`mago-*`, pinned `=1.59.0`) stays in `mortise_core::php`.
-  Moving the pin past 1.59 needs Rust 1.100: move the pin and `rust-toolchain.toml` together.
+- All use of the PHP parser (`mago-*`, pinned `=1.61.0`) stays in `mortise_core::php`.
+  `mago` 1.61 needs Rust 1.100. A newer `mago` may need a newer Rust: move the pin and `rust-toolchain.toml` together.
 - Every change must work on macOS, Windows and Linux. Say what was not run on a platform.
 
 ## Branches and worktrees

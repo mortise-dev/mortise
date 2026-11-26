@@ -297,6 +297,21 @@ fn two_reads_give_a_figure_for_every_module_and_write_nothing() {
     harness.get_by_role_and_label(Role::Heading, "Requests per minute, Billing");
     harness.get_by_role_and_label(Role::ColumnHeader, "Route");
     harness.get_by_role_and_label(Role::Cell, "GET /billing/invoices/{invoice}");
+    harness.get_by_role_and_label(Role::ColumnHeader, "Jobs/min");
+
+    // The narrowest window with the index opened by hand: Jobs/min, en dashes for a route, gives
+    // way, and the route keeps its room.
+    harness.set_size(eframe::egui::vec2(960.0, 800.0));
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::B);
+    harness.run_steps(3);
+    assert!(harness.query_by_label("Jobs/min").is_none());
+    harness.get_by_role_and_label(Role::ColumnHeader, "Database time");
+    let route = harness.get_by_role_and_label(Role::Cell, "GET /billing/invoices/{invoice}");
+    let width = route.rect().width();
+    assert!(width >= 150.0, "the route is {width} px wide");
+    harness.set_size(eframe::egui::vec2(1280.0, 800.0));
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::B);
+    harness.run_steps(3);
 
     // Reading metrics writes nothing: not the settings, not the history.
     assert_eq!((files(&config), files(&desk.data_dir())), before);
@@ -340,22 +355,32 @@ fn eight_long_environment_names_wrap_inside_the_tab_and_each_can_be_clicked() {
     tops.dedup();
     assert!(tops.len() > 2, "{tops:?}");
 
-    // Each environment can be chosen by pointer, and the choice is kept. A chosen
-    // environment is read anew: the switch is back with its first read.
+    // Each environment can be chosen by pointer, and the choice is kept.
     let chosen = || desk.saved().apps.remove(0).environment;
-    let switch_back = |harness: &mut Harness<'static, MortiseApp>, name: &str| {
-        wait_while(harness, name, |harness| {
-            harness
-                .query_by_role_and_label(Role::RadioButton, name)
-                .is_none()
-        });
-    };
     for name in names.iter().rev() {
-        switch_back(&mut harness, name);
         harness
             .get_by_role_and_label(Role::RadioButton, name)
             .click();
         harness.run_steps(3);
         assert_eq!(chosen().as_ref(), Some(name));
     }
+
+    // A chosen environment is read anew. The switch stays while it waits, so a choice
+    // made with the keyboard keeps the focus, then and after the first read.
+    harness
+        .get_by_role_and_label(Role::RadioButton, &names[0])
+        .focus();
+    harness.run_steps(2);
+    harness.key_press(Key::ArrowRight);
+    harness.run_steps(3);
+    harness.get_by_label(&format!("Reading metrics from {}", names[1]));
+    let focused = |harness: &Harness<'static, MortiseApp>| {
+        harness
+            .get_by_role_and_label(Role::RadioButton, &names[1])
+            .is_focused()
+    };
+    assert!(focused(&harness));
+    wait_for(&mut harness, ONE_READ);
+    assert!(focused(&harness));
+    assert_eq!(chosen().as_ref(), Some(&names[1]));
 }

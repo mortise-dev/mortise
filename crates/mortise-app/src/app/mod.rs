@@ -12,6 +12,7 @@ mod apps;
 mod generate;
 mod keys;
 mod metrics;
+mod motion;
 mod palette;
 mod runs;
 mod runtime;

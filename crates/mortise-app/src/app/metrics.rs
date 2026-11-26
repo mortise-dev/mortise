@@ -66,8 +66,18 @@ pub(super) fn tab<'a>(
         return MetricsView::NotConnected { app: inputs.name };
     };
     let environment = connected.environment.name.as_str();
+    let environments = || {
+        inputs
+            .environments
+            .iter()
+            .map(|environment| environment.name.as_str())
+            .collect()
+    };
     let Some(answer) = connected.live.state().answer else {
-        return MetricsView::Waiting { environment };
+        return MetricsView::Waiting {
+            environment,
+            environments: environments(),
+        };
     };
     let Answer::Answered(runtime) = answer.as_ref() else {
         return MetricsView::Unreached {
@@ -81,7 +91,10 @@ pub(super) fn tab<'a>(
     let state = connected.metrics.state();
     match state.last {
         // Also while the newest read is too old to give the rates of now.
-        None => MetricsView::Waiting { environment },
+        None => MetricsView::Waiting {
+            environment,
+            environments: environments(),
+        },
         Some(Err(NotKept::NoMetrics(why))) => MetricsView::NoMetrics { environment, why },
         Some(Err(NotKept::NotMetrics)) => MetricsView::NotMetrics { environment },
         Some(Err(NotKept::TooManySeries { limit })) => MetricsView::TooMany { environment, limit },
@@ -130,11 +143,7 @@ pub(super) fn tab<'a>(
             }
             MetricsView::Table(TableView {
                 environment,
-                environments: inputs
-                    .environments
-                    .iter()
-                    .map(|environment| environment.name.as_str())
-                    .collect(),
+                environments: environments(),
                 figures,
                 placed: runtime.routes.is_some(),
                 scope,

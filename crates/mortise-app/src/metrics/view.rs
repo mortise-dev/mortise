@@ -6,7 +6,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use eframe::egui::{
-    Align2, Color32, Rect, Role, ScrollArea, Sense, Ui, UiBuilder, Vec2, WidgetInfo, pos2, vec2,
+    Align2, Color32, Pos2, Rect, Role, ScrollArea, Sense, Ui, UiBuilder, Vec2, WidgetInfo, pos2,
+    vec2,
 };
 use mortise_core::{Answer, AppSnapshot, Figures, NoMetrics, Range, Row, RowOf, Scope};
 
@@ -21,8 +22,11 @@ use crate::ui::theme::{Face, Palette, radius, size, ty};
 pub enum MetricsView<'a> {
     /// S7.1: no environment is asked for the app.
     NotConnected { app: &'a str },
-    /// No answer yet, or no read of metrics ended yet.
-    Waiting { environment: &'a str },
+    /// No answer yet, or no read of metrics ended yet. `environments` are for the switch.
+    Waiting {
+        environment: &'a str,
+        environments: Vec<&'a str>,
+    },
     /// The environment gave no answer, refused the credentials or answered with a status
     /// the actuator does not use. Never `Answer::Answered`.
     Unreached {
@@ -131,19 +135,10 @@ pub fn metrics(
             )],
             keyboard,
         ),
-        MetricsView::Waiting { environment } => {
-            let title = strings::reading(environment);
-            empty_state(
-                ui,
-                pal,
-                body,
-                EmptyMark::Icon(Icon::Metrics),
-                &title,
-                &[],
-                0.0,
-            );
-            None
-        }
+        MetricsView::Waiting {
+            environment,
+            environments,
+        } => return waiting(ui, pal, body, environment, environments, keyboard),
         MetricsView::Unreached {
             environment,
             answer,
@@ -302,6 +297,13 @@ fn explain(
 const STAMP_COLUMN: f32 = 34.0;
 const COLUMNS: [f32; 6] = [90.0, 80.0, 70.0, 70.0, 100.0, 70.0];
 const COLUMN_GAP: f32 = 12.0;
+/// The room a name keeps: below it, columns of figures give way (deviation S78).
+const NAME_MIN: f32 = 160.0;
+/// The order in which the columns of figures give way, by their place in `COLUMNS`. For a route,
+/// Jobs/min and Database time are en dashes, so they go first. The sparkline goes before them for
+/// a module: the chart shows the line of the selected row. Requests/min, 95% under and Errors stay.
+const GIVE_WAY_MODULE: [usize; 3] = [5, 3, 4];
+const GIVE_WAY_ROUTE: [usize; 3] = [3, 4, 5];
 /// The space between the top line, the chart box and the table box.
 const GAP: f32 = 12.0;
 /// The size of the sparkline of a row.
@@ -399,337 +401,428 @@ fn table(
     let rate = |rate: f64| or_dash(Some(strings::per_minute(rate)));
 
     let mut asked = None;
+    scrolled(ui, body, |ui| {
+        let width = ui.available_width();
+        let inner = width - 32.0;
+        let notes: Vec<_> = notes
+            .iter()
+            .map(|note| {
+                let galley = draw::galley_wrapped(ui, note, ty::SECONDARY, pal.ink_2, inner);
+                (galley, note.as_str())
+            })
+            .collect();
+        // The top: the environment, the range, and when the last read was. The
+        // environment switch wraps at the width of the tab. The range switch goes
+        // under it when it does not fit after it on one line. The read line goes at
+        // the right of the last switch's line when it fits there, else on a line of
+        // its own under the switches.
+        let labels = Range::ALL.map(strings::range);
+        let environment_w = draw::segmented_width(ui, &view.environments);
+        let environment_h = draw::segmented_height(ui, &view.environments, inner);
+        let range_w = draw::segmented_width(ui, &labels);
+        let range_at =
+            if environment_h <= size::CONTROL_H && environment_w + SWITCH_GAP + range_w <= inner {
+                vec2(environment_w + SWITCH_GAP, 0.0)
+            } else {
+                vec2(0.0, environment_h + TOP_LINE_GAP)
+            };
+        let switches_h = range_at.y + size::CONTROL_H;
+        let read_line = strings::read_every(view.pace, view.ago);
+        let read = draw::galley(ui, &read_line, ty::SECONDARY, pal.ink_2);
+        let read_apart = range_at.x + range_w + READ_GAP + read.size().x > inner;
+        let top_h = if read_apart {
+            switches_h + TOP_LINE_GAP + read.size().y
+        } else {
+            switches_h
+        };
+
+        let chart_h = 41.0 + draw::box_head_extra(ui, inner, &title, &note) + CHART_H + 8.0;
+        let table_h = size::TABLE_HEAD_H + rows.len() as f32 * size::TABLE_ROW_H + 1.0;
+        let notes_h: f32 = notes.iter().map(|(galley, _)| 8.0 + galley.size().y).sum();
+        let height = 14.0 + top_h + GAP + chart_h + GAP + table_h + notes_h + 16.0;
+        let (area, _) = ui.allocate_exact_size(vec2(width, height), Sense::hover());
+        let left = area.left() + 16.0;
+        let right = left + inner;
+
+        let top = area.top() + 14.0;
+        asked = environment_switch(
+            ui,
+            pal,
+            pos2(left, top),
+            inner,
+            &view.environments,
+            view.environment,
+            keyboard,
+        );
+        let chosen = Range::ALL
+            .iter()
+            .position(|range| *range == view.range)
+            .unwrap_or(1);
+        let range_min = pos2(left, top) + range_at;
+        let (_, clicked) = draw::segmented(
+            ui,
+            pal,
+            range_min,
+            "metrics-range",
+            &labels,
+            chosen,
+            keyboard,
+        );
+        if let Some(at) = clicked.filter(|at| *at != chosen) {
+            asked = Some(WorkAction::Metrics(MetricsAction::Range(Range::ALL[at])));
+        }
+        let read_rect = if read_apart {
+            draw::paint_galley(
+                ui,
+                pos2(left, top + switches_h + TOP_LINE_GAP),
+                Align2::LEFT_TOP,
+                read,
+            )
+        } else {
+            draw::paint_galley(
+                ui,
+                pos2(right, range_min.y + size::CONTROL_H / 2.0),
+                Align2::RIGHT_CENTER,
+                read,
+            )
+        };
+        draw::announce(ui, read_rect, Role::Label, &read_line);
+
+        // The chart of the selected row, or of everything in the scope.
+        let chart_box = Rect::from_min_size(pos2(left, top + top_h + GAP), vec2(inner, chart_h));
+        let content = draw::box_head(ui, pal, chart_box, &title, &note);
+        let name = strings::chart_name(&title, view.range);
+        let plot = Plot {
+            line,
+            span: view.range.span(),
+            name: &name,
+            summary: &summary,
+            from: strings::range_ago(view.range),
+            to: strings::NOW,
+        };
+        let chart_rect = Rect::from_min_size(
+            pos2(chart_box.left() + 13.0, content),
+            vec2(inner - 26.0, CHART_H),
+        );
+        chart::chart(ui, pal, chart_rect, &plot);
+
+        // The table.
+        let rect = Rect::from_min_size(pos2(left, chart_box.bottom() + GAP), vec2(inner, table_h));
+        draw::outlined(ui, rect, radius::CONTROL, Color32::TRANSPARENT, pal.line_2);
+        let stamp_left = rect.left() + 14.0;
+        // A route has no stamp: its name takes the room of the stamp column.
+        let name_left = match view.scope {
+            Scope::All => stamp_left + STAMP_COLUMN + COLUMN_GAP,
+            Scope::Module(_) => stamp_left,
+        };
+        // The columns of figures that are kept: in a narrow tab some give way to the name.
+        let figures_right = rect.right() - 10.0;
+        let mut kept = [true; 6];
+        let give_way = match view.scope {
+            Scope::All => GIVE_WAY_MODULE,
+            Scope::Module(_) => GIVE_WAY_ROUTE,
+        };
+        for at in give_way {
+            let taken: f32 = COLUMNS
+                .iter()
+                .zip(kept)
+                .filter(|(_, kept)| *kept)
+                .map(|(w, _)| w + COLUMN_GAP)
+                .sum();
+            if figures_right - taken - name_left >= NAME_MIN {
+                break;
+            }
+            kept[at] = false;
+        }
+        // Each column of figures that is kept, from the right edge: its left and right.
+        let mut x = figures_right;
+        let mut columns = [None; 6];
+        for ((column, w), kept) in columns.iter_mut().zip(COLUMNS).zip(kept).rev() {
+            if kept {
+                *column = Some((x - w, x));
+                x -= w + COLUMN_GAP;
+            }
+        }
+        let [requests, under, errors, jobs, database, last_hour] = columns;
+        let name_w = (x - name_left).max(0.0);
+
+        // Header: 26 px, 11.5 px weight 600 in ink-2, line-2 underneath.
+        let head_bottom = rect.top() + size::TABLE_HEAD_H;
+        draw::hline(
+            ui,
+            rect.left() + 1.0..rect.right() - 1.0,
+            head_bottom - 1.0,
+            pal.line_2,
+        );
+        let mid = rect.top() + size::TABLE_HEAD_H / 2.0;
+        let left_of = |column: Option<(f32, f32)>| column.map(|(left, _)| left);
+        let right_of = |column: Option<(f32, f32)>| column.map(|(_, right)| right);
+        let first = match view.scope {
+            Scope::All => crate::strings::COL_MODULE,
+            Scope::Module(_) => strings::COL_ROUTE,
+        };
+        let headers = [
+            (first, Some(name_left), Align2::LEFT_CENTER),
+            (
+                strings::COL_REQUESTS,
+                right_of(requests),
+                Align2::RIGHT_CENTER,
+            ),
+            (strings::COL_UNDER_95, right_of(under), Align2::RIGHT_CENTER),
+            (strings::COL_ERRORS, right_of(errors), Align2::RIGHT_CENTER),
+            (strings::COL_JOBS, right_of(jobs), Align2::RIGHT_CENTER),
+            (
+                strings::COL_DATABASE,
+                right_of(database),
+                Align2::RIGHT_CENTER,
+            ),
+            (
+                strings::COL_LAST_HOUR,
+                left_of(last_hour),
+                Align2::LEFT_CENTER,
+            ),
+        ];
+        for (label, x, align) in headers {
+            let Some(x) = x else { continue };
+            let cell = draw::paint_text(ui, pos2(x, mid), align, label, ty::LABEL, pal.ink_2);
+            draw::announce(ui, cell, Role::ColumnHeader, label);
+        }
+
+        // Rows: 28 px, a hairline between them. The table is one stop: J, K and the
+        // arrows move the selected row while it has focus.
+        let mut current = selected.unwrap_or(0);
+        let nav = draw::ListNav::over(ui, "metrics-rows", rows.len(), &mut current);
+        if nav.moved {
+            selected = Some(current);
+        }
+        // The rows sorted again with focus on one: focus goes to the selected row.
+        let focused = ui.memory(|memory| memory.focused());
+        if focused
+            .is_some_and(|id| id != nav.id(current) && (0..rows.len()).any(|row| nav.id(row) == id))
+        {
+            nav.focus(ui);
+        }
+        let last = rows.len().saturating_sub(1);
+        for (i, shown) in rows.iter().enumerate() {
+            let top = head_bottom + i as f32 * size::TABLE_ROW_H;
+            let row_rect = Rect::from_min_max(
+                pos2(rect.left() + 1.0, top),
+                pos2(rect.right() - 1.0, top + size::TABLE_ROW_H - 1.0),
+            );
+            let response = ui.interact(row_rect, nav.id(i), nav.sense(i));
+            let on = selected == Some(i);
+            response.widget_info(|| WidgetInfo::selected(Role::Row, true, on, &shown.name));
+            if response.clicked() {
+                selected = Some(i);
+                // The keys of the table work at once after a click.
+                draw::focus_soon(ui, nav.id(i));
+            }
+            nav.after(ui, i, &response);
+            if on {
+                ui.painter().rect_filled(row_rect, 0, pal.well);
+                draw::hline(ui, row_rect.left()..row_rect.right(), top - 1.0, pal.line_2);
+                draw::hline(
+                    ui,
+                    row_rect.left()..row_rect.right(),
+                    row_rect.bottom(),
+                    pal.line_2,
+                );
+                draw::peg(ui, pal, row_rect);
+            } else {
+                if response.hovered() {
+                    ui.painter().rect_filled(row_rect, 0, pal.well);
+                }
+                if i < last {
+                    draw::hline(
+                        ui,
+                        row_rect.left()..row_rect.right(),
+                        row_rect.bottom(),
+                        pal.line,
+                    );
+                }
+            }
+            if keyboard && response.has_focus() {
+                draw::focus_ring(ui, pal, row_rect.shrink(1.0), 0);
+            }
+
+            let mid = top + size::TABLE_ROW_H / 2.0;
+            if let Some(code) = shown.code {
+                let at = pos2(stamp_left, (mid - size::STAMP_H / 2.0).round());
+                let stamp = draw::stamp(ui, pal, at, code, StampState::default());
+                draw::announce(ui, stamp, Role::Cell, code);
+            }
+            let (face, color) = match (shown.code, shown.route) {
+                (None, false) => (Face::Sans400, pal.ink_2),
+                (Some(_), _) => (Face::Sans600, pal.ink),
+                (None, true) => (Face::Sans400, pal.ink),
+            };
+            let galley =
+                draw::galley_elided(ui, &shown.name, ty::BODY.with_face(face), color, name_w);
+            let elided = galley.elided;
+            let cell = draw::paint_galley(ui, pos2(name_left, mid), Align2::LEFT_CENTER, galley);
+            let named = draw::announce(ui, cell, Role::Cell, &shown.name);
+            // A cut name gives the whole name on hover: two long routes can end alike.
+            if elided {
+                draw::tooltip(named, pal, &shown.name);
+            }
+
+            let rates = &shown.row.rates;
+            // A route has no jobs and no database time; without the module label no
+            // database time is known.
+            let unknown = !blank && !shown.route && !figures.database_known;
+            let cells = [
+                (rate(rates.requests_per_minute), right_of(requests), false),
+                (
+                    or_dash(rates.under_95.map(strings::under_95)),
+                    right_of(under),
+                    false,
+                ),
+                (
+                    or_dash(rates.errors.map(strings::errors)),
+                    right_of(errors),
+                    false,
+                ),
+                (
+                    or_dash((!shown.route).then(|| strings::per_minute(rates.jobs_per_minute))),
+                    right_of(jobs),
+                    false,
+                ),
+                (
+                    if unknown {
+                        strings::UNKNOWN.to_owned()
+                    } else {
+                        or_dash(rates.database.map(strings::database))
+                    },
+                    right_of(database),
+                    unknown,
+                ),
+            ];
+            for (text, x, unknown) in cells {
+                let Some(x) = x else { continue };
+                let cell = draw::paint_text(
+                    ui,
+                    pos2(x, mid),
+                    Align2::RIGHT_CENTER,
+                    &text,
+                    ty::BODY,
+                    pal.ink,
+                );
+                let named = draw::announce(ui, cell, Role::Cell, &text);
+                if unknown {
+                    draw::tooltip(named, pal, strings::NEEDS_NEWER_PACKAGE);
+                }
+            }
+            if let Some(at) = left_of(last_hour) {
+                let spark = Rect::from_min_size(pos2(at, (mid - SPARK.y / 2.0).round()), SPARK);
+                let name = strings::spark_name(&shown.name);
+                chart::spark(
+                    ui,
+                    pal,
+                    spark,
+                    &shown.row.last_hour,
+                    Range::Hour.span(),
+                    &name,
+                );
+            }
+        }
+        if let Some(at) = selected.filter(|at| Some(&rows[*at].row.of) != view.row.as_ref()) {
+            asked = Some(WorkAction::Metrics(MetricsAction::Row(
+                rows[at].row.of.clone(),
+            )));
+        }
+
+        let mut y = rect.bottom();
+        for (galley, note) in notes {
+            let note_rect =
+                draw::paint_galley(ui, pos2(rect.left(), y + 8.0), Align2::LEFT_TOP, galley);
+            draw::announce(ui, note_rect, Role::Label, note);
+            y = note_rect.bottom();
+        }
+    });
+    asked
+}
+
+/// Paints into a body that scrolls, the one of the table. The waiting state uses it too, so
+/// its environment switch has the ids of the switch of the table and keeps the focus.
+fn scrolled(ui: &mut Ui, body: Rect, add: impl FnOnce(&mut Ui)) {
     ui.scope_builder(UiBuilder::new().max_rect(body), |ui| {
         ScrollArea::vertical()
             .id_salt("metrics")
             .auto_shrink(false)
             .show(ui, |ui| {
                 ui.spacing_mut().item_spacing = Vec2::ZERO;
-                let width = ui.available_width();
-                let inner = width - 32.0;
-                let notes: Vec<_> = notes
-                    .iter()
-                    .map(|note| {
-                        let galley =
-                            draw::galley_wrapped(ui, note, ty::SECONDARY, pal.ink_2, inner);
-                        (galley, note.as_str())
-                    })
-                    .collect();
-                // The top: the environment, the range, and when the last read was. The
-                // environment switch wraps at the width of the tab. The range switch goes
-                // under it when it does not fit after it on one line. The read line goes at
-                // the right of the last switch's line when it fits there, else on a line of
-                // its own under the switches.
-                let labels = Range::ALL.map(strings::range);
-                let environment_w = draw::segmented_width(ui, &view.environments);
-                let environment_h = draw::segmented_height(ui, &view.environments, inner);
-                let range_w = draw::segmented_width(ui, &labels);
-                let range_at = if environment_h <= size::CONTROL_H
-                    && environment_w + SWITCH_GAP + range_w <= inner
-                {
-                    vec2(environment_w + SWITCH_GAP, 0.0)
-                } else {
-                    vec2(0.0, environment_h + TOP_LINE_GAP)
-                };
-                let switches_h = range_at.y + size::CONTROL_H;
-                let read_line = strings::read_every(view.pace, view.ago);
-                let read = draw::galley(ui, &read_line, ty::SECONDARY, pal.ink_2);
-                let read_apart = range_at.x + range_w + READ_GAP + read.size().x > inner;
-                let top_h = if read_apart {
-                    switches_h + TOP_LINE_GAP + read.size().y
-                } else {
-                    switches_h
-                };
-
-                let chart_h = 41.0 + draw::box_head_extra(ui, inner, &title, &note) + CHART_H + 8.0;
-                let table_h = size::TABLE_HEAD_H + rows.len() as f32 * size::TABLE_ROW_H + 1.0;
-                let notes_h: f32 = notes.iter().map(|(galley, _)| 8.0 + galley.size().y).sum();
-                let height = 14.0 + top_h + GAP + chart_h + GAP + table_h + notes_h + 16.0;
-                let (area, _) = ui.allocate_exact_size(vec2(width, height), Sense::hover());
-                let left = area.left() + 16.0;
-                let right = left + inner;
-
-                let top = area.top() + 14.0;
-                let (_, clicked) = draw::segmented_in(
-                    ui,
-                    pal,
-                    pos2(left, top),
-                    inner,
-                    "metrics-environment",
-                    &view.environments,
-                    view.environments
-                        .iter()
-                        .position(|name| *name == view.environment)
-                        .unwrap_or(0),
-                    keyboard,
-                );
-                if let Some(name) = clicked
-                    .map(|at| view.environments[at])
-                    .filter(|name| *name != view.environment)
-                {
-                    asked = Some(WorkAction::Runtime(RuntimeAction::Choose(name.to_owned())));
-                }
-                let chosen = Range::ALL
-                    .iter()
-                    .position(|range| *range == view.range)
-                    .unwrap_or(1);
-                let range_min = pos2(left, top) + range_at;
-                let (_, clicked) = draw::segmented(
-                    ui,
-                    pal,
-                    range_min,
-                    "metrics-range",
-                    &labels,
-                    chosen,
-                    keyboard,
-                );
-                if let Some(at) = clicked.filter(|at| *at != chosen) {
-                    asked = Some(WorkAction::Metrics(MetricsAction::Range(Range::ALL[at])));
-                }
-                let read_rect = if read_apart {
-                    draw::paint_galley(
-                        ui,
-                        pos2(left, top + switches_h + TOP_LINE_GAP),
-                        Align2::LEFT_TOP,
-                        read,
-                    )
-                } else {
-                    draw::paint_galley(
-                        ui,
-                        pos2(right, range_min.y + size::CONTROL_H / 2.0),
-                        Align2::RIGHT_CENTER,
-                        read,
-                    )
-                };
-                draw::announce(ui, read_rect, Role::Label, &read_line);
-
-                // The chart of the selected row, or of everything in the scope.
-                let chart_box =
-                    Rect::from_min_size(pos2(left, top + top_h + GAP), vec2(inner, chart_h));
-                let content = draw::box_head(ui, pal, chart_box, &title, &note);
-                let name = strings::chart_name(&title, view.range);
-                let plot = Plot {
-                    line,
-                    span: view.range.span(),
-                    name: &name,
-                    summary: &summary,
-                    from: strings::range_ago(view.range),
-                    to: strings::NOW,
-                };
-                let chart_rect = Rect::from_min_size(
-                    pos2(chart_box.left() + 13.0, content),
-                    vec2(inner - 26.0, CHART_H),
-                );
-                chart::chart(ui, pal, chart_rect, &plot);
-
-                // The table.
-                let rect =
-                    Rect::from_min_size(pos2(left, chart_box.bottom() + GAP), vec2(inner, table_h));
-                draw::outlined(ui, rect, radius::CONTROL, Color32::TRANSPARENT, pal.line_2);
-                let stamp_left = rect.left() + 14.0;
-                // A route has no stamp: its name takes the room of the stamp column.
-                let name_left = match view.scope {
-                    Scope::All => stamp_left + STAMP_COLUMN + COLUMN_GAP,
-                    Scope::Module(_) => stamp_left,
-                };
-                // Each column of figures, from the right edge: its left and right.
-                let mut x = rect.right() - 10.0;
-                let mut columns = [(0.0, 0.0); 6];
-                for (column, w) in columns.iter_mut().zip(COLUMNS).rev() {
-                    *column = (x - w, x);
-                    x -= w + COLUMN_GAP;
-                }
-                let [requests, under, errors, jobs, database, last_hour] = columns;
-                let name_w = (requests.0 - COLUMN_GAP - name_left).max(0.0);
-
-                // Header: 26 px, 11.5 px weight 600 in ink-2, line-2 underneath.
-                let head_bottom = rect.top() + size::TABLE_HEAD_H;
-                draw::hline(
-                    ui,
-                    rect.left() + 1.0..rect.right() - 1.0,
-                    head_bottom - 1.0,
-                    pal.line_2,
-                );
-                let mid = rect.top() + size::TABLE_HEAD_H / 2.0;
-                let first = match view.scope {
-                    Scope::All => crate::strings::COL_MODULE,
-                    Scope::Module(_) => strings::COL_ROUTE,
-                };
-                let headers = [
-                    (first, name_left, Align2::LEFT_CENTER),
-                    (strings::COL_REQUESTS, requests.1, Align2::RIGHT_CENTER),
-                    (strings::COL_UNDER_95, under.1, Align2::RIGHT_CENTER),
-                    (strings::COL_ERRORS, errors.1, Align2::RIGHT_CENTER),
-                    (strings::COL_JOBS, jobs.1, Align2::RIGHT_CENTER),
-                    (strings::COL_DATABASE, database.1, Align2::RIGHT_CENTER),
-                    (strings::COL_LAST_HOUR, last_hour.0, Align2::LEFT_CENTER),
-                ];
-                for (label, x, align) in headers {
-                    let cell =
-                        draw::paint_text(ui, pos2(x, mid), align, label, ty::LABEL, pal.ink_2);
-                    draw::announce(ui, cell, Role::ColumnHeader, label);
-                }
-
-                // Rows: 28 px, a hairline between them. The table is one stop: J, K and the
-                // arrows move the selected row while it has focus.
-                let mut current = selected.unwrap_or(0);
-                let nav = draw::ListNav::over(ui, "metrics-rows", rows.len(), &mut current);
-                if nav.moved {
-                    selected = Some(current);
-                }
-                // The rows sorted again with focus on one: focus goes to the selected row.
-                let focused = ui.memory(|memory| memory.focused());
-                if focused.is_some_and(|id| {
-                    id != nav.id(current) && (0..rows.len()).any(|row| nav.id(row) == id)
-                }) {
-                    nav.focus(ui);
-                }
-                let last = rows.len().saturating_sub(1);
-                for (i, shown) in rows.iter().enumerate() {
-                    let top = head_bottom + i as f32 * size::TABLE_ROW_H;
-                    let row_rect = Rect::from_min_max(
-                        pos2(rect.left() + 1.0, top),
-                        pos2(rect.right() - 1.0, top + size::TABLE_ROW_H - 1.0),
-                    );
-                    let response = ui.interact(row_rect, nav.id(i), nav.sense(i));
-                    let on = selected == Some(i);
-                    response.widget_info(|| WidgetInfo::selected(Role::Row, true, on, &shown.name));
-                    if response.clicked() {
-                        selected = Some(i);
-                        // The keys of the table work at once after a click.
-                        draw::focus_soon(ui, nav.id(i));
-                    }
-                    nav.after(ui, i, &response);
-                    if on {
-                        ui.painter().rect_filled(row_rect, 0, pal.well);
-                        draw::hline(ui, row_rect.left()..row_rect.right(), top - 1.0, pal.line_2);
-                        draw::hline(
-                            ui,
-                            row_rect.left()..row_rect.right(),
-                            row_rect.bottom(),
-                            pal.line_2,
-                        );
-                        draw::peg(ui, pal, row_rect);
-                    } else {
-                        if response.hovered() {
-                            ui.painter().rect_filled(row_rect, 0, pal.well);
-                        }
-                        if i < last {
-                            draw::hline(
-                                ui,
-                                row_rect.left()..row_rect.right(),
-                                row_rect.bottom(),
-                                pal.line,
-                            );
-                        }
-                    }
-                    if keyboard && response.has_focus() {
-                        draw::focus_ring(ui, pal, row_rect.shrink(1.0), 0);
-                    }
-
-                    let mid = top + size::TABLE_ROW_H / 2.0;
-                    if let Some(code) = shown.code {
-                        let at = pos2(stamp_left, (mid - size::STAMP_H / 2.0).round());
-                        let stamp = draw::stamp(ui, pal, at, code, StampState::default());
-                        draw::announce(ui, stamp, Role::Cell, code);
-                    }
-                    let (face, color) = match (shown.code, shown.route) {
-                        (None, false) => (Face::Sans400, pal.ink_2),
-                        (Some(_), _) => (Face::Sans600, pal.ink),
-                        (None, true) => (Face::Sans400, pal.ink),
-                    };
-                    let galley = draw::galley_elided(
-                        ui,
-                        &shown.name,
-                        ty::BODY.with_face(face),
-                        color,
-                        name_w,
-                    );
-                    let elided = galley.elided;
-                    let cell =
-                        draw::paint_galley(ui, pos2(name_left, mid), Align2::LEFT_CENTER, galley);
-                    let named = draw::announce(ui, cell, Role::Cell, &shown.name);
-                    // A cut name gives the whole name on hover: two long routes can end alike.
-                    if elided {
-                        draw::tooltip(named, pal, &shown.name);
-                    }
-
-                    let rates = &shown.row.rates;
-                    // A route has no jobs and no database time; without the module label no
-                    // database time is known.
-                    let unknown = !blank && !shown.route && !figures.database_known;
-                    let cells = [
-                        (rate(rates.requests_per_minute), requests.1, false),
-                        (
-                            or_dash(rates.under_95.map(strings::under_95)),
-                            under.1,
-                            false,
-                        ),
-                        (or_dash(rates.errors.map(strings::errors)), errors.1, false),
-                        (
-                            or_dash(
-                                (!shown.route).then(|| strings::per_minute(rates.jobs_per_minute)),
-                            ),
-                            jobs.1,
-                            false,
-                        ),
-                        (
-                            if unknown {
-                                strings::UNKNOWN.to_owned()
-                            } else {
-                                or_dash(rates.database.map(strings::database))
-                            },
-                            database.1,
-                            unknown,
-                        ),
-                    ];
-                    for (text, x, unknown) in cells {
-                        let cell = draw::paint_text(
-                            ui,
-                            pos2(x, mid),
-                            Align2::RIGHT_CENTER,
-                            &text,
-                            ty::BODY,
-                            pal.ink,
-                        );
-                        let named = draw::announce(ui, cell, Role::Cell, &text);
-                        if unknown {
-                            draw::tooltip(named, pal, strings::NEEDS_NEWER_PACKAGE);
-                        }
-                    }
-                    let spark = Rect::from_min_size(
-                        pos2(last_hour.0, (mid - SPARK.y / 2.0).round()),
-                        SPARK,
-                    );
-                    let name = strings::spark_name(&shown.name);
-                    chart::spark(
-                        ui,
-                        pal,
-                        spark,
-                        &shown.row.last_hour,
-                        Range::Hour.span(),
-                        &name,
-                    );
-                }
-                if let Some(at) = selected.filter(|at| Some(&rows[*at].row.of) != view.row.as_ref())
-                {
-                    asked = Some(WorkAction::Metrics(MetricsAction::Row(
-                        rows[at].row.of.clone(),
-                    )));
-                }
-
-                let mut y = rect.bottom();
-                for (galley, note) in notes {
-                    let note_rect = draw::paint_galley(
-                        ui,
-                        pos2(rect.left(), y + 8.0),
-                        Align2::LEFT_TOP,
-                        galley,
-                    );
-                    draw::announce(ui, note_rect, Role::Label, note);
-                    y = note_rect.bottom();
-                }
+                add(ui);
             });
+    });
+}
+
+/// The environment switch at the top of the tab, `inner` wide at most. Returns the choice of
+/// another environment.
+fn environment_switch(
+    ui: &Ui,
+    pal: &Palette,
+    min: Pos2,
+    inner: f32,
+    environments: &[&str],
+    environment: &str,
+    keyboard: bool,
+) -> Option<WorkAction> {
+    let chosen = environments
+        .iter()
+        .position(|name| *name == environment)
+        .unwrap_or(0);
+    let (_, clicked) = draw::segmented_in(
+        ui,
+        pal,
+        min,
+        inner,
+        "metrics-environment",
+        environments,
+        chosen,
+        keyboard,
+    );
+    clicked
+        .map(|at| environments[at])
+        .filter(|name| *name != environment)
+        .map(|name| WorkAction::Runtime(RuntimeAction::Choose(name.to_owned())))
+}
+
+/// No read yet. The environment switch stays where the table has it, so a choice made with
+/// the keyboard keeps its focus while the new environment is read.
+fn waiting(
+    ui: &mut Ui,
+    pal: &Palette,
+    body: Rect,
+    environment: &str,
+    environments: &[&str],
+    keyboard: bool,
+) -> Option<WorkAction> {
+    let mut asked = None;
+    scrolled(ui, body, |ui| {
+        let width = ui.available_width();
+        let inner = width - 32.0;
+        let (area, _) = ui.allocate_exact_size(vec2(width, body.height()), Sense::hover());
+        let top = area.top() + 14.0;
+        asked = environment_switch(
+            ui,
+            pal,
+            pos2(area.left() + 16.0, top),
+            inner,
+            environments,
+            environment,
+            keyboard,
+        );
+        let below = top + draw::segmented_height(ui, environments, inner);
+        let title = strings::reading(environment);
+        empty_state(
+            ui,
+            pal,
+            Rect::from_min_max(pos2(area.left(), below), area.max),
+            EmptyMark::Icon(Icon::Metrics),
+            &title,
+            &[],
+            0.0,
+        );
     });
     asked
 }

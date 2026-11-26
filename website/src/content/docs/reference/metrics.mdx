@@ -92,6 +92,11 @@ Rows sort by most requests first, then by name.
 | **Database time** | Database time against request time, such as "31%". **unknown**, with the tooltip "Needs a newer nwidart/laravel-modules", when no series has a `module` label. An en dash for a route |
 | **Last hour** | A sparkline of the requests per minute over the last hour |
 
+In a narrow tab the name keeps 160 px, and columns of figures give way to it, one at a time.
+For one module, **Jobs/min** goes first, then **Database time**, then **Last hour**.
+For **All modules**, **Last hour** goes first, then **Jobs/min**, then **Database time**.
+**Requests/min**, **95% under** and **Errors** stay. A name that is still cut shows in full on hover.
+
 A click on a row shows it in the chart. <kbd>J</kbd>, <kbd>K</kbd> and the arrows move the selected row while the table has focus.
 The colour of the figures is ink only: this version has no limits, so nothing on the tab is a state.
 
@@ -102,7 +107,7 @@ The colour of the figures is ink only: this version has no limits, so nothing on
 | State | Title | Text | Controls |
 |---|---|---|---|
 | No environment | **Metrics are not connected** | "Metrics come from the actuator of the running app. Connect an environment for shop-api to read requests, response time and errors per module." | **Connect an environment** |
-| Before the first read | "Reading metrics from local" | none | none |
+| Before the first read | "Reading metrics from local" | none | The environment switch, which keeps the keyboard focus after a choice |
 | `prometheus` not exposed | "Metrics are not exposed on local" | "Add prometheus to exposure.include in config/actuator.php, next to health." | **Try again**, **Open settings** |
 | A 200 with no text | "Metrics are off on local" | "The app answers with no metrics. Set METRICS_ENABLED=true in its .env to turn them on." | **Try again** |
 | A 503 | "Metrics cannot be read on local" | "local answered 503 for /actuator/prometheus: "…" Check the metrics store of the app, then try again." | **Try again** |
