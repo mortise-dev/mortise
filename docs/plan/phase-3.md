@@ -304,7 +304,7 @@ Nothing below blocks a milestone. Each is a brief for the owner's other reposito
 | Id | Repository | What | Mortise without it |
 |---|---|---|---|
 | PKG-1 (A2, rest) | laravel-modules | Add the `module` attribute to the built-in metrics through the attribute callbacks of laravel-metrics. For a query, the module of the request or job that runs it | Mortise places requests, the 95% figure, errors and jobs itself. Database time reads "unknown" |
-| PKG-2 (P10, rest) | laravel-actuator, laravel-modules | Each task of `scheduledtasks` has `"tags": {"module": "Blog"}` when a module scheduled it in `configureSchedules()`. laravel-actuator PR #40 adds `Actuator::tagScheduledTasksUsing()`; laravel-modules PR #2311 adds the tag. Open, not released. Mortise reads the tag | Milestone 22 matches artisan tasks. Other tasks stay "none" |
+| PKG-2 (P10, rest) | laravel-actuator, laravel-modules | Each task of `scheduledtasks` has `"tags": {"module": "Blog"}` when a module scheduled it in `configureSchedules()`. laravel-actuator PR #40 adds `Actuator::tagScheduledTasksUsing()`; laravel-actuator 1.5.0 ships it (26 November 2026). laravel-modules PR #2311 adds the tag; it is not released yet. Mortise reads the tag | Milestone 22 matches artisan tasks. Other tasks stay "none" |
 | PKG-3 | laravel-modules | Open PR #2290: an invalid `module.json` on health | Nothing. New detail keys are read as text |
 | P6 | laravel-modules | Where a public surface is stored | Phase 4 |
 

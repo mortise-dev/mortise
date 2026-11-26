@@ -47,7 +47,7 @@ in the app, and a running copy of the app.
 |---|---|
 | Runtime status, routes, scheduled tasks | `nwidart/laravel-actuator`, with `health`, and `info`, `mappings` and `scheduledtasks` in `exposure.include` of `config/actuator.php` |
 | Runtime status per module | Also `nwidart/laravel-modules` 13.4.0 or later |
-| Every scheduled task of a module, also a closure, a shell command or a described task | Versions of `nwidart/laravel-actuator` and `nwidart/laravel-modules` that add the `module` tag to `scheduledtasks` (not released yet). With older versions, only a job of the module and a `php artisan` command that the module declares show in the module |
+| Every scheduled task of a module, also a closure, a shell command or a described task | `nwidart/laravel-actuator` 1.5.0 or later, and the next release of `nwidart/laravel-modules`, which adds the `module` tag to `scheduledtasks`. With older versions, only a job of the module and a `php artisan` command that the module declares show in the module |
 | Metrics tab | `nwidart/laravel-actuator` 1.3 or later, with `prometheus` in `exposure.include`, and `nwidart/laravel-metrics` |
 
 Mortise checks only that `composer.lock` has an entry for `nwidart/laravel-actuator`. It does not
