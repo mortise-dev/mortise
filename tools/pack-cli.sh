@@ -7,8 +7,8 @@
 #   tools/pack-cli.sh <target> <archive>
 #   tools/pack-cli.sh x86_64-unknown-linux-musl mortise-v0.3.0-linux-x86_64.tar.gz
 #
-# The archive name ends in .tar.gz or .zip. A zip is made with zip, or with 7z where zip is missing
-# (the Windows runner).
+# The archive is a file name, with no folder, that ends in .tar.gz or .zip. A zip is made with zip, or
+# with 7z where zip is missing (the Windows runner).
 set -euo pipefail
 
 if [ "$#" -ne 2 ]; then
@@ -17,6 +17,19 @@ if [ "$#" -ne 2 ]; then
 fi
 target=$1
 archive=$2
+
+# The name is checked before anything is written or removed, so no name reaches outside dist/.
+case "$archive" in
+  */* | *\\* | . | ..)
+    echo "::error::The archive '$archive' must be a file name in dist/, with no / or \\."
+    exit 2
+    ;;
+  ?*.tar.gz | ?*.zip) ;;
+  *)
+    echo "::error::The archive '$archive' must end in .tar.gz or .zip."
+    exit 2
+    ;;
+esac
 
 case "$target" in
   *windows*) binary=mortise.exe ;;
@@ -47,10 +60,6 @@ case "$archive" in
     else
       (cd "$stage" && 7z a -tzip -bso0 -bsp0 "$out" "$binary" LICENSE THIRD-PARTY.md)
     fi
-    ;;
-  *)
-    echo "::error::$archive must end in .tar.gz or .zip."
-    exit 2
     ;;
 esac
 echo "dist/$archive"

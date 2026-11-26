@@ -267,6 +267,15 @@ jobs:
       - name: Package the crates for crates.io
         if: runner.os == 'Linux'
         run: cargo package --locked -p mortise-core -p mortise-cli
+      # tools/pack-cli.sh refuses an archive name with a folder before it writes or removes anything.
+      - name: Refuse an archive name outside dist
+        if: runner.os == 'Linux'
+        run: |
+          cp LICENSE "$RUNNER_TEMP/LICENSE.before"
+          status=0
+          tools/pack-cli.sh x86_64-unknown-linux-musl ../LICENSE || status=$?
+          test "$status" -eq 2
+          cmp LICENSE "$RUNNER_TEMP/LICENSE.before"
 
   # Feature gates do not depend on the platform, so Linux is enough. Each feature builds alone,
   # so a gate on the wrong file fails here and not only in a build with the default features.
