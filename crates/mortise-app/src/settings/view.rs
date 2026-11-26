@@ -22,6 +22,13 @@ use crate::settings::strings;
 use crate::ui::draw::{self, Button, Icon};
 use crate::ui::theme::{Face, Palette, Type, radius, size, ty};
 
+/// The version Settings shows. The tests show a fixed one, so a release does not
+/// change the images of Settings.
+#[cfg(not(feature = "testing"))]
+const VERSION: &str = env!("CARGO_PKG_VERSION");
+#[cfg(feature = "testing")]
+const VERSION: &str = "1.0.1";
+
 /// The sections of Settings.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Section {
@@ -201,7 +208,7 @@ pub fn sections(
     let left = rect.left() + 12.0;
     let right = rect.right() - 1.0 - 12.0;
 
-    let version = strings::version(env!("CARGO_PKG_VERSION"));
+    let version = strings::version(VERSION);
     draw::label(
         ui,
         pos2(right, rect.top() + 30.0),
