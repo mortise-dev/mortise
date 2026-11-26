@@ -2,6 +2,25 @@
 
 All notable changes to this project are listed here.
 <!-- git-cliff: end of header -->
+## [1.1.0] - 2026-11-26
+
+### Features
+
+- *(core)* Check the allowed use rule of mortise.json (#76)
+- Make room for feedback (issue forms, Report a problem, request rule) (#78)
+- Draw the allowed use rule in the window (milestone 30) (#79)
+
+### Documentation
+
+- Name laravel-modules 13.6.0 as the release with the module tag (#74)
+- Harden phase 5 (tasks 33.2 to 33.4) (#80)
+- Name larch 0.2.0 as the release that reads allowed-use (#83)
+
+### Other
+
+- Move the repository to the GitHub organisation `mortise-dev`. The links in the app, the docs and the release files point there (#81)
+- Start the window on a Windows runner in CI and keep what it shows (#77)
+
 ## [1.0.1] - 2026-11-26
 
 ### Features
