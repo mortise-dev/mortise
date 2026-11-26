@@ -374,9 +374,13 @@ pub fn outside_allowed_use(module: &str, of: &str, list: &[String]) -> String {
     format!("{module} uses {of}. mortise.json lets {module} use {may}.")
 }
 
-/// Not in the spec. `mortise.json names Reports in allowed-use. The app has no module of that name.`
+/// `mortise.json names Reports in allowed-use, and the app has no module of that name.
+/// Correct the name in mortise.json.`
 pub fn unknown_allowed_module(entry: &str) -> String {
-    format!("mortise.json names {entry} in allowed-use. The app has no module of that name.")
+    format!(
+        "mortise.json names {entry} in allowed-use, and the app has no module of that name. \
+         Correct the name in mortise.json."
+    )
 }
 
 pub fn invalid_manifest(module: &str, message: &str) -> String {
