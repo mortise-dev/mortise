@@ -55,7 +55,7 @@ In a narrower workspace they stand one under the other.
 | **Coverage by module** | The number of tests, such as "307 tests" | One bar per module with a coverage figure, best first. Shown only with a coverage report |
 | **Routes by module** (actuator) | "106 routes, read from local" | The number of routes of each module, then **Not in a module**. A route counts for a module when its action is a class of the module. Closures and routes of packages are not in a module |
 | Runtime box (actuator) | The environment switch | See [Runtime box](#runtime-box) |
-| **Scheduled tasks** (actuator) | "5 tasks, read from local" | Columns **Task**, **Schedule**, **Next run** and **Module**. The next run reads "14:10 UTC", "tomorrow 06:00 UTC", a date, or "no fixed time". A task that is in no module shows **none** |
+| **Scheduled tasks** (actuator) | "5 tasks, read from local" | Columns **Task**, **Schedule**, **Next run** and **Module**. The next run reads "14:10 UTC", "tomorrow 06:00 UTC", a date, or "no fixed time". A task shows the module its `module` tag names. Without the tag, it shows the module of its job class or the module that declares its `php artisan` command. A task that is in no module shows **none** |
 | **By module** | "sorted by name", or "sorted by files, highest first" | A table, below |
 
 When the app does not expose `mappings` or `scheduledtasks`, the box keeps its title and says

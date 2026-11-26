@@ -121,3 +121,31 @@ whose file does not exist. Reading it throws, and the endpoint answers 503.
   The real folder was 159 characters long. `prometheus-busy.txt` had 130,922 bytes before; it has 121,862 now.
 - Nothing else was changed. The JSON keeps the escaped slashes (`\/`) the app wrote.
 - The app has no secret in these answers. `env` was not exposed and not asked for.
+
+## The tagged scheduled tasks
+
+`scheduledtasks-tagged.json` was recorded on 26 November 2026 from another app, to show the `module`
+tag of PKG-2. Mortise tests read it in place of `scheduledtasks.json`.
+
+| Package | Version |
+|---|---|
+| `laravel/framework` | v13.44.1 |
+| `nwidart/laravel-modules` | branch `feat/actuator-task-module` of PR #2311, not released (installed as 13.5.99 from a path repository) |
+| `nwidart/laravel-actuator` | branch `feat/scheduled-task-tags` of PR #40, not released (installed as 1.4.99 from a path repository) |
+
+PHP is 8.4.27 on macOS (arm64). The app was made as above with `module:make Blog Billing`,
+`module:make-command DigestCommand Blog` (signature `blog:digest`, in `$commands` of the Blog provider)
+and `module:make-job ChargeInvoice Billing`. `scheduledtasks` was in `exposure.include`, and
+`METRICS_ENABLED=false`.
+
+- Blog `configureSchedules()`: `command('blog:digest')->everyMinute()`, `call(fn () => null)->hourly()`,
+  `exec('echo sitemap')->daily()` and `call(fn () => null)->everyTenSeconds()->description('Refresh drafts')`.
+- Billing `configureSchedules()`: `job(ChargeInvoice::class)->hourly()`.
+- `routes/console.php`: `Schedule::call(fn () => null)->daily()->description('Prune app cache')` and
+  `Schedule::command('blog:digest')->dailyAt('06:00')`. These two have no tag.
+
+```
+curl -sS -H 'Accept: application/json' -o scheduledtasks-tagged.json http://127.0.0.1:8941/actuator/scheduledtasks
+```
+
+Nothing was changed after the recording.

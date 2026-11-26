@@ -324,13 +324,17 @@ pub fn routes_by_module(app: &AppSnapshot, routes: &[Route]) -> (Vec<(String, us
     (counts, outside)
 }
 
-/// The module a scheduled task belongs to: the module of its class, or the module
-/// that declares the command of `php artisan <name>`. A task with a description, a
-/// closure or a shell command belongs to none.
-///
-/// When the package lists the tasks of each module (P10), its list wins here.
+/// The module a scheduled task belongs to. The module its `module` tag names wins, compared
+/// without case. Without the tag, or when the tag names no module of the app, it is the module
+/// of its class, or the module that declares the command of `php artisan <name>`. Then a task
+/// with a description, a closure or a shell command belongs to none.
 pub fn module_of_task<'a>(app: &'a AppSnapshot, task: &Task) -> Option<&'a Module> {
-    module_of(app, &task.target).or_else(|| {
+    let tagged = task.module.as_deref().and_then(|name| {
+        app.modules
+            .iter()
+            .find(|module| module.name.eq_ignore_ascii_case(name))
+    });
+    tagged.or_else(|| module_of(app, &task.target)).or_else(|| {
         let name = artisan_command(&task.target)?;
         app.modules
             .iter()

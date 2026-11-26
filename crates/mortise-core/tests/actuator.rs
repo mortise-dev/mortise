@@ -452,6 +452,60 @@ fn routes_and_tasks_are_given_to_their_module() {
         ]
     );
     assert_eq!(tasks_of(&app, "Billing", &tasks).len(), 3);
+    // An older package gives no tag.
+    assert!(tasks.iter().all(|task| task.module.is_none()));
+}
+
+/// With the `module` tag of PKG-2, the tag places a closure, a shell command and a described
+/// task too. A task the app schedules has no tag and falls back to its command.
+#[test]
+fn the_recorded_tags_place_every_task_of_a_module() {
+    let stub = StubActuator::recorded();
+    stub.set(
+        "/actuator/scheduledtasks",
+        Reply::ok(include_str!(
+            "../fixtures/actuator/scheduledtasks-tagged.json"
+        )),
+    );
+    let tasks = answered(ask(&local(&stub), &None)).tasks.unwrap();
+    let mut app = recorded_app();
+    for module in &mut app.modules {
+        module.commands = if module.name == "Blog" {
+            vec!["blog:digest".to_owned()]
+        } else {
+            Vec::new()
+        };
+    }
+    let placed: Vec<(&str, Option<&str>)> = tasks
+        .iter()
+        .map(|task| {
+            (
+                task.target.as_str(),
+                module_of_task(&app, task).map(|module| module.name.as_str()),
+            )
+        })
+        .collect();
+    assert_eq!(
+        placed,
+        [
+            (r"Modules\Billing\Jobs\ChargeInvoice", Some("Billing")),
+            ("php artisan blog:digest", Some("Blog")),
+            ("Callback", Some("Blog")),
+            ("echo sitemap", Some("Blog")),
+            ("Prune app cache", None),
+            ("php artisan blog:digest", Some("Blog")),
+            ("Refresh drafts", Some("Blog")),
+        ]
+    );
+    assert_eq!(tasks[5].module, None);
+
+    // A tag that names no module of the app falls back to the target.
+    let mut stale = tasks[0].clone();
+    stale.module = Some("Gone".to_owned());
+    assert_eq!(
+        module_of_task(&app, &stale).map(|module| module.name.as_str()),
+        Some("Billing")
+    );
 }
 
 /// The modules of the recorded app: Blog, Billing and Legacy, made from shop-api's Billing.
