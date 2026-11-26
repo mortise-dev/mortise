@@ -240,6 +240,13 @@ UPDATE_SNAPSHOTS=1 cargo test -p mortise-app --test images
 `cargo test -p mortise-app --test screens -- --ignored` writes every screen to
 `target/screens`, to be looked at beside the drawings in `docs/spec`.
 
+On Windows, a CI job that is not required, "Windows looked at", starts the window on
+`fixtures/shop-api`, adds the app, and keeps shots of the desktop and every screen as artifacts.
+`docs/deviations.md` says what was seen there. A hosted runner cannot show everything. These
+were not looked at on Windows yet and need a person at a Windows 11 desktop: snapping from the
+maximise button (D1), the 1 px line above the title bar (D2), the setup program and
+SmartScreen, and Narrator through AccessKit.
+
 ## Layout
 
 | Path | Holds |
@@ -255,7 +262,7 @@ UPDATE_SNAPSHOTS=1 cargo test -p mortise-app --test images
 | `website` | The documentation site, built with Astro Starlight and published to GitHub Pages by `.github/workflows/docs.yml`. |
 | `docs/deviations.md` | Where the build differs from the specification, and why. |
 | `licenses` | The licences of the crates Mortise is built from. |
-| `tools` | `third-party-licenses.py` writes that list. `app-icon.mjs` makes the icon files from the drawings; it needs macOS and Google Chrome. `brand-images.sh` draws the images in `assets/brand`; it needs Google Chrome. `release.sh`, `pack-installer.sh`, `verify-macos-app.sh`, `check-cli.sh`, `pack-cli.sh` and `sign-macos-cli.sh` serve the release workflows. |
+| `tools` | `third-party-licenses.py` writes that list. `app-icon.mjs` makes the icon files from the drawings; it needs macOS and Google Chrome. `brand-images.sh` draws the images in `assets/brand`; it needs Google Chrome. `release.sh`, `pack-installer.sh`, `verify-macos-app.sh`, `check-cli.sh`, `pack-cli.sh` and `sign-macos-cli.sh` serve the release workflows. `windows-look.ps1` starts the window on a Windows runner and takes shots of the desktop. |
 | `.github/workflows` | CI, the installers and the release. `CONTRIBUTING.md` says how a release works. |
 
 ## Licence

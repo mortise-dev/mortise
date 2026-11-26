@@ -534,7 +534,8 @@ impl Process {
 
     /// Ends the tree: `taskkill /T` ends the children too, so `php.exe` under
     /// `herd.bat` ends. When `taskkill` fails, the program alone is ended.
-    /// Not run on Windows.
+    /// Run on Windows by `a_batch_file_refuses_a_line_break_and_stops_with_its_tree`
+    /// in `tests/run.rs`.
     #[cfg(not(unix))]
     fn terminate(&mut self) {
         let pid = self.child.id().to_string();

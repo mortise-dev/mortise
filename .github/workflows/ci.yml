@@ -355,6 +355,50 @@ jobs:
             echo "::endgroup::"
           done
 
+  # Looks at Mortise on Windows: it starts the window on the fixture shop-api, keeps a shot of the
+  # desktop, then writes every screen of tests/screens.rs. A person looks at the artifacts; the job
+  # compares nothing. A runner may give no desktop one day, so it is not required, and its failure
+  # does not fail the run.
+  windows-look:
+    name: Windows looked at (not required)
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 60
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+      - run: cargo build -p mortise-app --bin mortise-desktop --locked
+
+      # Settings, the history of runs and secrets stay out of the runner's own folders.
+      - name: Start the window, add the app and take shots of the desktop
+        shell: pwsh
+        env:
+          MORTISE_CONFIG_DIR: ${{ runner.temp }}\mortise-config
+          MORTISE_DATA_DIR: ${{ runner.temp }}\mortise-data
+          MORTISE_SECRETS: memory
+        run: tools/windows-look.ps1 -Exe target\debug\mortise-desktop.exe -App "$PWD\fixtures\shop-api" -Out "$env:RUNNER_TEMP\windows-look"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-desktop
+          path: ${{ runner.temp }}\windows-look
+          if-no-files-found: error
+
+      - name: Write every screen
+        if: always()
+        run: cargo test -p mortise-app --test screens --locked -- --ignored
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-screens
+          path: target/screens
+          if-no-files-found: error
+
   # Runs the package's commands in a real app: the ignored tests of crates/mortise-core/tests/real_php.rs.
   # It is the only job that uses the network for Composer. A new release of the package can break it,
   # so it is not required, and its failure does not fail the run.
