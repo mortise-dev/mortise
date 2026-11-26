@@ -671,7 +671,11 @@ pub fn palette(
             response
                 .widget_info(|| WidgetInfo::labeled(Role::TextInput, true, crate::strings::SEARCH));
             // The palette holds focus: Tab, Enter and the arrows do not leave the field.
-            response.request_focus();
+            // Focus is asked only when the field lost it. Each request also restarts the
+            // input method, and a restart in every frame loses keys under fcitx5 on Wayland.
+            if !response.has_focus() {
+                response.request_focus();
+            }
 
             // The rows, in their groups.
             let list = Rect::from_min_size(
