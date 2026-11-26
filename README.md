@@ -3,8 +3,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/nWidart/mortise/actions/workflows/ci.yml"><img src="https://github.com/nWidart/mortise/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://github.com/nWidart/mortise/releases/latest"><img src="https://img.shields.io/github/v/release/nWidart/mortise?label=release" alt="Latest release"></a>
+  <a href="https://github.com/mortise-dev/mortise/actions/workflows/ci.yml"><img src="https://github.com/mortise-dev/mortise/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/mortise-dev/mortise/releases/latest"><img src="https://img.shields.io/github/v/release/mortise-dev/mortise?label=release" alt="Latest release"></a>
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-5B6570" alt="macOS, Windows and Linux">
   <a href="LICENSE"><img src="https://img.shields.io/badge/licence-MIT-2C6A37" alt="MIT licence"></a>
 </p>
@@ -17,9 +17,9 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/nWidart/mortise/releases/latest"><b>Download</b></a> &middot;
-  <a href="https://nwidart.github.io/mortise/"><b>Documentation</b></a> &middot;
-  <a href="https://github.com/nWidart/mortise/issues/new?template=problem.yml"><b>Report a problem</b></a> &middot;
+  <a href="https://github.com/mortise-dev/mortise/releases/latest"><b>Download</b></a> &middot;
+  <a href="https://mortise-dev.github.io/mortise/"><b>Documentation</b></a> &middot;
+  <a href="https://github.com/mortise-dev/mortise/issues/new?template=problem.yml"><b>Report a problem</b></a> &middot;
   <a href="#what-it-does">What it does</a> &middot;
   <a href="#run">Build from source</a>
 </p>
@@ -141,12 +141,12 @@ problem with its file and line and exits 1 when a rule breaks.
 mortise check /path/to/laravel-app --format github
 ```
 
-In GitHub Actions, the action [`nwidart/setup-mortise`](https://github.com/nWidart/setup-mortise) puts
+In GitHub Actions, the action [`mortise-dev/setup-mortise`](https://github.com/mortise-dev/setup-mortise) puts
 the tool on `PATH` in a few seconds, with no Rust toolchain:
 
 ```yaml
 - uses: actions/checkout@v5
-- uses: nwidart/setup-mortise@v1
+- uses: mortise-dev/setup-mortise@v1
 - run: mortise check . --format github
 ```
 
@@ -157,7 +157,7 @@ The exit codes are 0 (no problem), 1 (a problem), 2 (a wrong command line), 3 (t
 app) and 5 (the report could not be written). `"ci": { "fail": false }` in `mortise.json`, the switch "Fail CI when a rule breaks" in the
 window, makes it report without failing. `"coverage": { "limit": 70, "report": "build/clover.xml" }`
 sets the coverage of the app for the window and the tool; the flags `--coverage-limit` and
-`--coverage` win over it. The [documentation](https://nwidart.github.io/mortise/reference/command-line/)
+`--coverage` win over it. The [documentation](https://mortise-dev.github.io/mortise/reference/command-line/)
 has the rest.
 
 ## Send a read to Mortise Cloud
@@ -175,11 +175,11 @@ The token comes from `MORTISE_TOKEN` only and is never printed. `--dry-run` prin
 and sends nothing; it needs no token. On GitHub Actions the pull request and the run come from the
 environment, and the commit is the one checked out. An outage of the cloud never fails the build:
 the tool warns and exits 0. A refused token or document exits 4. The
-[how-to](https://nwidart.github.io/mortise/how-to/send-to-mortise-cloud/) has a workflow.
+[how-to](https://mortise-dev.github.io/mortise/how-to/send-to-mortise-cloud/) has a workflow.
 
 ## Install
 
-Each [release](https://github.com/nWidart/mortise/releases/latest) has:
+Each [release](https://github.com/mortise-dev/mortise/releases/latest) has:
 
 | Platform | File |
 |---|---|

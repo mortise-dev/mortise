@@ -1,6 +1,6 @@
 # mortise-core
 
-The library behind [Mortise](https://github.com/nWidart/mortise): it reads a Laravel app that uses
+The library behind [Mortise](https://github.com/mortise-dev/mortise): it reads a Laravel app that uses
 [`nwidart/laravel-modules`](https://github.com/nWidart/laravel-modules) into a snapshot, without PHP.
 The snapshot holds the modules, which module uses which, circular use, the boundary rules of
 `mortise.json` and the findings.

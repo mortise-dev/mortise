@@ -34,7 +34,7 @@ const VERSION: &str = "1.0.1";
 pub fn report_problem_url() -> String {
     let platform = format!("{} {}", platform_name(), std::env::consts::ARCH);
     format!(
-        "https://github.com/nWidart/mortise/issues/new?template=problem.yml&version={}&platform={}",
+        "https://github.com/mortise-dev/mortise/issues/new?template=problem.yml&version={}&platform={}",
         query_encoded(VERSION),
         query_encoded(&platform)
     )
@@ -1969,7 +1969,7 @@ mod tests {
     fn the_report_address_holds_the_version_and_the_platform_only() {
         let url = report_problem_url();
         let (base, query) = url.split_once('?').unwrap();
-        assert_eq!(base, "https://github.com/nWidart/mortise/issues/new");
+        assert_eq!(base, "https://github.com/mortise-dev/mortise/issues/new");
         let keys: Vec<_> = query
             .split('&')
             .map(|pair| pair.split_once('=').unwrap().0)

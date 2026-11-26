@@ -210,7 +210,7 @@ jobs:
 
       # Each installer also goes up under a name with no version, so releases/latest/download/<name>
       # always links to the newest one. The checksums list both names, and the archives of the command
-      # line tool, which keep their version: nwidart/setup-mortise computes their names from it.
+      # line tool, which keep their version: mortise-dev/setup-mortise computes their names from it.
       - name: Write checksums
         run: |
           cp "dist/Mortise-$TAG-macos-arm64.dmg" dist/Mortise-macos-arm64.dmg

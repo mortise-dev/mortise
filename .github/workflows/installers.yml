@@ -493,7 +493,7 @@ jobs:
           path: dist/*
           if-no-files-found: error
 
-  # The archive names are what nwidart/setup-mortise computes from the version, the system and the
+  # The archive names are what mortise-dev/setup-mortise computes from the version, the system and the
   # architecture, so this job fails unless exactly those four are there. tag-release.yml writes the
   # sums of the release itself; this list is for a run that is not a release.
   cli-sums:
