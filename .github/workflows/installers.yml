@@ -1,13 +1,16 @@
 # Builds the installers as artifacts: `dmg` (macOS, Apple silicon), `setup` (Windows x64) and `linux`
-# (an AppImage and a .deb, x86_64). It never publishes. tag-release.yml calls it on the merge commit of a
-# release PR, then tags and publishes.
+# (an AppImage and a .deb, x86_64). It also builds the command line tool, binary `mortise`, as one archive
+# per platform (artifacts `cli-<platform>`): Linux x86_64 and arm64 (static, musl), macOS arm64 and
+# Windows x64, and lists them with their SHA-256 sums (artifact `command-line-sums`). It never publishes.
+# tag-release.yml calls it on the merge commit of a release PR, then tags and publishes.
 #
 # Run it from the Actions tab to build the installers of a branch without a release. A manual run with
 # `quick` skips clippy and tests, and labels the files `-untested`. A pull request that changes the
 # packaging runs it too, without the tests, which CI already runs. tag-release.yml has no `quick` input,
 # so a release always tests.
 #
-# The Windows setup is not signed. The Linux packages are not signed.
+# The Windows setup is not signed. The Linux packages are not signed. Nor are the Windows and Linux
+# builds of the command line tool.
 #
 # The macOS app is signed with a Developer ID Application certificate and notarized by Apple, only when
 # tag-release.yml calls with `sign: true`. Such an app opens without the "cannot verify the developer"
@@ -16,6 +19,8 @@
 # passes each by name. A branch, a fork, a pull request and a manual run get no secret: they run
 # package-macos, ad-hoc signed and not notarized. A release with a secret missing fails, and never ships
 # ad-hoc signed. The macOS signing section of CONTRIBUTING.md says how to set the secrets up.
+# The command line tool follows the same split: package-cli-macos without secrets, and
+# package-cli-macos-signed in a release, which signs the binary and has Apple notarize its zip.
 #
 # The secrets reach only the step that runs cargo-packager. The job runs the reviewed merge commit with
 # `--locked`, a pinned cargo-packager and its actions pinned to commits. It does not isolate the secrets
@@ -73,6 +78,9 @@ on:
       - crates/mortise-app/Cargo.toml
       - assets/icon/**
       - tools/pack-installer.sh
+      - crates/mortise-cli/Cargo.toml
+      - tools/pack-cli.sh
+      - tools/sign-macos-cli.sh
       - rust-toolchain.toml
 
 permissions:
@@ -351,4 +359,165 @@ jobs:
         with:
           name: dmg
           path: dist/*
+          if-no-files-found: error
+
+  # The command line tool for Linux (static, musl) and Windows. Each runner builds for its own
+  # architecture, so ring and blake3 compile their C with the runner's own compiler, and
+  # tools/pack-cli.sh runs the binary before it packs it. cc finds musl-gcc by itself only for x86_64,
+  # so CC_<target> names it for both. Windows links the C runtime statically, so the binary needs no
+  # Visual C++ redistributable; the RUSTFLAGS of the target do not reach the build scripts.
+  package-cli:
+    name: Build command line tool (${{ matrix.name }})
+    needs: [version, test]
+    if: ${{ !cancelled() && !failure() }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux x86_64
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            platform: linux-x86_64
+            ext: tar.gz
+          - name: Linux arm64
+            os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-musl
+            platform: linux-arm64
+            ext: tar.gz
+          - name: Windows x64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            platform: windows-x64
+            ext: zip
+    defaults:
+      run:
+        shell: bash
+    env:
+      TARGET: ${{ matrix.target }}
+      ARCHIVE: mortise-${{ needs.version.outputs.label }}-${{ matrix.platform }}.${{ matrix.ext }}
+      CARGO_PROFILE_RELEASE_STRIP: symbols
+      CC_x86_64_unknown_linux_musl: musl-gcc
+      CC_aarch64_unknown_linux_musl: musl-gcc
+      CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS: -C target-feature=+crt-static
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+      - run: rustup toolchain install && rustup target add "$TARGET"
+      # No rust cache here, for the reason the test job gives.
+      - name: Install musl
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+      - run: cargo build --release --locked -p mortise-cli --target "$TARGET"
+      - run: tools/pack-cli.sh "$TARGET" "$ARCHIVE"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cli-${{ matrix.platform }}
+          path: dist/*
+          if-no-files-found: error
+
+  # The command line tool for macOS, signed ad hoc by the linker: every run that does not ask for a
+  # signed release.
+  package-cli-macos:
+    name: Build command line tool (macOS arm64)
+    needs: [version, test]
+    if: ${{ !cancelled() && !failure() && !inputs.sign }}
+    runs-on: macos-latest
+    timeout-minutes: 30
+    env:
+      ARCHIVE: mortise-${{ needs.version.outputs.label }}-macos-arm64.zip
+      CARGO_PROFILE_RELEASE_STRIP: symbols
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+      - run: rustup toolchain install && rustup target add aarch64-apple-darwin
+      - run: cargo build --release --locked -p mortise-cli --target aarch64-apple-darwin
+      - run: tools/pack-cli.sh aarch64-apple-darwin "$ARCHIVE"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cli-macos-arm64
+          path: dist/*
+          if-no-files-found: error
+
+  # The command line tool for macOS, signed with the Developer ID and notarized, for a release. It gets
+  # the Apple secrets the way package-macos-signed does, and only in the step that signs.
+  package-cli-macos-signed:
+    name: Build command line tool (macOS arm64, signed)
+    needs: [version, test]
+    if: ${{ !cancelled() && !failure() && inputs.sign }}
+    runs-on: macos-latest
+    timeout-minutes: 90
+    environment: release
+    env:
+      ARCHIVE: mortise-${{ needs.version.outputs.label }}-macos-arm64.zip
+      CARGO_PROFILE_RELEASE_STRIP: symbols
+    steps:
+      # Pinned to commits, because this job holds the Apple secrets.
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+      - run: rustup toolchain install && rustup target add aarch64-apple-darwin
+      # Built before the step that holds the secrets. Both steps share one machine: see package-macos-signed.
+      - run: cargo build --release --locked -p mortise-cli --target aarch64-apple-darwin
+      # A bare binary cannot hold a stapled ticket, so the zip goes to Apple and Gatekeeper looks the
+      # ticket up online on first run.
+      - name: Sign, pack and notarize
+        # notarytool waits for Apple with a limit of 45 minutes, set in the script.
+        timeout-minutes: 60
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+        run: tools/sign-macos-cli.sh "$ARCHIVE"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cli-macos-arm64
+          path: dist/*
+          if-no-files-found: error
+
+  # The archive names are what nwidart/setup-mortise computes from the version, the system and the
+  # architecture, so this job fails unless exactly those four are there. tag-release.yml writes the
+  # sums of the release itself; this list is for a run that is not a release.
+  cli-sums:
+    name: List command line archives
+    needs: [version, package-cli, package-cli-macos, package-cli-macos-signed]
+    if: ${{ !cancelled() && !failure() }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: cli-*
+          merge-multiple: true
+          path: dist
+      - name: Check the names and write the sums
+        env:
+          LABEL: ${{ needs.version.outputs.label }}
+        run: |
+          cd dist
+          expected=$(printf 'mortise-%s-%s\n' \
+            "$LABEL" linux-x86_64.tar.gz "$LABEL" linux-arm64.tar.gz \
+            "$LABEL" macos-arm64.zip "$LABEL" windows-x64.zip | sort)
+          found=$(find . -type f -printf '%f\n' | sort)
+          if [ "$found" != "$expected" ]; then
+            echo "::error::The command line archives are not the four expected names."
+            diff <(echo "$expected") <(echo "$found") || true
+            exit 1
+          fi
+          sha256sum -- * > "mortise-$LABEL-SHA256SUMS.txt"
+          cat "mortise-$LABEL-SHA256SUMS.txt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: command-line-sums
+          path: dist/mortise-*-SHA256SUMS.txt
           if-no-files-found: error

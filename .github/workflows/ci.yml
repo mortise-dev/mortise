@@ -262,6 +262,11 @@ jobs:
       - name: Push shop-api without sending
         shell: bash
         run: target/debug/mortise push --dry-run fixtures/shop-api
+      # The Tag release workflow publishes both crates to crates.io. This builds them as crates.io would,
+      # from their packages, so a missing file or a wrong field shows here and not after a tag.
+      - name: Package the crates for crates.io
+        if: runner.os == 'Linux'
+        run: cargo package --locked -p mortise-core -p mortise-cli
 
   # Feature gates do not depend on the platform, so Linux is enough. Each feature builds alone,
   # so a gate on the wrong file fails here and not only in a build with the default features.

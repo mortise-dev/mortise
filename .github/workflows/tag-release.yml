@@ -201,9 +201,16 @@ jobs:
         with:
           name: linux
           path: dist
+      # The four archives of the command line tool, one artifact each. installers.yml checked their names.
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: cli-*
+          merge-multiple: true
+          path: dist
 
       # Each installer also goes up under a name with no version, so releases/latest/download/<name>
-      # always links to the newest one. The checksums list both names.
+      # always links to the newest one. The checksums list both names, and the archives of the command
+      # line tool, which keep their version: nwidart/setup-mortise computes their names from it.
       - name: Write checksums
         run: |
           cp "dist/Mortise-$TAG-macos-arm64.dmg" dist/Mortise-macos-arm64.dmg
@@ -248,3 +255,71 @@ jobs:
           else
             echo "$branch is already deleted."
           fi
+
+  # Publishes mortise-core, then mortise-cli, to crates.io, after the GitHub release: a crate cannot be
+  # taken back, so the step that cannot be undone goes last. A re-run skips each version crates.io
+  # already has. The job sets `environment: release`, which accepts runs from main only, for the secret
+  # CARGO_REGISTRY_TOKEN. Only the upload step gets it: the package step before it compiles both crates,
+  # so build scripts run there without the token, and the upload runs with --no-verify.
+  crates:
+    name: Publish crates
+    needs: [version, publish]
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    env:
+      TAG: ${{ needs.version.outputs.tag }}
+    # Its actions are pinned to commits, because the job holds the crates.io token.
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: ${{ needs.version.outputs.sha }}
+          persist-credentials: false
+      - run: rustup toolchain install
+
+      # The sparse index lists each published version of a crate, one JSON line each. A crate never
+      # published answers 404.
+      - name: Find the crates to publish
+        id: todo
+        run: |
+          version="${TAG#v}"
+          packages=''
+          for crate in mortise-core mortise-cli; do
+            index="$RUNNER_TEMP/$crate.index"
+            code=$(curl -sS -o "$index" -w '%{http_code}' "https://index.crates.io/mo/rt/$crate")
+            if [ "$code" = 200 ] && jq -e --arg v "$version" 'select(.vers == $v)' "$index" > /dev/null; then
+              echo "$crate $version is already on crates.io."
+            elif [ "$code" = 200 ] || [ "$code" = 404 ]; then
+              packages="$packages -p $crate"
+            else
+              echo "::error::The crates.io index answered $code for $crate."
+              exit 1
+            fi
+          done
+          echo "Publishing:${packages:- nothing}"
+          echo "packages=$packages" >> "$GITHUB_OUTPUT"
+
+      - name: Package and verify
+        if: steps.todo.outputs.packages != ''
+        env:
+          PACKAGES: ${{ steps.todo.outputs.packages }}
+        run: |
+          # shellcheck disable=SC2086  # PACKAGES is a list of -p flags.
+          cargo package --locked $PACKAGES
+
+      - name: Publish
+        if: steps.todo.outputs.packages != ''
+        env:
+          PACKAGES: ${{ steps.todo.outputs.packages }}
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          if [ -z "$(printf '%s' "$CARGO_REGISTRY_TOKEN" | tr -d '[:space:]')" ]; then
+            echo "::error::The secret CARGO_REGISTRY_TOKEN of the release environment is empty or not set. The GitHub release is published; add the token, then re-run this job."
+            exit 1
+          fi
+          # shellcheck disable=SC2086  # PACKAGES is a list of -p flags.
+          cargo publish --locked --no-verify $PACKAGES
