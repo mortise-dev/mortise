@@ -387,9 +387,9 @@ one for its archive.
   variables the three servers use to switch metrics off or break the store.
 - The environment switch wraps (deviation S70). The plan had no rule for names wider than the tab.
 - S6.5 e has no stored image. Its sentence quotes the port of the stub, which changes with every run.
-- S7.3 after a choice of environment shows the waiting state, which has no switch, so keyboard focus
-  leaves the switch and Tab must reach it again. Every environment stays reachable. This was there
-  before this change. It is left for a later change.
+- S7.3 after a choice of environment showed the waiting state, which had no switch, so keyboard focus
+  left the switch and Tab had to reach it again. Fixed: the waiting state keeps the environment switch,
+  and the focus stays on the chosen environment (deviation S77).
 - Tasks per module (milestone 22) match a task to the module that declares its command. The plan asked for
   nothing more: PKG-2 is still open.
 
