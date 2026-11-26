@@ -2,7 +2,9 @@
 
 use std::path::{Path, PathBuf};
 
-use mortise_core::{Proposal, ScanCounts, SurfaceKind, SurfaceScan, Typed, read_app};
+use mortise_core::{
+    AcceptedSurface, Proposal, ScanCounts, SurfaceKind, SurfaceScan, Typed, read_app,
+};
 
 fn shop_api() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/shop-api")
@@ -235,6 +237,78 @@ fn a_second_scan_keeps_what_the_developer_chose() {
     let mut second = billing();
     second.keep_choices_of(&first);
     assert_eq!(second, first);
+}
+
+#[test]
+fn a_proposal_becomes_a_surface_and_a_later_scan_is_compared_with_it() {
+    let mut proposal = billing();
+    // What is checked is stored, each list sorted by byte order.
+    let surface = proposal.surface();
+    assert_eq!(
+        surface.classes,
+        [
+            r"Modules\Billing\Contracts\InvoiceNumbering",
+            r"Modules\Billing\Contracts\PaymentGateway",
+            r"Modules\Billing\Events\InvoiceIssued",
+            r"Modules\Billing\Events\InvoicePaid",
+            r"Modules\Billing\Events\PaymentFailed",
+        ]
+    );
+    assert_eq!(surface.routes, ["api/billing/*", "billing/*"]);
+    assert_eq!(
+        surface.commands,
+        ["billing:retry-failed-payments", "billing:send-invoices"]
+    );
+    assert_eq!(
+        surface.to_stdin(),
+        r#"{"classes":["Modules\\Billing\\Contracts\\InvoiceNumbering","Modules\\Billing\\Contracts\\PaymentGateway","Modules\\Billing\\Events\\InvoiceIssued","Modules\\Billing\\Events\\InvoicePaid","Modules\\Billing\\Events\\PaymentFailed"],"routes":["api/billing/*","billing/*"],"commands":["billing:retry-failed-payments","billing:send-invoices"]}"#
+    );
+    assert!(proposal.differences(&surface).is_empty());
+
+    // Later: the code has a new event, and an accepted command and class are gone.
+    let mut accepted = surface.clone();
+    accepted
+        .classes
+        .retain(|class| !class.ends_with("PaymentFailed"));
+    accepted
+        .classes
+        .push(r"Modules\Billing\Models\Refund".to_owned());
+    accepted.commands.push("billing:old".to_owned());
+    let differences = proposal.differences(&accepted);
+    let found: Vec<(&str, bool)> = differences
+        .iter()
+        .map(|difference| (difference.entry.name.as_str(), difference.new))
+        .collect();
+    assert_eq!(
+        found,
+        [
+            (r"Modules\Billing\Events\PaymentFailed", true),
+            (r"Modules\Billing\Models\Refund", false),
+            ("billing:old", false),
+        ]
+    );
+    // Taking every difference gives the scan; leaving one out keeps its accepted state.
+    assert_eq!(accepted.with_differences(&differences), surface);
+    let mut kept = differences.clone();
+    kept[2].taken = false;
+    assert_eq!(
+        accepted.with_differences(&kept).commands,
+        [
+            "billing:old",
+            "billing:retry-failed-payments",
+            "billing:send-invoices"
+        ]
+    );
+
+    // A change of the accepted surface starts from what it holds.
+    let mut only = AcceptedSurface::default();
+    only.classes
+        .push(r"modules\billing\models\invoice".to_owned());
+    proposal.take_choices_of(&only);
+    assert_eq!(
+        proposal.surface().classes,
+        [r"Modules\Billing\Models\Invoice"]
+    );
 }
 
 #[test]

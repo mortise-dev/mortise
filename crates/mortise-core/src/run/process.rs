@@ -102,6 +102,19 @@ impl Runs {
         args: &[String],
         limit: Duration,
     ) -> Result<Run, StartError> {
+        self.start_with_input(app, php, args, limit, None)
+    }
+
+    /// [`Runs::start`], with `input` written to the standard input of the program,
+    /// which then ends. Without input the standard input of the program is empty.
+    pub fn start_with_input(
+        &self,
+        app: &Path,
+        php: &PhpSettings,
+        args: &[String],
+        limit: Duration,
+        input: Option<Vec<u8>>,
+    ) -> Result<Run, StartError> {
         let label = label(args);
         let folder = php.folder(app);
         let line = {
@@ -121,7 +134,7 @@ impl Runs {
             running.insert(app.to_owned(), label.clone());
             line
         };
-        let process = match Process::start(&line, &folder) {
+        let process = match Process::start(&line, &folder, input) {
             Ok(process) => process,
             Err(error) => {
                 self.lock().remove(app);
@@ -413,8 +426,11 @@ struct Process {
 impl Process {
     /// Starts `line` in `folder`, on Unix as the leader of a new process group,
     /// with both pipes read into one channel.
-    fn start(line: &CommandLine, folder: &Path) -> std::io::Result<Self> {
+    fn start(line: &CommandLine, folder: &Path, input: Option<Vec<u8>>) -> std::io::Result<Self> {
         let mut command = prepare(line, folder)?;
+        if input.is_some() {
+            command.stdin(Stdio::piped());
+        }
         // Its children join the group, so a signal to the group reaches the tree.
         #[cfg(unix)]
         {
@@ -422,6 +438,14 @@ impl Process {
             command.process_group(0);
         }
         let mut child = command.spawn()?;
+        // Written from a thread of its own, so that a program that reads its input
+        // late cannot block the start. The pipe closes when the thread ends.
+        if let (Some(input), Some(mut stdin)) = (input, child.stdin.take()) {
+            std::thread::spawn(move || {
+                use std::io::Write;
+                let _ = stdin.write_all(&input);
+            });
+        }
         let (sender, lines) = mpsc::sync_channel(QUEUE);
         let readers = [
             read_lines(child.stdout.take(), Stream::Out, sender.clone()),
@@ -683,7 +707,7 @@ pub(crate) fn capture(
     folder: &Path,
     limit: Duration,
 ) -> std::io::Result<Captured> {
-    let mut process = Process::start(line, folder)?;
+    let mut process = Process::start(line, folder, None)?;
     let started = Instant::now();
     let mut stdout = Vec::new();
     let mut stderr = Vec::new();
@@ -890,7 +914,7 @@ mod tests {
             program: "/bin/sh".into(),
             args: vec!["-c".into(), script.into()],
         };
-        let mut process = Process::start(&line, folder).unwrap();
+        let mut process = Process::start(&line, folder, None).unwrap();
         let mut lines = Vec::new();
         let deadline = Instant::now() + Duration::from_secs(10);
         while !(process.exited().unwrap() && ready(&process, &lines)) {

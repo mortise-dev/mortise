@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::boundary::rules::Rules;
 use crate::php::ClassRef;
+use crate::surface::AcceptedSurface;
 
 /// One file of a module that names one class of another module.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -90,6 +91,8 @@ pub(crate) struct ModuleSource<'a> {
     pub(crate) on: bool,
     /// The namespace all classes of the module share: `Modules\Billing`.
     pub(crate) namespace: &'a str,
+    /// The accepted public surface. Without one, the folder list of the rules counts.
+    pub(crate) surface: Option<&'a AcceptedSurface>,
     /// Each file as the user writes it, with the classes it names. Test files
     /// are left out: they make no links.
     pub(crate) files: Vec<(String, &'a [ClassRef])>,
@@ -144,7 +147,10 @@ pub(crate) fn build(modules: &[ModuleSource<'_>], rules: &Rules) -> (Vec<Link>, 
                         internal: rules.public_surface_only
                             && module.on
                             && owner.on
-                            && !rules.is_public(&inside),
+                            && !match owner.surface {
+                                Some(surface) => surface.has_class(&named.class),
+                                None => rules.is_public(&inside),
+                            },
                     });
             }
         }
@@ -374,6 +380,7 @@ mod tests {
             name,
             on: true,
             namespace,
+            surface: None,
             files: files
                 .iter()
                 .map(|(file, refs)| ((*file).to_owned(), refs.as_slice()))
@@ -448,6 +455,38 @@ mod tests {
         assert_eq!((link.files(), link.internal_files()), (2, 1));
         assert!(link.is_problem(&Rules::default()));
         assert!(cycles.is_empty());
+    }
+
+    #[test]
+    fn an_accepted_surface_takes_the_place_of_the_folder_list() {
+        let checkout = [(
+            "a.php",
+            vec![
+                named(r"Modules\Billing\Models\Invoice", 5),
+                named(r"Modules\Billing\Contracts\Gateway", 6),
+            ],
+        )];
+        // Classes match in any case, as PHP names do.
+        let surface = AcceptedSurface {
+            classes: vec![r"Modules\Billing\models\invoice".to_owned()],
+            ..AcceptedSurface::default()
+        };
+        let mut billing = source("Billing", r"Modules\Billing", &[]);
+        billing.surface = Some(&surface);
+        let modules = [source("Checkout", r"Modules\Checkout", &checkout), billing];
+        let (links, _) = build(&modules, &Rules::default());
+        let internal: Vec<(&str, bool)> = links[0]
+            .refs
+            .iter()
+            .map(|r| (r.class.as_str(), r.internal))
+            .collect();
+        assert_eq!(
+            internal,
+            [
+                (r"Modules\Billing\Contracts\Gateway", true),
+                (r"Modules\Billing\Models\Invoice", false),
+            ]
+        );
     }
 
     #[test]

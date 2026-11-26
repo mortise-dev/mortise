@@ -7,5 +7,12 @@
     "providers": [
         "Modules\\Users\\Providers\\UsersServiceProvider"
     ],
-    "files": []
+    "files": [],
+    "surface": {
+        "classes": [
+            "Modules\\Users\\Contracts\\UserLookup"
+        ],
+        "routes": [],
+        "commands": []
+    }
 }

@@ -20,6 +20,17 @@ use crate::php;
 /// The version must be `MAJOR.MINOR.PATCH` in ASCII digits. A dev build, a branch
 /// alias or a pre-release may lack a feature, so it gets false.
 pub fn gives_data(version: &Version) -> bool {
+    released_since(version, (13, 4))
+}
+
+/// True when the app's package stores a public surface (P6): `module:surface`, in a
+/// released 13.5.0 or later. The version is read as for [`gives_data`].
+pub fn stores_surface(version: &Version) -> bool {
+    released_since(version, (13, 5))
+}
+
+/// True when the version is a release `MAJOR.MINOR.PATCH` of `since` or later.
+fn released_since(version: &Version, since: (u64, u64)) -> bool {
     let parts: Vec<&str> = version.full().split('.').collect();
     let [major, minor, patch] = parts.as_slice() else {
         return false;
@@ -29,7 +40,7 @@ pub fn gives_data(version: &Version) -> bool {
         return false;
     }
     match (major.parse::<u64>(), minor.parse::<u64>()) {
-        (Ok(major), Ok(minor)) => (major, minor) >= (13, 4),
+        (Ok(major), Ok(minor)) => (major, minor) >= since,
         _ => false,
     }
 }
@@ -531,6 +542,9 @@ mod tests {
         for (version, gives) in cases {
             assert_eq!(gives_data(&version), gives, "{}", version.raw);
         }
+        // The surface comes one minor version later.
+        assert!(!stores_surface(&version("v13.4.0", None)));
+        assert!(stores_surface(&version("v13.5.0", None)));
 
         // Only a generator the package ships gets the dry run and the answer: an
         // app's own may declare `--dry-run` and write anyway.

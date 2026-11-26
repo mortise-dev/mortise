@@ -1,9 +1,9 @@
 //! Reading fixture apps into snapshots.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
-use mortise_core::{LayoutKey, Manifest, ModuleState, ReadError, read_app};
+use mortise_core::{AcceptedSurface, LayoutKey, Manifest, ModuleState, ReadError, read_app};
 
 fn fixture(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -150,6 +150,19 @@ fn reads_shop_api() {
             .all(|module| module.manifest == Manifest::Valid)
     );
     assert_eq!(app.path_shown(&app.modules[2].dir), "Modules/Checkout");
+
+    // Users has an accepted public surface; the other modules have none.
+    let surfaces: Vec<(&str, Option<&AcceptedSurface>)> = app
+        .modules
+        .iter()
+        .filter(|module| module.surface.is_some() || module.name == "Billing")
+        .map(|module| (module.name.as_str(), module.surface.as_ref()))
+        .collect();
+    let users = AcceptedSurface {
+        classes: vec![r"Modules\Users\Contracts\UserLookup".to_owned()],
+        ..AcceptedSurface::default()
+    };
+    assert_eq!(surfaces, [("Billing", None), ("Users", Some(&users))]);
 }
 
 #[test]
@@ -704,6 +717,49 @@ fn the_rules_of_mortise_json_decide_what_is_a_problem() {
     for member in ["Checkout", "Shipping"] {
         assert!(app.circles_counted_elsewhere(member).is_empty());
     }
+}
+
+#[test]
+fn an_accepted_surface_decides_what_other_modules_may_read() {
+    let app = copy_of("shop-api");
+    let manifest = app.path().join("Modules/Billing/module.json");
+    let original = std::fs::read_to_string(&manifest).unwrap();
+    let with_surface = |surface: &str| {
+        let json = original.replacen('{', &format!("{{\n    \"surface\": {surface},"), 1);
+        std::fs::write(&manifest, json).unwrap();
+        read_app(app.path()).unwrap()
+    };
+
+    // Only the model Checkout reads is in the surface: the reads of the contract and
+    // the event, which the folder list allowed, are not allowed now.
+    let read = with_surface(r#"{"classes": ["Modules\\Billing\\Models\\Invoice"]}"#);
+    let classes: BTreeSet<&str> = read
+        .link("Checkout", "Billing")
+        .unwrap()
+        .refs
+        .iter()
+        .filter(|reference| reference.internal)
+        .map(|reference| reference.class.as_str())
+        .collect();
+    assert_eq!(
+        classes,
+        BTreeSet::from([
+            r"Modules\Billing\Contracts\PaymentGateway",
+            r"Modules\Billing\Events\InvoicePaid"
+        ])
+    );
+    // Empty lists offer nothing: every read is of internals.
+    let read = with_surface(r#"{"classes": [], "routes": [], "commands": []}"#);
+    let link = read.link("Checkout", "Billing").unwrap();
+    assert_eq!(link.internal_files(), link.files());
+    // A surface the package would refuse is none: the folder list counts again.
+    let read = with_surface(r#"{"classes": "Modules\\Billing\\Models\\Invoice"}"#);
+    let billing = read.module("Billing").unwrap();
+    assert_eq!(billing.surface, None);
+    assert_eq!(
+        read.link("Checkout", "Billing").unwrap().internal_files(),
+        3
+    );
 }
 
 #[test]

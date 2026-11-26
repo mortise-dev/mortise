@@ -286,6 +286,22 @@ fn a_question_ends_with_its_input() {
         matches!(end, RunEnd::Exited { code: Some(1), .. }),
         "{end:?}"
     );
+
+    // Input given to the run is the answer.
+    let run = Runs::new()
+        .start_with_input(
+            app(),
+            &php(""),
+            &words(&["ask"]),
+            TEST_LIMIT,
+            Some(b"Billing\n".to_vec()),
+        )
+        .unwrap();
+    let (_, end) = until_end(&run, Duration::from_secs(2));
+    assert!(
+        matches!(end, RunEnd::Exited { code: Some(0), .. }),
+        "{end:?}"
+    );
 }
 
 #[test]

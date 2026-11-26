@@ -427,6 +427,7 @@ pub fn read_app_cached(
             name: &module.name,
             on: module.state != ModuleState::Off,
             namespace: &module.namespace,
+            surface: module.surface.as_ref(),
             files: module
                 .scan
                 .sources
@@ -479,6 +480,7 @@ pub fn read_app_cached(
             description: module.description,
             priority: module.priority,
             manifest: module.manifest,
+            surface: module.surface,
             namespace: module.namespace,
             files: module.scan.files,
             lines: module.scan.lines,
