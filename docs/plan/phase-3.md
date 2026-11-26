@@ -14,8 +14,8 @@ of phase 1: the runtime mark per row of S3.1 (its sixth drawing), the runtime bo
 and the Module column of scheduled tasks on S4.2.
 
 Milestones are numbered 18 to 23, because phase 2 used 17 for the package-by-feature refactor.
-The phase 4 outline on the published site numbers its milestones 22 to 24; they move to 24 to 26 when
-phase 4 is planned.
+The phase 4 outline on the published site numbered its milestones 22 to 24. Phase 4 is milestones 24 to 28
+(see `docs/plan/phase-4.md`).
 
 ## 1. What was checked before writing this
 
