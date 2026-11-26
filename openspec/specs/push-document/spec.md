@@ -40,3 +40,10 @@ The core SHALL report when a document has more than 2,000 modules, 50,000 links,
 #### Scenario: A long class name
 - **WHEN** a module names a class of another module with a name of 1,100 characters
 - **THEN** the document is over a limit, and the limit names the class
+
+### Requirement: A module carries its accepted surface
+Each module of the push document SHALL carry its accepted public surface as the member `surface`: an object with `classes`, `routes` and `commands`, or null when it has none. The member SHALL be added without raising `SCHEMA_VERSION`, because the contract raises it only for a member that is removed, renamed or changes type.
+
+#### Scenario: The document of shop-api
+- **WHEN** the document of shop-api is built
+- **THEN** Users has a `surface` with one class, every other module has a null `surface`, and the document is valid against `push-document-1.schema.json`
