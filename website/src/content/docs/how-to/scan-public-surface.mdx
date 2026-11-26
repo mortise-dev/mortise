@@ -1,6 +1,6 @@
 ---
 title: Scan the public surface of a module
-description: Scan one module for the classes, routes and commands other code may use, adjust the proposal and copy it.
+description: Scan one module for the classes, routes and commands other code may use, adjust the proposal and accept it.
 sidebar:
   order: 4
 ---
@@ -27,17 +27,28 @@ The scan writes nothing. What a public surface is for is in [About boundaries](/
 6. If something is missing, type a class, a route or a command in **Add a class, a route or a command** and press <kbd>Enter</kbd>.
    The shortcut <kbd>A</kbd> moves focus to this field.
 
-7. Press **Copy as text**. Mortise copies the checked entries, by kind.
+7. Press **Accept** with the number of entries, such as **Accept 12 entries**, or <kbd>Ctrl</kbd> <kbd>Enter</kbd>.
+   A dialog shows the exact command, `module:surface Billing --set --stdin --json`. Press the button again to run it.
+   The command runs through the PHP you chose for the app and stores the surface in the `module.json` of the module.
 
 </Steps>
 
 <Screen id="s5.7-surface-proposal" alt="The proposed public surface of a module: interfaces, events, classes that other modules use and console commands, each with why it is here and which module uses it today." />
 
-You have the proposal as text, to keep with the module or to discuss with your team.
+The module has an accepted public surface. From now on the rule **Other modules use only a module's public surface**
+checks reads of the module against it, in the window and in `mortise check`. Commit the `module.json` so that the team and CI share it.
 
 <Aside>
-The button that accepts the entries, such as **Accept 12 entries**, stays off: the package cannot store a public surface yet. Until it can, the rule uses the folders that count as public. See [Add boundary rules to an app](/mortise/how-to/add-boundary-rules/).
+Accepting needs nwidart/laravel-modules 13.5 or later and a way to run PHP. Without them the button is off and says why.
+To keep the proposal without accepting it, press **Copy as text**: Mortise copies the checked entries, by kind.
 </Aside>
+
+## Check the surface later
+
+Open the view again: it shows the accepted surface. Press **Scan again**. Mortise lists only what differs,
+such as a new interface or an accepted class that is gone. Leave out a difference to keep its accepted state, then
+press **Accept** with the number of changes. **Keep the accepted surface** leaves everything as it is.
+To change the list by hand, press **Change**.
 
 If the proposal says "Routes were not read", connect an environment or set how PHP runs, then press **Scan again**.
 See [Connect the actuator of an app](/mortise/how-to/connect-actuator/) and [Choose the PHP for an app](/mortise/how-to/choose-php/).

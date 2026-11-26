@@ -16,6 +16,7 @@ mod palette;
 mod runs;
 mod runtime;
 mod settings;
+mod surface;
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -186,6 +187,11 @@ enum ReadFor {
         target: Target,
         connection: String,
         place: RunPlace,
+    },
+    /// `module:surface <module> --set --stdin --json` (P6), with the surface it stores.
+    Surface {
+        module: String,
+        surface: mortise_core::AcceptedSurface,
     },
 }
 
@@ -849,7 +855,13 @@ impl eframe::App for MortiseApp {
                         findings_open: &mut open.findings_open,
                         finding_row: &mut open.finding_row,
                         keyboard: self.keyboard,
-                        surface: surface_inputs(&app, &open.selection, &runtime),
+                        surface: surface_inputs(
+                            &app,
+                            entry,
+                            &open.selection,
+                            &runtime,
+                            busy(&open.runs, open.reading.as_ref()),
+                        ),
                         mac,
                         actions: &mut open.actions,
                         actions_inputs: ActionsInputs {
@@ -1126,6 +1138,17 @@ impl eframe::App for MortiseApp {
                 (Some(Answer::Confirm), Some((_, Pending::Generate { index, run }))) => {
                     self.start_generate(index, run)
                 }
+                (
+                    Some(Answer::Confirm),
+                    Some((
+                        _,
+                        Pending::AcceptSurface {
+                            index,
+                            module,
+                            surface,
+                        },
+                    )),
+                ) => self.accept_surface(index, module, surface),
                 // "Dry run" checks the option on the panel and runs nothing (deviation S38).
                 (Some(Answer::Left), Some((_, Pending::Action { index, act }))) => {
                     self.check_dry_run(index, &act)
@@ -1183,6 +1206,12 @@ impl eframe::App for MortiseApp {
                     self.generate(current, ask);
                 }
             }
+            Some(WorkAction::AcceptSurface { module, surface }) => {
+                if let Some(current) = self.current {
+                    self.ask_accept_surface(current, module, surface);
+                }
+            }
+            Some(WorkAction::Said(said)) => self.toast = Some(Toast::done(said)),
             _ => {}
         }
         if let Some(action) = toast_action {
@@ -1346,11 +1375,14 @@ fn place_of(php: &mortise_core::PhpSettings) -> RunPlace {
 }
 
 /// What a scan of the public surface takes from the running app: the routes and the
-/// scheduled tasks of the selected module, when the chosen environment gave them.
+/// scheduled tasks of the selected module, when the chosen environment gave them. And
+/// what accepting a surface needs: the package, the runner and a free app.
 fn surface_inputs<'a>(
     app: &AppSnapshot,
+    entry: &'a AppEntry,
     selection: &Selection,
     runtime: &'a RuntimeView<'a>,
+    busy: Option<&'a str>,
 ) -> SurfaceInputs<'a> {
     let answered = runtime.runtime();
     let routes = match (
@@ -1386,6 +1418,11 @@ fn surface_inputs<'a>(
         routes,
         scheduled,
         environment: runtime.environment(),
+        app: entry.display_name(),
+        runner: entry.php.runner.as_ref(),
+        stores: mortise_core::stores_surface(&app.package),
+        package: app.package.full().to_owned(),
+        busy,
     }
 }
 
@@ -1417,6 +1454,12 @@ enum Pending {
     RunAgain { index: usize, args: Vec<String> },
     /// Start a generator in the app at this place on the rail.
     Generate { index: usize, run: GenerateRun },
+    /// Store the accepted public surface of a module in the app at this place on the rail.
+    AcceptSurface {
+        index: usize,
+        module: String,
+        surface: mortise_core::AcceptedSurface,
+    },
 }
 
 /// How wide the module index is for a window of this width (section 5.14), and

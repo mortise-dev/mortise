@@ -331,10 +331,16 @@ pub fn finding(finding: &mortise_core::Finding, app: &AppSnapshot, name: &str) -
                 classes => format!("{} classes of {of}", classes.len()),
             };
             let verb = if *n == 1 { "reads" } else { "read" };
+            // Not in the spec: a module with an accepted public surface offers that.
+            let offers = match app.module(of) {
+                Some(module) if module.surface.is_some() => {
+                    "its accepted public surface".to_owned()
+                }
+                _ => list_of(&app.rules.public_folders),
+            };
             format!(
-                "{} in {module} {verb} {what} directly. {of} offers {}.",
+                "{} in {module} {verb} {what} directly. {of} offers {offers}.",
                 files(*n as u64),
-                list_of(&app.rules.public_folders)
             )
         }
         // `Modules/Loyalty/module.json is not valid JSON: unexpected end of file at line 14.`

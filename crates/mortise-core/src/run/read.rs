@@ -43,7 +43,18 @@ impl Read {
         php: &PhpSettings,
         args: &[String],
     ) -> Result<Read, StartError> {
-        let run = runs.start(app, php, args, php.time_limit())?;
+        Self::start_with_input(runs, app, php, args, None)
+    }
+
+    /// [`Read::start`], with `input` on the standard input of the command.
+    pub fn start_with_input(
+        runs: &Runs,
+        app: &Path,
+        php: &PhpSettings,
+        args: &[String],
+        input: Option<Vec<u8>>,
+    ) -> Result<Read, StartError> {
+        let run = runs.start_with_input(app, php, args, php.time_limit(), input)?;
         Ok(Read {
             run,
             stdout: Vec::new(),

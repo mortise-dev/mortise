@@ -104,7 +104,7 @@ fn chord(harness: &mut Harness<'static, MortiseApp>, key: Key) {
 #[test]
 fn the_workbench_and_its_tabs() {
     let stub = shop_api_actuator();
-    let (_desk, mut harness) = connected(&stub);
+    let (desk, mut harness) = connected(&stub);
     audit(&harness, "Summary of all modules, with runtime");
     // The runtime mark of a row is drawn, and says its status in a name.
     assert!(
@@ -157,6 +157,27 @@ fn the_workbench_and_its_tabs() {
     chord(&mut harness, Key::Enter);
     harness.run_steps(6);
     audit(&harness, "Public surface, proposal");
+    harness
+        .get_by_role_and_label(Role::ListBoxOption, "Users")
+        .click();
+    harness.run_steps(3);
+    audit(&harness, "Public surface, accepted");
+    // An interface that came after the surface was accepted: a later scan differs.
+    std::fs::write(
+        desk.path()
+            .join("shop-api/Modules/Users/app/Contracts/Directory.php"),
+        "<?php\n\nnamespace Modules\\Users\\Contracts;\n\ninterface Directory\n{\n}\n",
+    )
+    .unwrap();
+    harness
+        .get_by_role_and_label(Role::Button, "Scan again")
+        .click();
+    harness.run_steps(6);
+    harness.get_by_role_and_label(
+        Role::Heading,
+        "Differences from the accepted surface of Users",
+    );
+    audit(&harness, "Public surface, differences");
 
     // The strip of the collapsed index.
     chord(&mut harness, Key::B);

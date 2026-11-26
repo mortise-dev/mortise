@@ -204,7 +204,7 @@ fn the_boundary_of_the_app_lists_the_links_that_break_a_rule() {
     );
     harness.get_by_role_and_label(Role::Heading, "Rules for shop-api");
     harness.get_by_label(
-        "Accepted for 0 of 7 modules. For a module without one, these folders count:",
+        "Accepted for 1 of 7 modules. For a module without one, these folders count:",
     );
 
     // A row lands on the module's Boundary, on that link.

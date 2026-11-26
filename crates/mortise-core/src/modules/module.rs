@@ -15,6 +15,7 @@ use crate::modules::git::Churn;
 use crate::modules::kind::{COMMANDS, Kinds, TESTS};
 use crate::modules::layout::Layout;
 use crate::php::{Analysis, Declared, analyze, count_tests};
+use crate::surface::AcceptedSurface;
 
 /// Whether a module is turned on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -62,6 +63,9 @@ pub struct Module {
     /// The load order the package uses, lowest first.
     pub priority: i64,
     pub manifest: Manifest,
+    /// The accepted public surface: the `surface` key of `module.json`. `None` when
+    /// the module has none, or it cannot be read as one.
+    pub surface: Option<AcceptedSurface>,
     /// The namespace the module's classes share: `Modules\Billing`. From the
     /// module's `composer.json`, else from the config and the module's name.
     pub namespace: String,
@@ -95,6 +99,7 @@ pub(crate) struct FoundModule {
     pub(crate) description: String,
     pub(crate) priority: i64,
     pub(crate) manifest: Manifest,
+    pub(crate) surface: Option<AcceptedSurface>,
     /// The namespace the module's classes share: `Modules\Billing`.
     pub(crate) namespace: String,
     pub(crate) scan: Scan,
@@ -232,6 +237,7 @@ pub(crate) fn find_modules(
                 state,
                 description: fields.description,
                 priority: fields.priority,
+                surface: fields.surface,
                 manifest,
             })
         })
@@ -252,6 +258,7 @@ struct ManifestFields {
     name: Option<String>,
     description: String,
     priority: i64,
+    surface: Option<AcceptedSurface>,
 }
 
 fn read_manifest(path: &Path) -> (Manifest, ManifestFields) {
@@ -284,6 +291,7 @@ fn read_manifest(path: &Path) -> (Manifest, ManifestFields) {
             .get("priority")
             .and_then(serde_json::Value::as_i64)
             .unwrap_or(0),
+        surface: AcceptedSurface::of_manifest(&value),
     };
     let manifest = if fields.name.is_some() {
         Manifest::Valid

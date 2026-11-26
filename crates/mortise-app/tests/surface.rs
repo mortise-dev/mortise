@@ -2,7 +2,11 @@
 
 mod common;
 
-use common::{Desk, connected, pad_module, shop_api, shop_api_actuator};
+use std::time::{Duration, Instant};
+
+use common::{
+    Desk, app_with_package, connected, pad_module, shop_api, shop_api_actuator, wait_until,
+};
 use eframe::egui::accesskit::Toggled;
 use eframe::egui::{Key, Modifiers, Role};
 use egui_kittest::Harness;
@@ -10,14 +14,19 @@ use egui_kittest::kittest::{NodeT as _, Queryable as _};
 use mortise_app::app::MortiseApp;
 use mortise_app::app::workspace::Tab;
 use mortise_app::index::view::Selection;
+use mortise_core::RunnerKind;
 
 const INVOICE: &str = r"Modules\Billing\Models\Invoice";
 const CONTROLLER: &str = r"Modules\Billing\Http\Controllers\InvoiceController";
 
 /// Opens the Boundary tab of Billing on its second view.
 fn open_surface(harness: &mut Harness<'static, MortiseApp>) {
+    open_surface_of(harness, "Billing");
+}
+
+fn open_surface_of(harness: &mut Harness<'static, MortiseApp>, module: &str) {
     harness
-        .get_by_role_and_label(Role::ListBoxOption, "Billing")
+        .get_by_role_and_label(Role::ListBoxOption, module)
         .click();
     harness.run_steps(2);
     harness.key_press(Key::Num2);
@@ -41,6 +50,17 @@ fn scan(harness: &mut Harness<'static, MortiseApp>) {
         }
     }
     panic!("the scan did not end");
+}
+
+/// Steps, for at most 10 s, until a label holds `text`: a scan or a command ended.
+fn until(harness: &mut Harness<'static, MortiseApp>, text: &str) {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while harness.query_by_label_contains(text).is_none() {
+        assert!(Instant::now() < deadline, "waited 10 s for: {text}");
+        harness.step();
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    harness.run_steps(2);
 }
 
 fn is_checked(harness: &Harness<'static, MortiseApp>, entry: &str) -> bool {
@@ -171,7 +191,10 @@ fn a_scan_proposes_contracts_events_and_commands() {
     assert!(accept.accesskit_node().is_disabled());
     accept.hover();
     harness.run_steps(12);
-    harness.get_by_label("The package cannot store a public surface yet");
+    harness.get_by_label(
+        "The package cannot store a public surface yet. nwidart/laravel-modules 13.3.0 has no \
+         module:surface; update it to 13.5 or later.",
+    );
 
     // Nothing was written.
     assert!(!desk.path().join("shop-api/mortise.json").exists());
@@ -423,4 +446,202 @@ fn a_module_that_offers_nothing_says_so() {
     );
     assert_eq!(harness.query_all_by_role(Role::CheckBox).count(), 0);
     harness.get_by_role_and_label(Role::Button, "Accept 0 entries");
+}
+
+#[test]
+fn accept_shows_the_package_command_and_runs_it_with_the_surface() {
+    let desk = Desk::new();
+    let root = app_with_package(&desk, "shop-api", "v13.5.0");
+    desk.knows(&[(&root, "SA")]);
+    let mut settings = desk.saved();
+    settings.apps[0].php.runner = Some(RunnerKind::Custom {
+        line: format!("\"{}\"", env!("CARGO_BIN_EXE_app-fake-artisan")),
+    });
+    settings.save(&desk.settings_path()).unwrap();
+    let mut harness = desk.start();
+    open_surface(&mut harness);
+    scan(&mut harness);
+
+    // Ctrl Enter accepts: the exact command is on screen before it runs.
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::Enter);
+    harness.run_steps(3);
+    harness.get_by_label("Accept the public surface of Billing?");
+    harness.get_by_label_contains(
+        "module:surface --no-interaction --ansi Billing --set --stdin --json",
+    );
+    harness.get_by_label("Its standard input is the 7 entries, as one JSON object.");
+    // Focus starts on the button that goes ahead.
+    harness.key_press(Key::Enter);
+    until(
+        &mut harness,
+        "Accepted the public surface of Billing: 7 entries.",
+    );
+
+    // Users has an accepted surface. The view stays on the surface from one module to
+    // the next. A later scan that matches the surface says so.
+    harness
+        .get_by_role_and_label(Role::ListBoxOption, "Users")
+        .click();
+    harness.run_steps(3);
+    harness.get_by_role_and_label(Role::Heading, "Public surface of Users");
+    harness
+        .get_by_role_and_label(Role::Button, "Scan again")
+        .click();
+    until(&mut harness, "The scan matches the accepted surface.");
+    harness.get_by_role_and_label(Role::Heading, "Public surface of Users");
+
+    // A package without module:surface says what to do.
+    harness
+        .get_by_role_and_label(Role::Button, "Change")
+        .click();
+    until(&mut harness, "Proposed public surface of Users");
+    harness
+        .get_by_role_and_label(Role::Button, "Accept 1 entry")
+        .click();
+    harness.run_steps(3);
+    harness.key_press(Key::Enter);
+    until(&mut harness, "The public surface of Users was not stored");
+    harness.get_by_label_contains("Update nwidart/laravel-modules to 13.5 or later");
+}
+
+#[test]
+fn a_cut_answer_counts_as_stored_when_module_json_holds_the_surface() {
+    let desk = Desk::new();
+    let root = app_with_package(&desk, "shop-api", "v13.5.0");
+    desk.knows(&[(&root, "SA")]);
+    let mut settings = desk.saved();
+    // `long` ends with 0 after one line longer than Mortise keeps.
+    settings.apps[0].php.runner = Some(RunnerKind::Custom {
+        line: format!("\"{}\" long", env!("CARGO_BIN_EXE_app-fake-artisan")),
+    });
+    settings.save(&desk.settings_path()).unwrap();
+    let mut harness = desk.start();
+    open_surface_of(&mut harness, "Users");
+    harness
+        .get_by_role_and_label(Role::Button, "Change")
+        .click();
+    until(&mut harness, "Proposed public surface of Users");
+    // The surface of Users is in its module.json already, as after a write.
+    harness
+        .get_by_role_and_label(Role::Button, "Accept 1 entry")
+        .click();
+    harness.run_steps(3);
+    harness.key_press(Key::Enter);
+    until(
+        &mut harness,
+        "Accepted the public surface of Users: 1 entry.",
+    );
+}
+
+#[test]
+fn an_accepted_surface_is_shown_and_a_later_scan_lists_what_differs() {
+    let desk = Desk::new();
+    let root = desk.app("shop-api");
+    // Since the surface was accepted, an interface came and an accepted class went.
+    let users = root.join("Modules/Users");
+    std::fs::write(
+        users.join("app/Contracts/Directory.php"),
+        "<?php\n\nnamespace Modules\\Users\\Contracts;\n\ninterface Directory\n{\n}\n",
+    )
+    .unwrap();
+    let manifest = users.join("module.json");
+    let json = std::fs::read_to_string(&manifest).unwrap().replace(
+        r#""Modules\\Users\\Contracts\\UserLookup""#,
+        r#""Modules\\Users\\Contracts\\UserLookup", "Modules\\Users\\Models\\Gone""#,
+    );
+    std::fs::write(&manifest, json).unwrap();
+    desk.knows(&[(&root, "SA")]);
+    let mut harness = desk.start();
+    open_surface_of(&mut harness, "Users");
+
+    // S5.8: read only, with who uses each entry today.
+    harness.get_by_role_and_label(Role::Heading, "Public surface of Users");
+    harness.get_by_label("Accepted, 2 entries");
+    harness.get_by_role_and_label(Role::Heading, "Classes");
+    harness.get_by_label(r"Modules\Users\Contracts\UserLookup");
+    harness.get_by_label("Checkout, 1 file");
+    assert_eq!(harness.query_all_by_role(Role::CheckBox).count(), 0);
+
+    // S5.9: only the differences, each checked.
+    harness
+        .get_by_role_and_label(Role::Button, "Scan again")
+        .click();
+    until(
+        &mut harness,
+        "The scan differs from the accepted surface in 2 places.",
+    );
+    harness.get_by_role_and_label(
+        Role::Heading,
+        "Differences from the accepted surface of Users",
+    );
+    assert!(is_checked(&harness, r"Modules\Users\Contracts\Directory"));
+    assert!(is_checked(&harness, r"Modules\Users\Models\Gone"));
+    harness.get_by_label("new in the code add it");
+    harness.get_by_label("no longer in the code remove it");
+    harness.get_by_label("1 entry is the same as accepted and is not listed.");
+    harness.key_press(Key::Space);
+    harness.run_steps(2);
+    harness.get_by_role_and_label(Role::Button, "Accept 1 change");
+
+    // Keeping the accepted surface goes back to it.
+    harness
+        .get_by_role_and_label(Role::Button, "Keep the accepted surface")
+        .click();
+    harness.run_steps(3);
+    harness.get_by_label("Accepted, 2 entries");
+
+    // Change brings back the checkboxes with the accepted state.
+    harness
+        .get_by_role_and_label(Role::Button, "Change")
+        .click();
+    until(&mut harness, "Proposed public surface of Users");
+    assert!(is_checked(&harness, r"Modules\Users\Contracts\UserLookup"));
+    assert!(!is_checked(&harness, r"Modules\Users\Contracts\Directory"));
+    // Scanning again keeps what the developer changed.
+    harness
+        .get_by_role_and_label(Role::CheckBox, r"Modules\Users\Contracts\Directory")
+        .click();
+    harness.run_steps(2);
+    harness
+        .get_by_role_and_label(Role::Button, "Scan again")
+        .click();
+    harness.run_steps(2);
+    until(&mut harness, "Proposed public surface of Users");
+    assert!(is_checked(&harness, r"Modules\Users\Contracts\UserLookup"));
+    assert!(is_checked(&harness, r"Modules\Users\Contracts\Directory"));
+    // Nothing was written.
+    assert!(std::fs::read_to_string(&manifest).unwrap().contains("Gone"));
+
+    // The differences hold only for the surface they were found against. When
+    // module.json changes under them, the view shows what it holds now.
+    harness
+        .get_by_role_and_label(Role::Button, "Keep the accepted surface")
+        .click();
+    harness.run_steps(3);
+    harness
+        .get_by_role_and_label(Role::Button, "Scan again")
+        .click();
+    until(
+        &mut harness,
+        "The scan differs from the accepted surface in 2 places.",
+    );
+    let json = std::fs::read_to_string(&manifest).unwrap().replace(
+        r#""Modules\\Users\\Contracts\\UserLookup", "Modules\\Users\\Models\\Gone""#,
+        "",
+    );
+    std::fs::write(&manifest, json).unwrap();
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::R);
+    wait_until(&mut harness, "an empty surface", |app| {
+        app.app().is_some_and(|app| {
+            app.module("Users")
+                .and_then(|users| users.surface.as_ref())
+                .is_some_and(|surface| surface.entries() == 0)
+        })
+    });
+    harness.get_by_role_and_label(Role::Heading, "Public surface of Users");
+    assert!(
+        harness
+            .query_by_label_contains("Differences from the accepted surface")
+            .is_none()
+    );
 }

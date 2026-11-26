@@ -542,8 +542,19 @@ impl View<'_> {
                 strings::reported_on_in_circle(&cycle.carrier)
             }
             Some(cycle) => strings::reported_on(&cycle.carrier),
-            None if titled => strings::rule_of_links(module, other, rules),
-            None => strings::rule_of_link(&first_link.to, rules),
+            None if titled => {
+                let accepted = [module, other]
+                    .iter()
+                    .any(|name| self.app.module(name).is_some_and(|m| m.surface.is_some()));
+                strings::rule_of_links(module, other, accepted, rules)
+            }
+            None => {
+                let accepted = self
+                    .app
+                    .module(&first_link.to)
+                    .is_some_and(|to| to.surface.is_some());
+                strings::rule_of_link(&first_link.to, accepted, rules)
+            }
         };
         let copy = Button {
             label: strings::COPY_PATH,
@@ -1242,7 +1253,13 @@ impl View<'_> {
         .iter()
         .map(|label| draw::checkbox_extra(ui, label_w, label))
         .sum();
-        let accepted = strings::accepted_for(0, self.app.modules.len());
+        let with_surface = self
+            .app
+            .modules
+            .iter()
+            .filter(|module| module.surface.is_some())
+            .count();
+        let accepted = strings::accepted_for(with_surface, self.app.modules.len());
         let hint = draw::galley_wrapped(ui, &accepted, ty::SECONDARY, pal.ink_2, hint_w);
         let title = strings::rules_for(self.name);
         let height = 41.0

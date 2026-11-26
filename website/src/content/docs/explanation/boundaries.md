@@ -58,11 +58,16 @@ This rule checks that a module reads only the public part of another module. A r
 class is a reference to internals.
 
 What counts as public? The full answer is a list of the classes, routes and commands that a module
-offers to others. The Boundary tab can scan a module and propose such a list. The package cannot store
-that list yet, so for now a simpler rule applies: a class in one of a few folders counts as public.
+offers to others: its accepted public surface. The Boundary tab can scan a module and propose such a list.
+When you accept it, the package command `module:surface` stores it under the key `surface` of the
+module's `module.json`. The list then travels with the module, and every copy of the app reads it, with no
+PHP. For a module with a surface, only the classes it lists are public.
+
+A module without a surface gets a simpler rule: a class in one of a few folders counts as public.
 By default those folders are `Contracts` and `Events`, because interfaces and events are the usual way
 for modules to talk without knowing each other's insides. A class directly in the namespace of the
-module, in no folder, is not public.
+module, in no folder, is not public. A `surface` key that the package would refuse, such as one whose
+lists are not lists of strings, counts as no surface.
 
 You can change the list of folders. A shorter list is stricter. The rule applies only when both modules
 are on.

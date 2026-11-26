@@ -17,3 +17,4 @@ The `--json` commands of 13.4.0 were recorded with the app as it is described in
 The script that recorded them wrote the folder of that app as `/tmp/scratch-app`, in `root` and in the output.
 `module-test-fail.json` ran a test that fails on purpose, and `module-test-all.json` ran with that test in place.
 The output of `module:generators --json` is one line of 48552 bytes (48553 with the newline), under the 64 KiB line limit of standard output.
+`module-surface-set-json.json` was recorded with nwidart/laravel-modules 13.5.0, in a scratch app with module Billing. Its standard input was one JSON object with two classes, a route and a command.

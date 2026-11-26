@@ -1,15 +1,19 @@
-//! The public surface of a module (S5.5 to S5.7): the second view of the Boundary tab.
+//! The public surface of a module (S5.5 to S5.9): the second view of the Boundary tab.
 //!
 //! A scan proposes what other modules, HTTP clients and the command line may use.
-//! It never starts by itself and it writes nothing. Accepting a proposal needs a
-//! place in the package to store it, which does not exist yet.
+//! It never starts by itself and it writes nothing. Accepting a proposal asks for the
+//! package command `module:surface`, which stores it in the module's `module.json`.
 
+use std::collections::{BTreeMap, BTreeSet};
 use std::time::Instant;
 
 use eframe::egui::{
-    Align2, Key, KeyboardShortcut, Modifiers, Rect, Role, Ui, Vec2, WidgetInfo, pos2, vec2,
+    self, Align2, Key, KeyboardShortcut, Modifiers, Rect, Role, Ui, Vec2, WidgetInfo, pos2, vec2,
 };
-use mortise_core::{AppSnapshot, Module, Proposal, SurfaceEntry, SurfaceKind, SurfaceScan};
+use mortise_core::{
+    AcceptedSurface, AppSnapshot, Difference, Module, Proposal, RunnerKind, Severity, SurfaceEntry,
+    SurfaceKind, SurfaceScan,
+};
 
 use crate::app::workspace::WorkAction;
 use crate::boundary::strings;
@@ -20,10 +24,26 @@ use crate::ui::theme::{Palette, Type, radius, size, ty};
 /// How many files a scan reads in one frame.
 const FILES_A_FRAME: usize = 8;
 
+/// What a scan is for.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+enum Purpose {
+    /// A proposal (S5.7).
+    #[default]
+    Propose,
+    /// A change of the accepted surface: the proposal starts from it (S5.8 "Change").
+    Change,
+    /// The differences from the accepted surface (S5.9).
+    Compare,
+}
+
 /// What the view keeps for one module.
 #[derive(Default)]
 pub struct ModuleSurface {
     scan: Option<SurfaceScan>,
+    purpose: Purpose,
+    /// What a later scan found different from the accepted surface (S5.9), with the
+    /// accepted surface it was compared with.
+    differences: Option<(AcceptedSurface, Vec<Difference>)>,
     pub proposal: Option<Proposal>,
     /// When the proposal was made.
     scanned: Option<Instant>,
@@ -43,6 +63,29 @@ pub struct SurfaceInputs<'a> {
     pub scheduled: Vec<(String, String)>,
     /// The name of the environment the routes were read from.
     pub environment: &'a str,
+    /// The display name of the app.
+    pub app: &'a str,
+    /// How PHP runs for the app. Accepting needs it.
+    pub runner: Option<&'a RunnerKind>,
+    /// The app's package stores a surface: `module:surface`, from 13.5.
+    pub stores: bool,
+    /// The version of the app's package.
+    pub package: String,
+    /// The command that runs in the app, if one does.
+    pub busy: Option<&'a str>,
+}
+
+impl SurfaceInputs<'_> {
+    /// Why Accept is off, or `None` when it is on.
+    fn accept_blocked(&self) -> Option<String> {
+        if !self.stores {
+            Some(strings::cannot_store_surface(&self.package))
+        } else if self.runner.is_none() {
+            Some(crate::strings::choose_php(self.app))
+        } else {
+            self.busy.map(crate::strings::is_running)
+        }
+    }
 }
 
 impl ModuleSurface {
@@ -58,8 +101,17 @@ impl ModuleSurface {
 
     /// Starts a scan. One that runs is left alone.
     pub fn start(&mut self, app: &AppSnapshot, module: &str) {
+        self.start_for(app, module, Purpose::Propose);
+    }
+
+    fn start_for(&mut self, app: &AppSnapshot, module: &str, purpose: Purpose) {
         if self.scan.is_none() {
             self.scan = SurfaceScan::start(app, module);
+            // A proposal made for another purpose holds no choices of the developer.
+            if self.purpose != purpose {
+                self.proposal = None;
+            }
+            self.purpose = purpose;
         }
     }
 
@@ -68,25 +120,44 @@ impl ModuleSurface {
         self.scan = None;
     }
 
-    /// Reads a few more files. When all are read the proposal is made; it keeps
-    /// what the developer chose in the one before.
-    fn advance(&mut self, inputs: &SurfaceInputs<'_>) {
+    /// Reads a few more files. When all are read the proposal is made. A proposal keeps
+    /// what the developer chose in the one before; a change starts from the accepted
+    /// surface, then keeps what the developer chose in the change before; a comparison
+    /// keeps the differences. Returns true when a comparison found none.
+    fn advance(&mut self, inputs: &SurfaceInputs<'_>, accepted: Option<&AcceptedSurface>) -> bool {
         let Some(scan) = &mut self.scan else {
-            return;
+            return false;
         };
         if !scan.step(FILES_A_FRAME) {
-            return;
+            return false;
         }
         let Some(scan) = self.scan.take() else {
-            return;
+            return false;
         };
         let mut proposal = scan.finish(inputs.routes.as_deref(), &inputs.scheduled);
-        if let Some(earlier) = &self.proposal {
-            proposal.keep_choices_of(earlier);
+        let mut same = false;
+        match (self.purpose, accepted) {
+            (Purpose::Change, Some(accepted)) => {
+                proposal.take_choices_of(accepted);
+                if let Some(earlier) = &self.proposal {
+                    proposal.keep_choices_of(earlier);
+                }
+            }
+            (Purpose::Compare, Some(accepted)) => {
+                let differences = proposal.differences(accepted);
+                same = differences.is_empty();
+                self.differences = (!same).then(|| (accepted.clone(), differences));
+            }
+            _ => {
+                if let Some(earlier) = &self.proposal {
+                    proposal.keep_choices_of(earlier);
+                }
+            }
         }
         self.proposal = Some(proposal);
         self.scanned = Some(Instant::now());
         self.focus_first = true;
+        same
     }
 }
 
@@ -116,8 +187,11 @@ pub fn surface(
     let run = KeyboardShortcut::new(Modifiers::COMMAND, Key::Enter);
     let run_keys = format!("{} Enter", crate::strings::command_key(place.mac));
 
+    let mut said = None;
     if state.is_scanning() {
-        state.advance(inputs);
+        if state.advance(inputs, module.surface.as_ref()) {
+            said = Some(WorkAction::Said(strings::SCAN_MATCHES));
+        }
         // The next files are read in the next frame.
         ui.ctx().request_repaint();
     }
@@ -129,7 +203,26 @@ pub fn surface(
         return (bottom, None);
     }
 
-    if state.proposal.is_none() {
+    // The differences hold only for the surface they were found against: module.json
+    // changed since, so the view starts again from what it holds now.
+    if state
+        .differences
+        .as_ref()
+        .is_some_and(|(compared, _)| module.surface.as_ref() != Some(compared))
+    {
+        *state = ModuleSurface::default();
+    }
+    if let Some(accepted) = &module.surface {
+        if state.differences.is_some() {
+            // S5.9: a later scan differs.
+            return differences(ui, place, module, accepted, state, inputs);
+        }
+        if state.proposal.is_none() || state.purpose != Purpose::Change {
+            // S5.8: the accepted surface.
+            let (bottom, asked) = accepted_view(ui, place, app, module, accepted, state);
+            return (bottom, asked.or(said));
+        }
+    } else if state.proposal.is_none() {
         // S5.5: not scanned yet. A scan never starts by itself.
         let title = strings::no_surface_yet(&module.name);
         let text = strings::scan_explained(&module.name, &app.rules.public_folders);
@@ -321,7 +414,9 @@ pub fn surface(
             }
         }
     }
-    if let Some(index) = toggled {
+    // Ctrl Enter accepts; it does not also take in or leave out the focused row.
+    let accepting = ui.input(|input| input.modifiers.command && input.key_pressed(Key::Enter));
+    if let Some(index) = toggled.filter(|_| !accepting) {
         proposal.entries[index].proposed = !proposal.entries[index].proposed;
     }
 
@@ -374,26 +469,47 @@ pub fn surface(
     }
 
     let accept_label = strings::accept_entries(proposal.proposed());
+    let blocked = inputs.accept_blocked();
     let accept = Button {
         label: &accept_label,
         kind: ButtonKind::Primary,
         keys: Some(&run_keys),
-        disabled: true,
+        disabled: blocked.is_some(),
         ..Default::default()
     };
     let again = Button {
         label: strings::SCAN_AGAIN,
         ..Default::default()
     };
+    // A change of an accepted surface can go back to it; a proposal can be copied.
+    let changing = module.surface.is_some();
     let copy = Button {
-        label: strings::COPY_AS_TEXT,
+        label: if changing {
+            strings::KEEP_ACCEPTED
+        } else {
+            strings::COPY_AS_TEXT
+        },
         ..Default::default()
     };
     let button_y = foot.top() + 8.0 + (size::FIELD_H - size::CONTROL_H) / 2.0;
     let mut x = foot.right() - 12.0 - accept.width(ui);
-    // Accepting needs a place in the package to store the surface.
+    // Accepting needs the package command, a way to run PHP and a free app.
     let response = accept.show(ui, pal, pos2(x, button_y), place.keyboard);
-    draw::tooltip(response, pal, strings::CANNOT_STORE_SURFACE);
+    let accepted = match &blocked {
+        Some(reason) => {
+            draw::tooltip(response, pal, reason);
+            false
+        }
+        None => {
+            response.clicked() || (!typing && ui.input_mut(|input| input.consume_shortcut(&run)))
+        }
+    };
+    if accepted {
+        action = Some(WorkAction::AcceptSurface {
+            module: proposal.module.clone(),
+            surface: proposal.surface(),
+        });
+    }
     x -= 8.0 + again.width(ui);
     if again
         .show(ui, pal, pos2(x, button_y), place.keyboard)
@@ -402,17 +518,25 @@ pub fn surface(
         scan_again = true;
     }
     x -= 8.0 + copy.width(ui);
+    let mut keep = false;
     if copy
         .show(ui, pal, pos2(x, button_y), place.keyboard)
         .clicked()
     {
-        action = Some(WorkAction::Copy {
-            text: proposal.as_text(),
-            said: strings::COPIED_PROPOSAL,
-        });
+        if changing {
+            keep = true;
+        } else {
+            action = Some(WorkAction::Copy {
+                text: proposal.as_text(),
+                said: strings::COPIED_PROPOSAL,
+            });
+        }
     }
-    if scan_again {
-        state.start(app, &module.name);
+    if keep {
+        *state = ModuleSurface::default();
+    } else if scan_again {
+        let purpose = state.purpose;
+        state.start_for(app, &module.name, purpose);
         ui.ctx().request_repaint();
     }
     (rect.bottom(), action)
@@ -616,4 +740,522 @@ fn scanning(
     };
     let stopped = stop.show(ui, pal, pos2(left, y), place.keyboard).clicked();
     (y + size::CONTROL_H, stopped)
+}
+
+/// Who reads each class of `module` from outside, by module and file, and what of it
+/// breaks the rule: from the links Mortise already has.
+struct Reads {
+    /// A class in lower case, to the modules that read it with their files.
+    by_class: BTreeMap<String, BTreeMap<String, BTreeSet<String>>>,
+    /// The classes read that the surface leaves out, the files that read them, and
+    /// the modules those files are in.
+    left_out: (BTreeSet<String>, BTreeSet<String>, BTreeSet<String>),
+}
+
+fn reads_of(app: &AppSnapshot, module: &str) -> Reads {
+    let mut reads = Reads {
+        by_class: BTreeMap::new(),
+        left_out: Default::default(),
+    };
+    for link in app.links.iter().filter(|link| link.to == module) {
+        for reference in &link.refs {
+            reads
+                .by_class
+                .entry(reference.class.to_lowercase())
+                .or_default()
+                .entry(link.from.clone())
+                .or_default()
+                .insert(reference.file.clone());
+            if reference.internal {
+                let (classes, files, modules) = &mut reads.left_out;
+                classes.insert(reference.class.clone());
+                files.insert(reference.file.clone());
+                modules.insert(link.from.clone());
+            }
+        }
+    }
+    reads
+}
+
+impl Reads {
+    /// The modules that read a class, each with how many of its files do. Most files first.
+    fn users(&self, class: &str) -> Vec<(String, usize)> {
+        let mut users: Vec<(String, usize)> = self
+            .by_class
+            .get(&class.trim_start_matches('\\').to_lowercase())
+            .map(|users| {
+                users
+                    .iter()
+                    .map(|(module, files)| (module.clone(), files.len()))
+                    .collect()
+            })
+            .unwrap_or_default();
+        users.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+        users
+    }
+}
+
+/// The head of a table of the surface, its columns and the line under it. Returns
+/// where the rows start.
+fn table_head(ui: &Ui, pal: &Palette, rect: Rect, top: f32, columns: &[(f32, &str)]) -> f32 {
+    for (x, label) in columns {
+        let at = pos2(*x, top + size::TABLE_HEAD_H / 2.0);
+        let cell = draw::paint_text(ui, at, Align2::LEFT_CENTER, label, ty::LABEL, pal.ink_2);
+        draw::announce(ui, cell, Role::ColumnHeader, label);
+    }
+    let bottom = top + size::TABLE_HEAD_H;
+    draw::hline(
+        ui,
+        rect.left() + 1.0..rect.right() - 1.0,
+        bottom - 1.0,
+        pal.line_2,
+    );
+    bottom
+}
+
+/// A cell of text, elided to `width`, announced as a cell.
+fn cell(ui: &Ui, at: egui::Pos2, text: &str, ty: Type, color: egui::Color32, width: f32) {
+    let galley = draw::galley_elided(ui, text, ty, color, width);
+    let rect = draw::paint_galley(ui, at, Align2::LEFT_CENTER, galley);
+    draw::announce(ui, rect, Role::Cell, text);
+}
+
+const CELL_CODE: Type = Type {
+    size: 11.5,
+    ..ty::CODE
+};
+
+/// S5.8: the accepted surface, read only until "Change". Returns its bottom edge and
+/// what was asked for.
+fn accepted_view(
+    ui: &mut Ui,
+    place: &Place<'_>,
+    app: &AppSnapshot,
+    module: &Module,
+    accepted: &AcceptedSurface,
+    state: &mut ModuleSurface,
+) -> (f32, Option<WorkAction>) {
+    let pal = place.pal;
+    let reads = reads_of(app, &module.name);
+    const ROW: f32 = size::TABLE_ROW_H;
+
+    // Each list under its heading, with who uses each entry today.
+    enum Line<'a> {
+        Group(&'a str, usize),
+        Entry(&'a str, String, bool),
+        Text(String),
+    }
+    let mut lines = Vec::new();
+    if accepted.entries() == 0 {
+        lines.push(Line::Text(strings::offers_nothing(&module.name)));
+    }
+    let lists = [
+        (strings::CLASSES, &accepted.classes, true),
+        (crate::strings::ROUTES, &accepted.routes, false),
+        (strings::CONSOLE_COMMANDS, &accepted.commands, false),
+    ];
+    for (title, list, classes) in lists {
+        if list.is_empty() {
+            continue;
+        }
+        lines.push(Line::Group(title, list.len()));
+        for name in list {
+            let users = if classes {
+                reads.users(name)
+            } else {
+                Vec::new()
+            };
+            let (used, in_use) = if users.is_empty() {
+                (String::new(), false)
+            } else {
+                (strings::used_by_modules(&users), true)
+            };
+            let used = match (classes, in_use) {
+                (true, false) => strings::NOT_USED_OUTSIDE.to_owned(),
+                _ => used,
+            };
+            lines.push(Line::Entry(name, used, in_use));
+        }
+    }
+
+    let title = strings::surface_of(&module.name);
+    let note = strings::accepted_state(accepted.entries());
+    let head = 41.0 - 6.0;
+    let foot_h = 44.0;
+    let height = head + size::TABLE_HEAD_H + lines.len() as f32 * ROW + foot_h;
+    let rect = Rect::from_min_size(
+        pos2(place.left, place.area.top()),
+        vec2(place.width, height),
+    );
+    let table_top = draw::box_head(ui, pal, rect, &title, "") - 6.0;
+    // The state at the right of the head, with the good mark.
+    let mid = rect.top() + 1.0 + 8.0 + 9.0;
+    let note_type = Type {
+        size: 11.5,
+        ..ty::LABEL
+    };
+    let note_rect = draw::label(
+        ui,
+        pos2(rect.right() - 13.0, mid),
+        Align2::RIGHT_CENTER,
+        &note,
+        note_type,
+        pal.good,
+    );
+    let mark = Rect::from_min_size(
+        pos2(note_rect.left() - 5.0 - size::STATE_MARK, mid - 6.0),
+        Vec2::splat(size::STATE_MARK),
+    );
+    draw::mark_good(ui, mark, pal.good);
+
+    let entry_x = rect.left() + 46.0;
+    let used_x = (rect.left() + rect.width() * 0.6).round();
+    let right = rect.right() - 13.0;
+    let rows_top = table_head(
+        ui,
+        pal,
+        rect,
+        table_top,
+        &[
+            (entry_x, strings::COL_ENTRY),
+            (used_x, strings::COL_USED_TODAY),
+        ],
+    );
+    for (i, line) in lines.iter().enumerate() {
+        let top = rows_top + i as f32 * ROW;
+        let mid = top + ROW / 2.0;
+        draw::hline(
+            ui,
+            rect.left() + 1.0..rect.right() - 1.0,
+            top + ROW - 1.0,
+            pal.line,
+        );
+        match line {
+            Line::Group(title, count) => {
+                let at = pos2(rect.left() + 14.0, mid + 2.0);
+                let heading =
+                    draw::paint_text(ui, at, Align2::LEFT_CENTER, title, ty::LABEL, pal.ink);
+                draw::announce(ui, heading, Role::Heading, title);
+                let count_type = Type {
+                    size: 11.5,
+                    ..ty::BODY
+                };
+                let at = pos2(right, mid + 2.0);
+                let count = count.to_string();
+                draw::paint_text(ui, at, Align2::RIGHT_CENTER, &count, count_type, pal.ink_2);
+            }
+            Line::Entry(name, used, in_use) => {
+                let mark = Rect::from_min_size(
+                    pos2(rect.left() + 14.0, mid - 6.0),
+                    Vec2::splat(size::STATE_MARK),
+                );
+                draw::mark_good(ui, mark, pal.good);
+                let width = used_x - 12.0 - entry_x;
+                cell(ui, pos2(entry_x, mid), name, CELL_CODE, pal.ink, width);
+                let color = if *in_use { pal.ink } else { pal.ink_2 };
+                cell(ui, pos2(used_x, mid), used, ty::BODY, color, right - used_x);
+            }
+            Line::Text(text) => cell(
+                ui,
+                pos2(entry_x, mid),
+                text,
+                ty::BODY,
+                pal.ink_2,
+                right - entry_x,
+            ),
+        }
+    }
+
+    // The foot: what is left out and still a finding, then Change and Scan again.
+    let foot = Rect::from_min_max(
+        pos2(rect.left() + 1.0, rows_top + lines.len() as f32 * ROW),
+        pos2(rect.right() - 1.0, rect.bottom() - 1.0),
+    );
+    ui.painter().rect_filled(foot, 0, pal.panel);
+    let change = Button {
+        label: strings::CHANGE,
+        small: true,
+        ..Default::default()
+    };
+    let again = Button {
+        label: strings::SCAN_AGAIN,
+        small: true,
+        ..Default::default()
+    };
+    let button_y = foot.center().y - change.height() / 2.0;
+    let mut x = foot.right() - 12.0 - again.width(ui);
+    let scan_again = again
+        .show(ui, pal, pos2(x, button_y), place.keyboard)
+        .clicked();
+    x -= 8.0 + change.width(ui);
+    let change_it = change
+        .show(ui, pal, pos2(x, button_y), place.keyboard)
+        .clicked();
+    let (classes, files, modules) = &reads.left_out;
+    if !classes.is_empty() {
+        let classes: Vec<&str> = classes.iter().map(String::as_str).collect();
+        let modules: Vec<&str> = modules.iter().map(String::as_str).collect();
+        let text = strings::left_out(&classes, files.len(), &modules);
+        let width = x - 12.0 - (foot.left() + 12.0);
+        cell(
+            ui,
+            pos2(foot.left() + 12.0, foot.center().y),
+            &text,
+            ty::SECONDARY,
+            pal.ink_2,
+            width,
+        );
+    }
+    if scan_again || change_it {
+        let purpose = if change_it {
+            Purpose::Change
+        } else {
+            Purpose::Compare
+        };
+        state.start_for(app, &module.name, purpose);
+        ui.ctx().request_repaint();
+    }
+    (rect.bottom(), None)
+}
+
+/// S5.9: what a later scan found different from the accepted surface. Nothing changes
+/// until the developer accepts. Returns its bottom edge and what was asked for.
+fn differences(
+    ui: &mut Ui,
+    place: &Place<'_>,
+    module: &Module,
+    accepted: &AcceptedSurface,
+    state: &mut ModuleSurface,
+    inputs: &SurfaceInputs<'_>,
+) -> (f32, Option<WorkAction>) {
+    let pal = place.pal;
+    let typing = ui.ctx().text_edit_focused();
+    let run = KeyboardShortcut::new(Modifiers::COMMAND, Key::Enter);
+    let run_keys = format!("{} Enter", crate::strings::command_key(place.mac));
+    let focus_first = std::mem::take(&mut state.focus_first);
+    let Some((_, differences)) = &mut state.differences else {
+        return (place.area.top(), None);
+    };
+    const ROW: f32 = size::TABLE_ROW_H;
+
+    let (alert_bottom, _) = draw::alert_box(
+        ui,
+        pal,
+        pos2(place.left, place.area.top()),
+        place.width,
+        Severity::Warning,
+        &strings::scan_differs(differences.len()),
+        strings::NOTHING_CHANGES_YET,
+        None,
+        true,
+    );
+    let top = alert_bottom + 12.0;
+
+    // Under the differences: how many entries stay as they are, and what is still left out.
+    let gone = differences
+        .iter()
+        .filter(|difference| !difference.new)
+        .count();
+    let mut summary = strings::same_as_accepted(accepted.entries().saturating_sub(gone));
+    let still_out: Vec<&str> = state
+        .proposal
+        .iter()
+        .flat_map(|proposal| &proposal.entries)
+        .filter(|entry| {
+            entry.kind == SurfaceKind::OtherClass
+                && !entry.used_by.is_empty()
+                && !accepted.has(entry)
+                && !differences
+                    .iter()
+                    .any(|difference| difference.entry.name == entry.name)
+        })
+        .map(|entry| entry.name.as_str())
+        .collect();
+    if !still_out.is_empty() {
+        summary = format!("{summary} {}", strings::still_left_out(&still_out));
+    }
+
+    let title = strings::differences_of(&module.name);
+    let head = 41.0 - 6.0;
+    let foot_h = 44.0;
+    let height = head + size::TABLE_HEAD_H + (differences.len() + 1) as f32 * ROW + foot_h;
+    let rect = Rect::from_min_size(pos2(place.left, top), vec2(place.width, height));
+    let table_top = draw::box_head(ui, pal, rect, &title, "") - 6.0;
+    let entry_x = rect.left() + 46.0;
+    let what_x = (rect.left() + rect.width() * 0.455).round();
+    let used_x = (rect.left() + rect.width() * 0.728).round();
+    let right = rect.right() - 13.0;
+    let rows_top = table_head(
+        ui,
+        pal,
+        rect,
+        table_top,
+        &[
+            (entry_x, strings::COL_ENTRY),
+            (what_x, strings::COL_DIFFERENCE),
+            (used_x, strings::COL_USED_TODAY),
+        ],
+    );
+
+    // The differences are one stop: J and K move, Space takes one or leaves it.
+    let nav = draw::ListNav::new(ui, ("surface-differences", &module.name), differences.len());
+    if focus_first && !differences.is_empty() {
+        nav.focus(ui);
+    }
+    let mut toggled = None;
+    for (i, difference) in differences.iter().enumerate() {
+        let row_top = rows_top + i as f32 * ROW;
+        let mid = row_top + ROW / 2.0;
+        let row_rect = Rect::from_min_max(
+            pos2(rect.left() + 1.0, row_top),
+            pos2(rect.right() - 1.0, row_top + ROW),
+        );
+        draw::hline(
+            ui,
+            row_rect.left()..row_rect.right(),
+            row_rect.bottom() - 1.0,
+            pal.line,
+        );
+        let entry = &difference.entry;
+        let response = ui.interact(row_rect, nav.id(i), nav.sense(i));
+        nav.after(ui, i, &response);
+        response.widget_info(|| {
+            WidgetInfo::selected(Role::CheckBox, true, difference.taken, &entry.name)
+        });
+        if response.hovered() {
+            ui.painter()
+                .rect_filled(row_rect.shrink2(vec2(0.0, 0.5)), 0, pal.well);
+        }
+        if response.clicked() {
+            toggled = Some(i);
+        }
+        let mark = Rect::from_min_size(
+            pos2(rect.left() + 14.0, (mid - size::CHECKBOX / 2.0).round()),
+            Vec2::splat(size::CHECKBOX),
+        );
+        draw::checkbox_box(ui, pal, mark, difference.taken, false, response.hovered());
+        cell(
+            ui,
+            pos2(entry_x, mid),
+            &entry.name,
+            CELL_CODE,
+            pal.ink,
+            what_x - 12.0 - entry_x,
+        );
+
+        // What differs, with the wedge, and what accepting does.
+        let wedge = Rect::from_min_size(pos2(what_x, mid - 6.0), Vec2::splat(size::STATE_MARK));
+        draw::mark_warn(ui, wedge, pal.warn);
+        let (what, does) = if difference.new {
+            (strings::NEW_IN_CODE, strings::ADD_IT)
+        } else {
+            (strings::GONE_FROM_CODE, strings::REMOVE_IT)
+        };
+        let label_type = Type {
+            size: 11.5,
+            ..ty::LABEL
+        };
+        let x = wedge.right() + 5.0;
+        let what_rect = draw::label(
+            ui,
+            pos2(x, mid),
+            Align2::LEFT_CENTER,
+            what,
+            label_type,
+            pal.warn,
+        );
+        let does_rect = draw::label(
+            ui,
+            pos2(what_rect.right() + 4.0, mid),
+            Align2::LEFT_CENTER,
+            does,
+            ty::BODY,
+            pal.ink_2,
+        );
+        draw::announce(
+            ui,
+            what_rect.union(does_rect),
+            Role::Cell,
+            &format!("{what} {does}"),
+        );
+
+        let (used, in_use) = if difference.new {
+            used_today(entry)
+        } else {
+            (strings::NOTHING.to_owned(), false)
+        };
+        let color = if in_use { pal.ink } else { pal.ink_2 };
+        cell(
+            ui,
+            pos2(used_x, mid),
+            &used,
+            ty::BODY,
+            color,
+            right - used_x,
+        );
+        if place.keyboard && response.has_focus() {
+            draw::focus_ring(ui, pal, row_rect, radius::STAMP);
+        }
+    }
+    let accepting = ui.input(|input| input.modifiers.command && input.key_pressed(Key::Enter));
+    if let Some(i) = toggled.filter(|_| !accepting) {
+        differences[i].taken = !differences[i].taken;
+    }
+    let summary_mid = rows_top + differences.len() as f32 * ROW + ROW / 2.0;
+    cell(
+        ui,
+        pos2(rect.left() + 14.0, summary_mid),
+        &summary,
+        ty::BODY,
+        pal.ink_2,
+        right - rect.left() - 14.0,
+    );
+
+    // The foot: keep the accepted surface, or accept what is checked.
+    let foot = Rect::from_min_max(
+        pos2(rect.left() + 1.0, rect.bottom() - foot_h),
+        pos2(rect.right() - 1.0, rect.bottom() - 1.0),
+    );
+    ui.painter().rect_filled(foot, 0, pal.panel);
+    let taken = differences
+        .iter()
+        .filter(|difference| difference.taken)
+        .count();
+    let blocked = inputs.accept_blocked();
+    let accept_label = strings::accept_changes(taken);
+    let accept = Button {
+        label: &accept_label,
+        kind: ButtonKind::Primary,
+        small: true,
+        keys: Some(&run_keys),
+        disabled: blocked.is_some() || taken == 0,
+        ..Default::default()
+    };
+    let keep = Button {
+        label: strings::KEEP_ACCEPTED,
+        small: true,
+        ..Default::default()
+    };
+    let button_y = foot.center().y - accept.height() / 2.0;
+    let mut x = foot.right() - 12.0 - accept.width(ui);
+    let response = accept.show(ui, pal, pos2(x, button_y), place.keyboard);
+    let mut action = None;
+    if let Some(reason) = &blocked {
+        draw::tooltip(response, pal, reason);
+    } else if taken > 0
+        && (response.clicked() || (!typing && ui.input_mut(|input| input.consume_shortcut(&run))))
+    {
+        action = Some(WorkAction::AcceptSurface {
+            module: module.name.clone(),
+            surface: accepted.with_differences(differences),
+        });
+    }
+    x -= 8.0 + keep.width(ui);
+    if keep
+        .show(ui, pal, pos2(x, button_y), place.keyboard)
+        .clicked()
+    {
+        *state = ModuleSurface::default();
+    }
+    (rect.bottom(), action)
 }

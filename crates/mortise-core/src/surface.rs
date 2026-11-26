@@ -1,9 +1,10 @@
-//! The public surface of a module: a scan that proposes one.
+//! The public surface of a module: the one a team accepted, and a scan that proposes one.
 //!
 //! The surface is everything of a module that something outside it may use: classes
 //! for other modules, routes for HTTP clients, console commands for the command line
-//! and the scheduler. The scan reads the files of the module and proposes a list.
-//! It writes nothing.
+//! and the scheduler. The accepted surface is the `surface` key of the module's
+//! `module.json`, which the package command `module:surface` writes (P6). The scan
+//! reads the files of the module and proposes a list. Neither writes anything.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
@@ -18,6 +19,184 @@ use crate::php::{DeclaredKind, analyze};
 
 /// The folder kind of the package's event generator.
 const EVENTS: &str = "Events";
+
+/// The accepted public surface of a module: the `surface` key of its `module.json`.
+///
+/// The package stores each list deduplicated and sorted by byte order. A module whose
+/// `module.json` has no `surface` key has no accepted surface; one with empty lists
+/// offers nothing.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AcceptedSurface {
+    /// Full class names, without a leading backslash.
+    #[serde(default)]
+    pub classes: Vec<String>,
+    /// Route URIs or patterns, as the package stores them.
+    #[serde(default)]
+    pub routes: Vec<String>,
+    /// Console command names.
+    #[serde(default)]
+    pub commands: Vec<String>,
+}
+
+impl AcceptedSurface {
+    /// The surface of a `module.json` document. `None` when it has no `surface` key, or
+    /// when the package would refuse it: the rule then uses the folder list. The package
+    /// reads an object of the lists `classes`, `routes` and `commands`, each an array of
+    /// strings, and refuses an entry that `--set` would not store as it is.
+    pub(crate) fn of_manifest(manifest: &serde_json::Value) -> Option<Self> {
+        // Serde also reads a struct from a positional array; the package does not.
+        let surface = manifest
+            .get("surface")
+            .filter(|surface| surface.is_object())?;
+        let surface: Self = serde_json::from_value(surface.clone()).ok()?;
+        let stored =
+            |list: &[String], valid: fn(&str) -> bool| list.iter().all(|entry| valid(entry));
+        (stored(&surface.classes, is_class_name)
+            && stored(&surface.routes, |route| {
+                stored_route(route).as_deref() == Some(route)
+            })
+            && stored(&surface.commands, is_command_name))
+        .then_some(surface)
+    }
+
+    /// The surface stored in the `module.json` file at `path`. `None` when the file
+    /// cannot be read, or holds no surface the package would read.
+    pub fn of_file(path: &std::path::Path) -> Option<Self> {
+        let text = std::fs::read(path).ok()?;
+        Self::of_manifest(&serde_json::from_slice(&text).ok()?)
+    }
+
+    /// The surface as the package stores it: each list deduplicated and sorted by byte
+    /// order. Classes lose a leading backslash and are the same in any case: the first
+    /// spelling is kept.
+    pub fn normalized(mut self) -> Self {
+        let mut seen = BTreeSet::new();
+        self.classes = self
+            .classes
+            .into_iter()
+            .map(|class| class.trim_start_matches('\\').to_owned())
+            .filter(|class| seen.insert(class.to_lowercase()))
+            .collect();
+        self.routes = self
+            .routes
+            .into_iter()
+            .map(|route| stored_route(&route).unwrap_or(route))
+            .collect();
+        for list in [&mut self.classes, &mut self.routes, &mut self.commands] {
+            list.sort();
+            list.dedup();
+        }
+        self
+    }
+
+    /// The list an entry of this kind belongs to.
+    fn list_of(&mut self, kind: SurfaceKind) -> &mut Vec<String> {
+        match kind {
+            SurfaceKind::Contract | SurfaceKind::Event | SurfaceKind::OtherClass => {
+                &mut self.classes
+            }
+            SurfaceKind::Route => &mut self.routes,
+            SurfaceKind::Command => &mut self.commands,
+        }
+    }
+
+    /// How many entries the surface has.
+    pub fn entries(&self) -> usize {
+        self.classes.len() + self.routes.len() + self.commands.len()
+    }
+
+    /// True when the class is in the surface. PHP class names are the same in any case.
+    pub fn has_class(&self, class: &str) -> bool {
+        self.classes.iter().any(|listed| same_class(listed, class))
+    }
+
+    /// True when a route of the module is under a route of the surface.
+    fn covers(&self, uri: &str) -> bool {
+        self.routes.iter().any(|route| pattern_matches(route, uri))
+    }
+
+    /// True when the entry of a proposal is in the surface: a class in any case, a
+    /// route and a command exactly.
+    pub fn has(&self, entry: &SurfaceEntry) -> bool {
+        match entry.kind {
+            SurfaceKind::Contract | SurfaceKind::Event | SurfaceKind::OtherClass => {
+                self.has_class(&entry.name)
+            }
+            SurfaceKind::Route => self.routes.contains(&entry.name),
+            SurfaceKind::Command => self.commands.contains(&entry.name),
+        }
+    }
+
+    /// The surface with the differences that are taken: a new entry added, an entry
+    /// that is gone removed.
+    pub fn with_differences(&self, differences: &[Difference]) -> Self {
+        let mut surface = self.clone();
+        for difference in differences.iter().filter(|difference| difference.taken) {
+            let entry = &difference.entry;
+            let list = surface.list_of(entry.kind);
+            if difference.new {
+                list.push(entry.name.clone());
+            } else {
+                // A class is the same in any case; the other lists are exact.
+                let class = !matches!(entry.kind, SurfaceKind::Route | SurfaceKind::Command);
+                list.retain(|listed| {
+                    if class {
+                        !same_class(listed, &entry.name)
+                    } else {
+                        listed != &entry.name
+                    }
+                });
+            }
+        }
+        surface.normalized()
+    }
+
+    /// The JSON object that `module:surface <module> --set --stdin` reads.
+    pub fn to_stdin(&self) -> String {
+        serde_json::to_string(self).expect("a surface is plain data")
+    }
+}
+
+/// The package command that stores `surface` as the accepted surface of `module`.
+/// Its standard input is [`AcceptedSurface::to_stdin`].
+pub fn surface_args(module: &str) -> Vec<String> {
+    ["module:surface", module, "--set", "--stdin", "--json"]
+        .map(str::to_owned)
+        .to_vec()
+}
+
+/// What `module:surface --json` prints: the surface it stored, or why it stored nothing.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct SurfaceAnswer {
+    pub module: String,
+    /// The surface as stored. `None` with errors.
+    #[serde(default)]
+    pub surface: Option<AcceptedSurface>,
+    /// False when the stored surface was the same already.
+    #[serde(default)]
+    pub changed: bool,
+    #[serde(default)]
+    pub errors: Vec<SurfaceProblem>,
+}
+
+/// One reason `module:surface` stored nothing.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct SurfaceProblem {
+    pub message: String,
+}
+
+/// One difference between a later scan and the accepted surface (S5.9).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Difference {
+    /// The entry of the proposal, for a new one, or the accepted entry that is gone.
+    pub entry: SurfaceEntry,
+    /// True when the scan proposes it and the surface lacks it. False when the surface
+    /// has it and the module no longer does.
+    pub new: bool,
+    /// True when accepting the differences takes this one. The developer can change it.
+    pub taken: bool,
+}
 
 /// What an entry of a public surface is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -173,14 +352,18 @@ impl Proposal {
             Typed::Listed | Typed::Unknown => return false,
         };
         entry.by_hand = true;
-        // After the last entry of its kind, so that the kinds stay together.
+        self.insert(entry);
+        true
+    }
+
+    /// Puts an entry after the last entry of its kind, so that the kinds stay together.
+    fn insert(&mut self, entry: SurfaceEntry) {
         let at = self
             .entries
             .iter()
             .rposition(|other| other.kind <= entry.kind)
             .map_or(0, |last| last + 1);
         self.entries.insert(at, entry);
-        true
     }
 
     /// Takes over what the developer chose in an earlier proposal, where the entry
@@ -206,6 +389,100 @@ impl Proposal {
                 None => {}
             }
         }
+    }
+
+    /// The entries that are in the proposal, as a surface to store.
+    pub fn surface(&self) -> AcceptedSurface {
+        let mut surface = AcceptedSurface::default();
+        for entry in self.entries.iter().filter(|entry| entry.proposed) {
+            let list = surface.list_of(entry.kind);
+            list.push(entry.name.clone());
+        }
+        surface.normalized()
+    }
+
+    /// Checks what the accepted surface has and nothing else, for a change of it (S5.8).
+    /// An accepted entry that the scan did not list is added, when the module has it.
+    /// An accepted route stays when the routes were not read: the scan cannot say
+    /// whether the module still has it.
+    pub fn take_choices_of(&mut self, accepted: &AcceptedSurface) {
+        for entry in &mut self.entries {
+            entry.proposed = accepted.has(entry);
+        }
+        let names = accepted
+            .classes
+            .iter()
+            .chain(&accepted.routes)
+            .chain(&accepted.commands);
+        for name in names {
+            if self.add(name)
+                && let Some(added) = self.entries.iter_mut().find(|entry| &entry.name == name)
+            {
+                added.by_hand = false;
+            }
+        }
+        if !self.routes_read {
+            for route in &accepted.routes {
+                if !self
+                    .entries
+                    .iter()
+                    .any(|entry| entry.kind == SurfaceKind::Route && &entry.name == route)
+                {
+                    self.insert(SurfaceEntry::new(SurfaceKind::Route, route.clone()));
+                }
+            }
+        }
+    }
+
+    /// What differs between this scan and the accepted surface (S5.9): what the scan
+    /// proposes that the surface lacks, then what the surface has that the module no
+    /// longer has. A route pattern is new only when the surface does not cover one of
+    /// its routes. A route is gone only when the routes were read.
+    pub fn differences(&self, accepted: &AcceptedSurface) -> Vec<Difference> {
+        let lacks = |entry: &SurfaceEntry| match entry.kind {
+            SurfaceKind::Route => self
+                .uris
+                .iter()
+                .any(|uri| pattern_matches(&entry.name, uri) && !accepted.covers(uri)),
+            _ => !accepted.has(entry),
+        };
+        let mut differences: Vec<Difference> = self
+            .entries
+            .iter()
+            .filter(|entry| entry.proposed && lacks(entry))
+            .map(|entry| Difference {
+                entry: entry.clone(),
+                new: true,
+                taken: true,
+            })
+            .collect();
+        let gone = |kind: SurfaceKind, name: &String| Difference {
+            entry: SurfaceEntry::new(kind, name.clone()),
+            new: false,
+            taken: true,
+        };
+        for class in &accepted.classes {
+            if !self
+                .declared
+                .keys()
+                .any(|declared| same_class(declared, class))
+            {
+                differences.push(gone(SurfaceKind::OtherClass, class));
+            }
+        }
+        if self.routes_read {
+            for route in &accepted.routes {
+                if !self.uris.iter().any(|uri| pattern_matches(route, uri)) {
+                    differences.push(gone(SurfaceKind::Route, route));
+                }
+            }
+        }
+        for command in &accepted.commands {
+            if !self.commands.contains(command) {
+                differences.push(gone(SurfaceKind::Command, command));
+            }
+        }
+        differences
     }
 
     /// The proposal as text, for a place the package does not give yet: the entries
@@ -487,6 +764,42 @@ impl SurfaceScan {
     }
 }
 
+/// True when two class names are the same class: PHP ignores case and a leading backslash.
+fn same_class(a: &str, b: &str) -> bool {
+    a.trim_start_matches('\\')
+        .eq_ignore_ascii_case(b.trim_start_matches('\\'))
+}
+
+/// True for a full class name as the package stores it: parts of letters, digits and
+/// `_` joined by a backslash, no part starting with a digit, no leading backslash.
+fn is_class_name(class: &str) -> bool {
+    class.split('\\').all(|part| {
+        let mut bytes = part.bytes();
+        let word = |byte: u8| byte == b'_' || byte >= 0x80 || byte.is_ascii_alphanumeric();
+        bytes
+            .next()
+            .is_some_and(|first| word(first) && !first.is_ascii_digit())
+            && bytes.all(word)
+    })
+}
+
+/// True for a command name as the package stores it: parts without white space joined by `:`.
+fn is_command_name(command: &str) -> bool {
+    command
+        .split(':')
+        .all(|part| !part.is_empty() && !part.chars().any(char::is_whitespace))
+}
+
+/// A route as the package stores it: without `/` at its ends, and `/` for the root.
+/// `None` for a route the package refuses: empty, or with white space.
+fn stored_route(route: &str) -> Option<String> {
+    if route.is_empty() || route.chars().any(char::is_whitespace) {
+        return None;
+    }
+    let route = route.trim_matches('/');
+    Some(if route.is_empty() { "/" } else { route }.to_owned())
+}
+
 fn is_event(found: &Found) -> bool {
     !found.interface && found.folder == EVENTS
 }
@@ -495,6 +808,9 @@ fn is_event(found: &Found) -> bool {
 /// or its first two parts for an API route. `api/billing/invoices/{invoice}` is
 /// under `api/billing/*`.
 fn pattern_of(uri: &str) -> String {
+    if uri.trim_matches('/').is_empty() {
+        return "/".to_owned();
+    }
     let parts: Vec<&str> = uri.trim_matches('/').split('/').collect();
     let take = if parts.first() == Some(&"api") { 2 } else { 1 };
     let prefix: Vec<&str> = parts
@@ -545,6 +861,10 @@ mod tests {
             "api/{version}/invoices"
         );
         assert_eq!(pattern_of("api"), "api");
+        // The root route stays the root, which the package stores as `/`.
+        assert_eq!(pattern_of("/"), "/");
+        assert_eq!(pattern_of(""), "/");
+        assert!(pattern_matches("/", "/"));
 
         assert!(pattern_matches("billing/*", "billing"));
         assert!(pattern_matches("billing/*", "billing/invoices/{invoice}"));
