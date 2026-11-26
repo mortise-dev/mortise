@@ -1,0 +1,70 @@
+---
+title: Check runtime links with Larch
+description: Check the links that only the booted app shows, such as facades, container keys, listeners and jobs, in a Pest test with nwidart/larch, with the same mortise.json.
+sidebar:
+  order: 18
+---
+import { Steps, Aside } from '@astrojs/starlight/components';
+
+Mortise reads the imports of the PHP files, without PHP. It does not see a link that exists only when
+the app runs: a facade, a key of the container, a listener or a job. For those links, a team can
+write a test with [nwidart/larch](https://github.com/nWidart/larch) in Pest. Larch boots the app and
+reads the links it makes.
+
+<Aside>
+Mortise does not read the graph that Larch exports. The two share `mortise.json` only. Each one checks
+the app by its own means.
+</Aside>
+
+<Steps>
+
+1. Keep the rules in `mortise.json`, as in [Add boundary rules to an app](/mortise/how-to/add-boundary-rules/).
+   Larch's preset reads the same file, so the team writes each rule once.
+
+2. Install Larch in the app, as its documentation says.
+
+3. Add the preset to a Pest test:
+
+   ```php
+   arch()->preset()->mortise();
+   ```
+
+   The preset reads `mortise.json`. It runs **No circular use** and **Other modules use only a module's public surface** on the imports,
+   as Mortise does.
+
+4. For the rule **Allowed use**, use a release of Larch that reads `allowed-use`. The preset then reads
+   `rules.allowed-use` and checks each module that has a list. Without such a release, write the
+   rule in a test yourself. This test lets `Audit` use no module, through every kind of link:
+
+   ```php
+   use Nwidart\Larch\Edge;
+
+   use function Nwidart\Larch\module;
+
+   arch('Audit uses no other module')
+       ->expect(module('Audit'))
+       ->toOnlyDependOn()
+       ->via(Edge::all());
+   ```
+
+   `via(Edge::all())` counts the links that only the booted app shows, not only the imports that
+   Mortise reads. To let a module use other modules, name them in `toOnlyDependOn()`, for example
+   `->toOnlyDependOn(module('Audit'))`.
+
+5. Run the tests in CI with the rest of the suite:
+
+   ```sh
+   vendor/bin/pest
+   ```
+
+</Steps>
+
+Use both. `mortise check` is fast and needs no PHP. The Larch test boots the app, so it also sees the
+links that the imports do not show. A link that Mortise finds is also a link that Larch finds, so a
+problem can show in both reports.
+
+## Where to read more
+
+- [mortise.json](/mortise/reference/mortise-json/) lists the keys that both tools read.
+- [About boundaries](/mortise/explanation/boundaries/) says why the rule Allowed use exists.
+- [Check the rules in CI](/mortise/how-to/check-rules-in-ci/) runs `mortise check`.

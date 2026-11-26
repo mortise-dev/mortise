@@ -14,7 +14,7 @@ It runs on macOS, Windows and Linux.
 
 - Every module of the app, with its state, files, lines, tests and coverage.
 - Which module uses which, read from the PHP source, and any circular use.
-- Two boundary rules, kept in `mortise.json` in the app folder so that a team shares them.
+- Three boundary rules, kept in `mortise.json` in the app folder so that a team shares them.
 - Findings: what breaks a rule or a check, and where it lives.
 - A proposed public surface for a module.
 - With [`nwidart/laravel-actuator`](https://github.com/nWidart/laravel-actuator) and a running app:

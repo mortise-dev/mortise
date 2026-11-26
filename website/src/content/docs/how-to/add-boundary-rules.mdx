@@ -1,15 +1,17 @@
 ---
 title: Add boundary rules to an app
-description: Turn the two boundary rules on or off, set the folders that count as public, and share the rules through git.
+description: Turn the three boundary rules on or off, set the folders that count as public, list the modules a module may use, and share the rules through git.
 sidebar:
   order: 3
 ---
 import { Steps, Aside } from '@astrojs/starlight/components';
 import Screen from '../../../components/Screen.astro';
 
-Mortise checks two rules: **No circular use**, and **Other modules use only a module's public surface**.
-Both are on by default. The rules live in `mortise.json` in the app folder, so a team shares them.
-Why these two rules exist is in [About boundaries](/mortise/explanation/boundaries/).
+Mortise checks three rules: **No circular use**, **Other modules use only a module's public surface**,
+and **A module uses only the modules of its list**. The first two are on by default. The third checks
+nothing until `mortise.json` gives a module a list (see [Limit which modules a module may use](#limit-which-modules-a-module-may-use)).
+The rules live in `mortise.json` in the app folder, so a team shares them.
+Why these rules exist is in [About boundaries](/mortise/explanation/boundaries/).
 
 <Steps>
 
@@ -42,7 +44,7 @@ Why these two rules exist is in [About boundaries](/mortise/explanation/boundari
 
 </Steps>
 
-<Screen id="s5.3-boundary-all" alt="The Boundary tab of all modules: the graph of the modules, the links that break a rule, and the box Rules for shop-api with the two rules checked." />
+<Screen id="s5.3-boundary-all" alt="The Boundary tab of all modules: the graph of the modules, the links that break a rule, and the box Rules for shop-api with the first two rules checked." />
 
 The graph and the list **Links that break a rule** now follow your rules, and so does Findings.
 **Fail CI when a rule breaks** is on until you turn it off. It tells the command line tool whether a

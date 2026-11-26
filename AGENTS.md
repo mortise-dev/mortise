@@ -29,7 +29,9 @@ Your goal is to complete the entire specification with maximum quality while min
 A desktop app, written in Rust with egui and eframe, for Laravel apps that use
 `nwidart/laravel-modules`. It opens the folder of an app, lists its modules and shows what is in each one.
 The command line tool `mortise check` checks the same boundary rules in CI.
-Phase 1 (read only) is built. The plan is `docs/plan/phase-1.md`.
+Phases 1 to 4 are built, and milestones 29 to 32 of phase 5 (the rule `allowed-use`, the window on Windows,
+room for feedback). Milestone 33 (hardening and the release 1.1.0) is open. The plans are in `docs/plan/`.
+`docs/deviations.md` says what was not run on Windows or Linux.
 
 ## Rules that must hold
 
