@@ -45,7 +45,7 @@ without a command.
 | `rules.public-surface-only` | object | `{ "enabled": true, "folders": ["Contracts", "Events"] }` | The rule **Other modules use only a module's public surface** |
 | `rules.public-surface-only.enabled` | boolean | `true` | The rule is on |
 | `rules.public-surface-only.folders` | array of strings | `["Contracts", "Events"]` | For a module without an accepted public surface, the folders that count as public. A class in one of them may be used by other modules |
-| `rules.allowed-use` | object | None: the rule checks nothing | The rule **Allowed use**: the modules each module may use. A release of [nwidart/larch](https://github.com/nWidart/larch) that reads `allowed-use` reads the same key |
+| `rules.allowed-use` | object | None: the rule checks nothing | The rule **Allowed use**: the modules each module may use. [nwidart/larch](https://github.com/nWidart/larch) 0.2.0 or later reads the same key |
 | `rules.allowed-use.enabled` | boolean | `true` | The rule is on |
 | `rules.allowed-use.modules` | object of arrays of strings | `{}` | For each module with a list, the modules it may use. An empty list means no module. A module without a list is not checked |
 | `ci` | object | `{ "fail": true }` | What `mortise check` does in CI |

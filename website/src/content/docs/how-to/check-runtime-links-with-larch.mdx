@@ -32,8 +32,8 @@ the app by its own means.
    The preset reads `mortise.json`. It runs **No circular use** and **Other modules use only a module's public surface** on the imports,
    as Mortise does.
 
-4. For the rule **Allowed use**, use a release of Larch that reads `allowed-use`. The preset then reads
-   `rules.allowed-use` and checks each module that has a list. Without such a release, write the
+4. For the rule **Allowed use**, use Larch 0.2.0 or later. The preset then reads
+   `rules.allowed-use` and checks each module that has a list. With an older Larch, write the
    rule in a test yourself. This test lets `Audit` use no module, through every kind of link:
 
    ```php
@@ -62,6 +62,10 @@ the app by its own means.
 Use both. `mortise check` is fast and needs no PHP. The Larch test boots the app, so it also sees the
 links that the imports do not show. A link that Mortise finds is also a link that Larch finds, so a
 problem can show in both reports.
+
+Larch 0.2.0 counts a module as on when `modules_statuses.json` has no entry for it. Mortise and
+laravel-modules count it as off. Give each module an entry in `modules_statuses.json`, so both tools
+check the same modules.
 
 ## Where to read more
 
