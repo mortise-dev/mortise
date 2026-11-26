@@ -16,6 +16,11 @@ All notable changes to this project are listed here.
 - Harden phase 5 (tasks 33.2 to 33.4) (#80)
 - Name larch 0.2.0 as the release that reads allowed-use (#83)
 
+### Other
+
+- Move the repository to the GitHub organisation `mortise-dev`. The links in the app, the docs and the release files point there (#81)
+- Start the window on a Windows runner in CI and keep what it shows (#77)
+
 ## [1.0.1] - 2026-11-26
 
 ### Features
