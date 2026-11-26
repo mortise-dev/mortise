@@ -184,13 +184,57 @@ impl AppSnapshot {
     }
 }
 
-fn shown(root: &Path, path: &Path) -> String {
-    path.strip_prefix(root)
-        .unwrap_or(path)
-        .components()
-        .map(|part| part.as_os_str().to_string_lossy())
-        .collect::<Vec<_>>()
-        .join("/")
+/// `path` relative to `root` when it is inside it, else whole. Parts are joined with `/`
+/// on every platform, so a line opens in an editor and in a CI log on Windows too.
+/// `.` and `..` are resolved by name first, so `Modules/../../shared` is outside.
+pub(crate) fn shown(root: &Path, path: &Path) -> String {
+    use std::path::{Component, Prefix};
+    let path = lexical(path);
+    let rest = path.strip_prefix(lexical(root)).unwrap_or(&path);
+    let mut start = String::new();
+    let mut parts: Vec<String> = Vec::new();
+    for component in rest.components() {
+        match component {
+            // `C:` or `\\server\share` on Windows. A verbatim `\\?\D:` or `\\?\UNC\server\share`
+            // names the same folder as `D:` or `\\server\share`, and only those take `/`.
+            Component::Prefix(prefix) => match prefix.kind() {
+                Prefix::Disk(drive) | Prefix::VerbatimDisk(drive) => {
+                    start = format!("{}:", char::from(drive));
+                }
+                Prefix::UNC(server, share) | Prefix::VerbatimUNC(server, share) => {
+                    start = format!("//{}/{}", server.to_string_lossy(), share.to_string_lossy());
+                }
+                // Any other verbatim path or a device keeps its spelling: it needs `\`.
+                Prefix::Verbatim(_) | Prefix::DeviceNS(_) => {
+                    return path.to_string_lossy().into_owned();
+                }
+            },
+            Component::RootDir => start.push('/'),
+            other => parts.push(other.as_os_str().to_string_lossy().into_owned()),
+        }
+    }
+    start + &parts.join("/")
+}
+
+/// `path` with `.` and `..` resolved by name, without asking the file system.
+/// A `..` at the root stays at the root; a `..` at the start of a relative path stays.
+pub(crate) fn lexical(path: &Path) -> PathBuf {
+    use std::path::Component;
+    let mut parts: Vec<Component<'_>> = Vec::new();
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => match parts.last() {
+                Some(Component::Normal(_)) => {
+                    parts.pop();
+                }
+                Some(Component::RootDir | Component::Prefix(_)) => {}
+                _ => parts.push(component),
+            },
+            other => parts.push(other),
+        }
+    }
+    parts.iter().collect()
 }
 
 /// Why a folder could not be read as an app.
@@ -555,6 +599,50 @@ fn requires_laravel(root: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_path_is_shown_with_slashes_and_whole_when_outside_the_app() {
+        let (root, outside, whole) = if cfg!(windows) {
+            (r"C:\ci\app", r"D:\shared\Modules", "D:/shared/Modules")
+        } else {
+            ("/ci/app", "/shared/Modules", "/shared/Modules")
+        };
+        let root = Path::new(root);
+        assert_eq!(
+            shown(root, &root.join("Modules").join("Billing")),
+            "Modules/Billing"
+        );
+        assert_eq!(shown(root, Path::new(outside)), whole);
+        // `base_path('../shared/Modules')` climbs out of the app.
+        assert_eq!(
+            shown(root, &root.join("..").join("shared").join("Modules")),
+            if cfg!(windows) {
+                "C:/ci/shared/Modules"
+            } else {
+                "/ci/shared/Modules"
+            }
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_verbatim_or_unc_path_is_shown_as_a_path_that_opens() {
+        let root = Path::new(r"\\server\share\repo");
+        assert_eq!(
+            shown(root, Path::new(r"\\server\share\shared\Modules")),
+            "//server/share/shared/Modules"
+        );
+        assert_eq!(
+            shown(root, Path::new(r"\\?\D:\shared\Modules")),
+            "D:/shared/Modules"
+        );
+        assert_eq!(
+            shown(root, Path::new(r"\\?\UNC\server\share\shared")),
+            "//server/share/shared"
+        );
+        let volume = r"\\?\Volume{0}\shared";
+        assert_eq!(shown(root, Path::new(volume)), volume);
+    }
 
     #[test]
     fn the_url_and_the_environment_of_the_app_are_read_from_their_lines() {

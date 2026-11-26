@@ -53,6 +53,25 @@ folder is the root of the repository. For an app in a subfolder, the marks show 
 run instead.
 </Aside>
 
+## Check on Windows or macOS
+
+The tool and the action work on Linux, macOS and Windows runners. Only `runs-on` changes:
+
+```yaml
+jobs:
+  boundaries:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: nwidart/setup-mortise@v1
+        with:
+          version: v0.3.0
+      - run: mortise check --format github
+```
+
+The paths in the report use `/` on every platform, so GitHub marks the same lines on each runner.
+`version` pins a release. Without it the action installs the latest one.
+
 ## Report without failing
 
 To see the problems in the CI log without failing the job, turn off **Fail CI when a rule breaks** in
