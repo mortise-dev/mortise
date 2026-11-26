@@ -96,3 +96,10 @@ the time limit of the stop passed. A run that ends this way MUST be kept in the 
 #### Scenario: Close with no run
 - **WHEN** no command runs and the user closes Mortise
 - **THEN** Mortise closes at once
+
+### Requirement: A run can take standard input
+A run or a read SHALL take optional input. With input, the program's standard input SHALL be a pipe that receives the input and then closes. Without input, standard input SHALL stay closed, as before.
+
+#### Scenario: A question answered by input
+- **WHEN** a command that asks for a name runs with the input `Billing` and a line end
+- **THEN** it ends with exit code 0, where without input it ends with 1
