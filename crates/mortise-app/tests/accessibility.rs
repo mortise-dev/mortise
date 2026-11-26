@@ -116,6 +116,8 @@ fn the_workbench_and_its_tabs() {
     press(&mut harness, Key::Escape);
     press(&mut harness, Key::Num2);
     audit(&harness, "Boundary of all modules");
+    // S5.3: the switch of milestone 24 is one of the audited controls.
+    harness.get_by_role_and_label(Role::CheckBox, "Fail CI when a rule breaks");
     for (digit, screen) in [
         (Key::Num3, "Generate of all modules"),
         (Key::Num4, "Actions of all modules"),
@@ -574,6 +576,29 @@ fn the_actions_tab_and_its_dialogs() {
     select(&mut harness, "Destructive");
     select(&mut harness, "Reset migrations");
     audit(&harness, "Reset migrations, production");
+}
+
+/// S5.7: Accept shows the command of the package in a dialog before it runs. It needs a
+/// package that stores a surface and a way to run PHP: Herd, so that nothing runs.
+#[test]
+fn the_accept_dialog_of_a_public_surface() {
+    let desk = Desk::new();
+    let root = desk.app("shop-api");
+    common::package_version(&root, "v13.5.0");
+    desk.knows(&[(&root, "SA")]);
+    let mut settings = desk.saved();
+    settings.apps[0].php.runner = Some(mortise_core::RunnerKind::Herd);
+    settings.save(&desk.settings_path()).unwrap();
+    let mut harness = desk.start();
+    select(&mut harness, "Billing");
+    press(&mut harness, Key::Num2);
+    press(&mut harness, Key::P);
+    chord(&mut harness, Key::Enter);
+    harness.run_steps(6);
+    chord(&mut harness, Key::Enter);
+    harness.run_steps(3);
+    harness.get_by_label("Accept the public surface of Billing?");
+    audit(&harness, "Accept, dialog");
 }
 
 #[test]
