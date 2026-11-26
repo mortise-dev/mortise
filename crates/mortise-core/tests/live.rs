@@ -234,10 +234,11 @@ fn a_new_file_and_a_new_module_are_seen() {
     let before = opened.wait_for("the first read", |_| true).modules[0].clone();
     let model = opened.root.join("Modules/Billing/app/Models/Receipt.php");
     std::fs::write(model, "<?php\n\nclass Receipt {}\n").unwrap();
-    let app = opened.wait_for("one more file in Billing", |app| {
-        app.modules[0].files == before.files + 1
+    // The watcher can read the file before its lines are written, on Windows most of all.
+    // A later event reads it again, so wait for both counts.
+    opened.wait_for("one more file of three lines in Billing", |app| {
+        app.modules[0].files == before.files + 1 && app.modules[0].lines == before.lines + 3
     });
-    assert_eq!(app.modules[0].lines, before.lines + 3);
 
     let loyalty = opened.root.join("Modules/Loyalty");
     std::fs::create_dir(&loyalty).unwrap();
