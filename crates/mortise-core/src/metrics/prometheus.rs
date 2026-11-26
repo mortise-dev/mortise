@@ -230,7 +230,7 @@ mod tests {
 
     #[test]
     fn reads_the_recorded_answers() {
-        let busy = include_str!("../../../../fixtures/actuator/prometheus-busy.txt");
+        let busy = include_str!("../../fixtures/actuator/prometheus-busy.txt");
         let read: Vec<Sample<'_>> = samples(busy).collect();
 
         let job = read
@@ -284,7 +284,7 @@ mod tests {
         let request_samples = read.iter().filter(|s| s.family == REQUESTS).count();
         assert_eq!(request_samples, request_lines);
 
-        let quiet = include_str!("../../../../fixtures/actuator/prometheus-quiet.txt");
+        let quiet = include_str!("../../fixtures/actuator/prometheus-quiet.txt");
         let quiet_lines = quiet.lines().filter(|l| !l.starts_with('#')).count();
         let quiet: Vec<Sample<'_>> = samples(quiet).collect();
         assert_eq!(quiet.len(), quiet_lines);
@@ -294,7 +294,7 @@ mod tests {
                 .all(|s| s.part == Part::Value && s.kind != Kind::Histogram)
         );
 
-        let empty = include_str!("../../../../fixtures/actuator/prometheus-empty.txt");
+        let empty = include_str!("../../fixtures/actuator/prometheus-empty.txt");
         assert_eq!(samples(empty).count(), 0);
     }
 

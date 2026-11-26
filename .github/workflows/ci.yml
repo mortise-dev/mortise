@@ -264,9 +264,17 @@ jobs:
         run: target/debug/mortise push --dry-run fixtures/shop-api
       # The Tag release workflow publishes both crates to crates.io. This builds them as crates.io would,
       # from their packages, so a missing file or a wrong field shows here and not after a tag.
+      # The feature testing builds only from files inside the crate. This checks it from the package,
+      # outside the workspace, with the toolchain of rust-toolchain.toml.
       - name: Package the crates for crates.io
         if: runner.os == 'Linux'
-        run: cargo package --locked -p mortise-core -p mortise-cli
+        run: |
+          cargo package --locked -p mortise-core -p mortise-cli
+          version=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)
+          toolchain=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)
+          tar -xzf "target/package/mortise-core-$version.crate" -C "$RUNNER_TEMP"
+          cd "$RUNNER_TEMP/mortise-core-$version"
+          RUSTUP_TOOLCHAIN=$toolchain cargo check --locked --no-default-features --features testing --lib
       # tools/pack-cli.sh refuses an archive name with a folder before it writes or removes anything.
       - name: Refuse an archive name outside dist
         if: runner.os == 'Linux'

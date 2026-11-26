@@ -9,7 +9,7 @@ Defines how Mortise reads the metrics of a running app, what it keeps in memory,
 `mortise-core` SHALL read the Prometheus text format itself, with no new dependency: families of type counter, gauge and histogram, labels, and the escapes `\\`, `\"` and `\n` in a label value. It SHALL skip a family of any other type and a sample with no `# TYPE` line before it. A line it cannot read SHALL be skipped and SHALL NOT fail the read.
 
 #### Scenario: The recorded busy answer
-- **WHEN** `fixtures/actuator/prometheus-busy.txt` is read
+- **WHEN** `crates/mortise-core/fixtures/actuator/prometheus-busy.txt` is read
 - **THEN** the job label reads `Modules\Blog\Jobs\PublishPost` with single backslashes, a bucket with `le="+Inf"` has an infinite bound, and `_sum` and `_count` are told apart from buckets
 
 #### Scenario: A family of another type

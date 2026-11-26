@@ -118,8 +118,8 @@ An app needs this setup:
   credentials if the actuator needs them (none, a bearer token, HTTP basic or a custom header).
   A secret goes to the credential store of the operating system.
 
-`fixtures/actuator/README.md` lists the versions and the commands of the app that the recorded
-answers come from. `tools/real-actuator-app.sh` builds such an app.
+`crates/mortise-core/fixtures/actuator/README.md` lists the versions and the commands of the app that
+the recorded answers come from. `tools/real-actuator-app.sh` builds such an app.
 
 Database time reads "unknown" until `nwidart/laravel-modules` labels database metrics with the
 module. A series without a `module` label is placed by its route or job class; one that matches

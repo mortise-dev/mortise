@@ -12,7 +12,7 @@ readme = "README.md"
 keywords = ["laravel", "modules", "php", "architecture"]
 categories = ["development-tools"]
 publish = true
-include = ["src/**", "README.md"]
+include = ["src/**", "fixtures/actuator/**", "README.md"]
 
 [features]
 default = ["watch", "actuator", "os-secrets", "run"]
