@@ -1,0 +1,375 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:mortise:push-document:1",
+  "title": "Mortise push document, schema version 1",
+  "description": "The JSON document that `mortise push` sends to Mortise Cloud. The `snapshot` member is the serde output of `mortise_core::AppSnapshot` after the push projection (docs/spec/02-snapshot-contract.md). Unknown members are allowed so that Mortise can add optional fields within version 1; the cloud ignores them.",
+  "type": "object",
+  "required": ["schema_version", "generated_at", "tool", "app_path", "git", "ci", "environment", "snapshot"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "tool": {
+      "type": "object",
+      "required": ["name", "version"],
+      "properties": {
+        "name": { "const": "mortise" },
+        "version": { "type": "string", "maxLength": 64 }
+      }
+    },
+    "app_path": {
+      "description": "The app folder relative to the repository root, with `/` between parts. `.` when the app is the repository root.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024,
+      "not": { "pattern": "(^/|^[A-Za-z]:|(^|/)\\.\\.(/|$))" }
+    },
+    "git": {
+      "type": "object",
+      "required": ["repository", "commit", "head_commit", "branch", "base_branch", "base_commit", "pull_request", "shallow"],
+      "properties": {
+        "repository": {
+          "description": "`owner/name` on GitHub. Null when the CI gives none.",
+          "type": ["string", "null"],
+          "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$",
+          "maxLength": 200
+        },
+        "commit": { "$ref": "#/$defs/sha", "description": "The commit that was checked out and read. For a pull request on GitHub Actions this is the merge commit." },
+        "head_commit": { "oneOf": [{ "$ref": "#/$defs/sha" }, { "type": "null" }], "description": "The last commit of the pull request branch. Null outside a pull request." },
+        "branch": { "type": ["string", "null"], "maxLength": 255, "description": "The branch pushed to, or the head branch of the pull request." },
+        "base_branch": { "type": ["string", "null"], "maxLength": 255 },
+        "base_commit": { "oneOf": [{ "$ref": "#/$defs/sha" }, { "type": "null" }], "description": "The tip of the base branch the pull request was merged with." },
+        "pull_request": { "type": ["integer", "null"], "minimum": 1 },
+        "shallow": { "type": "boolean", "description": "True when the clone was shallow. Churn is then null for every module." }
+      },
+      "if": { "properties": { "pull_request": { "type": "integer" } } },
+      "then": {
+        "properties": {
+          "head_commit": { "$ref": "#/$defs/sha" },
+          "base_branch": { "type": "string" },
+          "base_commit": { "$ref": "#/$defs/sha" }
+        }
+      }
+    },
+    "ci": {
+      "type": "object",
+      "required": ["provider", "run_id", "run_attempt", "run_url"],
+      "properties": {
+        "provider": { "type": "string", "description": "`github-actions` or `other` in version 1.", "maxLength": 64 },
+        "run_id": { "type": ["string", "null"], "maxLength": 128 },
+        "run_attempt": { "type": ["integer", "null"], "minimum": 1 },
+        "run_url": { "type": ["string", "null"], "format": "uri", "maxLength": 2048 }
+      }
+    },
+    "environment": {
+      "description": "Set only when this run deploys the commit. The cloud then records a deploy in that environment.",
+      "oneOf": [{ "$ref": "#/$defs/environment" }, { "type": "null" }]
+    },
+    "snapshot": { "$ref": "#/$defs/snapshot" }
+  },
+  "$defs": {
+    "sha": { "type": "string", "pattern": "^[0-9a-f]{40}([0-9a-f]{24})?$" },
+    "environment": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,31}$" },
+    "name": { "type": "string", "minLength": 1, "maxLength": 255 },
+    "path": { "type": "string", "maxLength": 1024 },
+    "count": { "type": "integer", "minimum": 0 },
+    "percent": { "type": "integer", "minimum": 0, "maximum": 100 },
+    "pair": {
+      "description": "A Rust tuple `(String, usize)`: a module name and a count.",
+      "type": "array",
+      "prefixItems": [{ "$ref": "#/$defs/name" }, { "$ref": "#/$defs/count" }],
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "version": {
+      "type": "object",
+      "required": ["raw", "alias"],
+      "properties": {
+        "raw": { "type": "string", "maxLength": 128 },
+        "alias": { "type": ["string", "null"], "maxLength": 128 }
+      }
+    },
+    "layout": {
+      "type": "object",
+      "required": ["modules_dir", "namespace", "app_folder", "statuses_file", "activator", "has_config", "assumed"],
+      "properties": {
+        "modules_dir": { "$ref": "#/$defs/path" },
+        "namespace": { "type": "string", "maxLength": 255 },
+        "app_folder": { "type": "string", "maxLength": 255 },
+        "statuses_file": { "$ref": "#/$defs/path" },
+        "activator": { "type": "string", "maxLength": 64 },
+        "has_config": { "type": "boolean" },
+        "assumed": {
+          "type": "array",
+          "items": { "enum": ["Namespace", "ModulesFolder", "AppFolder", "StatusesFile", "Activator"] }
+        }
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "required": ["covered", "statements"],
+      "properties": {
+        "covered": { "$ref": "#/$defs/count" },
+        "statements": { "$ref": "#/$defs/count" }
+      }
+    },
+    "module": {
+      "type": "object",
+      "required": ["name", "code", "dir", "state", "description", "priority", "manifest", "namespace", "files", "lines", "kinds", "commands", "tests", "coverage", "churn", "uncommitted"],
+      "properties": {
+        "name": { "$ref": "#/$defs/name" },
+        "code": { "type": "string", "maxLength": 8 },
+        "dir": { "$ref": "#/$defs/path" },
+        "state": { "enum": ["On", "Off", "Unknown"] },
+        "description": { "type": "string", "maxLength": 2000 },
+        "priority": { "type": "integer" },
+        "manifest": {
+          "oneOf": [
+            { "enum": ["Valid", "NoName"] },
+            {
+              "type": "object",
+              "required": ["InvalidJson"],
+              "maxProperties": 1,
+              "properties": {
+                "InvalidJson": {
+                  "type": "object",
+                  "required": ["message", "line"],
+                  "properties": {
+                    "message": { "type": "string", "maxLength": 2000 },
+                    "line": { "$ref": "#/$defs/count" }
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "namespace": { "type": "string", "maxLength": 255 },
+        "files": { "$ref": "#/$defs/count" },
+        "lines": { "$ref": "#/$defs/count" },
+        "kinds": {
+          "type": "array",
+          "maxItems": 200,
+          "items": {
+            "type": "object",
+            "required": ["kind", "files"],
+            "properties": {
+              "kind": { "type": "string", "maxLength": 255 },
+              "files": { "$ref": "#/$defs/count" }
+            }
+          }
+        },
+        "commands": { "type": "array", "maxItems": 1000, "items": { "type": "string", "maxLength": 255 } },
+        "tests": { "$ref": "#/$defs/count" },
+        "coverage": { "oneOf": [{ "$ref": "#/$defs/coverage" }, { "type": "null" }] },
+        "churn": {
+          "oneOf": [
+            {
+              "type": "object",
+              "required": ["commits", "last_commit"],
+              "properties": {
+                "commits": { "$ref": "#/$defs/count" },
+                "last_commit": { "type": ["integer", "null"] }
+              }
+            },
+            { "type": "null" }
+          ]
+        },
+        "uncommitted": { "description": "Always null in a push document.", "type": "null" }
+      }
+    },
+    "reference": {
+      "type": "object",
+      "required": ["file", "line", "class", "internal"],
+      "properties": {
+        "file": { "$ref": "#/$defs/path" },
+        "line": { "$ref": "#/$defs/count" },
+        "class": { "type": "string", "maxLength": 1024 },
+        "internal": { "type": "boolean" }
+      }
+    },
+    "link": {
+      "type": "object",
+      "required": ["from", "to", "refs", "circular"],
+      "properties": {
+        "from": { "$ref": "#/$defs/name" },
+        "to": { "$ref": "#/$defs/name" },
+        "refs": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/reference" } },
+        "circular": { "type": "boolean" }
+      }
+    },
+    "cycle": {
+      "type": "object",
+      "required": ["modules", "carrier", "files"],
+      "properties": {
+        "modules": { "type": "array", "minItems": 2, "items": { "$ref": "#/$defs/name" } },
+        "carrier": { "$ref": "#/$defs/name" },
+        "files": { "type": "array", "items": { "$ref": "#/$defs/pair" } }
+      }
+    },
+    "rules": {
+      "type": "object",
+      "required": ["no_circular_use", "public_surface_only", "public_folders"],
+      "properties": {
+        "no_circular_use": { "type": "boolean" },
+        "public_surface_only": { "type": "boolean" },
+        "public_folders": { "type": "array", "maxItems": 100, "items": { "type": "string", "maxLength": 255 } }
+      }
+    },
+    "rules_source": {
+      "oneOf": [
+        { "enum": ["Defaults", "File"] },
+        {
+          "type": "object",
+          "required": ["Invalid"],
+          "maxProperties": 1,
+          "properties": { "Invalid": { "type": "string", "maxLength": 2000 } }
+        }
+      ]
+    },
+    "detail": {
+      "description": "Externally tagged, as serde writes a Rust enum: one member named after the variant. A variant this schema does not list is accepted and kept as it is.",
+      "type": "object",
+      "minProperties": 1,
+      "maxProperties": 1,
+      "properties": {
+        "CircularUse": {
+          "type": "object",
+          "required": ["files"],
+          "properties": { "files": { "type": "array", "items": { "$ref": "#/$defs/pair" } } }
+        },
+        "ReadsInternals": {
+          "type": "object",
+          "required": ["of", "files", "classes"],
+          "properties": {
+            "of": { "$ref": "#/$defs/name" },
+            "files": { "$ref": "#/$defs/count" },
+            "classes": { "type": "array", "items": { "type": "string", "maxLength": 1024 } }
+          }
+        },
+        "InvalidManifest": {
+          "type": "object",
+          "required": ["file", "message", "line"],
+          "properties": {
+            "file": { "$ref": "#/$defs/path" },
+            "message": { "type": "string", "maxLength": 2000 },
+            "line": { "$ref": "#/$defs/count" }
+          }
+        },
+        "NoManifestName": {
+          "type": "object",
+          "required": ["file"],
+          "properties": { "file": { "$ref": "#/$defs/path" } }
+        },
+        "NamespaceMismatch": {
+          "type": "object",
+          "required": ["namespace", "folder"],
+          "properties": {
+            "namespace": { "type": "string", "maxLength": 255 },
+            "folder": { "$ref": "#/$defs/path" }
+          }
+        },
+        "StaleStatus": {
+          "type": "object",
+          "required": ["entry", "file"],
+          "properties": {
+            "entry": { "type": "string", "maxLength": 255 },
+            "file": { "$ref": "#/$defs/path" }
+          }
+        },
+        "LowCoverage": {
+          "type": "object",
+          "required": ["percent", "limit"],
+          "properties": {
+            "percent": { "$ref": "#/$defs/percent" },
+            "limit": { "$ref": "#/$defs/percent" }
+          }
+        },
+        "MissingTranslations": {
+          "type": "object",
+          "required": ["locale", "keys", "files", "from"],
+          "properties": {
+            "locale": { "type": "string", "maxLength": 64 },
+            "keys": { "$ref": "#/$defs/count" },
+            "files": { "$ref": "#/$defs/count" },
+            "from": { "type": ["string", "null"], "maxLength": 64 }
+          }
+        }
+      }
+    },
+    "check": {
+      "description": "A variant of `mortise_core::Check`. Known in version 1: NoCircularUse, PublicSurfaceOnly, ValidManifest, NamespaceMatchesFolder, NoStaleStatus, CoverageLimit, TranslationsComplete. A later Mortise can add one; the cloud stores it and shows its name.",
+      "type": "string",
+      "pattern": "^[A-Z][A-Za-z]{1,63}$"
+    },
+    "finding": {
+      "type": "object",
+      "required": ["severity", "check", "module", "detail"],
+      "properties": {
+        "severity": { "enum": ["Problem", "Warning"] },
+        "check": { "$ref": "#/$defs/check" },
+        "module": { "oneOf": [{ "$ref": "#/$defs/name" }, { "type": "null" }] },
+        "detail": { "$ref": "#/$defs/detail" }
+      }
+    },
+    "findings": {
+      "type": "object",
+      "required": ["list", "checks", "todo"],
+      "properties": {
+        "list": { "type": "array", "maxItems": 50000, "items": { "$ref": "#/$defs/finding" } },
+        "checks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["check", "checked", "findings"],
+            "properties": {
+              "check": { "$ref": "#/$defs/check" },
+              "checked": { "$ref": "#/$defs/count" },
+              "findings": { "$ref": "#/$defs/count" }
+            }
+          }
+        },
+        "todo": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["module", "waiting"],
+            "properties": {
+              "module": { "$ref": "#/$defs/name" },
+              "waiting": { "$ref": "#/$defs/count" }
+            }
+          }
+        }
+      }
+    },
+    "snapshot": {
+      "type": "object",
+      "required": ["name", "laravel", "package", "actuator", "layout", "modules", "coverage_report", "links", "cycles", "rules", "rules_source", "findings", "coverage_limit"],
+      "properties": {
+        "name": { "$ref": "#/$defs/name" },
+        "laravel": { "oneOf": [{ "$ref": "#/$defs/version" }, { "type": "null" }] },
+        "package": { "$ref": "#/$defs/version" },
+        "actuator": { "oneOf": [{ "$ref": "#/$defs/version" }, { "type": "null" }] },
+        "layout": { "$ref": "#/$defs/layout" },
+        "modules": { "type": "array", "maxItems": 2000, "items": { "$ref": "#/$defs/module" } },
+        "coverage_report": {
+          "oneOf": [
+            {
+              "type": "object",
+              "required": ["path", "written"],
+              "properties": {
+                "path": { "$ref": "#/$defs/path" },
+                "written": { "type": ["integer", "null"] }
+              }
+            },
+            { "type": "null" }
+          ]
+        },
+        "links": { "type": "array", "maxItems": 50000, "items": { "$ref": "#/$defs/link" } },
+        "cycles": { "type": "array", "maxItems": 10000, "items": { "$ref": "#/$defs/cycle" } },
+        "rules": { "$ref": "#/$defs/rules" },
+        "rules_source": { "$ref": "#/$defs/rules_source" },
+        "findings": { "$ref": "#/$defs/findings" },
+        "coverage_limit": { "$ref": "#/$defs/percent" }
+      }
+    }
+  }
+}

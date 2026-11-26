@@ -38,7 +38,8 @@ pub struct Churn {
     pub last_commit: Option<i64>,
 }
 
-fn git(root: &Path, args: &[&str]) -> Option<String> {
+/// Runs git in `root` and gives its output, or `None` when it fails.
+pub(crate) fn git(root: &Path, args: &[&str]) -> Option<String> {
     let output = crate::program::command("git")
         .arg("-C")
         .arg(root)

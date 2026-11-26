@@ -40,6 +40,8 @@ Phase 1 (read only) is built. The plan is `docs/plan/phase-1.md`.
   Other files in the app are written by the package's commands, not by Mortise.
 - The actuator client asks for the actuator base path, `health`, `info`, `mappings`, `scheduledtasks`
   and `prometheus` only. It never asks for `env` and follows no redirect.
+- `mortise push` sends only the push document, to the cloud host, when CI or the user runs it.
+  The token comes from `MORTISE_TOKEN` only and is never printed. The window has no push button.
 - A token or a password goes to the credential store of the operating system. It is never written to a file or a log.
 - `unsafe` code is forbidden in the workspace (`unsafe_code = "forbid"`). Find a safe route or record a deviation.
 - `mortise-core` has no interface dependency. Drawing belongs in `mortise-app` only.
@@ -148,9 +150,9 @@ Environment for work on Mortise itself:
 
 | Path | Holds |
 |---|---|
-| `crates/mortise-core` | Reading an app into a snapshot, links, rules, findings, the scan, the actuator client, settings. One folder per feature (`modules`, `app`, `boundary`, `runtime`, `run`, `actions`, `generate`, `palette`); `lib.rs` re-exports every public name. Features `watch`, `actuator`, `os-secrets` are on by default; `testing` gives a stub actuator |
+| `crates/mortise-core` | Reading an app into a snapshot, links, rules, findings, the scan, the actuator client, settings. One folder per feature (`modules`, `app`, `boundary`, `runtime`, `run`, `actions`, `generate`, `palette`, `push`); `lib.rs` re-exports every public name. Features `watch`, `actuator`, `os-secrets`, `run` are on by default; `push` gives the push document; `testing` gives a stub actuator |
 | `crates/mortise-app` | The window, theme, components and screens. Binary `mortise-desktop`. One folder per feature, each with a `view.rs` and a `strings.rs`; `ui/` holds the theme and components; `app/` holds the window and one wiring file per feature |
-| `crates/mortise-cli` | The command line tool, binary `mortise`: `mortise check`. It uses `mortise-core` with `default-features = false`, runs no PHP and writes nothing in the app |
+| `crates/mortise-cli` | The command line tool, binary `mortise`: `mortise check` and `mortise push`. It uses `mortise-core` with `default-features = false` and the feature `push`, runs no PHP and writes nothing in the app |
 | `fixtures` | Laravel apps for the tests. They are never installed or run |
 | `docs/spec` | The design specification (HTML). Screen ids such as S4.2 refer to it |
 | `docs/spec-build` | The scripts that build `docs/spec` |

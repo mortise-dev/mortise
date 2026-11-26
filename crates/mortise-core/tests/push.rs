@@ -1,0 +1,198 @@
+//! The push document of shop-api, whose shape is a contract with Mortise Cloud (its request R8).
+//!
+//! `push/push-document-1.schema.json` and `push/example-shop-api.json` are copies of
+//! `mortise-cloud/docs/spec/contract` at `064a015`. `push/shop-api.json` is the document this
+//! Mortise writes. After a change to a type in the document, write it again with
+//! `UPDATE_SNAPSHOTS=1 cargo test -p mortise-core --test push` and review the change: a member that
+//! is removed, renamed or changes its type needs a new `SCHEMA_VERSION`.
+
+use std::path::{Path, PathBuf};
+
+use mortise_core::Detail;
+
+use mortise_core::{PushCi, PushContext, PushGit, push_document, read_app};
+use serde_json::Value;
+
+fn here(file: &str) -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/push")
+        .join(file)
+}
+
+fn json(file: &str) -> Value {
+    serde_json::from_str(&std::fs::read_to_string(here(file)).unwrap()).unwrap()
+}
+
+/// The envelope of the cloud's example, from a shallow clone.
+fn context() -> PushContext {
+    let sha = |s: &str| Some(s.to_owned());
+    PushContext {
+        generated_at: "2026-11-24T14:03:11Z".to_owned(),
+        tool_version: "0.2.0".to_owned(),
+        app_path: ".".to_owned(),
+        git: PushGit {
+            repository: sha("acme/shop-api"),
+            commit: "9b2e4c71d0a85f3e6c1b7a24d8e0f5a3c9d61e2b".to_owned(),
+            head_commit: sha("c41f0d9a7e3b52816d4c0a9f1e7b3d5a2c8e6f40"),
+            branch: sha("split-invoices"),
+            base_branch: sha("main"),
+            base_commit: sha("e07a3d5c19b84f2a6d0c7e1b9f3a5d8c2e4b6a10"),
+            pull_request: Some(42),
+            shallow: true,
+        },
+        ci: PushCi {
+            provider: "github-actions".to_owned(),
+            run_id: sha("12093847561"),
+            run_attempt: Some(1),
+            run_url: sha("https://github.com/acme/shop-api/actions/runs/12093847561"),
+        },
+        environment: None,
+    }
+}
+
+/// Every member of `expected` is in `actual` with the same value, except the members named
+/// in `skip`. `actual` may have more members: version 1 allows an optional member anywhere.
+fn holds(actual: &Value, expected: &Value, skip: &[&str], at: &str) {
+    match (actual, expected) {
+        (Value::Object(actual), Value::Object(expected)) => {
+            for (name, value) in expected
+                .iter()
+                .filter(|(name, _)| !skip.contains(&name.as_str()))
+            {
+                let Some(found) = actual.get(name) else {
+                    panic!("{at}/{name} is missing");
+                };
+                holds(found, value, skip, &format!("{at}/{name}"));
+            }
+        }
+        (Value::Array(actual), Value::Array(expected)) => {
+            assert_eq!(actual.len(), expected.len(), "{at} has another length");
+            for (index, (found, value)) in actual.iter().zip(expected).enumerate() {
+                holds(found, value, skip, &format!("{at}/{index}"));
+            }
+        }
+        _ => assert_eq!(actual, expected, "{at} differs"),
+    }
+}
+
+#[test]
+fn the_document_of_shop_api_keeps_its_shape() {
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/shop-api");
+    let mut document = push_document(read_app(&fixture).unwrap(), context());
+    // When the checkout wrote the report: the time the cloud's example was made.
+    document.snapshot.coverage_report.as_mut().unwrap().written = Some(1_795_369_951);
+    let mut written = serde_json::to_string_pretty(&document).unwrap();
+    written.push('\n');
+
+    if std::env::var_os("UPDATE_SNAPSHOTS").is_some() {
+        std::fs::write(here("shop-api.json"), &written).unwrap();
+    }
+    let committed = std::fs::read_to_string(here("shop-api.json")).unwrap();
+    assert_eq!(
+        written,
+        committed.replace("\r\n", "\n"),
+        "the push document changed"
+    );
+
+    let mut schemas = boon::Schemas::new();
+    let mut compiler = boon::Compiler::new();
+    compiler.enable_format_assertions();
+    compiler
+        .add_resource(
+            "push-document-1.schema.json",
+            json("push-document-1.schema.json"),
+        )
+        .unwrap();
+    let schema = compiler
+        .compile("push-document-1.schema.json", &mut schemas)
+        .unwrap();
+    let value: Value = serde_json::from_str(&written).unwrap();
+    if let Err(error) = schemas.validate(&value, schema) {
+        panic!("not valid against the schema: {error:#}");
+    }
+
+    // The example was read from a full clone, so its churn is there and ours is not.
+    holds(
+        &value,
+        &json("example-shop-api.json"),
+        &["churn", "shallow"],
+        "",
+    );
+}
+
+fn copy_dir(from: &Path, to: &Path) {
+    std::fs::create_dir_all(to).unwrap();
+    for entry in std::fs::read_dir(from).unwrap() {
+        let entry = entry.unwrap();
+        let target = to.join(entry.file_name());
+        if entry.file_type().unwrap().is_dir() {
+            copy_dir(&entry.path(), &target);
+        } else {
+            std::fs::copy(entry.path(), target).unwrap();
+        }
+    }
+}
+
+#[test]
+fn no_absolute_path_leaves_when_the_modules_live_outside_the_app() {
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/shop-api");
+    let folder = tempfile::tempdir().unwrap();
+    let (app, outside) = (folder.path().join("app"), folder.path().join("outside"));
+    copy_dir(&fixture, &app);
+    std::fs::create_dir_all(&outside).unwrap();
+    std::fs::rename(app.join("Modules"), outside.join("Modules")).unwrap();
+    // A broken module and a stale status, so findings name files outside the app.
+    std::fs::create_dir_all(outside.join("Modules/Broken")).unwrap();
+    std::fs::write(outside.join("Modules/Broken/module.json"), "{").unwrap();
+    std::fs::write(
+        outside.join("modules_statuses.json"),
+        r#"{"Billing": true, "Legacy": true}"#,
+    )
+    .unwrap();
+    let absolute = |path: &Path| path.to_string_lossy().replace('\\', "/");
+    let config = app.join("config/modules.php");
+    let php = std::fs::read_to_string(&config)
+        .unwrap()
+        .replace(
+            "base_path('Modules')",
+            &format!("'{}'", absolute(&outside.join("Modules"))),
+        )
+        .replace(
+            "base_path('modules_statuses.json')",
+            &format!("'{}'", absolute(&outside.join("modules_statuses.json"))),
+        );
+    std::fs::write(&config, php).unwrap();
+
+    let document = push_document(read_app(&app).unwrap(), context());
+    let json = serde_json::to_string(&document).unwrap();
+    // The temporary folder has a name of its own; no member may hold it.
+    let name = folder.path().file_name().unwrap().to_string_lossy();
+    assert!(!json.contains(name.as_ref()), "{json}");
+
+    let snapshot = &document.snapshot;
+    assert_eq!(snapshot.layout.modules_dir, Path::new("../outside/Modules"));
+    let reference = &snapshot.links[0].refs[0];
+    assert!(
+        reference.file.starts_with("../outside/Modules/"),
+        "{}",
+        reference.file
+    );
+    let files: Vec<&str> = snapshot
+        .findings
+        .list
+        .iter()
+        .filter_map(|finding| match &finding.detail {
+            Detail::InvalidManifest { file, .. } | Detail::StaleStatus { file, .. } => {
+                Some(file.as_str())
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        files,
+        [
+            "../outside/Modules/Broken/module.json",
+            "../outside/modules_statuses.json"
+        ]
+    );
+}

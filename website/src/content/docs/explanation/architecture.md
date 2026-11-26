@@ -19,8 +19,8 @@ The workspace has two crates.
 - **`mortise-app`** is the window. It draws the screens and wires each control to the core. Its binary
   is `mortise-desktop`; the installers and the app are named Mortise.
 - **`mortise-cli`** is the command line tool `mortise`. It uses the core without its optional
-  features: no watcher, no actuator client, no credential store and no PHP runner. It reads an app and
-  prints what it found.
+  features: no watcher, no actuator client, no credential store and no PHP runner. It takes only the
+  feature `push`. It reads an app and prints what it found, or sends it to Mortise Cloud.
 
 The line between them is strict, and it pays in three ways. The core can be tested without a screen:
 reading an app, the file watcher, the actuator client and the scan all have tests that run in plain
@@ -83,10 +83,11 @@ Parts of the core sit behind Cargo features, so a tool that needs less can build
 | `actuator` | The HTTP client for a running app | Yes |
 | `os-secrets` | Keeping secrets in the credential store of the operating system | Yes |
 | `run` | Running artisan through the PHP chosen for an app | Yes |
+| `push` | The push document that `mortise push` sends to Mortise Cloud | No |
 | `testing` | A small stub actuator for tests | No |
 
-The app uses the defaults. A tool that only reads an app once, such as a check in CI, could leave out
-`watch`, `actuator` and `run`.
+The app uses the defaults. The command line tool reads an app once, so it leaves out all four and
+takes `push` alone.
 
 ## Platforms
 

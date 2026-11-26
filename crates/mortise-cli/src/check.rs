@@ -63,7 +63,7 @@ pub(crate) fn run(options: &Options) -> u8 {
             return crate::USAGE;
         }
         Err(error) => {
-            say(&strings::not_an_app(&error.to_string()));
+            say(&strings::not_an_app("check", &error.to_string()));
             return crate::NOT_AN_APP;
         }
     };

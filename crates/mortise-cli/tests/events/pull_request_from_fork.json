@@ -1,0 +1,19 @@
+{
+  "action": "synchronize",
+  "number": 42,
+  "pull_request": {
+    "number": 42,
+    "title": "Split invoices",
+    "head": {
+      "ref": "split-invoices",
+      "sha": "c41f0d9a7e3b52816d4c0a9f1e7b3d5a2c8e6f40",
+      "repo": { "full_name": "someone/shop-api", "fork": true }
+    },
+    "base": {
+      "ref": "main",
+      "sha": "e07a3d5c19b84f2a6d0c7e1b9f3a5d8c2e4b6a10",
+      "repo": { "full_name": "acme/shop-api", "fork": false }
+    }
+  },
+  "repository": { "full_name": "acme/shop-api" }
+}
