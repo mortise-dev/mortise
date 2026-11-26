@@ -38,7 +38,9 @@ comparison with another branch.
 ## Output
 
 Problems come first, then warnings, in the order of the Findings tab. Paths are relative to the app
-folder, with `/` between the parts on every platform. A control character in a value from the app,
+folder, with `/` between the parts on every platform. A path outside the app folder, such as a modules
+folder that `config/modules.php` sets to an absolute path, is printed whole, also with `/`:
+`D:/shared/Modules` on Windows. A control character in a value from the app,
 such as a line end in a file name, is printed as its escape (`\n`), so content of the app never starts
 a line of its own. The `github` format escapes `%`, carriage returns and line ends as the GitHub runner
 reads them.
