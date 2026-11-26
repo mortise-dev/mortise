@@ -2,6 +2,26 @@
 
 All notable changes to this project are listed here.
 <!-- git-cliff: end of header -->
+## [1.0.1] - 2026-11-26
+
+### Features
+
+- *(app)* Follow the reduced motion setting on windows and linux (#68)
+- *(core)* Place scheduled tasks by their module tag (#69)
+
+### Bug fixes
+
+- *(app)* Keep the environment switch and its focus while metrics are read (#67)
+- *(app)* Give columns of figures way to the name in a narrow metrics table (#71)
+- *(app)* Keep the palette from restarting the input method in each frame (#72)
+
+### Documentation
+
+- Mark phase 4 done in the plan (#62)
+- Fix the milestone numbers of phase 4 in the phase 3 plan (#64)
+- Add the phase 5 plan (#65)
+- Record the linux sweep of the deviation rows (#70)
+
 ## [1.0.0] - 2026-11-26
 
 ### Features
