@@ -115,7 +115,7 @@ fn a_use_outside_the_list_marks_each_file_in_every_format() {
         "\
 Modules/Audit/app/Listeners/RecordCharge.php:5: problem: Audit uses Billing. mortise.json lets Audit use no module.
 Modules/Audit/app/Services/ChargeTrail.php:6: problem: Audit uses Billing. mortise.json lets Audit use no module.
-mortise.json: warning: mortise.json names Reports in allowed-use. The app has no module of that name.
+mortise.json: warning: mortise.json names Reports in allowed-use, and the app has no module of that name. Correct the name in mortise.json.
 1 problem, 1 warning. 5 modules checked against 3 rules and 3 checks.
 "
     );
@@ -127,7 +127,7 @@ mortise.json: warning: mortise.json names Reports in allowed-use. The app has no
         [
             "::error file=Modules/Audit/app/Listeners/RecordCharge.php,line=5,title=Allowed use::Audit uses Billing. mortise.json lets Audit use no module.",
             "::error file=Modules/Audit/app/Services/ChargeTrail.php,line=6,title=Allowed use::Audit uses Billing. mortise.json lets Audit use no module.",
-            "::warning file=mortise.json,title=Allowed use::mortise.json names Reports in allowed-use. The app has no module of that name.",
+            "::warning file=mortise.json,title=Allowed use::mortise.json names Reports in allowed-use, and the app has no module of that name. Correct the name in mortise.json.",
         ]
     );
 

@@ -69,8 +69,9 @@ the module is in no folder.
 - Mortise checks the imports it reads without PHP. To check links that only the booted app shows,
   such as facades and container keys, use Larch's `toOnlyDependOn()->via(Edge::all())` in Pest.
 
-The Boundary tab does not show this rule yet. Its findings appear in the Findings tab and in
-`mortise check`. Edit the lists in the file.
+The Boundary tab has the switch of this rule and says how many modules have a list. The switch
+writes `enabled` and keeps the lists. Edit the lists in the file. Its findings appear in the Boundary
+tab, the Findings tab and `mortise check`.
 
 ### Where the coverage settings come from
 

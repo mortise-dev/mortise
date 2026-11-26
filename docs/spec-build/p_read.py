@@ -169,6 +169,7 @@ def rules_box():
     return box('Rules for shop-api', 'kept in <span class="mono">mortise.json</span> in the app folder',
                chk('No circular use', '', True)
                + '<div class="chk" style="align-items:flex-start;padding-top:4px">%s<span style="flex:1">%s<span class="hint2" style="display:block;margin:2px 0 4px">Accepted for 0 of 7 modules. For a module without one, these folders count:</span>%s</span></div>' % (sq(True), t('ps.rule'), inp('Contracts, Events', 'mono'))
+               + '<div class="chk" style="align-items:flex-start;padding-top:4px">%s<span style="flex:1">%s<span class="hint2" style="display:block;margin:2px 0 4px">%s</span></span></div>' % (sq(False), t('ar.rule'), t('ar.none'))
                + chk('Fail CI when a rule breaks', '', True))
 def boundary_all():
     probs = ('<div class="box flush"><h5><span>Links that break a rule</span>%s</h5>'
@@ -331,8 +332,12 @@ def build():
     b += screen('S5.3', 'Boundary for "All modules": the app graph and the rules', 'Shop-api has 7 modules, so the whole graph is drawn.', boundary_all(), '1. "Fail CI" is phase 4.',
                 'The same links as %s, for every module.' % ref('S5.1'), ['P6', 'M1'],
                 ['<b>Layout.</b> Modules are placed in columns from left to right: a module sits to the left of what it uses. Modules in a circle share a column.',
-                 '<b>Rules.</b> Two rules in this version, kept in <span class="mono">mortise.json</span> in the app folder (owner decision) so a team shares them. It is the only file Mortise writes without a command, and the first change asks before creating it. No secret is ever written to it.',
+                 '<b>Rules.</b> Three rules in this version, kept in <span class="mono">mortise.json</span> in the app folder (owner decision) so a team shares them. It is the only file Mortise writes without a command, and the first change asks before creating it. No secret is ever written to it.',
                  '<b>The second rule.</b> A module with an accepted public surface (%s) is checked against it. A module without one is checked against the folder list, which is free text.' % ref('S5.7'),
+                 ('<b>The third rule, allowed use.</b> Kept as <span class="mono">rules.allowed-use</span>: a switch, <span class="mono">enabled</span>, and for each module with a list the modules it may use. An empty list means no module. A module without a list is not checked, and a module that is off breaks nothing. '
+                  'The window has the switch and the count of modules with a list ("%s"); the lists are written in the file. Without the key the switch is off and the line reads "%s". The switch writes <span class="mono">enabled</span> and keeps the lists. '
+                  'A link that breaks it has the mark of the other rules on the graph, a row such as "%s" in "Links that break a rule", and on %s the head "%s" and the footer "%s" Every file of such a link is marked. '
+                  'A name in a list that is no module of the app is a warning: "%s"') % (t('ar.count'), t('ar.none'), t('ar.broken'), ref('S5.1'), t('ar.files'), t('ar.link'), t('f.allowed.name')),
                  '<b>Fail CI when a rule breaks.</b> Kept as <span class="mono">ci.fail</span> in <span class="mono">mortise.json</span>, on when the key is absent. The command line tool <span class="mono">mortise check</span> reads it: on, a problem exits 1; off, the tool prints the same report and exits 0.',
                  '<b>Keys.</b> J and K move through "Links that break a rule"; Enter selects the first module of the link and opens its Boundary tab on that link.'])
     b += screen('S5.4', 'Boundary for an app with many modules', 'The app "platform" has 60 modules. Decision: above 12 modules the graph of the whole app is replaced by a table of links.', boundary_many(), '1', None, ['P6'],

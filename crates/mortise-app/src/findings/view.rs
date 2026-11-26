@@ -23,7 +23,10 @@ fn opens(finding: &Finding, app: &AppSnapshot) -> (&'static str, Option<WorkActi
                 other.map(|other| WorkAction::ShowLink { module, other }),
             )
         }
-        (Detail::ReadsInternals { of, .. }, Some(module)) => (
+        (
+            Detail::ReadsInternals { of, .. } | Detail::OutsideAllowedUse { of, .. },
+            Some(module),
+        ) => (
             crate::strings::BOUNDARY,
             Some(WorkAction::ShowLink {
                 module,

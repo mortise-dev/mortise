@@ -3,6 +3,7 @@
 mod common;
 
 use common::{Desk, shop_api, wait_until};
+use eframe::egui::accesskit::Toggled;
 use eframe::egui::{Key, Modifiers, Rect, Role, vec2};
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT as _, Queryable as _};
@@ -10,6 +11,7 @@ use mortise_app::app::MortiseApp;
 use mortise_app::app::workspace::Tab;
 use mortise_app::boundary::strings;
 use mortise_app::index::view::Selection;
+use mortise_app::strings as crate_strings;
 use mortise_app::ui::theme::size;
 use mortise_core::{Rules, RulesSource};
 
@@ -206,6 +208,10 @@ fn the_boundary_of_the_app_lists_the_links_that_break_a_rule() {
     harness.get_by_label(
         "Accepted for 1 of 7 modules. For a module without one, these folders count:",
     );
+    // Without the key, no module has a list and the third rule is off.
+    harness.get_by_label(strings::NO_LIST_YET);
+    let switch = harness.get_by_role_and_label(Role::CheckBox, crate_strings::RULE_ALLOWED_USE);
+    assert_eq!(switch.accesskit_node().toggled(), Some(Toggled::False));
 
     // A row lands on the module's Boundary, on that link.
     harness
@@ -346,6 +352,56 @@ fn the_folders_of_the_second_rule_can_be_changed() {
     // The save keeps the coverage block as it was.
     let saved = std::fs::read_to_string(root.join("mortise.json")).unwrap();
     assert!(saved.contains(r#""limit": 101"#), "{saved}");
+}
+
+#[test]
+fn the_third_rule_marks_a_link_outside_its_list_and_its_switch_keeps_the_lists() {
+    let desk = Desk::new();
+    let root = desk.path().join("layered");
+    common::copy_dir(&common::fixture("layered"), &root);
+    desk.knows(&[(&root, "LA")]);
+    let mut harness = desk.start();
+    harness.key_press(Key::Num2);
+    harness.run();
+
+    assert_eq!(rows(&harness), ["Audit uses Billing outside its list"]);
+    harness.get_by_label(
+        "3 of 5 modules have a list in mortise.json. A module without one is not checked.",
+    );
+    let switch = harness.get_by_role_and_label(Role::CheckBox, crate_strings::RULE_ALLOWED_USE);
+    assert_eq!(switch.accesskit_node().toggled(), Some(Toggled::True));
+
+    // The row lands on the link: every file is marked, and the footer names the rule.
+    harness
+        .get_by_role_and_label(Role::Row, "Audit uses Billing outside its list")
+        .click();
+    harness.run();
+    harness.get_by_role_and_label(Role::Heading, "Audit uses Billing");
+    harness.get_by_label("Outside its list, 2 files");
+    harness.get_by_label(
+        "Rule: a module uses only the modules of its list. mortise.json lets Audit use no module.",
+    );
+
+    // The switch writes `enabled` and keeps the lists.
+    harness
+        .get_by_role_and_label(Role::ListBoxOption, "All modules")
+        .click();
+    harness.run();
+    harness
+        .get_by_role_and_label(Role::CheckBox, crate_strings::RULE_ALLOWED_USE)
+        .click();
+    wait_until(&mut harness, "the third rule is off", |app| {
+        app.app().is_some_and(|app| {
+            app.rules
+                .allowed_use
+                .as_ref()
+                .is_some_and(|allowed| !allowed.enabled)
+        })
+    });
+    let allowed = Rules::load(&root).0.allowed_use.unwrap();
+    assert!(!allowed.enabled);
+    assert_eq!(allowed.modules.len(), 3);
+    harness.get_by_label("No link breaks a rule.");
 }
 
 #[test]

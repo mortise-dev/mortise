@@ -345,6 +345,17 @@ fn boundary_and_the_public_surface() {
         );
         shots.take_part(&mut harness, "s5.1-long-neighbour", part);
 
+        // S5.1: a link outside the list of its module, under the third rule.
+        let mut desk = Desk::new();
+        desk.theme = theme;
+        let root = desk.path().join("layered");
+        common::copy_dir(&common::fixture("layered"), &root);
+        desk.knows(&[(&root, "LA")]);
+        let mut harness = desk.start();
+        select(&mut harness, "Audit");
+        press(&mut harness, Key::Num2);
+        shots.take(&mut harness, "s5.1-outside-list");
+
         // S5.6: a scan in a module of 96 files, after the first frame. A frame reads 8 files.
         let mut desk = Desk::new();
         desk.theme = theme;
