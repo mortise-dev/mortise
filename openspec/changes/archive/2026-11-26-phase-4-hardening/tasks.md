@@ -11,7 +11,7 @@ One branch, `change/phase-4-hardening`, in its own worktree. One pull request to
 ## 2. CI
 
 - [x] 2.1 Extend the job "Command line tool" of `ci.yml` (design D2); verify by running its steps in bash on the Mac, and that the path checks fail on a path with a backslash
-- [ ] 2.2 Verify the job passes on Linux, macOS and Windows on the pull request
+- [x] 2.2 Verify the job passes on Linux, macOS and Windows on the pull request
 
 ## 3. Screens
 
