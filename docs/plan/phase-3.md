@@ -62,6 +62,9 @@ The owner accepted each recommendation on 23 November 2026.
    health." Section 12.2 is brought up to laravel-modules 13.4.0 and laravel-actuator 1.3.1.
 9. **Tasks per module without P10.** Milestone 22 matches a task `php artisan <command>` to the module
    that declares that command. Other tasks stay "none" until PKG-2.
+   PKG-2 does not read the `modules` endpoint, which the actuator rule leaves out. The module comes as a
+   `module` tag on each task of `scheduledtasks` instead. The tag wins; the match of milestone 22 is the
+   fallback for older packages and for tasks the app schedules.
 10. **Phase 4.** M1, P6, S5.8 and S5.9 are phase 4. Spec 2.5 and 12.2 change in milestone 18.
 11. **Release.** No release during phase 3. At its end the owner decides.
 12. **The Linux look.** A live look on the thinkcentre in milestone 23 only, with the screen unlocked by
@@ -301,7 +304,7 @@ Nothing below blocks a milestone. Each is a brief for the owner's other reposito
 | Id | Repository | What | Mortise without it |
 |---|---|---|---|
 | PKG-1 (A2, rest) | laravel-modules | Add the `module` attribute to the built-in metrics through the attribute callbacks of laravel-metrics. For a query, the module of the request or job that runs it | Mortise places requests, the 95% figure, errors and jobs itself. Database time reads "unknown" |
-| PKG-2 (P10, rest) | laravel-modules | The `modules` endpoint also lists the scheduled tasks of each module | Milestone 22 matches artisan tasks. Other tasks stay "none" |
+| PKG-2 (P10, rest) | laravel-actuator, laravel-modules | Each task of `scheduledtasks` has `"tags": {"module": "Blog"}` when a module scheduled it in `configureSchedules()`. laravel-actuator PR #40 adds `Actuator::tagScheduledTasksUsing()`; laravel-modules PR #2311 adds the tag. Open, not released. Mortise reads the tag | Milestone 22 matches artisan tasks. Other tasks stay "none" |
 | PKG-3 | laravel-modules | Open PR #2290: an invalid `module.json` on health | Nothing. New detail keys are read as text |
 | P6 | laravel-modules | Where a public surface is stored | Phase 4 |
 
@@ -342,7 +345,8 @@ No new account or secret.
 - Limits, colours and alerts on metrics: Q16 puts them in the later cloud service.
 - Storing metrics on disk or across restarts: the spec keeps them in memory for the chosen range.
 - Other metrics of the package (cache, exceptions, scheduler, transactions): S7.3 draws five figures.
-- Reading the `modules` endpoint: it adds nothing the files do not give until PKG-2.
+- Reading the `modules` endpoint: it adds nothing the files do not give. PKG-2 puts the module of a task on
+  `scheduledtasks`, so the rule keeps `modules` out.
 - Deviations D1 to D3 and D5: no tie to live data. Looked at in milestone 23 only if the look on Windows
   or Linux shows them.
 - The phase 2 "left out on purpose" list and its open restart questions.
@@ -391,7 +395,9 @@ one for its archive.
   leaves the switch and Tab must reach it again. Every environment stays reachable. This was there
   before this change. It is left for a later change.
 - Tasks per module (milestone 22) match a task to the module that declares its command. The plan asked for
-  nothing more: PKG-2 is still open.
+  nothing more: PKG-2 was still open.
+- After phase 3, Mortise reads the `module` tag of PKG-2 on each task of `scheduledtasks`. The tag wins;
+  the match of milestone 22 stays the fallback. The package changes are open pull requests.
 
 ### Platforms
 

@@ -82,6 +82,10 @@ pub struct Task {
     pub timezone: Option<String>,
     /// The next run, as the app wrote it: ISO 8601 in the task's timezone.
     pub next: Option<String>,
+    /// The module that scheduled the task, from its `tags.module`. Newer versions of
+    /// laravel-actuator and laravel-modules add the tag (PKG-2); older versions give `None`.
+    #[serde(default)]
+    pub module: Option<String>,
 }
 
 /// What a running app answered.
@@ -578,6 +582,7 @@ fn read_tasks(tasks: &Value) -> Vec<Task> {
         interval_ms: None,
         timezone: text(&task, &["timezone"]),
         next: text(&task, &["nextExecution", "time"]),
+        module: text(&task, &["tags", "module"]),
     });
     let fixed = list("fixedRate").into_iter().map(|task| Task {
         target: text(&task, &["runnable", "target"]).unwrap_or_default(),
@@ -585,6 +590,7 @@ fn read_tasks(tasks: &Value) -> Vec<Task> {
         interval_ms: task.get("interval").and_then(Value::as_u64),
         timezone: None,
         next: None,
+        module: text(&task, &["tags", "module"]),
     });
     cron.chain(fixed).collect()
 }

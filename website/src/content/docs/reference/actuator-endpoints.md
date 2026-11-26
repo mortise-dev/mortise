@@ -20,7 +20,7 @@ Mortise asks for these six only, with `GET`.
 | `health` | As above, and every 15 s while the window is visible | The status of the app and of each component: Up, Down, Out of service or Unknown, with the details of each component. The index marks each module by its own health indicators |
 | `info` | With the base path, when it is exposed | The environment, the Laravel version, the git branch and commit, the PHP version and SAPI, and the memory in use, its peak and its limit |
 | `mappings` | With the base path, when it is exposed | The routes: methods, URI, name, action and middleware. Mortise places each route in the module of its action |
-| `scheduledtasks` | With the base path, when it is exposed | The scheduled tasks: target, cron expression or interval, timezone and next run. Each task shows in the module that declares its command |
+| `scheduledtasks` | With the base path, when it is exposed | The scheduled tasks: target, cron expression or interval, timezone and next run. A task shows in the module its `module` tag names. Without the tag, it shows in the module of its job class, or in the module that declares its command |
 | `prometheus` | Every 15 s, only while the Metrics tab is open and the window is visible | The metrics, in the Prometheus text format. See [Metrics tab](/mortise/reference/metrics/) |
 
 The rules of the client:
