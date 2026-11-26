@@ -1,9 +1,10 @@
-# Starts mortise-desktop on an app, waits for its window and writes a shot of the desktop.
+# Starts mortise-desktop on an app, waits for its window, adds the app with Ctrl Enter
+# and writes a shot of the desktop before and after.
 # The job "Windows looked at" of ci.yml runs it. It needs a session with a desktop.
 #
 #   tools/windows-look.ps1 -Exe target\debug\mortise-desktop.exe -App fixtures\shop-api -Out look
 #
-# It writes desktop.png, facts.txt, stdout.txt and stderr.txt into -Out.
+# It writes add-app.png, modules.png, facts.txt, stdout.txt and stderr.txt into -Out.
 # It fails when no window shows within 90 seconds, or when Mortise ends by itself.
 param(
     [Parameter(Mandatory = $true)][string]$Exe,
@@ -56,25 +57,32 @@ try {
         $process.Refresh()
         if ($process.HasExited) {
             Note "Mortise ended by itself with exit code $($process.ExitCode)."
-            Shot 'desktop.png'
+            Shot 'no-window.png'
             exit 1
         }
         if ($process.MainWindowHandle -ne [IntPtr]::Zero) { break }
         if ((Get-Date) -gt $deadline) {
             Note 'No window after 90 seconds.'
-            Shot 'desktop.png'
+            Shot 'no-window.png'
             exit 1
         }
         Start-Sleep -Milliseconds 500
     }
-    Note "Window title: $($process.MainWindowTitle)"
-
-    # Bring the window to the front, then give it time to read the app and draw.
-    $front = (New-Object -ComObject WScript.Shell).AppActivate($process.Id)
-    Note "Brought to the front: $front"
+    # Bring the window to the front, then give it time to read the folder and draw.
+    $shell = New-Object -ComObject WScript.Shell
+    Note "Brought to the front: $($shell.AppActivate($process.Id))"
     Start-Sleep -Seconds 8
-    Shot 'desktop.png'
+    Shot 'add-app.png'
 
+    # Mortise opens on the Add app panel with the folder found. Ctrl Enter adds the app,
+    # which writes settings.json in MORTISE_CONFIG_DIR and nothing in the app.
+    Note "Brought to the front again: $($shell.AppActivate($process.Id))"
+    [System.Windows.Forms.SendKeys]::SendWait('^{ENTER}')
+    Start-Sleep -Seconds 8
+    Shot 'modules.png'
+
+    $process.Refresh()
+    Note "Window title: $($process.MainWindowTitle)"
     $process.Refresh()
     if ($process.HasExited) {
         Note "Mortise ended by itself with exit code $($process.ExitCode)."

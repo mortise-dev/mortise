@@ -375,7 +375,7 @@ jobs:
       - run: cargo build -p mortise-app --bin mortise-desktop --locked
 
       # Settings, the history of runs and secrets stay out of the runner's own folders.
-      - name: Start the window and take a shot of the desktop
+      - name: Start the window, add the app and take shots of the desktop
         shell: pwsh
         env:
           MORTISE_CONFIG_DIR: ${{ runner.temp }}\mortise-config
