@@ -9,6 +9,8 @@ The command line tool is the binary `mortise`. It reads an app through the same 
 so the two report the same findings. It runs no PHP and writes nothing in the app. `mortise check`
 writes only to standard output and standard error. `mortise push` also sends one document to Mortise
 Cloud. The window is a separate binary, `mortise-desktop`.
+[Install the command line tool](/mortise/start-here/installation/#install-the-command-line-tool) says
+how to get it.
 
 ## mortise check
 

@@ -8,9 +8,9 @@ people too. This file says how the workflows build, sign and release Mortise.
 | Workflow | Runs on | Does |
 |---|---|---|
 | `ci.yml` | Every pull request and every push to `main` | Commit subjects, formatting, clippy and tests on macOS, Linux and Windows, coverage on macOS, the licence list, `cargo audit`, a secret scan, OpenSpec, and, not required, the package's commands in a real app and the actuator client against a real app |
-| `installers.yml` | A run by hand, a pull request that changes the packaging, and a release | Builds the DMG, the Windows setup, the AppImage and the .deb as artifacts. It never publishes |
+| `installers.yml` | A run by hand, a pull request that changes the packaging, and a release | Builds the DMG, the Windows setup, the AppImage and the .deb, and the four archives of the command line tool with their sums, as artifacts. It never publishes |
 | `release.yml` | A run by hand on `main` | Opens the release pull request |
-| `tag-release.yml` | The merge of a release pull request | Builds the installers on the merge commit, signs the macOS app, tags and publishes the release |
+| `tag-release.yml` | The merge of a release pull request | Builds the installers and the command line tool on the merge commit, signs the macOS app and tool, tags and publishes the release, then publishes the crates to crates.io |
 | `codeql.yml` | A push to `main`, weekly, by hand | CodeQL for Rust and for the workflows |
 
 Commit subjects follow Conventional Commits. CI checks them, because git-cliff builds `CHANGELOG.md` from them.
@@ -22,7 +22,7 @@ differs, the job keeps the new image and the difference as the artifact `images-
 
 cargo-packager builds the installers from `[package.metadata.packager]` in `crates/mortise-app/Cargo.toml`.
 They hold the window, binary `mortise-desktop`, under the name Mortise. The command line tool, binary
-`mortise` of `crates/mortise-cli`, is not in them.
+`mortise` of `crates/mortise-cli`, is not in them: it ships as archives of its own (see below).
 To build the macOS app and DMG on a Mac:
 
 ```
@@ -38,13 +38,65 @@ The files land in `target/packages`. A local build is signed ad hoc (`signing-id
 | Windows, x64 | `nsis` | No |
 | Linux, x86_64 | `appimage`, `deb`, built on Ubuntu 22.04 | No |
 
+## Command line tool
+
+The Installers workflow builds the tool on four runners, each for its own architecture, so `ring` and
+`blake3` compile their C with the runner's own compiler and each binary runs before it is packed.
+
+| Platform | Runner | Target | Archive | Signed |
+|---|---|---|---|---|
+| Linux, x86_64 | `ubuntu-latest` | `x86_64-unknown-linux-musl`, static | `mortise-vX.Y.Z-linux-x86_64.tar.gz` | No |
+| Linux, arm64 | `ubuntu-24.04-arm` | `aarch64-unknown-linux-musl`, static | `mortise-vX.Y.Z-linux-arm64.tar.gz` | No |
+| macOS, Apple silicon | `macos-latest` | `aarch64-apple-darwin` | `mortise-vX.Y.Z-macos-arm64.zip` | Developer ID and notarized, in a release only |
+| Windows, x64 | `windows-latest` | `x86_64-pc-windows-msvc`, static C runtime | `mortise-vX.Y.Z-windows-x64.zip` | No |
+
+Each archive holds `mortise` (or `mortise.exe`), `LICENSE` and `THIRD-PARTY.md` at its top level.
+The action [`nwidart/setup-mortise`](https://github.com/nWidart/setup-mortise) computes these names
+from the version, the system and the architecture: do not rename them without changing the action.
+
+`tools/check-cli.sh` runs a binary: it must print the version of `Cargo.toml`, exit 1 on the fixture
+`shop-api`, and on Linux be statically linked. `tools/pack-cli.sh` then packs it without running it. It
+takes a file name in `dist/` only, ending in `.tar.gz` or `.zip`. The job `cli-sums` fails unless exactly
+the four names above are there. To build one archive on your machine:
+
+```
+cargo build --release --locked -p mortise-cli --target aarch64-apple-darwin
+tools/check-cli.sh aarch64-apple-darwin
+tools/pack-cli.sh aarch64-apple-darwin mortise-v0.3.0-macos-arm64.zip
+```
+
+A pull request that changes `crates/mortise-cli/Cargo.toml` or one of the three scripts builds the four
+archives and their sums as artifacts. A dependency update does not; run the Installers workflow by hand
+on the branch to check one.
+
+## crates.io
+
+`mortise-core` and `mortise-cli` are published to crates.io, so `cargo install mortise-cli` works.
+`mortise-app` is not. `mortise-cli` depends on exactly the `mortise-core` of its own version: the
+workspace dependency in `Cargo.toml` holds `version = "=X.Y.Z"`, and `tools/release.sh` moves it with
+the version. CI packages both crates on every pull request (`cargo package -p mortise-core -p mortise-cli`).
+
+After the GitHub release, the job `crates` of the Tag release workflow publishes `mortise-core`, then
+`mortise-cli`. It skips a version that crates.io already has, so a re-run is safe. It uses the secret
+`CARGO_REGISTRY_TOKEN`, an environment secret of `release`, which reaches only the upload step: the step
+before it builds both packages without the token, and the upload runs with `--no-verify`.
+
+```
+gh secret set CARGO_REGISTRY_TOKEN --env release
+```
+
+The token is an API token of crates.io with the scope `publish-update`, limited to the crates
+`mortise-core` and `mortise-cli`. For the first publish of a crate it needs `publish-new` too.
+A crate version cannot be removed from crates.io, only yanked.
+
 ## Release
 
 1. Run the Release workflow from the Actions tab, on `main`. Pick the bump, or leave `auto` to let git-cliff pick it from the commits.
 2. The workflow runs `tools/release.sh`. It adds the section of the new version to `CHANGELOG.md`, sets the version in `Cargo.toml` and `Cargo.lock`, and opens the pull request `chore(release): vX.Y.Z` from `release/vX.Y.Z`.
 3. Review the `CHANGELOG.md` section. Edit it on the branch if needed: the release notes come from it.
 4. Merge with Squash and merge, and keep the subject `chore(release): vX.Y.Z`. A merge commit works too. A rebase merge does not.
-5. The push to `main` starts the Tag release workflow. It builds and tests the merge commit, builds the installers, signs and notarizes the macOS app, then tags the commit and publishes the GitHub release with the installers and their SHA-256 sums.
+5. The push to `main` starts the Tag release workflow. It builds and tests the merge commit, builds the installers and the archives of the command line tool, signs and notarizes the macOS app and the macOS tool, then tags the commit and publishes the GitHub release with the installers, the archives and their SHA-256 sums.
+6. The same workflow then publishes `mortise-core` and `mortise-cli` to crates.io. If that job fails, the GitHub release stays; fix the cause, then re-run the failed job.
 
 The tag exists only once every installer built. If the Tag release workflow did not start, or the
 build failed for a reason the merge commit does not hold, run Tag release by hand with the tag.
@@ -60,7 +112,8 @@ gh secret set RELEASE_TOKEN
 ## macOS signing
 
 Only a release signs. The Tag release workflow calls the Installers workflow with `sign: true` and
-passes it six secrets. That call runs the `package-macos-signed` job, the only job that sets
+passes it six secrets. That call runs the jobs `package-macos-signed` (the app) and
+`package-cli-macos-signed` (the command line tool), the only jobs of the Installers workflow that set
 `environment: release`. The six secrets are environment secrets of `release`, which accepts runs from
 `main` only. A branch, a pull request, a fork and a run by hand of the Installers workflow get no
 secret, and build an app signed ad hoc. When a release runs and a secret is empty or missing, the build
@@ -103,6 +156,22 @@ What the build does:
 - The app is built in a step before the one that holds the secrets, and that step replaces the `before-packaging-command` with `true`, so cargo-packager builds nothing while it holds them. Both steps share one machine, so a build script of a dependency could still reach the secrets. Review each change to `Cargo.lock` as you would code that signs releases.
 - Before the job uploads anything, `tools/verify-macos-app.sh` must pass on the app inside the DMG, mounted read-only, and on the built app: `codesign --verify --deep --strict`, the Developer ID authority, the hardened runtime, the timestamp, `stapler validate`, and `spctl --assess` that sees it as notarized.
 - The app has no entitlements file. It uses Metal, the keychain through the Security framework and the network, and none of them needs an exception from the hardened runtime. This follows from reading, not from a test of a signed build: open the first signed release on a Mac and check that it starts, opens an app folder and saves a token.
+
+The command line tool is a bare binary, which cargo-packager does not sign, so `tools/sign-macos-cli.sh` does:
+
+- It imports `APPLE_CERTIFICATE` into a temporary keychain with a random password, signs the binary with
+  the hardened runtime and a secure timestamp, packs the zip with `tools/pack-cli.sh`, and sends that zip
+  to `notarytool`. It fails unless Apple answers `Accepted`, and prints Apple's log when it does not.
+- A bare binary cannot hold a stapled ticket. Gatekeeper looks the ticket up online the first time a
+  downloaded binary runs. The script checks the signature of the binary in the zip as uploaded; it does
+  not run `spctl`, whose answer for a bare binary depends on that online lookup right after notarizing.
+- The keychain, the key file and the search list of keychains are restored when the script ends.
+- The script never runs the built binary, so no code of the build runs while the secrets are in the
+  environment. `tools/check-cli.sh` runs it in the step before, and again on the signed binary in the
+  step after, both without the secrets.
+- The binary has no entitlements file. It reads files and opens an HTTPS connection, and neither needs an
+  exception from the hardened runtime. This follows from reading, not from a signed build: run the first
+  signed tool from a download on a Mac.
 
 To check a download, mount the DMG and run:
 

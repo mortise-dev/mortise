@@ -2,7 +2,7 @@
 //! told to, and the fake artisan of the `fake-artisan` binary.
 //!
 //! The bodies of the actuator are those of the tests of `nwidart/laravel-actuator` 1.0.0.
-//! The module components of `healthy` are those of `fixtures/actuator/health.json`.
+//! The module components of `healthy` are those of `fixtures/actuator/health.json` of this crate.
 
 use std::collections::{BTreeMap, HashMap};
 use std::io::{BufRead, BufReader, Write};
@@ -135,14 +135,15 @@ impl StubActuator {
         stub
     }
 
-    /// A stub that answers as the app of `fixtures/actuator` did, with `prometheus` answering
-    /// `prometheus-busy.txt`. Its links point at the stub and also list `env`, which answers,
-    /// so that a test can see that it is never asked for.
+    /// A stub that answers as the app of `fixtures/actuator` in this crate did, with `prometheus`
+    /// answering `prometheus-busy.txt`. Its links point at the stub and also list `env`, which
+    /// answers, so that a test can see that it is never asked for. The answers live inside the
+    /// crate, so the published crate builds with `testing`.
     pub fn recorded() -> Self {
         let stub = Self::start();
         let origin = stub.base_url.replace('/', r"\/");
         let mut discovery: serde_json::Value = serde_json::from_str(
-            &include_str!("../../../fixtures/actuator/discovery.json")
+            &include_str!("../fixtures/actuator/discovery.json")
                 .replace(r"http:\/\/app.test", &origin),
         )
         .expect("the recorded links are JSON");
@@ -152,22 +153,19 @@ impl StubActuator {
         });
         stub.set("/actuator", Reply::ok(&discovery.to_string()));
         let recorded = [
-            (
-                "health",
-                include_str!("../../../fixtures/actuator/health.json"),
-            ),
-            ("info", include_str!("../../../fixtures/actuator/info.json")),
+            ("health", include_str!("../fixtures/actuator/health.json")),
+            ("info", include_str!("../fixtures/actuator/info.json")),
             (
                 "mappings",
-                include_str!("../../../fixtures/actuator/mappings.json"),
+                include_str!("../fixtures/actuator/mappings.json"),
             ),
             (
                 "scheduledtasks",
-                include_str!("../../../fixtures/actuator/scheduledtasks.json"),
+                include_str!("../fixtures/actuator/scheduledtasks.json"),
             ),
             (
                 "prometheus",
-                include_str!("../../../fixtures/actuator/prometheus-busy.txt"),
+                include_str!("../fixtures/actuator/prometheus-busy.txt"),
             ),
             ("env", r#"{"activeProfiles":[],"propertySources":[]}"#),
         ];

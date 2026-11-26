@@ -5,7 +5,14 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-publish.workspace = true
+license-file = "../../LICENSE"
+repository.workspace = true
+homepage.workspace = true
+readme = "README.md"
+keywords = ["laravel", "modules", "php", "architecture"]
+categories = ["development-tools"]
+publish = true
+include = ["src/**", "fixtures/actuator/**", "README.md"]
 
 [features]
 default = ["watch", "actuator", "os-secrets", "run"]

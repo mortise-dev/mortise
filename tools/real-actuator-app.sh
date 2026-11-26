@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Builds a Laravel app with laravel-modules, laravel-actuator and laravel-metrics in a new folder.
 # The job "Real actuator" in .github/workflows/ci.yml runs it, and so can a person on a Mac.
-# It follows fixtures/actuator/README.md with versions as ranges, so a new release is caught.
+# It follows crates/mortise-core/fixtures/actuator/README.md with versions as ranges, so a new release
+# is caught.
 # It needs PHP 8.4 with pdo_sqlite, and Composer.
 #
 #   tools/real-actuator-app.sh <dir>

@@ -11,7 +11,7 @@ use mortise_core::{
     module_of_task, read_app, routes_by_module, routes_of, tasks_of,
 };
 
-const BUSY: &str = include_str!("../../../fixtures/actuator/prometheus-busy.txt");
+const BUSY: &str = include_str!("../fixtures/actuator/prometheus-busy.txt");
 
 fn local(stub: &StubActuator) -> Environment {
     Environment {
@@ -483,7 +483,7 @@ fn components_of(health: &str) -> Vec<mortise_core::Component> {
 
 #[test]
 fn the_recorded_health_gives_each_module_its_indicators() {
-    let recorded = include_str!("../../../fixtures/actuator/health.json");
+    let recorded = include_str!("../fixtures/actuator/health.json");
     let split = by_module(&recorded_app(), &components_of(recorded));
 
     // module:blog:storage belongs to Blog by its lower case name, under its key.
@@ -730,7 +730,7 @@ fn prometheus_is_read_as_text_within_the_limit() {
     assert_eq!(
         metrics(Reply::status(
             503,
-            include_str!("../../../fixtures/actuator/prometheus-503.txt")
+            include_str!("../fixtures/actuator/prometheus-503.txt")
         )),
         Err(NoMetrics::Unavailable {
             url: url.clone(),

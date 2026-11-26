@@ -9,7 +9,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
-use common::{Desk, connected, environment, fixture, shop_api, wait_for_answer};
+use common::{Desk, connected, environment, shop_api, wait_for_answer};
 use eframe::egui::{Key, Modifiers, Role};
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT as _, Queryable as _};
@@ -128,8 +128,8 @@ fn without_prometheus_in_the_links_the_tab_says_how_to_expose_it() {
 #[test]
 fn a_503_quotes_the_app_and_an_empty_answer_says_metrics_are_off() {
     let stub = StubActuator::recorded();
-    let line = std::fs::read_to_string(fixture("actuator/prometheus-503.txt")).unwrap();
-    stub.set("/actuator/prometheus", Reply::status(503, &line));
+    let line = include_str!("../../mortise-core/fixtures/actuator/prometheus-503.txt");
+    stub.set("/actuator/prometheus", Reply::status(503, line));
     let (_desk, mut harness) = connected(&stub);
     open_metrics(&mut harness);
 

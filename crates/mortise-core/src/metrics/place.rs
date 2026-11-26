@@ -101,9 +101,10 @@ mod tests {
     use crate::runtime::actuator::NoMetrics;
 
     const FIXTURES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../fixtures");
+    const RECORDED: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/fixtures/actuator");
 
     fn recorded(name: &str) -> String {
-        std::fs::read_to_string(Path::new(FIXTURES).join("actuator").join(name)).unwrap()
+        std::fs::read_to_string(Path::new(RECORDED).join(name)).unwrap()
     }
 
     fn request(module: Option<&str>, route: &str, method: &str) -> Subject {
