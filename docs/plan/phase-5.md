@@ -2,7 +2,7 @@
 
 Outline, version 1, 26 November 2026.
 
-Status: approved on 26 November 2026. Milestones 29 to 32 are built (#76, #79, #77, #78), with two tasks open: 31.5 and 32.4. Milestone 33 is in progress: 33.2 to 33.4 are built; 33.1, 33.5 and 33.6 are open. Section 4 records the owner's answers.
+Status: approved on 26 November 2026. Milestones 29 to 32 are built (#76, #79, #77, #78), with two tasks open: 31.5 and 32.4. Milestone 33 is in progress: 33.1 to 33.4 are built; 33.5 and 33.6 are open. LARCH-1 and LARCH-2 are met by Larch 0.2.0. Section 4 records the owner's answers.
 
 Phase 5 is small. It adds one boundary rule, the list of modules each module may use (cloud request R9). It closes the gap of Windows, which no one has looked at. It makes room for the first feedback after 1.0.
 Everything reads the files of one app at one commit, as phase 1 does. Screen ids refer to the specification.
@@ -159,7 +159,7 @@ Each milestone is one OpenSpec change, built in its own worktree and merged thro
 | 30 | Allowed use in the window | none | The third row of S5.3. A link that breaks the rule on the graph and on S5.1 | 29. Question 3 and 4 | Done, #79 |
 | 31 | Windows looked at | A CI job that starts the window on Windows and keeps what it shows | Every screen written on Windows. The deviation rows with a Windows result | Question 7 for the last task | Done, #77. Task 31.5 waits for a Windows machine |
 | 32 | Room for feedback | Issue forms. The rule for a request and the line | A "Report a problem" link | Question 8 and 9 | Done, #78. Task 32.4, the feedback slot, is open |
-| 33 | Hardening and release | The shared fixtures with Larch. The tool on three platforms with the new rule | Images in both themes, accessibility, docs site, deviations, release 1.1.0 | 29 to 32 | Tasks 33.2 to 33.4 are built; 33.1, 33.5 and 33.6 are open |
+| 33 | Hardening and release | The shared fixtures with Larch. The tool on three platforms with the new rule | Images in both themes, accessibility, docs site, deviations, release 1.1.0 | 29 to 32 | Tasks 33.1 to 33.4 are built; 33.5 and 33.6 are open |
 
 Milestones 29, 31 and 32 share no file and can run at the same time. Milestone 30 follows 29.
 
@@ -216,7 +216,9 @@ Done in #78, except 32.4, the feedback slot, which is open.
 
 ### 33. Hardening and release
 
-33.2 to 33.4 are built. 33.1, 33.5 and 33.6 are open.
+33.1 to 33.4 are built. 33.5 and 33.6 are open.
+
+33.1: the five shared apps of Larch 0.2.0 are copied to `fixtures/larch`, and `crates/mortise-core/tests/larch.rs` compares Mortise with each `expected.json`. The rules agree on all five. The two programs differ on a module without an entry in `modules_statuses.json`: Larch counts it on, laravel-modules and Mortise count it off. Three apps of Larch have no statuses file, so the test checks them as Mortise reads them and again with every module on. `fixtures/larch/README.md` records the difference.
 
 | Id | Task | Done when | Needs | Model |
 |---|---|---|---|---|
@@ -231,8 +233,8 @@ Done in #78, except 32.4, the feedback slot, which is open.
 
 | Id | Dependency | What phase 5 needs from it | Exists today | Owner | Blocks |
 |---|---|---|---|---|---|
-| LARCH-1 | `nwidart/larch` | The preset reads `rules.allowed-use` and runs `toOnlyDependOn()` for each module with a list. One more shared fixture app | `toOnlyDependOn()` exists. The preset reads two rules | nwidart | Task 33.1 only. Milestones 29 and 30 do not wait |
-| LARCH-2 | `nwidart/larch` | Its graph guide stops saying that Mortise reads the format | The sentence is there | nwidart | nothing |
+| LARCH-1 | `nwidart/larch` | The preset reads `rules.allowed-use` and runs `toOnlyDependOn()` for each module with a list. One more shared fixture app | Met by Larch 0.2.0 (nWidart/larch #11, #12): the preset reads three rules, and the app `allowed-use` is in its shared fixtures | nwidart | Task 33.1 only. Milestones 29 and 30 do not wait |
+| LARCH-2 | `nwidart/larch` | Its graph guide stops saying that Mortise reads the format | Met by Larch 0.2.0: the sentence is gone | nwidart | nothing |
 | CLOUD-1 | Mortise Cloud | Nothing to build. It shows the new check by its name | The contract allows a new `Check` variant | nwidart | nothing |
 | WIN-1 | A Windows machine | A session to look at the rows of task 31.5 | None | The owner | Task 31.5 |
 | CI | GitHub runners for Windows | A desktop that a screen shot can read | Not known | GitHub | The form of task 31.1 |

@@ -1,0 +1,12 @@
+{
+    "_readme": [
+        "Added by Mortise: not in the Larch fixture. Only the fields Mortise reads are kept."
+    ],
+    "packages": [
+        {
+            "name": "nwidart/laravel-modules",
+            "version": "v13.3.0"
+        }
+    ],
+    "packages-dev": []
+}
