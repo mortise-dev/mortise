@@ -15,6 +15,10 @@ All notable changes to this project are listed here.
 - *(app)* Give columns of figures way to the name in a narrow metrics table (#71)
 - *(app)* Keep the palette from restarting the input method in each frame (#72)
 
+### Build
+
+- Move to Rust 1.100.0 and mago 1.61.0 (#66). Building Mortise or `cargo install mortise-cli` now needs Rust 1.100
+
 ### Documentation
 
 - Mark phase 4 done in the plan (#62)
