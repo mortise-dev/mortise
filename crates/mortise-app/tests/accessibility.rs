@@ -116,8 +116,9 @@ fn the_workbench_and_its_tabs() {
     press(&mut harness, Key::Escape);
     press(&mut harness, Key::Num2);
     audit(&harness, "Boundary of all modules");
-    // S5.3: the switch of milestone 24 is one of the audited controls.
+    // S5.3: the switches of milestones 24 and 30 are among the audited controls.
     harness.get_by_role_and_label(Role::CheckBox, "Fail CI when a rule breaks");
+    harness.get_by_role_and_label(Role::CheckBox, "A module uses only the modules of its list");
     for (digit, screen) in [
         (Key::Num3, "Generate of all modules"),
         (Key::Num4, "Actions of all modules"),

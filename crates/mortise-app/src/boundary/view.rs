@@ -8,7 +8,7 @@ use eframe::egui::{
     UiBuilder, Vec2, WidgetInfo, pos2, vec2,
 };
 use mortise_core::{
-    AppSnapshot, Link, Module, ModuleState, Reference, Rules, RulesSource, columns,
+    AllowedUse, AppSnapshot, Link, Module, ModuleState, Reference, Rules, RulesSource, columns,
 };
 
 use crate::app::workspace::WorkAction;
@@ -537,18 +537,21 @@ impl View<'_> {
         let rows: usize = sections.iter().map(|link| link.refs.len()).sum();
         let titled = sections.len() > 1;
         let section_head = if titled { 30.0 } else { 0.0 };
-        let footer_text = match circle {
-            Some(cycle) if cycle.modules.len() > 2 => {
+        // A link outside the list of its module: the rule of that list.
+        let outside = sections.iter().find(|link| link.outside_allowed);
+        let footer_text = match (circle, outside) {
+            (Some(cycle), _) if cycle.modules.len() > 2 => {
                 strings::reported_on_in_circle(&cycle.carrier)
             }
-            Some(cycle) => strings::reported_on(&cycle.carrier),
-            None if titled => {
+            (Some(cycle), _) => strings::reported_on(&cycle.carrier),
+            (None, Some(link)) => strings::rule_of_allowed_use(&link.from, rules),
+            (None, None) if titled => {
                 let accepted = [module, other]
                     .iter()
                     .any(|name| self.app.module(name).is_some_and(|m| m.surface.is_some()));
                 strings::rule_of_links(module, other, accepted, rules)
             }
-            None => {
+            (None, None) => {
                 let accepted = self
                     .app
                     .module(&first_link.to)
@@ -598,7 +601,14 @@ impl View<'_> {
                 };
                 let internal: usize = sections.iter().map(|link| link.internal_files()).sum();
                 let files: usize = sections.iter().map(|link| link.files()).sum();
-                if rules.public_surface_only && internal > 0 {
+                let outside: usize = sections
+                    .iter()
+                    .filter(|link| link.outside_allowed)
+                    .map(|link| link.files())
+                    .sum();
+                if outside > 0 {
+                    (title, strings::outside_list_files(outside), true)
+                } else if rules.public_surface_only && internal > 0 {
                     (title, strings::files_read_internals(internal, files), true)
                 } else {
                     (title, crate::strings::files(files as u64), false)
@@ -800,8 +810,12 @@ impl View<'_> {
             pos2(row.left() + 18.0, mid - 6.0),
             Vec2::splat(size::STATE_MARK),
         );
-        // Every file in a circle is marked: removing either direction ends it.
-        if reference.internal || (link.circular && self.app.rules.no_circular_use) {
+        // Every file in a circle is marked: removing either direction ends it. So is every
+        // file of a link outside the list of its module.
+        if reference.internal
+            || link.outside_allowed
+            || (link.circular && self.app.rules.no_circular_use)
+        {
             draw::mark_bad(ui, mark, pal.bad, behind);
         } else {
             draw::mark_good(ui, mark, pal.good);
@@ -1091,7 +1105,8 @@ impl View<'_> {
         rect.bottom()
     }
 
-    /// The links that break a rule: a circle once, and each link that reads internals.
+    /// The links that break a rule: a circle once, each link that reads internals, and
+    /// each link outside the list of its module.
     fn broken(&self) -> Vec<(String, usize, String, String)> {
         let rules = &self.app.rules;
         let mut rows = Vec::new();
@@ -1125,6 +1140,10 @@ impl View<'_> {
                     link.to.clone(),
                 ));
             }
+        }
+        for link in self.app.links.iter().filter(|link| link.outside_allowed) {
+            let text = strings::outside_list(&link.from, &link.to);
+            rows.push((text, link.files(), link.from.clone(), link.to.clone()));
         }
         rows
     }
@@ -1224,7 +1243,7 @@ impl View<'_> {
         rect.bottom()
     }
 
-    /// The two rules of the app, and whether `mortise check` fails CI when one breaks.
+    /// The three rules of the app, and whether `mortise check` fails CI when one breaks.
     fn rules_box(
         &self,
         ui: &mut Ui,
@@ -1248,6 +1267,7 @@ impl View<'_> {
         let labels: f32 = [
             crate::strings::RULE_NO_CIRCULAR,
             crate::strings::RULE_PUBLIC_SURFACE,
+            crate::strings::RULE_ALLOWED_USE,
             strings::RULE_FAIL_CI,
         ]
         .iter()
@@ -1261,6 +1281,25 @@ impl View<'_> {
             .count();
         let accepted = strings::accepted_for(with_surface, self.app.modules.len());
         let hint = draw::galley_wrapped(ui, &accepted, ty::SECONDARY, pal.ink_2, hint_w);
+        // The third rule: its switch and how many modules have a list. The lists are
+        // written in the file.
+        let allowed_on = rules
+            .allowed_use
+            .as_ref()
+            .is_some_and(|allowed| allowed.enabled);
+        let with_list = rules.allowed_use.as_ref().map_or(0, |allowed| {
+            self.app
+                .modules
+                .iter()
+                .filter(|module| allowed.modules.contains_key(&module.name))
+                .count()
+        });
+        let lists = if with_list == 0 {
+            strings::NO_LIST_YET.to_owned()
+        } else {
+            strings::lists_for(with_list, self.app.modules.len())
+        };
+        let lists_hint = draw::galley_wrapped(ui, &lists, ty::SECONDARY, pal.ink_2, hint_w);
         let title = strings::rules_for(self.name);
         let height = 41.0
             + draw::box_head_extra(ui, width, &title, strings::RULES_KEPT)
@@ -1271,6 +1310,9 @@ impl View<'_> {
             + hint.size().y
             + 6.0
             + size::FIELD_H
+            + 8.0
+            + 24.0
+            + lists_hint.size().y
             + 8.0
             + 24.0
             + 12.0;
@@ -1348,6 +1390,27 @@ impl View<'_> {
             }
         }
         y = field.bottom() + 8.0;
+
+        let row = rule(ui, y, crate::strings::RULE_ALLOWED_USE, allowed_on, false);
+        if row.clicked() {
+            // The switch writes `enabled` and keeps the lists.
+            let modules = rules
+                .allowed_use
+                .as_ref()
+                .map(|allowed| allowed.modules.clone())
+                .unwrap_or_default();
+            *action = Some(WorkAction::SetRules(Rules {
+                allowed_use: Some(AllowedUse {
+                    enabled: !allowed_on,
+                    modules,
+                }),
+                ..rules.clone()
+            }));
+        }
+        y = row.rect.bottom();
+        let lists_rect = draw::paint_galley(ui, pos2(x + indent, y), Align2::LEFT_TOP, lists_hint);
+        draw::announce(ui, lists_rect, Role::Label, &lists);
+        y = lists_rect.bottom() + 8.0;
 
         let row = rule(ui, y, strings::RULE_FAIL_CI, rules.fail_ci, false);
         if row.clicked() {
@@ -1535,6 +1598,8 @@ impl View<'_> {
                 (strings::CIRCULAR.to_owned(), pal.bad, true)
             } else if rules.public_surface_only && internal > 0 {
                 (strings::n_files_read_internals(internal), pal.bad, true)
+            } else if link.outside_allowed {
+                (strings::OUTSIDE_LIST.to_owned(), pal.bad, true)
             } else {
                 (crate::strings::GOOD.to_owned(), pal.good, false)
             };

@@ -54,6 +54,43 @@ pub fn n_files_read_internals(internal: usize) -> String {
     }
 }
 
+/// `Audit uses Billing outside its list`
+pub fn outside_list(a: &str, b: &str) -> String {
+    format!("{a} uses {b} outside its list")
+}
+
+/// `Outside its list, 2 files`
+pub fn outside_list_files(files_count: usize) -> String {
+    format!(
+        "Outside its list, {}",
+        crate::strings::files(files_count as u64)
+    )
+}
+
+/// Not in the spec: the State of a link outside its list in the table of links.
+pub const OUTSIDE_LIST: &str = "Outside its list";
+
+/// `Rule: a module uses only the modules of its list. mortise.json lets Audit use no module.`
+pub fn rule_of_allowed_use(module: &str, rules: &mortise_core::Rules) -> String {
+    format!(
+        "Rule: a module uses only the modules of its list. {}",
+        crate::strings::lets_use(module, rules)
+    )
+}
+
+/// `No module has a list yet. Write the lists in mortise.json, under allowed-use.`
+pub const NO_LIST_YET: &str =
+    "No module has a list yet. Write the lists in mortise.json, under allowed-use.";
+
+/// `3 of 5 modules have a list in mortise.json. A module without one is not checked.`
+pub fn lists_for(with_list: usize, total: usize) -> String {
+    let have = if with_list == 1 { "has" } else { "have" };
+    format!(
+        "{with_list} of {} {have} a list in mortise.json. A module without one is not checked.",
+        crate::strings::modules(total)
+    )
+}
+
 /// `Circular, 6 files`
 pub fn circular_files(files_count: usize) -> String {
     format!("Circular, {}", crate::strings::files(files_count as u64))

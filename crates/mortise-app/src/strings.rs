@@ -182,6 +182,25 @@ pub fn ago(now: i64, then: i64) -> String {
 
 pub const RULE_NO_CIRCULAR: &str = "No circular use";
 pub const RULE_PUBLIC_SURFACE: &str = "Other modules use only a module's public surface";
+pub const RULE_ALLOWED_USE: &str = "A module uses only the modules of its list";
+
+/// What the list of `module` in `allowed-use` lets it use:
+/// `mortise.json lets Audit use no module.` and
+/// `mortise.json lets History use Audit and Billing only.`
+pub fn lets_use(module: &str, rules: &mortise_core::Rules) -> String {
+    let list: Vec<&str> = rules
+        .allowed_use
+        .as_ref()
+        .and_then(|allowed| allowed.modules.get(module))
+        .map(|list| list.iter().map(String::as_str).collect())
+        .unwrap_or_default();
+    let may = if list.is_empty() {
+        "no module".to_owned()
+    } else {
+        format!("{} only", and_list(&list))
+    };
+    format!("mortise.json lets {module} use {may}.")
+}
 
 pub const COL_USES: &str = "Uses";
 pub const GOOD: &str = "Good";
@@ -206,6 +225,9 @@ pub fn refs_state(link: &mortise_core::Link, rules: &mortise_core::Rules) -> Str
         format!("{}, {internal} to internals", refs(link.refs.len()))
     } else if rules.no_circular_use && link.circular {
         format!("{}, circular", refs(link.refs.len()))
+    } else if link.outside_allowed {
+        // Not in the spec: a link outside the list of `allowed-use`.
+        format!("{}, outside its list", refs(link.refs.len()))
     } else {
         refs(link.refs.len())
     }
@@ -343,17 +365,20 @@ pub fn finding(finding: &mortise_core::Finding, app: &AppSnapshot, name: &str) -
                 files(*n as u64),
             )
         }
-        // Not in the spec: milestone 30 draws the third rule.
+        // `2 files in Audit use Billing. mortise.json lets Audit use no module.`
         Detail::OutsideAllowedUse { of, files: n } => {
             let verb = if *n == 1 { "uses" } else { "use" };
             format!(
-                "{} in {module} {verb} {of}. mortise.json does not list {of} for {module}.",
-                files(*n as u64)
+                "{} in {module} {verb} {of}. {}",
+                files(*n as u64),
+                lets_use(module, &app.rules)
             )
         }
-        // Not in the spec.
+        // `mortise.json names Reports in allowed-use, and the app has no module of that
+        // name. Correct the name in mortise.json.`
         Detail::UnknownAllowedModule { entry } => format!(
-            "mortise.json names {entry} in allowed-use. The app has no module of that name."
+            "mortise.json names {entry} in allowed-use, and the app has no module of that name. \
+             Correct the name in mortise.json."
         ),
         // `Modules/Loyalty/module.json is not valid JSON: unexpected end of file at line 14.`
         // The parser's own words are quoted as they are.
