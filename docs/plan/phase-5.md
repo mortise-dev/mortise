@@ -241,7 +241,7 @@ Done in #78, except 32.4, the feedback slot, which is open.
 
 - The rule is tested once, in `mortise-core`, on the new fixture `layered`: one break, one module without a list, one empty list.
 - The tool is tested once at its own layer: the exit code and the three formats on `layered`. It does not replay the cases of the core.
-- The window gets one screen test for the wiring of the third row, and the images of S5.3 and S5.7.
+- The window gets one screen test for the wiring of the third row, and the images of S5.3 and S5.1.
 - The read and the save of the key go into the tests that already build a `mortise.json`, not into new ones.
 - Milestone 31 adds a test only where a Windows row has none.
 - The plan adds one fixture. A pull request over 400 net test lines says why in its body.
