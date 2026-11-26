@@ -64,9 +64,6 @@ matters for a tool that runs commands, holds credentials and parses files it did
 The rule has a price. When the only route to a platform feature is an `unsafe` call, Mortise goes
 without it and records the difference:
 
-- **Reduced motion.** On macOS Mortise asks the system through a safe binding. On Windows and Linux,
-  reading the setting needs `unsafe` code, so there the choice "System" moves as "Full". "Reduced" and
-  "Full" work everywhere.
 - **Stopping a process tree on Windows.** A job object would hold every process a run starts, but each
   call to it is `unsafe`. Without it, a PHP process started by a launcher that already exited can go on
   after Stop. [What Mortise changes, and what it never does](/mortise/explanation/safety/) covers this.
