@@ -433,6 +433,13 @@ mod tests {
             ]))
         );
         assert_eq!(CommandLine::artisan(&custom(" "), &["--version"]), None);
+        // The line that Test runs for Herd, as the shell of the platform reads it (S35).
+        let herd = CommandLine::artisan(&RunnerKind::Herd, &["--version"]).unwrap();
+        let program = if cfg!(windows) { "herd.bat" } else { "herd" };
+        assert_eq!(
+            herd.display(),
+            format!("{program} php artisan --version --no-interaction --ansi")
+        );
     }
 
     #[cfg(feature = "run")]

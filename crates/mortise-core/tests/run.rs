@@ -182,6 +182,27 @@ fn gone(pid: &str) {
     }
 }
 
+/// Whether Windows lists a process with the id `pid`.
+#[cfg(windows)]
+fn listed(pid: &str) -> bool {
+    let list = std::process::Command::new("tasklist")
+        .args(["/FI", &format!("PID eq {pid}"), "/FO", "CSV", "/NH"])
+        .output()
+        .unwrap();
+    assert!(list.status.success(), "{list:?}");
+    String::from_utf8_lossy(&list.stdout).contains(&format!("\"{pid}\""))
+}
+
+/// Asserts that the process `pid`, which the fake printed, is gone within 5 s.
+#[cfg(windows)]
+fn gone(pid: &str) {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while listed(pid.trim()) {
+        assert!(Instant::now() < deadline, "the child {pid} still runs");
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}
+
 #[test]
 fn a_run_streams_its_lines_and_stops() {
     let run = start("hold", &["module:make", "Blog"], TEST_LIMIT);
@@ -257,11 +278,48 @@ fn a_run_stops_at_its_limit_with_its_tree() {
         let child = first_line(&run);
         let (_, end) = until_end(&run, Duration::from_secs(10));
         assert!(matches!(end, RunEnd::Stopped { .. }), "{case}: {end:?}");
-        #[cfg(unix)]
+        // On Windows `taskkill /T` walks the tree from the program, which still runs.
         gone(&child);
-        #[cfg(not(unix))]
-        let _ = child;
     }
+}
+
+/// A batch file, as `herd.bat` is: std starts it through `cmd.exe`, refuses an
+/// argument it cannot escape (S52), and a stop ends the program under it (S53).
+#[cfg(windows)]
+#[test]
+fn a_batch_file_refuses_a_line_break_and_stops_with_its_tree() {
+    let folder = std::env::temp_dir().join(format!("mortise-batch-{}", std::process::id()));
+    std::fs::create_dir_all(&folder).unwrap();
+    let batch = folder.join("herd.bat");
+    let fake = env!("CARGO_BIN_EXE_fake-artisan");
+    std::fs::write(&batch, format!("@\"{fake}\" %*\r\n")).unwrap();
+    let php = PhpSettings {
+        runner: Some(RunnerKind::Custom {
+            line: format!("\"{}\"", batch.display()),
+        }),
+        ..PhpSettings::default()
+    };
+
+    let refused = Runs::new().start(app(), &php, &words(&["a\nb"]), TEST_LIMIT);
+    let Err(StartError::Failed(Failure::NotStarted { message, .. })) = refused else {
+        panic!("{refused:?}");
+    };
+    assert_eq!(message, "batch file arguments are invalid");
+
+    // `cmd.exe` runs the fake, which starts a child, prints its id and waits.
+    let run = Runs::new()
+        .start(app(), &php, &words(&["orphan-wait"]), TEST_LIMIT)
+        .unwrap();
+    let child = first_line(&run);
+    assert!(listed(child.trim()), "{child}");
+    run.stop();
+    let end = stopped_within_the_wait(&run);
+    assert!(
+        matches!(end, RunEnd::Stopped { limit: None, .. }),
+        "{end:?}"
+    );
+    gone(&child);
+    let _ = std::fs::remove_dir_all(&folder);
 }
 
 #[cfg(unix)]
