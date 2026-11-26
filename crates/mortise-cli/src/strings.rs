@@ -340,12 +340,23 @@ pub fn circle(files: &[(String, usize)]) -> String {
 }
 
 /// `Checkout reads Modules\Billing\Models\Invoice directly. Billing offers Contracts and Events.`
-pub fn reads_internals(module: &str, of: &str, classes: &[&str], public: &[String]) -> String {
-    let public: Vec<&str> = public.iter().map(String::as_str).collect();
-    format!(
-        "{module} reads {} directly. {of} offers {}.",
-        list_of(classes),
+/// For a module with an accepted public surface: `... Billing offers its accepted public surface.`
+pub fn reads_internals(
+    module: &str,
+    of: &str,
+    classes: &[&str],
+    public: &[String],
+    accepted: bool,
+) -> String {
+    let offers = if accepted {
+        "its accepted public surface".to_owned()
+    } else {
+        let public: Vec<&str> = public.iter().map(String::as_str).collect();
         list_of(&public)
+    };
+    format!(
+        "{module} reads {} directly. {of} offers {offers}.",
+        list_of(classes)
     )
 }
 

@@ -222,11 +222,13 @@ fn lines(finding: &Finding, app: &AppSnapshot) -> Vec<Line> {
                 }
             }
             let folders = &app.rules.public_folders;
+            let accepted = app.module(of).is_some_and(|of| of.surface.is_some());
             files
                 .into_iter()
                 .map(|(file, (first, mut classes))| {
                     classes.sort_unstable();
-                    let sentence = strings::reads_internals(module, of, &classes, folders);
+                    let sentence =
+                        strings::reads_internals(module, of, &classes, folders, accepted);
                     line(file, Some(first), true, sentence)
                 })
                 .collect()
