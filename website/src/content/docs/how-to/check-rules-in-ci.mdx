@@ -19,7 +19,7 @@ The rules come from [mortise.json](/mortise/reference/mortise-json/); without th
    ```
 
    Each problem is one line with its file and line. The exit code is 1 when a problem is found.
-   To get the tool, see [Build Mortise from source](/mortise/how-to/build-from-source/#build-the-command-line-tool).
+   To get the tool, see [Install the command line tool](/mortise/start-here/installation/#install-the-command-line-tool).
 
 2. Add a job to your workflow. This one is for GitHub Actions, with the app at the root of the repository:
 
@@ -29,9 +29,13 @@ The rules come from [mortise.json](/mortise/reference/mortise-json/); without th
        runs-on: ubuntu-latest
        steps:
          - uses: actions/checkout@v5
-         - run: cargo install --locked --git https://github.com/nWidart/mortise mortise-cli
+         - uses: nwidart/setup-mortise@v1
          - run: mortise check --format github
    ```
+
+   [`nwidart/setup-mortise`](https://github.com/nWidart/setup-mortise) downloads the tool of the latest
+   release, checks its SHA-256 and puts it on `PATH`, in a few seconds and with no Rust toolchain.
+   On another CI, download the archive of the release or run `cargo install --locked mortise-cli`.
 
    `--format github` prints each problem as a workflow command, so GitHub marks the line in the
    pull request. A file that reads an internal class of another module gets a mark of its own.

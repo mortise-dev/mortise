@@ -1,6 +1,6 @@
 ---
 title: Install Mortise
-description: Download the installer for your platform, check its SHA-256 sum and install Mortise.
+description: Download the installer for your platform, check its SHA-256 sum and install Mortise. Install the command line tool from a release, in GitHub Actions, or with cargo.
 sidebar:
   label: Installation
   order: 2
@@ -77,3 +77,85 @@ Install Mortise from a release. To build it yourself, see [Build Mortise from so
 
 Mortise is installed. To open your first app, go on to [First steps](/mortise/start-here/first-steps/).
 Where Mortise keeps its settings and its history is in [Files and folders](/mortise/reference/files-and-folders/).
+
+## Install the command line tool
+
+The command line tool, binary `mortise`, runs `mortise check` and `mortise push` in CI or in a
+terminal. It is not in the installers above. Get it one of three ways.
+
+### In GitHub Actions
+
+The action [`nwidart/setup-mortise`](https://github.com/nWidart/setup-mortise) downloads the tool for
+the runner, checks its SHA-256 against the sums of the release, and puts it on `PATH`. It needs no
+Rust toolchain.
+
+```yaml
+steps:
+  - uses: actions/checkout@v5
+  - uses: nwidart/setup-mortise@v1
+  - run: mortise check . --format github
+```
+
+It runs on Linux (x64 and arm64), macOS (Apple silicon) and Windows (x64) runners. Without
+`version` it installs the latest release; `with: { version: v0.3.0 }` pins one.
+
+### From a release
+
+<Steps>
+
+1. Open the [latest release](https://github.com/nWidart/mortise/releases/latest).
+
+2. Download the archive for your platform and the sums file `Mortise-vX.Y.Z-SHA256SUMS.txt`, into the
+   same folder.
+
+   | Platform | File |
+   |---|---|
+   | Linux, x86_64 | `mortise-vX.Y.Z-linux-x86_64.tar.gz` |
+   | Linux, arm64 | `mortise-vX.Y.Z-linux-arm64.tar.gz` |
+   | macOS, Apple silicon | `mortise-vX.Y.Z-macos-arm64.zip` |
+   | Windows, x64 | `mortise-vX.Y.Z-windows-x64.zip` |
+
+   The Linux binaries are static: they run on any Linux of their architecture.
+
+3. Check the SHA-256 sum as in step 3 above, with the name of the archive.
+
+4. Unpack the archive and put `mortise` (`mortise.exe` on Windows) in a folder on your `PATH`.
+
+   <Tabs syncKey="os">
+   <TabItem label="macOS">
+   ```sh
+   unzip mortise-vX.Y.Z-macos-arm64.zip mortise
+   sudo mv mortise /usr/local/bin/
+   ```
+   The binary is signed with a Developer ID and notarized by Apple. A bare binary cannot hold the
+   ticket, so macOS checks it online the first time it runs.
+   </TabItem>
+   <TabItem label="Windows">
+   In PowerShell:
+   ```powershell
+   Expand-Archive mortise-vX.Y.Z-windows-x64.zip -DestinationPath "$env:LOCALAPPDATA\mortise"
+   ```
+   Then add that folder to your `PATH`. The binary is not signed.
+   </TabItem>
+   <TabItem label="Linux">
+   ```sh
+   tar -xzf mortise-vX.Y.Z-linux-x86_64.tar.gz mortise
+   sudo mv mortise /usr/local/bin/
+   ```
+   The binary is not signed.
+   </TabItem>
+   </Tabs>
+
+5. Run `mortise --version`. It prints the version of the release.
+
+</Steps>
+
+### With cargo
+
+On any platform with a Rust toolchain (Rust 1.99 or later):
+
+```sh
+cargo install --locked mortise-cli
+```
+
+To build it from a clone instead, see [Build Mortise from source](/mortise/how-to/build-from-source/#build-the-command-line-tool).

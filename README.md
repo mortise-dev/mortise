@@ -131,9 +131,19 @@ no module counts as "Not in a module" (`docs/deviations.md`, S66).
 problem with its file and line and exits 1 when a rule breaks.
 
 ```
-cargo install --locked --git https://github.com/nWidart/mortise mortise-cli
 mortise check /path/to/laravel-app --format github
 ```
+
+In GitHub Actions, the action [`nwidart/setup-mortise`](https://github.com/nWidart/setup-mortise) puts
+the tool on `PATH` in a few seconds, with no Rust toolchain:
+
+```yaml
+- uses: actions/checkout@v5
+- uses: nwidart/setup-mortise@v1
+- run: mortise check . --format github
+```
+
+"Install" below has the other ways to get the tool.
 
 `--format` is `text` (the default), `json` or `github`, whose lines GitHub marks in the pull request.
 The exit codes are 0 (no problem), 1 (a problem), 2 (a wrong command line), 3 (the folder is not an
@@ -170,7 +180,22 @@ Each [release](https://github.com/nWidart/mortise/releases/latest) has:
 | Windows, x64 | `Mortise-windows-x64-setup.exe`. Not signed: SmartScreen warns once. Choose More info, then Run anyway. |
 | Linux, x86_64 | `Mortise-linux-x86_64.AppImage`, or `Mortise-linux-amd64.deb` for Debian and Ubuntu. Not signed. |
 
+Each release also has the command line tool, binary `mortise`, as one archive per platform:
+
+| Platform | File |
+|---|---|
+| Linux, x86_64 | `mortise-vX.Y.Z-linux-x86_64.tar.gz`. Static (musl): it runs on any Linux. Not signed. |
+| Linux, arm64 | `mortise-vX.Y.Z-linux-arm64.tar.gz`. Static (musl). Not signed. |
+| macOS, Apple silicon | `mortise-vX.Y.Z-macos-arm64.zip`. Signed with a Developer ID and notarized by Apple. |
+| Windows, x64 | `mortise-vX.Y.Z-windows-x64.zip`. Not signed. |
+
 `Mortise-vX.Y.Z-SHA256SUMS.txt` holds the SHA-256 of each file.
+
+The tool also installs from crates.io, on any platform with a Rust toolchain:
+
+```
+cargo install --locked mortise-cli
+```
 
 ## Run
 
@@ -228,7 +253,7 @@ UPDATE_SNAPSHOTS=1 cargo test -p mortise-app --test images
 | `website` | The documentation site, built with Astro Starlight and published to GitHub Pages by `.github/workflows/docs.yml`. |
 | `docs/deviations.md` | Where the build differs from the specification, and why. |
 | `licenses` | The licences of the crates Mortise is built from. |
-| `tools` | `third-party-licenses.py` writes that list. `app-icon.mjs` makes the icon files from the drawings; it needs macOS and Google Chrome. `brand-images.sh` draws the images in `assets/brand`; it needs Google Chrome. `release.sh`, `pack-installer.sh` and `verify-macos-app.sh` serve the release workflows. |
+| `tools` | `third-party-licenses.py` writes that list. `app-icon.mjs` makes the icon files from the drawings; it needs macOS and Google Chrome. `brand-images.sh` draws the images in `assets/brand`; it needs Google Chrome. `release.sh`, `pack-installer.sh`, `verify-macos-app.sh`, `pack-cli.sh` and `sign-macos-cli.sh` serve the release workflows. |
 | `.github/workflows` | CI, the installers and the release. `CONTRIBUTING.md` says how a release works. |
 
 ## Licence

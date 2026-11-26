@@ -20,7 +20,7 @@ its base. Mortise itself judges one commit; `push` only sends.
 
    The document holds names, paths relative to the app, counts, and the class names that cross module
    boundaries. It holds no source code and nothing from `.env`. A dry run sends nothing and needs no
-   token. To get the tool, see [Build Mortise from source](/mortise/how-to/build-from-source/#build-the-command-line-tool).
+   token. To get the tool, see [Install the command line tool](/mortise/start-here/installation/#install-the-command-line-tool).
 
 2. Make a token for the app in Mortise Cloud, and keep it as a secret of the repository named
    `MORTISE_TOKEN`. The tool reads the token from that variable only and never prints it.
@@ -34,7 +34,7 @@ its base. Mortise itself judges one commit; `push` only sends.
        runs-on: ubuntu-latest
        steps:
          - uses: actions/checkout@v5
-         - run: cargo install --locked --git https://github.com/nWidart/mortise mortise-cli
+         - uses: nwidart/setup-mortise@v1
          - run: mortise push
            env:
              MORTISE_TOKEN: ${{ secrets.MORTISE_TOKEN }}
