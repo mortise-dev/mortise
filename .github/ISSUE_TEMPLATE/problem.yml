@@ -1,0 +1,44 @@
+name: A problem
+description: Mortise shows something wrong, fails, or does not match what the docs say.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not paste paths, module names, tokens or source code that you want to keep private.
+        Mortise sends nothing by itself: this form holds what you type here.
+  - type: input
+    id: version
+    attributes:
+      label: Mortise version
+      description: Settings shows it, and `mortise --version` prints the version of the command line tool.
+      placeholder: "1.0.1"
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Platform
+      description: The operating system and the processor.
+      placeholder: "macOS aarch64"
+    validations:
+      required: true
+  - type: input
+    id: modules-version
+    attributes:
+      label: nwidart/laravel-modules version
+      description: From `composer.lock` of the app. Leave it empty when the problem has no app.
+      placeholder: "13.6.0"
+  - type: textarea
+    id: happened
+    attributes:
+      label: What happened
+      description: The steps, and what you saw.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true

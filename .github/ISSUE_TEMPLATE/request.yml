@@ -1,0 +1,44 @@
+name: A request
+description: Ask for a change or a new thing in Mortise.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Mortise covers one app, at one commit, on one machine. Anything across time, across commits,
+        across apps or across people belongs to [Mortise Cloud](https://mortisecloud.com), the paid
+        service beside Mortise: history, a comparison with the base of a pull request, a baseline of
+        known problems, a view of several apps, a team. A request of that kind gets the label `cloud`
+        and an answer that says why. A request that fits one app, one commit and one machine gets the
+        label `free` and goes on the list for the next phase.
+  - type: input
+    id: version
+    attributes:
+      label: Mortise version
+      placeholder: "1.0.1"
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Platform
+      placeholder: "macOS aarch64"
+  - type: input
+    id: modules-version
+    attributes:
+      label: nwidart/laravel-modules version
+      placeholder: "13.6.0"
+  - type: textarea
+    id: happened
+    attributes:
+      label: What happens today
+      description: What you do now, and where it falls short.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you would like
+      description: What Mortise would do instead.
+    validations:
+      required: true
