@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use mortise_core::Detail;
 
 use mortise_core::{PushCi, PushContext, PushGit, push_document, read_app};
-use serde_json::Value;
+use serde_json::{Value, json};
 
 fn here(file: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -75,6 +75,25 @@ fn holds(actual: &Value, expected: &Value, skip: &[&str], at: &str) {
     }
 }
 
+/// Panics when `value` is not valid against the cloud's schema.
+fn assert_valid(value: &Value) {
+    let mut schemas = boon::Schemas::new();
+    let mut compiler = boon::Compiler::new();
+    compiler.enable_format_assertions();
+    compiler
+        .add_resource(
+            "push-document-1.schema.json",
+            json("push-document-1.schema.json"),
+        )
+        .unwrap();
+    let schema = compiler
+        .compile("push-document-1.schema.json", &mut schemas)
+        .unwrap();
+    if let Err(error) = schemas.validate(value, schema) {
+        panic!("not valid against the schema: {error:#}");
+    }
+}
+
 #[test]
 fn the_document_of_shop_api_keeps_its_shape() {
     let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/shop-api");
@@ -94,22 +113,8 @@ fn the_document_of_shop_api_keeps_its_shape() {
         "the push document changed"
     );
 
-    let mut schemas = boon::Schemas::new();
-    let mut compiler = boon::Compiler::new();
-    compiler.enable_format_assertions();
-    compiler
-        .add_resource(
-            "push-document-1.schema.json",
-            json("push-document-1.schema.json"),
-        )
-        .unwrap();
-    let schema = compiler
-        .compile("push-document-1.schema.json", &mut schemas)
-        .unwrap();
     let value: Value = serde_json::from_str(&written).unwrap();
-    if let Err(error) = schemas.validate(&value, schema) {
-        panic!("not valid against the schema: {error:#}");
-    }
+    assert_valid(&value);
 
     // The example was read from a full clone, so its churn is there and ours is not.
     holds(
@@ -117,6 +122,29 @@ fn the_document_of_shop_api_keeps_its_shape() {
         &json("example-shop-api.json"),
         &["churn", "shallow"],
         "",
+    );
+}
+
+#[test]
+fn the_rule_allowed_use_needs_no_new_schema_version() {
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/layered");
+    let document = push_document(read_app(&fixture).unwrap(), context());
+    assert_eq!(document.schema_version, 1);
+    let value = serde_json::to_value(&document).unwrap();
+    assert_valid(&value);
+    let snapshot = &value["snapshot"];
+    assert_eq!(
+        snapshot["rules"]["allowed_use"]["modules"]["Audit"],
+        json!([])
+    );
+    assert_eq!(
+        snapshot["findings"]["list"][0],
+        json!({
+            "severity": "Problem",
+            "check": "AllowedUse",
+            "module": "Audit",
+            "detail": { "OutsideAllowedUse": { "of": "Billing", "files": 2 } }
+        })
     );
 }
 

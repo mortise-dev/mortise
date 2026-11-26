@@ -8,8 +8,8 @@ use std::io::Write;
 use std::path::PathBuf;
 
 use mortise_core::{
-    AppSnapshot, Check, CoverageSettings, Detail, Finding, ReadCache, ReadError, ReadOptions,
-    RulesSource, Severity, read_app_cached,
+    AppSnapshot, Check, CoverageSettings, Detail, Finding, RULES_FILE, ReadCache, ReadError,
+    ReadOptions, RulesSource, Severity, read_app_cached,
 };
 
 use crate::{printable, say, strings};
@@ -176,8 +176,8 @@ impl Line {
     }
 }
 
-/// The lines of one finding. A finding of files that read internals gives one line per
-/// file, so that each file is marked.
+/// The lines of one finding. A finding of files that read internals, or that use a module
+/// outside their list, gives one line per file, so that each file is marked.
 fn lines(finding: &Finding, app: &AppSnapshot) -> Vec<Line> {
     let module = finding.module.as_deref().unwrap_or_default();
     let line = |path: &str, line: Option<u32>, file: bool, sentence: String| Line {
@@ -233,6 +233,33 @@ fn lines(finding: &Finding, app: &AppSnapshot) -> Vec<Line> {
                 })
                 .collect()
         }
+        Detail::OutsideAllowedUse { of, .. } => {
+            // Each file, at the first line that names a class of `of`.
+            let mut files: BTreeMap<&str, u32> = BTreeMap::new();
+            let refs = app.link(module, of).map(|link| link.refs.as_slice());
+            for reference in refs.unwrap_or_default() {
+                let first = files.entry(&reference.file).or_insert(reference.line);
+                *first = (*first).min(reference.line);
+            }
+            let list = app
+                .rules
+                .allowed_use
+                .as_ref()
+                .and_then(|allowed| allowed.modules.get(module))
+                .map(Vec::as_slice)
+                .unwrap_or_default();
+            let sentence = strings::outside_allowed_use(module, of, list);
+            files
+                .into_iter()
+                .map(|(file, first)| line(file, Some(first), true, sentence.clone()))
+                .collect()
+        }
+        Detail::UnknownAllowedModule { entry } => vec![line(
+            RULES_FILE,
+            None,
+            true,
+            strings::unknown_allowed_module(entry),
+        )],
         Detail::InvalidManifest {
             file,
             message,

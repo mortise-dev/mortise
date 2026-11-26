@@ -48,5 +48,28 @@ The graph and the list **Links that break a rule** now follow your rules, and so
 **Fail CI when a rule breaks** is on until you turn it off. It tells the command line tool whether a
 problem fails CI; see [How to check the rules in CI](/mortise/how-to/check-rules-in-ci/).
 
+## Limit which modules a module may use
+
+The third rule, **Allowed use**, has no switch in the Boundary tab yet. Write it in `mortise.json`:
+give each module that you want checked the list of modules it may use.
+
+```json
+{
+    "rules": {
+        "allowed-use": {
+            "enabled": true,
+            "modules": {
+                "Audit": [],
+                "History": ["Audit", "Billing"]
+            }
+        }
+    }
+}
+```
+
+Here Audit may use no module, and History may use Audit and Billing only. Modules without a list are not
+checked, so you can add lists one module at a time. Each use outside a list is a problem in Findings and in
+`mortise check`. The key is in [mortise.json](/mortise/reference/mortise-json/).
+
 If `mortise.json` is not valid, Mortise says so and applies the default rules until the file is corrected.
 The format of the file is in [mortise.json](/mortise/reference/mortise-json/). The Boundary tab is in [Boundary](/mortise/reference/boundary/).

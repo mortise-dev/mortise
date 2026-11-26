@@ -292,6 +292,8 @@ pub fn check(check: Check) -> &'static str {
     match check {
         Check::NoCircularUse => "No circular use",
         Check::PublicSurfaceOnly => "Public surface only",
+        // Not in the spec.
+        Check::AllowedUse => "Allowed use",
         Check::ValidManifest => "Valid module.json",
         Check::NamespaceMatchesFolder => "Namespace",
         Check::NoStaleStatus => "Statuses file",
@@ -358,6 +360,23 @@ pub fn reads_internals(
         "{module} reads {} directly. {of} offers {offers}.",
         list_of(classes)
     )
+}
+
+/// Not in the spec. `Audit uses Billing. mortise.json lets Audit use no module.`
+/// With a list: `... lets History use Audit and Billing only.`
+pub fn outside_allowed_use(module: &str, of: &str, list: &[String]) -> String {
+    let may = if list.is_empty() {
+        "no module".to_owned()
+    } else {
+        let list: Vec<&str> = list.iter().map(String::as_str).collect();
+        format!("{} only", list_of(&list))
+    };
+    format!("{module} uses {of}. mortise.json lets {module} use {may}.")
+}
+
+/// Not in the spec. `mortise.json names Reports in allowed-use. The app has no module of that name.`
+pub fn unknown_allowed_module(entry: &str) -> String {
+    format!("mortise.json names {entry} in allowed-use. The app has no module of that name.")
 }
 
 pub fn invalid_manifest(module: &str, message: &str) -> String {

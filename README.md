@@ -52,7 +52,8 @@ the specification is in `docs/deviations.md`.
 
 - Lists the modules of an app with their state, files, lines, kinds, tests and coverage.
 - Shows which module uses which, from the PHP source, and finds circular use.
-- Checks two rules, kept in `mortise.json` in the app folder so that a team shares them.
+- Checks three rules, kept in `mortise.json` in the app folder so that a team shares them.
+  The third, the list of modules each module may use, is written in the file; the window does not show it yet.
   The command line tool `mortise check` checks the same rules in CI (see "Check the rules in CI" below).
 - Lists findings: what breaks a rule or a check, each where it lives.
 - Scans a module and proposes its public surface. The scan writes nothing.
@@ -222,8 +223,8 @@ cargo test --workspace
 |---|---|
 | `crates/mortise-core/tests` | Reading an app, git, the file watcher, the actuator client against a local stub, the public surface scan |
 | `crates/mortise-app/tests` | The interface, run headless and asked by role and name, as a screen reader would |
-| `crates/mortise-cli/tests` | `mortise check` on the fixture shop-api: its exit codes and its three formats. `mortise push` against a local stub of the cloud |
-| `crates/mortise-core/tests/push.rs` | The push document of shop-api against a committed file and the cloud's JSON Schema |
+| `crates/mortise-cli/tests` | `mortise check` on the fixtures shop-api and layered: its exit codes and its three formats. `mortise push` against a local stub of the cloud |
+| `crates/mortise-core/tests/push.rs` | The push document of shop-api against a committed file and the cloud's JSON Schema, and the document of layered against the schema |
 | `crates/mortise-app/tests/images.rs` | The screens in both themes against the images in `tests/snapshots`. macOS only |
 | `crates/mortise-app/tests/accessibility.rs` | Every control has a name and a target of 24 by 24 px |
 | `crates/mortise-core/tests/real_php.rs` | The package's commands in a real Laravel app. Ignored by default; a CI job that is not required runs them (see `AGENTS.md`) |

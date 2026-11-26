@@ -4,6 +4,7 @@
 //! limit the app set). Findings are never called health: that word belongs to what
 //! the running app reports.
 
+use std::collections::BTreeSet;
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
@@ -20,15 +21,17 @@ pub const DEFAULT_COVERAGE_LIMIT: u8 = 50;
 pub enum Severity {
     /// Breaks a rule or a check.
     Problem,
-    /// Under a limit the app set.
+    /// Under a limit the app set, or a name in the rules that is no module of the app.
     Warning,
 }
 
-/// What Mortise checks. The first two are the boundary rules of the app.
+/// What Mortise checks. The first three are the boundary rules of the app.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum Check {
     NoCircularUse,
     PublicSurfaceOnly,
+    /// Each module with a list in `allowed-use` uses only the modules of its list.
+    AllowedUse,
     ValidManifest,
     NamespaceMatchesFolder,
     NoStaleStatus,
@@ -40,7 +43,10 @@ pub enum Check {
 impl Check {
     /// True for the boundary rules, false for the checks on files.
     pub fn is_rule(self) -> bool {
-        matches!(self, Check::NoCircularUse | Check::PublicSurfaceOnly)
+        matches!(
+            self,
+            Check::NoCircularUse | Check::PublicSurfaceOnly | Check::AllowedUse
+        )
     }
 }
 
@@ -57,6 +63,11 @@ pub enum Detail {
         files: usize,
         classes: Vec<String>,
     },
+    /// Files of the module use a module that its list in `allowed-use` does not name.
+    OutsideAllowedUse { of: String, files: usize },
+    /// `allowed-use` names a module that the app does not have: as a module with a
+    /// list, or in a list.
+    UnknownAllowedModule { entry: String },
     /// `module.json` is not valid JSON. The message is the parser's.
     InvalidManifest {
         file: String,
@@ -253,6 +264,53 @@ pub(crate) fn find(subject: &Subject<'_>) -> Findings {
         ran(Check::PublicSurfaceOnly, modules.len(), found);
     }
 
+    let in_app = |name: &str| modules.iter().any(|module| module.name == name);
+    let allowed_use = subject.rules.allowed_use.as_ref();
+    if let Some(allowed) = allowed_use.filter(|allowed| allowed.enabled) {
+        // A module that is off breaks no rule, and no link to it does.
+        let on = |name: &str| {
+            modules
+                .iter()
+                .any(|module| module.name == name && module.state != ModuleState::Off)
+        };
+        let mut found: Vec<Finding> = subject
+            .links
+            .iter()
+            .filter(|link| on(&link.from) && on(&link.to))
+            .filter(|link| !allowed.allows(&link.from, &link.to))
+            .map(|link| Finding {
+                severity: Severity::Problem,
+                check: Check::AllowedUse,
+                module: Some(link.from.clone()),
+                detail: Detail::OutsideAllowedUse {
+                    of: link.to.clone(),
+                    files: link.files(),
+                },
+            })
+            .collect();
+        // A name that is no module, so that a typing mistake does not pass in silence.
+        let unknown: BTreeSet<&str> = allowed
+            .modules
+            .iter()
+            .flat_map(|(module, list)| std::iter::once(module).chain(list))
+            .map(String::as_str)
+            .filter(|name| !in_app(name))
+            .collect();
+        found.extend(unknown.into_iter().map(|entry| Finding {
+            severity: Severity::Warning,
+            check: Check::AllowedUse,
+            module: None,
+            detail: Detail::UnknownAllowedModule {
+                entry: entry.to_owned(),
+            },
+        }));
+        let checked = modules
+            .iter()
+            .filter(|module| allowed.modules.contains_key(&module.name))
+            .count();
+        ran(Check::AllowedUse, checked, found);
+    }
+
     let found = modules
         .iter()
         .filter_map(|module| {
@@ -333,7 +391,6 @@ pub(crate) fn find(subject: &Subject<'_>) -> Findings {
     }
 
     // Only a module of the app counts: the report can be older than a delete.
-    let in_app = |name: &str| modules.iter().any(|module| module.name == name);
     if let Some(report) = &subject.package.translations {
         let checked = report
             .modules

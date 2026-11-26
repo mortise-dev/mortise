@@ -105,6 +105,49 @@ fn with_ci_fail_off_a_problem_is_reported_and_the_check_passes() {
 }
 
 #[test]
+fn a_use_outside_the_list_marks_each_file_in_every_format() {
+    let layered = fixture().with_file_name("layered");
+    let path = layered.to_str().unwrap();
+    let output = check(&[path]);
+    assert_eq!(output.status.code(), Some(1), "{}", stderr(&output));
+    assert_eq!(
+        stdout(&output),
+        "\
+Modules/Audit/app/Listeners/RecordCharge.php:5: problem: Audit uses Billing. mortise.json lets Audit use no module.
+Modules/Audit/app/Services/ChargeTrail.php:6: problem: Audit uses Billing. mortise.json lets Audit use no module.
+mortise.json: warning: mortise.json names Reports in allowed-use. The app has no module of that name.
+1 problem, 1 warning. 5 modules checked against 3 rules and 3 checks.
+"
+    );
+
+    let output = check(&[path, "--format", "github"]);
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(
+        stdout(&output).lines().take(3).collect::<Vec<_>>(),
+        [
+            "::error file=Modules/Audit/app/Listeners/RecordCharge.php,line=5,title=Allowed use::Audit uses Billing. mortise.json lets Audit use no module.",
+            "::error file=Modules/Audit/app/Services/ChargeTrail.php,line=6,title=Allowed use::Audit uses Billing. mortise.json lets Audit use no module.",
+            "::warning file=mortise.json,title=Allowed use::mortise.json names Reports in allowed-use. The app has no module of that name.",
+        ]
+    );
+
+    let output = check(&[path, "--format", "json"]);
+    assert_eq!(output.status.code(), Some(1));
+    let printed: mortise_core::Findings = serde_json::from_str(&stdout(&output)).unwrap();
+    assert_eq!(printed, mortise_core::read_app(&layered).unwrap().findings);
+
+    // With ci.fail off the same break passes.
+    let app = tempfile::tempdir().unwrap();
+    common::copy_dir(&layered, app.path());
+    let rules = app.path().join("mortise.json");
+    let json = std::fs::read_to_string(&rules).unwrap();
+    std::fs::write(&rules, json.replacen('{', r#"{"ci": {"fail": false},"#, 1)).unwrap();
+    let output = check(&[app.path().to_str().unwrap()]);
+    assert_eq!(output.status.code(), Some(0), "{}", stderr(&output));
+    assert!(stdout(&output).contains("1 problem, 1 warning."));
+}
+
+#[test]
 fn a_folder_that_is_not_an_app_exits_3() {
     let folder = tempfile::tempdir().unwrap();
     let output = check(&[folder.path().to_str().unwrap()]);

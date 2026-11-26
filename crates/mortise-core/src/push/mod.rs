@@ -185,6 +185,8 @@ pub fn push_document(app: AppSnapshot, context: PushContext) -> PushDocument {
             Detail::NamespaceMismatch { folder, .. } => relative_text(&root, folder),
             Detail::CircularUse { .. }
             | Detail::ReadsInternals { .. }
+            | Detail::OutsideAllowedUse { .. }
+            | Detail::UnknownAllowedModule { .. }
             | Detail::LowCoverage { .. }
             | Detail::MissingTranslations { .. } => {}
         }

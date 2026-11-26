@@ -343,6 +343,18 @@ pub fn finding(finding: &mortise_core::Finding, app: &AppSnapshot, name: &str) -
                 files(*n as u64),
             )
         }
+        // Not in the spec: milestone 30 draws the third rule.
+        Detail::OutsideAllowedUse { of, files: n } => {
+            let verb = if *n == 1 { "uses" } else { "use" };
+            format!(
+                "{} in {module} {verb} {of}. mortise.json does not list {of} for {module}.",
+                files(*n as u64)
+            )
+        }
+        // Not in the spec.
+        Detail::UnknownAllowedModule { entry } => format!(
+            "mortise.json names {entry} in allowed-use. The app has no module of that name."
+        ),
         // `Modules/Loyalty/module.json is not valid JSON: unexpected end of file at line 14.`
         // The parser's own words are quoted as they are.
         Detail::InvalidManifest {

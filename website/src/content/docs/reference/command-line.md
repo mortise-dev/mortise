@@ -64,6 +64,10 @@ Modules/Notifications: warning: Notifications is 39% covered. The limit is 50%.
   that names an internal class. The sentence ends with what the other module offers: its folders, such
   as "Billing offers Contracts and Events.", or "Billing offers its accepted public surface." when its
   `module.json` has a `surface` key.
+- A module that uses a module outside its list in `allowed-use` gives one line for each file that
+  does, at the first line that names a class of the other module: "Audit uses Billing. mortise.json
+  lets Audit use no module." A name in `allowed-use` that is no module is a warning placed on
+  `mortise.json`.
 - A finding of a whole module, such as a coverage warning, is placed on the module folder.
 
 ### github

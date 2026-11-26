@@ -1,0 +1,9 @@
+{
+    "name": "mortise/fixture-history",
+    "description": "",
+    "autoload": {
+        "psr-4": {
+            "Modules\\History\\": "app/"
+        }
+    }
+}

@@ -933,6 +933,71 @@ fn finds_what_breaks_a_rule_or_a_check() {
 }
 
 #[test]
+fn a_module_with_a_list_uses_only_the_modules_of_its_list() {
+    use mortise_core::{Check, Detail, Finding, Severity};
+
+    // Audit has an empty list and uses Billing: the one break. History uses Audit and
+    // Billing, which its list names, and Legacy, which is off. Ingest has no list.
+    // Legacy is off: its empty list breaks nothing. History's list names Reports.
+    let app = read_app(&fixture("layered")).unwrap();
+    let findings = &app.findings;
+    assert_eq!(
+        findings.list,
+        [
+            Finding {
+                severity: Severity::Problem,
+                check: Check::AllowedUse,
+                module: Some("Audit".into()),
+                detail: Detail::OutsideAllowedUse {
+                    of: "Billing".into(),
+                    files: 2,
+                },
+            },
+            Finding {
+                severity: Severity::Warning,
+                check: Check::AllowedUse,
+                module: None,
+                detail: Detail::UnknownAllowedModule {
+                    entry: "Reports".into(),
+                },
+            },
+        ]
+    );
+    // Each file of the break, with its line.
+    let refs: Vec<(&str, u32)> = app
+        .link("Audit", "Billing")
+        .unwrap()
+        .refs
+        .iter()
+        .map(|reference| (reference.file.as_str(), reference.line))
+        .collect();
+    assert_eq!(
+        refs,
+        [
+            ("Modules/Audit/app/Listeners/RecordCharge.php", 5),
+            ("Modules/Audit/app/Services/ChargeTrail.php", 6),
+        ]
+    );
+    // Three rules ran. The modules with a list are the ones checked.
+    assert_eq!(findings.rules_and_checks(), (3, 3));
+    let result = &findings.checks[2];
+    assert_eq!(
+        (result.check, result.checked, result.findings),
+        (Check::AllowedUse, 3, 2)
+    );
+
+    // Off, the rule checks nothing and keeps its lists.
+    let copy = copy_of("layered");
+    let path = copy.path().join("mortise.json");
+    let json = std::fs::read_to_string(&path).unwrap();
+    std::fs::write(&path, json.replace("true", "false")).unwrap();
+    let app = read_app(copy.path()).unwrap();
+    assert!(app.findings.list.is_empty());
+    assert_eq!(app.findings.rules_and_checks(), (2, 3));
+    assert_eq!(app.rules.allowed_use.unwrap().modules.len(), 3);
+}
+
+#[test]
 fn finds_broken_files_of_the_package() {
     use mortise_core::{Check, Detail, Severity};
 

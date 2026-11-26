@@ -1,0 +1,4 @@
+#!/usr/bin/env php
+<?php
+
+// A fixture for the tests of Mortise. It is never run.

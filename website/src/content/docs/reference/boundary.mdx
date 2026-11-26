@@ -21,6 +21,9 @@ An app has two rules. Both are on by default.
 | **No circular use** | Modules use each other, directly or in a circle of three or more |
 | **Other modules use only a module's public surface** | A file of one module reads a class of another module outside its public surface. A module with an accepted surface offers the classes it lists. A module without one offers its public folders. The default folders are `Contracts` and `Events` |
 
+A third rule, **Allowed use**, is kept in `mortise.json` only. The Boundary tab does not show it yet;
+its findings appear in the Findings tab. See [mortise.json](/mortise/reference/mortise-json/).
+
 A module that is off does not run, so its links break no rule.
 The rules are kept in `mortise.json` in the app folder. See [mortise.json](/mortise/reference/mortise-json/).
 If `mortise.json` cannot be read as rules, the tab says
