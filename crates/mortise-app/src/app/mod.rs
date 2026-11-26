@@ -1247,6 +1247,9 @@ impl eframe::App for MortiseApp {
         for action in settings_actions {
             match action {
                 SettingsAction::Close => self.settings_open = None,
+                SettingsAction::ReportProblem => ctx.open_url(egui::OpenUrl::new_tab(
+                    crate::settings::view::report_problem_url(),
+                )),
                 SettingsAction::Changed { reread } => {
                     self.save();
                     if let Some(index) = reread {

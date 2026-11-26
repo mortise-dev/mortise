@@ -190,6 +190,12 @@ pub const COL_KEYS: &str = "Keys";
 pub const COL_WHERE: &str = "Where";
 pub const KEYS_OR: &str = "or";
 
+/// Not in the spec: the way to report a problem, in General.
+pub const FEEDBACK: &str = "Feedback";
+pub const FEEDBACK_HINT: &str =
+    "opens GitHub in your browser, with the version and platform filled in; nothing else is sent";
+pub const REPORT_A_PROBLEM: &str = "Report a problem";
+
 /// `Mortise 0.1.0`
 pub fn version(number: &str) -> String {
     format!("Mortise {number}")

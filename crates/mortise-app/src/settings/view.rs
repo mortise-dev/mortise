@@ -29,6 +29,39 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 #[cfg(feature = "testing")]
 const VERSION: &str = "1.0.1";
 
+/// The form of a problem on GitHub. It opens with the version and the platform filled in,
+/// through the query of the address, and nothing else: no path, no module name.
+pub fn report_problem_url() -> String {
+    let platform = format!("{} {}", platform_name(), std::env::consts::ARCH);
+    format!(
+        "https://github.com/nWidart/mortise/issues/new?template=problem.yml&version={}&platform={}",
+        query_encoded(VERSION),
+        query_encoded(&platform)
+    )
+}
+
+fn platform_name() -> &'static str {
+    match std::env::consts::OS {
+        "macos" => "macOS",
+        "windows" => "Windows",
+        "linux" => "Linux",
+        other => other,
+    }
+}
+
+/// Percent-encodes text for a query value.
+fn query_encoded(text: &str) -> String {
+    let mut out = String::new();
+    for byte in text.bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_') {
+            out.push(char::from(byte));
+        } else {
+            out.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    out
+}
+
 /// The sections of Settings.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Section {
@@ -186,6 +219,8 @@ pub enum SettingsAction {
     Changed { reread: Option<usize> },
     /// Ask before an app is removed.
     RemoveApp(usize),
+    /// Open the form of a problem in the browser.
+    ReportProblem,
 }
 
 /// Paints the list of sections into the index column. The rect includes the joint
@@ -620,6 +655,20 @@ impl Form<'_> {
             }
             y = next;
         }
+
+        // Not in the drawing: a way to report a problem. It opens the form in the browser.
+        // Mortise sends nothing by itself, and the address holds the version and the
+        // platform only.
+        let y = self.label(ui, y, strings::FEEDBACK, strings::FEEDBACK_HINT);
+        let report = Button {
+            label: strings::REPORT_A_PROBLEM,
+            ..Default::default()
+        };
+        let response = report.show(ui, self.pal, pos2(self.left, y), self.keyboard);
+        if response.clicked() {
+            actions.push(SettingsAction::ReportProblem);
+        }
+        let y = y + size::CONTROL_H + 12.0;
 
         if changed {
             actions.push(SettingsAction::Changed { reread: None });
@@ -1910,4 +1959,22 @@ fn folder_text(php: &PhpSettings) -> String {
         .as_ref()
         .map(|folder| folder.display().to_string())
         .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_report_address_holds_the_version_and_the_platform_only() {
+        let url = report_problem_url();
+        let (base, query) = url.split_once('?').unwrap();
+        assert_eq!(base, "https://github.com/nWidart/mortise/issues/new");
+        let keys: Vec<_> = query
+            .split('&')
+            .map(|pair| pair.split_once('=').unwrap().0)
+            .collect();
+        assert_eq!(keys, ["template", "version", "platform"]);
+        assert!(query.contains(&format!("platform={}%20", platform_name())));
+    }
 }
