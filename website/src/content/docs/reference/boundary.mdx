@@ -14,15 +14,13 @@ Why the rules exist is in [About boundaries](/mortise/explanation/boundaries/).
 
 ## Rules
 
-An app has two rules. Both are on by default.
+An app has three rules. The first two are on by default. The third checks nothing until `mortise.json` gives a module a list.
 
 | Rule | Breaks when |
 |---|---|
 | **No circular use** | Modules use each other, directly or in a circle of three or more |
 | **Other modules use only a module's public surface** | A file of one module reads a class of another module outside its public surface. A module with an accepted surface offers the classes it lists. A module without one offers its public folders. The default folders are `Contracts` and `Events` |
-
-A third rule, **Allowed use**, is kept in `mortise.json` only. The Boundary tab does not show it yet;
-its findings appear in the Findings tab. See [mortise.json](/mortise/reference/mortise-json/).
+| **A module uses only the modules of its list** | A module with a list in `rules.allowed-use` uses a module that its list does not name. A module without a list is not checked. The lists are written in `mortise.json` |
 
 A module that is off does not run, so its links break no rule.
 The rules are kept in `mortise.json` in the app folder. See [mortise.json](/mortise/reference/mortise-json/).
@@ -43,7 +41,7 @@ With a module selected, the tab shows a graph of its links and the files of one 
 | Middle | **Selected** | The module, with its number of files |
 | Right | "Uses, 4" | The modules this one uses |
 
-Each neighbour node has its code stamp, its name when it fits, and a second line such as "6 refs, 3 to internals" or "2 refs, circular".
+Each neighbour node has its code stamp, its name when it fits, and a second line such as "6 refs, 3 to internals", "2 refs, circular" or "2 refs, outside its list".
 The arrow points at the module that is used. A link that breaks a rule is 2 px, in the problem colour, and carries a problem mark on the line.
 
 At most eight nodes stand on one side. With more neighbours, the seven with the most references are drawn
@@ -63,14 +61,19 @@ The head names the link and how much of it breaks a rule:
 | One way, reads internals | "Checkout uses Billing" and "3 of 6 files read internals" |
 | One way, breaks nothing | "Checkout uses Billing" and "6 files" |
 | Two modules that use each other | "Checkout and Shipping use each other" and "Circular, 6 files" |
+| One way, outside the list of the module | "Audit uses Billing" and "Outside its list, 2 files" |
 
 The table has the columns **File**, **Line** and **Reads**. Files that break the rule come first and carry the problem mark.
-For a circle, every file is marked: removing either direction ends it.
+For a circle, every file is marked: removing either direction ends it. For a link outside the list of its module, every file is marked too.
+
+<Screen id="s5.1-outside-list" alt="The Boundary of Audit in an app with lists in allowed-use: the link to Billing in the problem colour, and its two files, each marked." />
 
 The footer gives the rule of the link and two buttons:
 
 - For a link that reads internals: "Rule: other modules use only a module's public surface. Billing has none yet, so the folders Contracts and Events count."
   When the used module has an accepted surface: "Rule: other modules use only a module's public surface. Where Billing has an accepted one, only what it lists counts."
+- For a link outside the list of its module: "Rule: a module uses only the modules of its list. mortise.json lets Audit use no module."
+  With a list: "… mortise.json lets History use Audit and Billing only."
 - For a circle of two: "Reported on Checkout, the side with fewer files to change. Every file in a circle is marked: removing either direction ends it."
 - For a circle of three or more: "Reported on Checkout, the module of the circle with the fewest files to change. Every file of a link in a circle is marked."
 - **Open in editor** with <kbd>Enter</kbd>: opens the selected file at its line.
@@ -93,8 +96,9 @@ An app whose modules do not use each other says "No module of shop-api uses anot
 
 ### Links that break a rule
 
-A box with one row per broken rule: a circle once ("Checkout and Shipping use each other")
-and each link that reads internals ("Checkout reads Billing internals"), with the number of files.
+A box with one row per broken rule: a circle once ("Checkout and Shipping use each other"),
+each link that reads internals ("Checkout reads Billing internals") and each link outside the list of its module
+("Audit uses Billing outside its list"), with the number of files.
 Without one it says "No link breaks a rule."
 <kbd>J</kbd> and <kbd>K</kbd> move through the rows. <kbd>Enter</kbd> opens the Boundary of the first module on that link.
 
@@ -106,9 +110,10 @@ Titled "Rules for shop-api", with the note "kept in mortise.json in the app fold
 |---|---|
 | **No circular use** | Turns the first rule on or off |
 | **Other modules use only a module's public surface** | Turns the second rule on or off. Under it: "Accepted for 1 of 7 modules. For a module without one, these folders count:" and a field with the folders |
+| **A module uses only the modules of its list** | Turns the third rule on or off. It writes `rules.allowed-use.enabled` and keeps the lists. Under it: "3 of 5 modules have a list in mortise.json. A module without one is not checked." Without the key it is off and says "No module has a list yet. Write the lists in mortise.json, under allowed-use." The lists are edited in the file |
 | **Fail CI when a rule breaks** | On by default. Writes `ci.fail` in `mortise.json`. On, `mortise check` exits 1 when a rule breaks; off, it reports and exits 0 |
 
-The first change of any of the three asks before Mortise creates `mortise.json`: "Create mortise.json in shop-api?" with **Create mortise.json**.
+The first change of any of the four asks before Mortise creates `mortise.json`: "Create mortise.json in shop-api?" with **Create mortise.json**.
 If the file cannot be written: "The rules were not saved: …."
 
 ## All modules, above 12 modules
@@ -128,7 +133,7 @@ The note reads "platform has 60 modules. Above 12 modules the graph of the whole
 | **Uses** | The module that is used |
 | **Refs** | The number of references |
 | **Files** | The number of files |
-| **State** | **Circular**, "3 files read internals", or **Good** |
+| **State** | **Circular**, "3 files read internals", "Outside its list", or **Good** |
 
 Problems come first, then the links with the most references. The rules box stands under the table.
 

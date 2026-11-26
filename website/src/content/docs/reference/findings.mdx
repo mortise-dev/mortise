@@ -16,6 +16,8 @@ Findings are not the runtime status: that is what the running app reports throug
 |---|---|---|---|
 | Rule: no circular use | Problem | Modules that are on use each other, directly or in a circle | "Checkout and Shipping use each other. 2 files in Checkout, 4 files in Shipping." |
 | Rule: Contracts and Events only | Problem | Files of a module read classes of another module outside its public folders | "3 files in Checkout read Modules\Billing\Models\Invoice directly. Billing offers Contracts and Events." |
+| Rule: allowed use | Problem | Files of a module with a list use a module that its list does not name | "2 files in Audit use Billing. mortise.json lets Audit use no module." |
+| Rule: allowed use | Warning | `allowed-use` names a module that the app does not have | "mortise.json names Reports in allowed-use, and the app has no module of that name. Correct the name in mortise.json." |
 | Valid module.json | Problem | A `module.json` is not valid JSON | "Modules/Loyalty/module.json is not valid JSON: unexpected end of file at line 14." |
 | Valid module.json | Problem | A `module.json` has no `name` | "Modules/Loyalty/module.json has no name. The package needs one." |
 | Namespace | Problem | The namespace a module declares does not end in the name of its folder | "Blog declares the namespace Modules\Blogs. Its folder is Modules/Blog." |
@@ -29,6 +31,9 @@ Notes on each check:
   because that is the cheaper side to cut. The other modules of the circle show "Part of a circle counted on Checkout" on their Summary.
 - **Rule: … only** runs only while the rule is on. Its name lists the public folders of the app, such as "Rule: Contracts and Events only".
   With more than one class it reads "2 classes of Billing" instead of the class name.
+- **Rule: allowed use** runs only while the rule is on and `mortise.json` has the key `rules.allowed-use`.
+  It checks the modules with a list. A module with a list names the modules it may use: "mortise.json lets History use Audit and Billing only."
+  Enter on the problem opens the Boundary of the module on that link.
 - **Coverage limit** runs only when the app has a coverage report. Without a report, coverage is unknown, which is not a finding.
   The limit is 50% until it is changed in **Settings** > **Apps** > **Coverage limit**, or by
   `coverage.limit` in [mortise.json](/mortise/reference/mortise-json/), which wins.
@@ -92,6 +97,7 @@ with what it looked at:
 |---|---|---|
 | Rule: no circular use | "No circular use" | "7 modules" |
 | Rule: public surface | "Other modules use only a module's public surface" | "7 modules" |
+| Rule: allowed use | "A module uses only the modules of its list" | "3 modules": the modules with a list |
 | Valid module.json | "Every module.json is valid JSON" | "7 modules" |
 | Namespace | "Declared namespace matches the folder" | "7 modules" |
 | Statuses file | "No entry in modules_statuses.json without a module" | "7 entries" |

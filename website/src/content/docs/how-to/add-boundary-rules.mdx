@@ -50,7 +50,8 @@ problem fails CI; see [How to check the rules in CI](/mortise/how-to/check-rules
 
 ## Limit which modules a module may use
 
-The third rule, **Allowed use**, has no switch in the Boundary tab yet. Write it in `mortise.json`:
+The third rule, **Allowed use**, has a switch in the box **Rules for** your app:
+**A module uses only the modules of its list**. The lists themselves are written in `mortise.json`:
 give each module that you want checked the list of modules it may use.
 
 ```json
@@ -69,7 +70,12 @@ give each module that you want checked the list of modules it may use.
 
 Here Audit may use no module, and History may use Audit and Billing only. Modules without a list are not
 checked, so you can add lists one module at a time. Each use outside a list is a problem in Findings and in
-`mortise check`. The key is in [mortise.json](/mortise/reference/mortise-json/).
+`mortise check`, and a link that breaks the rule in the Boundary tab. The key is in [mortise.json](/mortise/reference/mortise-json/).
+
+Under the switch, the box says how many modules have a list, such as "3 of 5 modules have a list in
+mortise.json. A module without one is not checked." Without the key it says "No module has a list yet.
+Write the lists in mortise.json, under allowed-use." and the switch is off. Turning the switch on or off
+writes `enabled` and keeps the lists.
 
 If `mortise.json` is not valid, Mortise says so and applies the default rules until the file is corrected.
 The format of the file is in [mortise.json](/mortise/reference/mortise-json/). The Boundary tab is in [Boundary](/mortise/reference/boundary/).
