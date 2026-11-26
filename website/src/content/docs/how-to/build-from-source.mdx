@@ -1,6 +1,6 @@
 ---
 title: Build Mortise from source
-description: Install the Rust toolchain, run Mortise from a clone of the repository, and build the installers with cargo-packager.
+description: Install the Rust toolchain, run Mortise from a clone of the repository, build the command line tool, and build the installers with cargo-packager.
 sidebar:
   order: 11
 ---
@@ -38,8 +38,25 @@ To install a release instead, see [Install Mortise](/mortise/start-here/installa
 
 </Steps>
 
-The window opens. For a build without the debug checks, add `--release` after `run`.
+The window opens. Its binary is `mortise-desktop`. For a build without the debug checks, add `--release` after `run`.
 To keep the settings of this build apart from those of your installed Mortise, see the environment variables in [Files and folders](/mortise/reference/files-and-folders/).
+
+## Build the command line tool
+
+The command line tool is the binary `mortise`, in the crate `mortise-cli`. It needs no window
+libraries. Run it from the clone:
+
+```sh
+cargo run -p mortise-cli -- check /path/to/laravel-app
+```
+
+Or install it on your path:
+
+```sh
+cargo install --locked --path crates/mortise-cli
+```
+
+See [Command line tool](/mortise/reference/command-line/) for what it prints.
 
 ## Build the installers
 

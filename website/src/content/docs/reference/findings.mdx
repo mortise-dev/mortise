@@ -30,7 +30,8 @@ Notes on each check:
 - **Rule: … only** runs only while the rule is on. Its name lists the public folders of the app, such as "Rule: Contracts and Events only".
   With more than one class it reads "2 classes of Billing" instead of the class name.
 - **Coverage limit** runs only when the app has a coverage report. Without a report, coverage is unknown, which is not a finding.
-  The limit is 50% until it is changed in **Settings** > **Apps** > **Coverage limit**.
+  The limit is 50% until it is changed in **Settings** > **Apps** > **Coverage limit**, or by
+  `coverage.limit` in [mortise.json](/mortise/reference/mortise-json/), which wins.
 - **Translations** comes from the report of `module:lang`. It runs only after you run **Check translations** on the Actions tab.
   With two locales the sentence names both ("2 keys in en are missing in fr"). With more it names the locale only ("4 keys are missing in de").
   Missing files are counted too ("1 key and 2 files in en are missing in fr").

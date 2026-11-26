@@ -102,9 +102,9 @@ Titled "Rules for shop-api", with the note "kept in mortise.json in the app fold
 |---|---|
 | **No circular use** | Turns the first rule on or off |
 | **Other modules use only a module's public surface** | Turns the second rule on or off. Under it: "Accepted for 0 of 7 modules. For a module without one, these folders count:" and a field with the folders |
-| **Fail CI when a rule breaks** | Always off: "Needs the command line tool, which does not exist yet." |
+| **Fail CI when a rule breaks** | On by default. Writes `ci.fail` in `mortise.json`. On, `mortise check` exits 1 when a rule breaks; off, it reports and exits 0 |
 
-The first change asks before Mortise creates `mortise.json`: "Create mortise.json in shop-api?" with **Create mortise.json**.
+The first change of any of the three asks before Mortise creates `mortise.json`: "Create mortise.json in shop-api?" with **Create mortise.json**.
 If the file cannot be written: "The rules were not saved: …."
 
 ## All modules, above 12 modules

@@ -33,8 +33,8 @@ A table of the apps, with the columns **App**, **Folder**, **Versions** and **En
 | **Name** | The name every screen shows for the app | The name of the app folder |
 | **Monogram** | The two letters on the tile of the app in the rail | Proposed from the name |
 | **Folder** | The app folder. Shown, not edited | |
-| **Coverage report** (hint `clover.xml`) | The clover report, relative to the app folder or absolute | Empty: Mortise looks in `phpunit.xml` and the usual places |
-| **Coverage limit** (found in phpunit.xml or the usual places) | A module covered less than this per cent is a warning | 50% |
+| **Coverage report** (hint `clover.xml`) | The clover report, relative to the app folder or absolute. `coverage.report` in `mortise.json` wins over it | Empty: Mortise looks in `phpunit.xml` and the usual places |
+| **Coverage limit** (found in phpunit.xml or the usual places) | A module covered less than this per cent is a warning. `coverage.limit` in `mortise.json` wins over it | 50% |
 
 The button **Remove `<app>` from Mortise** removes the app from the rail. It does not touch the app folder.
 

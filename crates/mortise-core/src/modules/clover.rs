@@ -78,18 +78,22 @@ fn report_in_phpunit_config(xml: &[u8]) -> Option<String> {
 }
 
 /// Reads the statements of every file in a clover report. A report that is not
-/// valid XML gives what was read before the fault.
-pub(crate) fn read_report(xml: &[u8]) -> Vec<FileCoverage> {
+/// valid XML gives what was read before the fault, and the fault. So does a file
+/// without a `coverage` element, which is no clover report.
+pub(crate) fn read_report(xml: &[u8]) -> (Vec<FileCoverage>, Option<String>) {
     let mut reader = Reader::from_reader(xml);
     let mut files = Vec::new();
     // The file being read, and how deep inside it the reader is.
     let mut file: Option<(String, usize)> = None;
+    let mut clover = false;
     loop {
         let event = match reader.read_event() {
-            Ok(Event::Eof) | Err(_) => break,
+            Ok(Event::Eof) => break,
+            Err(error) => return (files, Some(error.to_string())),
             Ok(event) => event,
         };
         match event {
+            Event::Start(tag) if tag.name().as_ref() == "coverage" => clover = true,
             Event::Start(tag) if tag.name().as_ref() == "file" => {
                 file = attribute(&tag, "name").map(|name| (name.replace('\\', "/"), 0));
             }
@@ -124,7 +128,8 @@ pub(crate) fn read_report(xml: &[u8]) -> Vec<FileCoverage> {
             _ => {}
         }
     }
-    files
+    let fault = (!clover).then(|| "it has no coverage element".to_owned());
+    (files, fault)
 }
 
 fn attribute(tag: &BytesStart<'_>, name: &str) -> Option<String> {
@@ -160,7 +165,8 @@ mod tests {
 
     #[test]
     fn reads_the_statements_of_each_file_and_not_of_its_classes() {
-        let files = read_report(REPORT.as_bytes());
+        let (files, fault) = read_report(REPORT.as_bytes());
+        assert_eq!(fault, None);
         assert_eq!(
             files,
             [
@@ -183,11 +189,16 @@ mod tests {
     }
 
     #[test]
-    fn a_broken_report_gives_what_was_read() {
-        let cut = &REPORT[..REPORT.find("<package").unwrap()];
-        assert_eq!(read_report(cut.as_bytes()).len(), 1);
-        assert!(read_report(b"not xml at all").is_empty());
-        assert!(read_report(b"").is_empty());
+    fn a_broken_report_gives_what_was_read_and_the_fault() {
+        let broken = REPORT.replace("</file>\n    <package", "</fil>\n    <package");
+        let (files, fault) = read_report(broken.as_bytes());
+        assert_eq!(files.len(), 1);
+        assert!(fault.is_some());
+        for not_clover in [&b"not xml at all"[..], b"", b"<phpunit/>"] {
+            let (files, fault) = read_report(not_clover);
+            assert!(files.is_empty());
+            assert_eq!(fault.as_deref(), Some("it has no coverage element"));
+        }
     }
 
     #[test]

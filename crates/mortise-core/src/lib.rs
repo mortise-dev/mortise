@@ -39,7 +39,7 @@ pub use app::{
     read_app_with,
 };
 pub use boundary::links::{Cycle, Link, Reference, columns};
-pub use boundary::rules::{RULES_FILE, Rules, RulesError, RulesSource};
+pub use boundary::rules::{CoverageSettings, RULES_FILE, Rules, RulesError, RulesSource};
 pub use editor::{Editor, EditorError, editor_arguments, open_in_editor};
 pub use findings::{
     Check, CheckResult, DEFAULT_COVERAGE_LIMIT, Detail, Finding, FindingState, Findings, Severity,

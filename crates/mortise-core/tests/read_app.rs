@@ -320,6 +320,72 @@ fn the_report_named_in_phpunit_xml_is_read() {
 }
 
 #[test]
+fn the_coverage_of_mortise_json_wins_over_the_window_and_a_given_value_over_both() {
+    use mortise_core::{CoverageSettings, ReadCache, ReadOptions, read_app_cached};
+
+    let app = copy_of("shop-api");
+    std::fs::rename(
+        app.path().join("build/coverage/clover.xml"),
+        app.path().join("cov.xml"),
+    )
+    .unwrap();
+    std::fs::write(
+        app.path().join("mortise.json"),
+        r#"{"coverage": {"limit": 70, "report": "cov.xml"}}"#,
+    )
+    .unwrap();
+    let read = |options: &ReadOptions| {
+        read_app_cached(
+            app.path(),
+            &BTreeMap::new(),
+            options,
+            &mut ReadCache::default(),
+        )
+        .unwrap()
+    };
+    let window = ReadOptions {
+        coverage_limit: 10,
+        coverage_report: Some("elsewhere.xml".into()),
+        ..ReadOptions::default()
+    };
+
+    let snapshot = read(&window);
+    assert_eq!(snapshot.coverage_limit, 70);
+    assert_eq!(
+        snapshot.path_shown(&snapshot.coverage_report.as_ref().unwrap().path),
+        "cov.xml"
+    );
+
+    let snapshot = read(&ReadOptions {
+        coverage_given: CoverageSettings {
+            limit: Some(30),
+            report: None,
+        },
+        ..window
+    });
+    assert_eq!(snapshot.coverage_limit, 30);
+    assert!(snapshot.coverage_report.is_some());
+
+    // A report given for the read that is no clover report is an error, not a fallback.
+    std::fs::write(app.path().join("broken.xml"), "<phpunit/>").unwrap();
+    let given = ReadOptions {
+        coverage_given: CoverageSettings {
+            limit: None,
+            report: Some("broken.xml".into()),
+        },
+        ..ReadOptions::default()
+    };
+    let error = read_app_cached(
+        app.path(),
+        &BTreeMap::new(),
+        &given,
+        &mut ReadCache::default(),
+    )
+    .unwrap_err();
+    assert!(matches!(error, ReadError::CoverageReport { .. }), "{error}");
+}
+
+#[test]
 fn a_folder_that_is_not_a_repository_has_no_git_data() {
     let app = copy_of("shop-api");
     let app = read_app(app.path()).unwrap();

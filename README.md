@@ -53,6 +53,7 @@ the specification is in `docs/deviations.md`.
 - Lists the modules of an app with their state, files, lines, kinds, tests and coverage.
 - Shows which module uses which, from the PHP source, and finds circular use.
 - Checks two rules, kept in `mortise.json` in the app folder so that a team shares them.
+  The command line tool `mortise check` checks the same rules in CI (see "Check the rules in CI" below).
 - Lists findings: what breaks a rule or a check, each where it lives.
 - Scans a module and proposes its public surface. The scan writes nothing.
 - With `nwidart/laravel-actuator`: runtime status, routes by module, scheduled tasks and metrics
@@ -124,6 +125,24 @@ Database time reads "unknown" until `nwidart/laravel-modules` labels database me
 module. A series without a `module` label is placed by its route or job class; one that matches
 no module counts as "Not in a module" (`docs/deviations.md`, S66).
 
+## Check the rules in CI
+
+`mortise check` reads an app as the window does, runs no PHP and writes nothing. It prints each
+problem with its file and line and exits 1 when a rule breaks.
+
+```
+cargo install --locked --git https://github.com/nWidart/mortise mortise-cli
+mortise check /path/to/laravel-app --format github
+```
+
+`--format` is `text` (the default), `json` or `github`, whose lines GitHub marks in the pull request.
+The exit codes are 0 (no problem), 1 (a problem), 2 (a wrong command line), 3 (the folder is not an
+app) and 5 (the report could not be written). `"ci": { "fail": false }` in `mortise.json`, the switch "Fail CI when a rule breaks" in the
+window, makes it report without failing. `"coverage": { "limit": 70, "report": "build/clover.xml" }`
+sets the coverage of the app for the window and the tool; the flags `--coverage-limit` and
+`--coverage` win over it. The [documentation](https://nwidart.github.io/mortise/reference/command-line/)
+has the rest.
+
 ## Install
 
 Each [release](https://github.com/nWidart/mortise/releases/latest) has:
@@ -140,9 +159,11 @@ Each [release](https://github.com/nWidart/mortise/releases/latest) has:
 
 ```
 cargo run -p mortise-app -- /path/to/laravel-app
+cargo run -p mortise-cli -- check /path/to/laravel-app
 ```
 
-Rust 1.99 is needed; `rust-toolchain.toml` selects it.
+The first runs the window, binary `mortise-desktop`. The second runs the command line tool, binary
+`mortise`. Rust 1.99 is needed; `rust-toolchain.toml` selects it.
 
 Mortise keeps its settings in `settings.json` in the config folder of the platform.
 `MORTISE_CONFIG_DIR` names another folder. The history of runs lives in the data folder;
@@ -159,6 +180,7 @@ cargo test --workspace
 |---|---|
 | `crates/mortise-core/tests` | Reading an app, git, the file watcher, the actuator client against a local stub, the public surface scan |
 | `crates/mortise-app/tests` | The interface, run headless and asked by role and name, as a screen reader would |
+| `crates/mortise-cli/tests` | `mortise check` on the fixture shop-api: its exit codes and its three formats |
 | `crates/mortise-app/tests/images.rs` | The screens in both themes against the images in `tests/snapshots`. macOS only |
 | `crates/mortise-app/tests/accessibility.rs` | Every control has a name and a target of 24 by 24 px |
 | `crates/mortise-core/tests/real_php.rs` | The package's commands in a real Laravel app. Ignored by default; a CI job that is not required runs them (see `AGENTS.md`) |
@@ -178,7 +200,8 @@ UPDATE_SNAPSHOTS=1 cargo test -p mortise-app --test images
 | Path | Holds |
 |---|---|
 | `crates/mortise-core` | Everything that is not drawing: reading an app into a snapshot, the actuator client, the scan. No interface dependency. |
-| `crates/mortise-app` | The window, built with egui and eframe. Binary `mortise`. |
+| `crates/mortise-app` | The window, built with egui and eframe. Binary `mortise-desktop`; the installers and the app are named Mortise. |
+| `crates/mortise-cli` | The command line tool, binary `mortise`: `mortise check`. It uses `mortise-core` without its default features. |
 | `assets/brand` | The README banner and the social preview, drawn from HTML by `tools/brand-images.sh`. |
 | `assets/fonts` | Asap and Inconsolata, each with its `OFL.txt`. |
 | `assets/icon` | The app icon: two drawings, `mortise.svg` and `mortise-16.svg`, and the files made from them for macOS (`.icns`), Windows (`.ico`) and Linux (hicolor PNGs). |

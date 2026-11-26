@@ -1,0 +1,71 @@
+---
+title: Check the rules in CI
+description: Run mortise check in a CI job, so that a pull request that breaks a boundary rule fails, with each problem marked on its line.
+sidebar:
+  order: 15
+---
+import { Steps, Aside } from '@astrojs/starlight/components';
+
+`mortise check` reads an app the way the window does and fails when a rule breaks. It runs no PHP and
+writes nothing in the app, so a CI job needs only the files of the app and the tool.
+The rules come from [mortise.json](/mortise/reference/mortise-json/); without the file the defaults apply.
+
+<Steps>
+
+1. Check the app on your machine first. From the app folder:
+
+   ```sh
+   mortise check
+   ```
+
+   Each problem is one line with its file and line. The exit code is 1 when a problem is found.
+   To get the tool, see [Build Mortise from source](/mortise/how-to/build-from-source/#build-the-command-line-tool).
+
+2. Add a job to your workflow. This one is for GitHub Actions, with the app at the root of the repository:
+
+   ```yaml
+   jobs:
+     boundaries:
+       runs-on: ubuntu-latest
+       steps:
+         - uses: actions/checkout@v5
+         - run: cargo install --locked --git https://github.com/nWidart/mortise mortise-cli
+         - run: mortise check --format github
+   ```
+
+   `--format github` prints each problem as a workflow command, so GitHub marks the line in the
+   pull request. A file that reads an internal class of another module gets a mark of its own.
+
+3. Commit `mortise.json` with the workflow, so that CI checks the rules your team chose.
+
+</Steps>
+
+The job fails on every problem in the commit it checks, not only on the problems the pull request
+adds. Fix the problems that are there first, or start with **Fail CI when a rule breaks** off.
+
+<Aside>
+The paths in the report are relative to the app folder. GitHub places a mark on its line when the app
+folder is the root of the repository. For an app in a subfolder, the marks show on the summary of the
+run instead.
+</Aside>
+
+## Report without failing
+
+To see the problems in the CI log without failing the job, turn off **Fail CI when a rule breaks** in
+the rules box of the Boundary tab, or set it in `mortise.json`:
+
+```json
+{
+    "ci": { "fail": false }
+}
+```
+
+`mortise check` then prints the same report, says on standard error that the check passes, and exits 0.
+
+## Fail on warnings too
+
+A warning, such as a module under the coverage limit, does not fail the check. Add `--fail-on warnings`
+to make it fail. The coverage limit and report come from the `coverage` object of `mortise.json`, or
+from the flags `--coverage-limit` and `--coverage`, which win over the file.
+
+The flags and exit codes are in [Command line tool](/mortise/reference/command-line/).

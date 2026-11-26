@@ -85,6 +85,9 @@ pub fn boundary(
                 if let RulesSource::Invalid(message) = &app.rules_source {
                     y = view.note(ui, y, &strings::rules_invalid(message)) + 12.0;
                 }
+                if let Some(message) = &app.coverage_ignored {
+                    y = view.note(ui, y, &strings::coverage_ignored(message)) + 12.0;
+                }
                 // One module has two views: its links and its public surface.
                 if let Some(module) = module {
                     let scanned = state
@@ -1210,7 +1213,7 @@ impl View<'_> {
         rect.bottom()
     }
 
-    /// The two rules of the app, and the one that waits for the command line tool.
+    /// The two rules of the app, and whether `mortise check` fails CI when one breaks.
     fn rules_box(
         &self,
         ui: &mut Ui,
@@ -1241,13 +1244,6 @@ impl View<'_> {
         .sum();
         let accepted = strings::accepted_for(0, self.app.modules.len());
         let hint = draw::galley_wrapped(ui, &accepted, ty::SECONDARY, pal.ink_2, hint_w);
-        let ci_hint = draw::galley_wrapped(
-            ui,
-            strings::RULE_FAIL_CI_HINT,
-            ty::SECONDARY,
-            pal.ink_2,
-            hint_w,
-        );
         let title = strings::rules_for(self.name);
         let height = 41.0
             + draw::box_head_extra(ui, width, &title, strings::RULES_KEPT)
@@ -1260,7 +1256,6 @@ impl View<'_> {
             + size::FIELD_H
             + 8.0
             + 24.0
-            + ci_hint.size().y
             + 12.0;
         let rect = Rect::from_min_size(min, vec2(width, height));
         let mut y = draw::box_head(ui, pal, rect, &title, strings::RULES_KEPT);
@@ -1337,11 +1332,13 @@ impl View<'_> {
         }
         y = field.bottom() + 8.0;
 
-        y = rule(ui, y, strings::RULE_FAIL_CI, false, true)
-            .rect
-            .bottom();
-        let ci_rect = draw::paint_galley(ui, pos2(x + indent, y), Align2::LEFT_TOP, ci_hint);
-        draw::announce(ui, ci_rect, Role::Label, strings::RULE_FAIL_CI_HINT);
+        let row = rule(ui, y, strings::RULE_FAIL_CI, rules.fail_ci, false);
+        if row.clicked() {
+            *action = Some(WorkAction::SetRules(Rules {
+                fail_ci: !rules.fail_ci,
+                ..rules.clone()
+            }));
+        }
         rect.bottom()
     }
 

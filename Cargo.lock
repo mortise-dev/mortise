@@ -2425,6 +2425,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "mortise-cli"
+version = "0.2.0"
+dependencies = [
+ "mortise-core",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "mortise-core"
 version = "0.2.0"
 dependencies = [

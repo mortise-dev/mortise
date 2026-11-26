@@ -79,12 +79,14 @@ creates it. An app without the file follows the default rules: both rules on, wi
 until it is corrected. A save keeps the other keys of the file, and Mortise never replaces a
 file that is not a JSON object.
 
-The file holds only the rules. Settings that belong to you, such as how PHP runs or the URL of an
-environment, live in Mortise's own settings outside the app. [mortise.json](/mortise/reference/mortise-json/)
+The file holds only what the team shares: the rules, whether a broken rule fails CI, and the
+coverage limit and report when the team sets them. Settings that belong to you, such as how PHP runs or
+the URL of an environment, live in Mortise's own settings outside the app. [mortise.json](/mortise/reference/mortise-json/)
 describes its format.
 
-The rules box also shows **Fail CI when a rule breaks**, turned off. It needs a command line tool that
-reads the same `mortise.json`, and that tool does not exist yet.
+The rules box also has **Fail CI when a rule breaks**. The command line tool `mortise check` reads the
+same `mortise.json` through the same code as the window, so CI and the window cannot disagree on a rule.
+It judges one commit: it fails on every problem in it, not only on new ones.
 
 ## Findings, not errors
 

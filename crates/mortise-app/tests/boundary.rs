@@ -300,21 +300,39 @@ fn the_first_change_of_a_rule_asks_before_mortise_json_is_created() {
             .is_none()
     );
     harness.get_by_label("No link breaks a rule.");
+
+    // "Fail CI" is kept beside the rules, for `mortise check`.
+    harness
+        .get_by_role_and_label(Role::CheckBox, "Fail CI when a rule breaks")
+        .click();
+    wait_until(&mut harness, "CI does not fail", |app| {
+        app.app().is_some_and(|app| !app.rules.fail_ci)
+    });
+    assert!(!Rules::load(&root).0.fail_ci);
 }
 
 #[test]
 fn the_folders_of_the_second_rule_can_be_changed() {
     let desk = Desk::new();
     let root = desk.app("shop-api");
-    std::fs::write(root.join("mortise.json"), "{}").unwrap();
+    // A coverage block that cannot be read is ignored on its own: the rules stay.
+    std::fs::write(
+        root.join("mortise.json"),
+        r#"{"rules": {"public-surface-only": {"folders": ["Contracts"]}}, "coverage": {"limit": 101}}"#,
+    )
+    .unwrap();
     desk.knows(&[(&root, "SA")]);
     let mut harness = desk.start();
     harness.key_press(Key::Num2);
     harness.run();
 
+    harness.get_by_label(
+        "The coverage block of mortise.json is ignored: coverage limit 101 is over 100. \
+         Coverage comes from Settings until it is corrected.",
+    );
     let field = harness.get_by_role_and_label(Role::TextInput, "Folders that count as public");
     field.focus();
-    field.type_text(", Models");
+    field.type_text(", Events, Models");
     harness.run();
     // Leaving the field applies the change.
     harness
@@ -325,6 +343,9 @@ fn the_folders_of_the_second_rule_can_be_changed() {
             .is_some_and(|app| app.rules.public_folders == ["Contracts", "Events", "Models"])
     });
     assert_eq!(rows(&harness), ["Checkout and Shipping use each other"]);
+    // The save keeps the coverage block as it was.
+    let saved = std::fs::read_to_string(root.join("mortise.json")).unwrap();
+    assert!(saved.contains(r#""limit": 101"#), "{saved}");
 }
 
 #[test]
