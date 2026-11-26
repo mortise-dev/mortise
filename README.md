@@ -205,7 +205,7 @@ cargo run -p mortise-cli -- check /path/to/laravel-app
 ```
 
 The first runs the window, binary `mortise-desktop`. The second runs the command line tool, binary
-`mortise`. Rust 1.99 is needed; `rust-toolchain.toml` selects it.
+`mortise`. Rust 1.100 is needed; `rust-toolchain.toml` selects it.
 
 Mortise keeps its settings in `settings.json` in the config folder of the platform.
 `MORTISE_CONFIG_DIR` names another folder. The history of runs lives in the data folder;

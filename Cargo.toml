@@ -5,7 +5,7 @@ members = ["crates/mortise-core", "crates/mortise-app", "crates/mortise-cli"]
 [workspace.package]
 version = "1.0.0"
 edition = "2024"
-rust-version = "1.99"
+rust-version = "1.100"
 license = "MIT"
 repository = "https://github.com/nWidart/mortise"
 homepage = "https://nwidart.github.io/mortise/"
@@ -34,16 +34,15 @@ flate2 = "1.1"
 boon = "0.6"
 
 # The PHP parser. Its API changes inside 1.x, so every crate is pinned to one
-# version and used only in `mortise_core::php`. Version 1.60 and later need
-# Rust 1.100; move the pin and `rust-toolchain.toml` together.
-mago-syntax = "=1.59.0"
-mago-database = "=1.59.0"
-mago-allocator = "=1.59.0"
-mago-names = "=1.59.0"
-mago-span = "=1.59.0"
+# version and used only in `mortise_core::php`. Each version names the Rust it
+# needs; move the pin and `rust-toolchain.toml` together.
+mago-syntax = "=1.61.0"
+mago-database = "=1.61.0"
+mago-allocator = "=1.61.0"
+mago-names = "=1.61.0"
+mago-span = "=1.61.0"
 rayon = "1"
 
-egui = { version = "0.37.0", default-features = false }
 eframe = { version = "0.37.0", default-features = false, features = [
     "accesskit",
     "clipboard",
@@ -56,7 +55,6 @@ eframe = { version = "0.37.0", default-features = false, features = [
 egui_kittest = { version = "0.37.0", features = ["eframe", "snapshot", "wgpu"] }
 # The image tests crop a part of the window. The same version as egui_kittest.
 image = { version = "0.25.10", default-features = false }
-winit = "0.30"
 # Local clock time and dates of the runner history. std has no local time zone.
 jiff = "0.2.28"
 

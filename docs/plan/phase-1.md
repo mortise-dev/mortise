@@ -23,7 +23,7 @@ Not checked: anything on Windows or Linux (this machine is macOS), how 10.5 to 1
 
 ```
 Cargo.toml                  workspace, edition 2024
-rust-toolchain.toml         1.99.0, with rustfmt and clippy
+rust-toolchain.toml         1.100.0, with rustfmt and clippy
 crates/
   mortise-core/             library `mortise_core`. No UI dependency.
   mortise-app/              egui and eframe. Binary `mortise`.
@@ -49,7 +49,7 @@ Two crates, not more. The core crate holds everything that is not drawing: readi
 | Need | Choice | Reason |
 |---|---|---|
 | UI | `egui`, `eframe`, `egui_extras` 0.37.0, wgpu renderer | Decided. 0.37.0 is the current release. wgpu is eframe's default since 0.34. `egui_extras` gives the virtualised table. eframe's `default_fonts` feature is turned off so only Asap and Inconsolata ship |
-| PHP parser | `mago-syntax`, `mago-names`, `mago-database`, `mago-span`, `mago-allocator`, all pinned `=1.59.0` | The only candidate that resolves names (aliases, grouped use, relative names). No failure on 16,000 real files, and its error recovery does not invent references. 12 times faster than tree-sitter-php, which also reported a false syntax error on valid PHP. Cost: 90 crates, and the API changes inside 1.x, so the version is pinned and all use sits in one module. `php-rs-parser` (11 crates) is the fallback |
+| PHP parser | `mago-syntax`, `mago-names`, `mago-database`, `mago-span`, `mago-allocator`, all pinned `=1.61.0` | The only candidate that resolves names (aliases, grouped use, relative names). No failure on 16,000 real files, and its error recovery does not invent references. 12 times faster than tree-sitter-php, which also reported a false syntax error on valid PHP. Cost: 90 crates, and the API changes inside 1.x, so the version is pinned and all use sits in one module. `php-rs-parser` (11 crates) is the fallback |
 | Git | The `git` program, read only: `git log`, `git rev-parse`, `git --no-optional-locks status` | The spec already assumes git is installed ("otherwise churn is absent"). Commit counts per folder are one `git log` call. No extra crates. The alternative is `gix` 0.90: no program needed, but about 150 more crates and hand-written path filtering. The owner can choose `gix` |
 | File watcher | `notify` 9.0.0 with `notify-debouncer-full` 0.8.0 | The standard crate on all three platforms. Mortise watches named paths, not the whole app: the modules folder, `composer.lock`, `modules_statuses.json`, `config/modules.php`, `mortise.json`, `.env`, the clover file and `.git/HEAD`. `vendor/` and `node_modules/` are never watched |
 | Folder walk | `ignore` 0.4 | Respects `.gitignore`, so `node_modules` inside a module is not counted as files |
@@ -68,7 +68,7 @@ Two crates, not more. The core crate holds everything that is not drawing: readi
 
 Written by hand because the need is small: the palette matcher (letters in order), toasts, icons and state marks (painted strokes, no icon font), the graph layout.
 
-Rust toolchain. `mago` 1.59.0 needs Rust 1.99, which is the version installed here; `mago` 1.60 and later need Rust 1.100. The plan pins Rust 1.99.0 and `mago` 1.59.0. Both move together later in one commit.
+Rust toolchain. Phase 1 pinned Rust 1.99.0 and `mago` 1.59.0, because `mago` 1.60 and later need Rust 1.100. Both moved together in one commit to Rust 1.100.0 and `mago` 1.61.0.
 
 ## 4. The model of the core crate
 
