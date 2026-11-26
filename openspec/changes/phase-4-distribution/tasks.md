@@ -14,6 +14,12 @@
 - [x] 2.4 `tag-release.yml`: download the tool artifacts into `dist/`; job `crates` in the `release` environment. Verify with `actionlint`
 - [x] 2.5 `ci.yml`: the Linux job of the command line tool packages both crates. Verify with `actionlint` and the pull request run
 
+## 2b. Review round 1
+
+- [x] 2b.1 `tools/check-cli.sh` runs the binary; `tools/pack-cli.sh` and `tools/sign-macos-cli.sh` never do. The signed job checks before and after the step with the secrets. Verify with `shellcheck` and `actionlint`
+- [x] 2b.2 `tools/pack-cli.sh` refuses a name with `/` or `\` or a wrong suffix before it removes anything. Verify with the CI step that runs it on `../LICENSE`
+- [x] 2b.3 Move `fixtures/actuator` into `crates/mortise-core/fixtures/actuator` and pack it. Verify with `cargo check --no-default-features --features testing --lib` in the unpacked package
+
 ## 3. The action (repository `nWidart/setup-mortise`)
 
 - [x] 3.1 `action.yml` and `setup.sh`: inputs, platform, download, SHA-256, extract, `PATH`. Verify with `shellcheck` and a local run against a fixture release served from `file://`

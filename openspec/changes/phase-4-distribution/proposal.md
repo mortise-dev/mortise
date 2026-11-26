@@ -53,7 +53,8 @@ None. `mortise check` and `mortise push` do not change.
 - `Cargo.toml`, `crates/mortise-core/Cargo.toml`, `crates/mortise-cli/Cargo.toml`,
   `crates/mortise-app/Cargo.toml`: publish settings and metadata; the core dependency gets an exact
   version. `tools/release.sh` moves that version with the release.
-- New: `tools/pack-cli.sh`, `tools/sign-macos-cli.sh`, `crates/mortise-core/README.md`,
+- New: `tools/check-cli.sh`, `tools/pack-cli.sh`, `tools/sign-macos-cli.sh`, `crates/mortise-core/README.md`,
   `crates/mortise-cli/README.md`.
-- No new dependency. No change to Rust code.
+- No new dependency. The Rust code changes only the paths of the recorded actuator answers, which move
+  into `crates/mortise-core/fixtures/actuator`.
 - A second repository, `nWidart/setup-mortise`: `action.yml`, its script, README, LICENSE and CI.

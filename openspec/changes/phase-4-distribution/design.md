@@ -73,9 +73,11 @@ The archives go into `dist/` of the publish job, so the existing `sha256sum -- *
 The tool jobs set `CARGO_PROFILE_RELEASE_STRIP=symbols`: the arm64 Linux binary shrinks from 8.0 MB
 to about 5.5 MB. The release profile of the app does not change.
 
-`tools/pack-cli.sh <target> <archive name>` checks the binary (the version of `Cargo.toml`, exit 1 on
-`fixtures/shop-api`, statically linked on Linux), then builds an archive from `target/<target>/release`. The
-pull request run, the run by hand and the release run all call it.
+`tools/check-cli.sh <target>` runs the binary: the version of `Cargo.toml`, exit 1 on
+`fixtures/shop-api`, statically linked on Linux. `tools/pack-cli.sh <target> <archive name>` then builds
+an archive from `target/<target>/release` without running anything from the build. It refuses a name
+with `/` or `\`, or without `.tar.gz` or `.zip`, before it writes or removes anything. The pull request
+run, the run by hand and the release run all call both.
 
 ### Signing the macOS binary: own script, own job
 
@@ -90,6 +92,10 @@ cargo-packager signs the app, not a bare binary, so `tools/sign-macos-cli.sh` do
 5. Check: `codesign --verify --strict`, the Developer ID authority, the runtime flag and the timestamp,
    on the binary in the zip as uploaded.
 6. Delete the keychain and the key file on exit, also on SIGTERM.
+
+The script never runs the built binary, so no code of the build runs while the secrets are in the
+environment. `tools/check-cli.sh` runs the binary in the step before, and the signed binary in the step
+after, both without secrets.
 
 The job pair copies the app's: `package-cli-macos` without secrets when `sign` is false,
 `package-cli-macos-signed` with `environment: release` when it is true. The build step runs before the
@@ -114,6 +120,9 @@ Installers workflow does the same. Nothing is uploaded to a release.
   An exact version: the core has no stable API, and the tool of a version is tested with the core of
   that version only. `tools/release.sh` moves this version with the workspace version; if it did not,
   `cargo update` would fail on the release branch.
+- The recorded actuator answers that `testing.rs` reads with `include_str!` live in
+  `crates/mortise-core/fixtures/actuator`, inside the crate, and `include` packs them, so the published
+  crate builds with `--features testing`. CI checks that from the unpacked package, outside the workspace.
 - `mortise-cli` uses the workspace dependency. The self dev-dependency of the core has no version, so
   `cargo package` drops it.
 - Cargo 1.99 packages and publishes several crates of a workspace in one command, in dependency
