@@ -108,6 +108,11 @@ cargo test -p mortise-core --test real_actuator -- --ignored --test-threads=1
 kill %1 %2 %3
 ```
 
+A third job that is not required, "Windows looked at", starts the window on `fixtures/shop-api` on a
+Windows runner with `tools/windows-look.ps1`, then writes every screen of `tests/screens.rs`. It keeps
+the artifacts `windows-desktop` and `windows-screens`. After a change that can differ on Windows,
+download them (`gh run download <run> -n windows-desktop`) and look at them.
+
 The installers come from cargo-packager, configured in `crates/mortise-app/Cargo.toml`:
 
 ```

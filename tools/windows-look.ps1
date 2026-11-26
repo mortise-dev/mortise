@@ -83,12 +83,11 @@ try {
 
     $process.Refresh()
     Note "Window title: $($process.MainWindowTitle)"
-    $process.Refresh()
     if ($process.HasExited) {
         Note "Mortise ended by itself with exit code $($process.ExitCode)."
         exit 1
     }
-    Note 'Mortise was still running after the shot.'
+    Note 'Mortise was still running after the shots.'
 } finally {
     if (-not $process.HasExited) { Stop-Process -Id $process.Id -Force }
 }
