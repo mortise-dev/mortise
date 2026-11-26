@@ -2,7 +2,7 @@
 
 ## Purpose
 Defines how a team gets the command line tool `mortise`: the archives on each GitHub release, their
-sums and signatures, the crates on crates.io, and the action `nwidart/setup-mortise` that installs it in CI.
+sums and signatures, the crates on crates.io, and the action `mortise-dev/setup-mortise` that installs it in CI.
 
 ## Requirements
 
@@ -98,7 +98,7 @@ SHALL skip a crate whose version crates.io already has. The token SHALL come fro
 - **THEN** it publishes `mortise-cli` only, and it succeeds when both are already there
 
 ### Requirement: The action picks the release and the archive
-The action `nwidart/setup-mortise` SHALL take an input `version` (`latest` by default, or a tag
+The action `mortise-dev/setup-mortise` SHALL take an input `version` (`latest` by default, or a tag
 `vX.Y.Z` or `X.Y.Z`) and an input `token` for the GitHub API (the token of the run by default). It SHALL
 compute the archive name for the runner (Linux x64 or arm64, macOS arm64, Windows x64). It SHALL need
 no Rust toolchain and no Node build step.
@@ -108,12 +108,12 @@ no Rust toolchain and no Node build step.
 - **THEN** it fails with a message that names the runner and `cargo install --locked mortise-cli`
 
 ### Requirement: The action checks the archive before it installs it
-The action SHALL download the archive and the sums file of the release from `github.com/nWidart/mortise`
+The action SHALL download the archive and the sums file of the release from `github.com/mortise-dev/mortise`
 and compare the SHA-256 of the archive with its line in the sums file. It SHALL fail when the line is
 missing or the sums differ. Only then SHALL it extract the binary and add its folder to `PATH`.
 
 #### Scenario: The onboarding YAML
-- **WHEN** a workflow on `ubuntu-latest` runs `uses: nwidart/setup-mortise@v1`, then `mortise check . --format github`
+- **WHEN** a workflow on `ubuntu-latest` runs `uses: mortise-dev/setup-mortise@v1`, then `mortise check . --format github`
 - **THEN** the step finds `mortise` on `PATH` and the job needs no Rust toolchain
 
 #### Scenario: A changed archive

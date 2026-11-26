@@ -1,6 +1,6 @@
 # mortise-cli
 
-The command line tool of [Mortise](https://github.com/nWidart/mortise), binary `mortise`. It reads a
+The command line tool of [Mortise](https://github.com/mortise-dev/mortise), binary `mortise`. It reads a
 Laravel app that uses [`nwidart/laravel-modules`](https://github.com/nWidart/laravel-modules), without
 PHP, and checks its boundary rules in CI.
 
@@ -17,9 +17,9 @@ The tool writes nothing in the app.
 cargo install --locked mortise-cli
 ```
 
-Each [GitHub release](https://github.com/nWidart/mortise/releases/latest) also has a binary for Linux
+Each [GitHub release](https://github.com/mortise-dev/mortise/releases/latest) also has a binary for Linux
 (x86_64 and arm64), macOS (Apple silicon) and Windows (x64), with SHA-256 sums. In GitHub Actions,
-the action [`nwidart/setup-mortise`](https://github.com/nWidart/setup-mortise) installs it.
+the action [`mortise-dev/setup-mortise`](https://github.com/mortise-dev/setup-mortise) installs it.
 
 ## Use
 
@@ -29,7 +29,7 @@ MORTISE_TOKEN=... mortise push /path/to/laravel-app
 ```
 
 The flags and exit codes are in the
-[command line reference](https://nwidart.github.io/mortise/reference/command-line/).
+[command line reference](https://mortise-dev.github.io/mortise/reference/command-line/).
 
 ## Licence
 

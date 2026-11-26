@@ -29,11 +29,11 @@ The rules come from [mortise.json](/mortise/reference/mortise-json/); without th
        runs-on: ubuntu-latest
        steps:
          - uses: actions/checkout@v5
-         - uses: nwidart/setup-mortise@v1
+         - uses: mortise-dev/setup-mortise@v1
          - run: mortise check --format github
    ```
 
-   [`nwidart/setup-mortise`](https://github.com/nWidart/setup-mortise) downloads the tool of the latest
+   [`mortise-dev/setup-mortise`](https://github.com/mortise-dev/setup-mortise) downloads the tool of the latest
    release, checks its SHA-256 and puts it on `PATH`, in a few seconds and with no Rust toolchain.
    On another CI, download the archive of the release or run `cargo install --locked mortise-cli`.
 
@@ -63,7 +63,7 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: nwidart/setup-mortise@v1
+      - uses: mortise-dev/setup-mortise@v1
         with:
           version: v0.3.0
       - run: mortise check --format github

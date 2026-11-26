@@ -26,7 +26,7 @@ const dropUnusedSnapshots = {
 };
 
 export default defineConfig({
-  site: 'https://nwidart.github.io',
+  site: 'https://mortise-dev.github.io',
   base: '/mortise',
   // Pages that moved keep their old address.
   redirects: { '/how-to/install': '/mortise/start-here/installation/' },
@@ -39,8 +39,8 @@ export default defineConfig({
       description: 'A desktop app that shows what is inside the modules of a Laravel app.',
       logo: { src: '../assets/icon/mortise.svg' },
       favicon: '/favicon.svg',
-      social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/nWidart/mortise' }],
-      editLink: { baseUrl: 'https://github.com/nWidart/mortise/edit/main/website/' },
+      social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/mortise-dev/mortise' }],
+      editLink: { baseUrl: 'https://github.com/mortise-dev/mortise/edit/main/website/' },
       customCss: ['./src/styles/mortise.css'],
       expressiveCode: {
         themes: ['github-dark-default', 'github-light-default'],

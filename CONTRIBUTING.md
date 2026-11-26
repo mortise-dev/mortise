@@ -65,7 +65,7 @@ The Installers workflow builds the tool on four runners, each for its own archit
 | Windows, x64 | `windows-latest` | `x86_64-pc-windows-msvc`, static C runtime | `mortise-vX.Y.Z-windows-x64.zip` | No |
 
 Each archive holds `mortise` (or `mortise.exe`), `LICENSE` and `THIRD-PARTY.md` at its top level.
-The action [`nwidart/setup-mortise`](https://github.com/nWidart/setup-mortise) computes these names
+The action [`mortise-dev/setup-mortise`](https://github.com/mortise-dev/setup-mortise) computes these names
 from the version, the system and the architecture: do not rename them without changing the action.
 
 `tools/check-cli.sh` runs a binary: it must print the version of `Cargo.toml`, exit 1 on the fixture

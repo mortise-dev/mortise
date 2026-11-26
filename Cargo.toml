@@ -7,8 +7,8 @@ version = "1.0.1"
 edition = "2024"
 rust-version = "1.100"
 license = "MIT"
-repository = "https://github.com/nWidart/mortise"
-homepage = "https://nwidart.github.io/mortise/"
+repository = "https://github.com/mortise-dev/mortise"
+homepage = "https://mortise-dev.github.io/mortise/"
 publish = false
 
 [workspace.dependencies]

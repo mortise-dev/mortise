@@ -11,7 +11,7 @@ Install Mortise from a release. To build it yourself, see [Build Mortise from so
 
 <Steps>
 
-1. Open the [latest release](https://github.com/nWidart/mortise/releases/latest).
+1. Open the [latest release](https://github.com/mortise-dev/mortise/releases/latest).
 
 2. Download the file for your platform and the sums file `Mortise-vX.Y.Z-SHA256SUMS.txt`, into the same folder.
 
@@ -85,14 +85,14 @@ terminal. It is not in the installers above. Get it one of three ways.
 
 ### In GitHub Actions
 
-The action [`nwidart/setup-mortise`](https://github.com/nWidart/setup-mortise) downloads the tool for
+The action [`mortise-dev/setup-mortise`](https://github.com/mortise-dev/setup-mortise) downloads the tool for
 the runner, checks its SHA-256 against the sums of the release, and puts it on `PATH`. It needs no
 Rust toolchain.
 
 ```yaml
 steps:
   - uses: actions/checkout@v5
-  - uses: nwidart/setup-mortise@v1
+  - uses: mortise-dev/setup-mortise@v1
   - run: mortise check . --format github
 ```
 
@@ -103,7 +103,7 @@ It runs on Linux (x64 and arm64), macOS (Apple silicon) and Windows (x64) runner
 
 <Steps>
 
-1. Open the [latest release](https://github.com/nWidart/mortise/releases/latest).
+1. Open the [latest release](https://github.com/mortise-dev/mortise/releases/latest).
 
 2. Download the archive for your platform and the sums file `Mortise-vX.Y.Z-SHA256SUMS.txt`, into the
    same folder.
