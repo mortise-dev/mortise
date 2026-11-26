@@ -5,6 +5,7 @@
 //! It is the only file Mortise writes into an app without a command, and only when
 //! the interface asks after the user confirmed. No secret is ever written to it.
 
+use std::collections::BTreeMap;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
@@ -13,7 +14,7 @@ use serde::{Deserialize, Serialize};
 /// The name of the rules file in the app folder.
 pub const RULES_FILE: &str = "mortise.json";
 
-/// The two rules of this version, and whether a broken one fails CI.
+/// The rules of this version, and whether a broken one fails CI.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Rules {
     /// No circular use: two modules must not use each other, directly or through others.
@@ -23,6 +24,10 @@ pub struct Rules {
     /// For a module without an accepted public surface, the folders that count as
     /// public: a class in one of them may be used by other modules.
     pub public_folders: Vec<String>,
+    /// Allowed use: the modules each module may use. `None` when the file has no
+    /// `allowed-use` key; the rule then checks nothing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub allowed_use: Option<AllowedUse>,
     /// "Fail CI when a rule breaks": `mortise check` exits 1 when it finds a problem.
     /// Off, it prints the same report and exits 0.
     pub fail_ci: bool,
@@ -34,8 +39,30 @@ impl Default for Rules {
             no_circular_use: true,
             public_surface_only: true,
             public_folders: vec!["Contracts".to_owned(), "Events".to_owned()],
+            allowed_use: None,
             fail_ci: true,
         }
+    }
+}
+
+/// The rule allowed use: the `allowed-use` object of `mortise.json`. nwidart/larch reads
+/// the same key.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AllowedUse {
+    #[serde(default = "yes")]
+    pub enabled: bool,
+    /// For each module with a list, the modules it may use. An empty list means no
+    /// module. A module without a list is not checked. A save writes them by name.
+    #[serde(default)]
+    pub modules: BTreeMap<String, Vec<String>>,
+}
+
+impl AllowedUse {
+    /// True when `from` may use `to`: `from` has no list, or its list names `to`.
+    pub fn allows(&self, from: &str, to: &str) -> bool {
+        self.modules
+            .get(from)
+            .is_none_or(|list| list.iter().any(|name| name == to))
     }
 }
 
@@ -81,7 +108,8 @@ pub enum RulesError {
 /// {
 ///     "rules": {
 ///         "no-circular-use": true,
-///         "public-surface-only": { "enabled": true, "folders": ["Contracts", "Events"] }
+///         "public-surface-only": { "enabled": true, "folders": ["Contracts", "Events"] },
+///         "allowed-use": { "enabled": true, "modules": { "Audit": [], "History": ["Audit"] } }
 ///     },
 ///     "ci": { "fail": true },
 ///     "coverage": { "limit": 70, "report": "build/coverage/clover.xml" }
@@ -105,6 +133,13 @@ struct RulesInFile {
     no_circular_use: bool,
     #[serde(rename = "public-surface-only", default, deserialize_with = "object")]
     public_surface_only: PublicSurfaceInFile,
+    #[serde(
+        rename = "allowed-use",
+        default,
+        deserialize_with = "some_object",
+        skip_serializing_if = "Option::is_none"
+    )]
+    allowed_use: Option<AllowedUse>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -129,6 +164,7 @@ impl Default for RulesInFile {
         Self {
             no_circular_use: true,
             public_surface_only: PublicSurfaceInFile::default(),
+            allowed_use: None,
         }
     }
 }
@@ -146,6 +182,15 @@ where
         return Err(D::Error::custom("expected a JSON object"));
     }
     serde_json::from_value(value).map_err(D::Error::custom)
+}
+
+/// A key of the file that may be absent, from a JSON object only.
+fn some_object<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: serde::de::DeserializeOwned,
+{
+    object(deserializer).map(Some)
 }
 
 /// One key of the file at the top: its default when it is absent.
@@ -195,6 +240,7 @@ impl Rules {
                 enabled: self.public_surface_only,
                 folders: self.public_folders.clone(),
             },
+            allowed_use: self.allowed_use.clone(),
         };
         file.insert(
             "rules".to_owned(),
@@ -303,6 +349,7 @@ pub(crate) fn load_file(root: &Path) -> RulesFile {
             no_circular_use: rules.no_circular_use,
             public_surface_only: rules.public_surface_only.enabled,
             public_folders: rules.public_surface_only.folders,
+            allowed_use: rules.allowed_use,
             fail_ci: ci.fail,
         },
         source: RulesSource::File,
@@ -322,6 +369,7 @@ mod tests {
         assert_eq!(source, RulesSource::Defaults);
         assert!(rules.no_circular_use && rules.public_surface_only);
         assert_eq!(rules.public_folders, ["Contracts", "Events"]);
+        assert_eq!(rules.allowed_use, None);
     }
 
     #[test]
@@ -341,6 +389,13 @@ mod tests {
             no_circular_use: false,
             public_surface_only: true,
             public_folders: vec!["Contracts".into(), "Api".into()],
+            allowed_use: Some(AllowedUse {
+                enabled: false,
+                modules: BTreeMap::from([
+                    ("History".into(), vec!["Billing".into(), "Audit".into()]),
+                    ("Audit".into(), vec![]),
+                ]),
+            }),
             fail_ci: false,
         };
         rules.save(app.path()).unwrap();
@@ -360,6 +415,16 @@ mod tests {
                 "Contracts",
                 "Api"
             ]
+        },
+        "allowed-use": {
+            "enabled": false,
+            "modules": {
+                "Audit": [],
+                "History": [
+                    "Billing",
+                    "Audit"
+                ]
+            }
         }
     },
     "ci": {
@@ -401,6 +466,17 @@ mod tests {
         assert!(rules.no_circular_use && rules.public_surface_only);
         assert_eq!(rules.public_folders, ["Api"]);
         assert!(rules.fail_ci, "CI fails when the file does not say");
+        assert_eq!(rules.allowed_use, None, "no key, no rule");
+
+        std::fs::write(&path, r#"{"rules": {"allowed-use": {}}}"#).unwrap();
+        let (rules, _) = Rules::load(app.path());
+        assert_eq!(
+            rules.allowed_use,
+            Some(AllowedUse {
+                enabled: true,
+                modules: BTreeMap::new(),
+            })
+        );
 
         std::fs::write(&path, r#"{"coverage": {"report": "build/clover.xml"}}"#).unwrap();
         let file = load_file(app.path());
@@ -430,6 +506,9 @@ mod tests {
             r#"{"ci": [false]}"#,
             r#"{"rules": [false]}"#,
             r#"{"rules": {"public-surface-only": [false]}}"#,
+            r#"{"rules": {"allowed-use": [true]}}"#,
+            r#"{"rules": {"allowed-use": {"modules": ["Audit"]}}}"#,
+            r#"{"rules": {"allowed-use": {"modules": {"Audit": "Billing"}}}}"#,
         ] {
             std::fs::write(&path, content).unwrap();
             let (rules, source) = Rules::load(app.path());

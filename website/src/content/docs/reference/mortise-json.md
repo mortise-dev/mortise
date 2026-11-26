@@ -19,6 +19,13 @@ without a command.
         "public-surface-only": {
             "enabled": true,
             "folders": ["Contracts", "Events"]
+        },
+        "allowed-use": {
+            "enabled": true,
+            "modules": {
+                "Audit": [],
+                "History": ["Audit", "Billing"]
+            }
         }
     },
     "ci": {
@@ -38,6 +45,9 @@ without a command.
 | `rules.public-surface-only` | object | `{ "enabled": true, "folders": ["Contracts", "Events"] }` | The rule **Other modules use only a module's public surface** |
 | `rules.public-surface-only.enabled` | boolean | `true` | The rule is on |
 | `rules.public-surface-only.folders` | array of strings | `["Contracts", "Events"]` | For a module without an accepted public surface, the folders that count as public. A class in one of them may be used by other modules |
+| `rules.allowed-use` | object | None: the rule checks nothing | The rule **Allowed use**: the modules each module may use. [nwidart/larch](https://github.com/nWidart/larch) reads the same key |
+| `rules.allowed-use.enabled` | boolean | `true` | The rule is on |
+| `rules.allowed-use.modules` | object of arrays of strings | `{}` | For each module with a list, the modules it may use. An empty list means no module. A module without a list is not checked |
 | `ci` | object | `{ "fail": true }` | What `mortise check` does in CI |
 | `ci.fail` | boolean | `true` | **Fail CI when a rule breaks**. On, `mortise check` exits 1 when it finds a problem. Off, it prints the same report and exits 0 |
 | `coverage` | object | None | The coverage settings of the app. Each key that is set wins over the setting of the window |
@@ -47,6 +57,20 @@ without a command.
 A folder name matches the first part of the class name after the namespace of the module, ignoring
 case. `Contracts\PaymentGateway` is in the folder `Contracts`. A class directly in the namespace of
 the module is in no folder.
+
+### The rule allowed use
+
+- A module with a list may use the modules of its list only. Each other module it uses is a problem,
+  counted on the module that uses, with each file that does.
+- A module that is off breaks no rule, and no link to it does.
+- A name in `allowed-use` that is no module of the app, as a module with a list or in a list, is a
+  warning. So a typing mistake does not pass in silence.
+- The rule says which module. **Public surface only** still says which classes of it.
+- Mortise checks the imports it reads without PHP. To check links that only the booted app shows,
+  such as facades and container keys, use Larch's `toOnlyDependOn()->via(Edge::all())` in Pest.
+
+The Boundary tab does not show this rule yet. Its findings appear in the Findings tab and in
+`mortise check`. Edit the lists in the file.
 
 ### Where the coverage settings come from
 
@@ -67,8 +91,10 @@ For the coverage limit and for the coverage report, the first of these that is s
 | Is not a JSON object, or its `rules` or `ci` cannot be read | The defaults, for the rules, `ci` and `coverage`. The Boundary tab says "mortise.json is not valid: `<message>`. The default rules apply until it is corrected." `mortise check` says the same on standard error |
 | Has a `coverage` that cannot be read, or a limit over 100 | The rules and `ci` as read. `coverage` is ignored: the window's settings apply. The Boundary tab says "The coverage block of mortise.json is ignored: `<message>`. Coverage comes from Settings until it is corrected." `mortise check` says so on standard error |
 
-`rules`, `rules.public-surface-only`, `ci` and `coverage` must each be a JSON object. A list in their
-place makes the file invalid.
+`rules`, `rules.public-surface-only`, `rules.allowed-use`, `rules.allowed-use.modules`, `ci` and
+`coverage` must each be a JSON object. A list in their place makes the file invalid. So does a list of
+`rules.allowed-use.modules` that is not a list of strings. Larch stops on such a file, where Mortise
+uses the defaults.
 
 Mortise ignores the other keys of the file.
 
@@ -82,7 +108,8 @@ Boundary tab. `mortise check` never writes it.
   shares them. It is the only file Mortise writes into the app without a command." Nothing is
   written until **Create mortise.json**.
 - When the file exists, the change is written at once.
-- Mortise replaces the `rules` key and sets `ci.fail`. It keeps every other key of the file, such
+- Mortise replaces the `rules` key and sets `ci.fail`. It keeps `allowed-use` and its lists, with
+  the modules by name. It adds no `allowed-use` key to a file that has none. It keeps every other key of the file, such
   as `coverage` and the other keys of `ci`.
 - When the file holds something that is not a JSON object, Mortise does not replace it. The save fails.
 - The file is indented with four spaces and ends with a line end, like the other JSON files of a Laravel app.

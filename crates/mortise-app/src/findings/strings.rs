@@ -51,6 +51,8 @@ pub fn check_name(check: mortise_core::Check, app: &AppSnapshot) -> String {
             "Rule: {} only",
             crate::strings::list_of(&app.rules.public_folders)
         ),
+        // Not in the spec: milestone 30 draws the third rule.
+        Check::AllowedUse => "Rule: allowed use".to_owned(),
         Check::CoverageLimit => "Coverage limit".to_owned(),
         Check::TranslationsComplete => "Translations".to_owned(),
         // Not in the spec: the drawing has no finding of these three.
@@ -67,6 +69,8 @@ pub fn check_passed(check: mortise_core::Check, app: &AppSnapshot) -> String {
         // Not in the spec: the drawing has findings for both rules.
         Check::NoCircularUse => crate::strings::RULE_NO_CIRCULAR.to_owned(),
         Check::PublicSurfaceOnly => crate::strings::RULE_PUBLIC_SURFACE.to_owned(),
+        // Not in the spec.
+        Check::AllowedUse => "Each module uses only the modules of its list".to_owned(),
         Check::ValidManifest => "Every module.json is valid JSON".to_owned(),
         Check::NamespaceMatchesFolder => "Declared namespace matches the folder".to_owned(),
         Check::NoStaleStatus => {

@@ -1,0 +1,17 @@
+{
+    "name": "mortise/fixture-layered",
+    "description": "A fixture for the tests of Mortise: the rule allowed use. It is never installed or run.",
+    "type": "project",
+    "require": {
+        "php": "^8.3",
+        "laravel/framework": "^13.0",
+        "nwidart/laravel-modules": "^13.3"
+    },
+    "extra": {
+        "merge-plugin": {
+            "include": [
+                "Modules/*/composer.json"
+            ]
+        }
+    }
+}

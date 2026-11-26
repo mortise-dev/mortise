@@ -1,0 +1,9 @@
+{
+    "name": "mortise/fixture-ingest",
+    "description": "",
+    "autoload": {
+        "psr-4": {
+            "Modules\\Ingest\\": "app/"
+        }
+    }
+}

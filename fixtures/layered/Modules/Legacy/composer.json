@@ -1,0 +1,9 @@
+{
+    "name": "mortise/fixture-legacy",
+    "description": "",
+    "autoload": {
+        "psr-4": {
+            "Modules\\Legacy\\": "app/"
+        }
+    }
+}

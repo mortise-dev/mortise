@@ -7,7 +7,7 @@ sidebar:
 
 `nwidart/laravel-modules` splits a Laravel app into modules, each in its own folder with its own
 namespace. The split is only as good as the lines between the modules. This page explains how Mortise
-sees those lines, what its two rules check, and why they are kept where they are.
+sees those lines, what its three rules check, and why they are kept where they are.
 
 ## What a boundary is
 
@@ -72,6 +72,22 @@ lists are not lists of strings, counts as no surface.
 You can change the list of folders. A shorter list is stricter. The rule applies only when both modules
 are on.
 
+## Rule 3: allowed use
+
+The first two rules hold for every module. Some apps also have layers: a module low in the app, such as
+`Audit`, must use no other module, and a module above it may use only the ones below. The rule
+**Allowed use** writes those layers down as a list for each module, in the key `rules.allowed-use` of
+`mortise.json`.
+
+A module with a list may use the modules of its list only. An empty list means it may use no module.
+A module without a list is not checked. So an app that already has links across its layers can adopt
+the rule one module at a time, with no baseline. A module that is off breaks no rule, and no link to it
+does. Without the key, the rule does nothing.
+
+The rule says which module. The second rule still says which classes of it. Mortise checks the imports
+it reads without PHP. [nwidart/larch](https://github.com/nWidart/larch) reads the same list in Pest, and
+can also check the links that only the booted app shows.
+
 ## Why the rules live in mortise.json
 
 The rules are a decision about the app, not about one person's copy of Mortise. So they are kept in
@@ -79,7 +95,7 @@ The rules are a decision about the app, not about one person's copy of Mortise. 
 rules, and a change to the rules shows up in a pull request like any other.
 
 That is also why `mortise.json` is the only file Mortise writes into an app, and why it asks before it
-creates it. An app without the file follows the default rules: both rules on, with `Contracts` and
+creates it. An app without the file follows the default rules: the first two rules on, with `Contracts` and
 `Events` as public folders. If the file cannot be read as rules, Mortise says so and uses the defaults
 until it is corrected. A save keeps the other keys of the file, and Mortise never replaces a
 file that is not a JSON object.
