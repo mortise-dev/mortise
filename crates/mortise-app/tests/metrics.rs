@@ -340,22 +340,32 @@ fn eight_long_environment_names_wrap_inside_the_tab_and_each_can_be_clicked() {
     tops.dedup();
     assert!(tops.len() > 2, "{tops:?}");
 
-    // Each environment can be chosen by pointer, and the choice is kept. A chosen
-    // environment is read anew: the switch is back with its first read.
+    // Each environment can be chosen by pointer, and the choice is kept.
     let chosen = || desk.saved().apps.remove(0).environment;
-    let switch_back = |harness: &mut Harness<'static, MortiseApp>, name: &str| {
-        wait_while(harness, name, |harness| {
-            harness
-                .query_by_role_and_label(Role::RadioButton, name)
-                .is_none()
-        });
-    };
     for name in names.iter().rev() {
-        switch_back(&mut harness, name);
         harness
             .get_by_role_and_label(Role::RadioButton, name)
             .click();
         harness.run_steps(3);
         assert_eq!(chosen().as_ref(), Some(name));
     }
+
+    // A chosen environment is read anew. The switch stays while it waits, so a choice
+    // made with the keyboard keeps the focus, then and after the first read.
+    harness
+        .get_by_role_and_label(Role::RadioButton, &names[0])
+        .focus();
+    harness.run_steps(2);
+    harness.key_press(Key::ArrowRight);
+    harness.run_steps(3);
+    harness.get_by_label(&format!("Reading metrics from {}", names[1]));
+    let focused = |harness: &Harness<'static, MortiseApp>| {
+        harness
+            .get_by_role_and_label(Role::RadioButton, &names[1])
+            .is_focused()
+    };
+    assert!(focused(&harness));
+    wait_for(&mut harness, ONE_READ);
+    assert!(focused(&harness));
+    assert_eq!(chosen().as_ref(), Some(&names[1]));
 }
