@@ -41,8 +41,9 @@ enum Purpose {
 pub struct ModuleSurface {
     scan: Option<SurfaceScan>,
     purpose: Purpose,
-    /// What a later scan found different from the accepted surface (S5.9).
-    differences: Option<Vec<Difference>>,
+    /// What a later scan found different from the accepted surface (S5.9), with the
+    /// accepted surface it was compared with.
+    differences: Option<(AcceptedSurface, Vec<Difference>)>,
     pub proposal: Option<Proposal>,
     /// When the proposal was made.
     scanned: Option<Instant>,
@@ -106,6 +107,10 @@ impl ModuleSurface {
     fn start_for(&mut self, app: &AppSnapshot, module: &str, purpose: Purpose) {
         if self.scan.is_none() {
             self.scan = SurfaceScan::start(app, module);
+            // A proposal made for another purpose holds no choices of the developer.
+            if self.purpose != purpose {
+                self.proposal = None;
+            }
             self.purpose = purpose;
         }
     }
@@ -117,8 +122,8 @@ impl ModuleSurface {
 
     /// Reads a few more files. When all are read the proposal is made. A proposal keeps
     /// what the developer chose in the one before; a change starts from the accepted
-    /// surface; a comparison keeps the differences. Returns true when a comparison
-    /// found none.
+    /// surface, then keeps what the developer chose in the change before; a comparison
+    /// keeps the differences. Returns true when a comparison found none.
     fn advance(&mut self, inputs: &SurfaceInputs<'_>, accepted: Option<&AcceptedSurface>) -> bool {
         let Some(scan) = &mut self.scan else {
             return false;
@@ -132,11 +137,16 @@ impl ModuleSurface {
         let mut proposal = scan.finish(inputs.routes.as_deref(), &inputs.scheduled);
         let mut same = false;
         match (self.purpose, accepted) {
-            (Purpose::Change, Some(accepted)) => proposal.take_choices_of(accepted),
+            (Purpose::Change, Some(accepted)) => {
+                proposal.take_choices_of(accepted);
+                if let Some(earlier) = &self.proposal {
+                    proposal.keep_choices_of(earlier);
+                }
+            }
             (Purpose::Compare, Some(accepted)) => {
                 let differences = proposal.differences(accepted);
                 same = differences.is_empty();
-                self.differences = (!same).then_some(differences);
+                self.differences = (!same).then(|| (accepted.clone(), differences));
             }
             _ => {
                 if let Some(earlier) = &self.proposal {
@@ -193,6 +203,15 @@ pub fn surface(
         return (bottom, None);
     }
 
+    // The differences hold only for the surface they were found against: module.json
+    // changed since, so the view starts again from what it holds now.
+    if state
+        .differences
+        .as_ref()
+        .is_some_and(|(compared, _)| module.surface.as_ref() != Some(compared))
+    {
+        *state = ModuleSurface::default();
+    }
     if let Some(accepted) = &module.surface {
         if state.differences.is_some() {
             // S5.9: a later scan differs.
@@ -1014,7 +1033,7 @@ fn differences(
     let run = KeyboardShortcut::new(Modifiers::COMMAND, Key::Enter);
     let run_keys = format!("{} Enter", crate::strings::command_key(place.mac));
     let focus_first = std::mem::take(&mut state.focus_first);
-    let Some(differences) = &mut state.differences else {
+    let Some((_, differences)) = &mut state.differences else {
         return (place.area.top(), None);
     };
     const ROW: f32 = size::TABLE_ROW_H;
@@ -1037,7 +1056,7 @@ fn differences(
         .iter()
         .filter(|difference| !difference.new)
         .count();
-    let mut summary = strings::same_as_accepted(accepted.entries() - gone);
+    let mut summary = strings::same_as_accepted(accepted.entries().saturating_sub(gone));
     let still_out: Vec<&str> = state
         .proposal
         .iter()

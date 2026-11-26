@@ -73,7 +73,9 @@ impl MortiseApp {
                 connection,
                 place,
             } => self.migrations_read(index, target, &connection, place, end),
-            ReadFor::Surface { module, entries } => self.surface_read(index, &module, entries, end),
+            ReadFor::Surface { module, surface } => {
+                self.surface_read(index, &module, &surface, end)
+            }
         }
     }
 

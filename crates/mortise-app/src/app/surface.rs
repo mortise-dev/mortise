@@ -1,7 +1,7 @@
 //! Accepting a public surface (S5.7 to S5.9): the package command `module:surface`,
 //! shown first, then read for its answer. Mortise writes no `module.json` itself.
 
-use mortise_core::{AcceptedSurface, ReadEnd, StartError, SurfaceAnswer};
+use mortise_core::{AcceptedSurface, DataError, ReadEnd, RunEnd, StartError, SurfaceAnswer};
 
 use super::{MortiseApp, Pending, ReadFor};
 use crate::boundary::strings;
@@ -60,33 +60,39 @@ impl MortiseApp {
     ) {
         let args = mortise_core::surface_args(&module);
         let input = surface.to_stdin().into_bytes();
-        let entries = surface.entries();
         self.start_read(
             index,
             args,
             Some(input),
-            ReadFor::Surface { module, entries },
+            ReadFor::Surface { module, surface },
         );
     }
 
     /// What `module:surface` answered. Stored: a toast, and the app is read again, so
     /// that the rule uses the new surface at once. Otherwise a toast says why.
+    ///
+    /// The package writes `module.json` before it prints its answer. An answer cut at
+    /// the line limit of a command that ended with 0 counts as stored when
+    /// `module.json` holds the surface that was sent.
     pub(super) fn surface_read(
         &mut self,
         index: usize,
         module: &str,
-        entries: usize,
+        surface: &AcceptedSurface,
         end: Result<ReadEnd, StartError>,
     ) {
         let reason = match end {
             Err(error) => crate::strings::start_reason(&error),
             Ok(end) => match end.document::<SurfaceAnswer>() {
                 Ok(answer) if answer.errors.is_empty() && answer.surface.is_some() => {
-                    if let Some(open) = self.apps.get_mut(index) {
-                        open.boundary.surfaces.remove(module);
-                    }
-                    self.set_package(index, |_| {});
-                    self.toast = Some(Toast::done(strings::accepted_surface(module, entries)));
+                    self.surface_stored(index, module, surface.entries());
+                    return;
+                }
+                Err(DataError::Cut)
+                    if matches!(end.end, RunEnd::Exited { code: Some(0), .. })
+                        && self.holds(index, module, surface) =>
+                {
+                    self.surface_stored(index, module, surface.entries());
                     return;
                 }
                 Ok(answer) => {
@@ -102,6 +108,25 @@ impl MortiseApp {
             },
         };
         self.toast = Some(Toast::failed(strings::surface_not_stored(module, &reason)));
+    }
+
+    /// The surface of `module` is stored: the view starts again from it.
+    fn surface_stored(&mut self, index: usize, module: &str, entries: usize) {
+        if let Some(open) = self.apps.get_mut(index) {
+            open.boundary.surfaces.remove(module);
+        }
+        self.set_package(index, |_| {});
+        self.toast = Some(Toast::done(strings::accepted_surface(module, entries)));
+    }
+
+    /// True when the `module.json` of `module` holds `surface` now.
+    fn holds(&self, index: usize, module: &str, surface: &AcceptedSurface) -> bool {
+        let Some(app) = self.snapshot(index) else {
+            return false;
+        };
+        app.module(module)
+            .and_then(|found| AcceptedSurface::of_file(&found.dir.join("module.json")))
+            .is_some_and(|stored| stored == surface.clone().normalized())
     }
 }
 

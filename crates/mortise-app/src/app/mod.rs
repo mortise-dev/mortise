@@ -188,8 +188,11 @@ enum ReadFor {
         connection: String,
         place: RunPlace,
     },
-    /// `module:surface <module> --set --stdin --json` (P6), with this many entries.
-    Surface { module: String, entries: usize },
+    /// `module:surface <module> --set --stdin --json` (P6), with the surface it stores.
+    Surface {
+        module: String,
+        surface: mortise_core::AcceptedSurface,
+    },
 }
 
 /// A folder that is read for the add panel.

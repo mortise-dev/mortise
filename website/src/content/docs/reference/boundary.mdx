@@ -193,6 +193,7 @@ First a dialog shows the exact command: "Accept the public surface of Billing?",
 and "Its standard input is the 21 entries, as one JSON object." The button that goes ahead is **Accept 21 entries**.
 When the command stored the surface, a toast says "Accepted the public surface of Billing: 21 entries."
 and Mortise reads the app again: the rule uses the new surface at once, in the window and in `mortise check`.
+When the answer is too long to keep, a command that ended with 0 counts as stored if `module.json` holds the surface.
 
 The button is off, with the reason on hover, when:
 
@@ -216,7 +217,7 @@ When classes of the module are read from outside and are not in the surface, the
 
 | Control | What it does |
 |---|---|
-| **Change** | Scans the module, then shows the proposal with the accepted entries checked |
+| **Change** | Scans the module, then shows the proposal with the accepted entries checked. Accepted routes stay checked when the routes were not read. **Scan again** in the proposal keeps your choices |
 | **Scan again** | Scans the module and compares it with the surface. Without a difference a toast says "The scan matches the accepted surface." |
 
 ### A later scan finds a difference
@@ -227,6 +228,7 @@ An alert reads "The scan differs from the accepted surface in 2 places. Nothing 
 Only the differences are listed, with the columns **Entry**, **Difference** and **Used today by**:
 
 - "new in the code", "add it": the scan proposes it and the surface lacks it.
+  A route pattern is new only when one of its routes is not under an accepted route.
 - "no longer in the code", "remove it": the surface lists it and the module no longer has it.
   A route counts as gone only when the routes were read.
 
@@ -239,5 +241,6 @@ A line under the list says how many entries are the same, such as "1 entry is th
 | "Accept 2 changes" (<kbd>Ctrl</kbd> <kbd>Enter</kbd>) | Stores the surface with the checked changes, as [Accepting](#accepting) says |
 
 A difference is shown only after a scan you asked for. It is not a finding.
+When `module.json` changes while the differences are open, the view goes back to the accepted surface.
 
 The steps are in [How to scan the public surface](/mortise/how-to/scan-public-surface/).

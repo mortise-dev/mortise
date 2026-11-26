@@ -4,7 +4,9 @@ mod common;
 
 use std::time::{Duration, Instant};
 
-use common::{Desk, app_with_package, connected, pad_module, shop_api, shop_api_actuator};
+use common::{
+    Desk, app_with_package, connected, pad_module, shop_api, shop_api_actuator, wait_until,
+};
 use eframe::egui::accesskit::Toggled;
 use eframe::egui::{Key, Modifiers, Role};
 use egui_kittest::Harness;
@@ -503,6 +505,35 @@ fn accept_shows_the_package_command_and_runs_it_with_the_surface() {
 }
 
 #[test]
+fn a_cut_answer_counts_as_stored_when_module_json_holds_the_surface() {
+    let desk = Desk::new();
+    let root = app_with_package(&desk, "shop-api", "v13.5.0");
+    desk.knows(&[(&root, "SA")]);
+    let mut settings = desk.saved();
+    // `long` ends with 0 after one line longer than Mortise keeps.
+    settings.apps[0].php.runner = Some(RunnerKind::Custom {
+        line: format!("\"{}\" long", env!("CARGO_BIN_EXE_app-fake-artisan")),
+    });
+    settings.save(&desk.settings_path()).unwrap();
+    let mut harness = desk.start();
+    open_surface_of(&mut harness, "Users");
+    harness
+        .get_by_role_and_label(Role::Button, "Change")
+        .click();
+    until(&mut harness, "Proposed public surface of Users");
+    // The surface of Users is in its module.json already, as after a write.
+    harness
+        .get_by_role_and_label(Role::Button, "Accept 1 entry")
+        .click();
+    harness.run_steps(3);
+    harness.key_press(Key::Enter);
+    until(
+        &mut harness,
+        "Accepted the public surface of Users: 1 entry.",
+    );
+}
+
+#[test]
 fn an_accepted_surface_is_shown_and_a_later_scan_lists_what_differs() {
     let desk = Desk::new();
     let root = desk.app("shop-api");
@@ -566,6 +597,51 @@ fn an_accepted_surface_is_shown_and_a_later_scan_lists_what_differs() {
     until(&mut harness, "Proposed public surface of Users");
     assert!(is_checked(&harness, r"Modules\Users\Contracts\UserLookup"));
     assert!(!is_checked(&harness, r"Modules\Users\Contracts\Directory"));
+    // Scanning again keeps what the developer changed.
+    harness
+        .get_by_role_and_label(Role::CheckBox, r"Modules\Users\Contracts\Directory")
+        .click();
+    harness.run_steps(2);
+    harness
+        .get_by_role_and_label(Role::Button, "Scan again")
+        .click();
+    harness.run_steps(2);
+    until(&mut harness, "Proposed public surface of Users");
+    assert!(is_checked(&harness, r"Modules\Users\Contracts\UserLookup"));
+    assert!(is_checked(&harness, r"Modules\Users\Contracts\Directory"));
     // Nothing was written.
     assert!(std::fs::read_to_string(&manifest).unwrap().contains("Gone"));
+
+    // The differences hold only for the surface they were found against. When
+    // module.json changes under them, the view shows what it holds now.
+    harness
+        .get_by_role_and_label(Role::Button, "Keep the accepted surface")
+        .click();
+    harness.run_steps(3);
+    harness
+        .get_by_role_and_label(Role::Button, "Scan again")
+        .click();
+    until(
+        &mut harness,
+        "The scan differs from the accepted surface in 2 places.",
+    );
+    let json = std::fs::read_to_string(&manifest).unwrap().replace(
+        r#""Modules\\Users\\Contracts\\UserLookup", "Modules\\Users\\Models\\Gone""#,
+        "",
+    );
+    std::fs::write(&manifest, json).unwrap();
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::R);
+    wait_until(&mut harness, "an empty surface", |app| {
+        app.app().is_some_and(|app| {
+            app.module("Users")
+                .and_then(|users| users.surface.as_ref())
+                .is_some_and(|surface| surface.entries() == 0)
+        })
+    });
+    harness.get_by_role_and_label(Role::Heading, "Public surface of Users");
+    assert!(
+        harness
+            .query_by_label_contains("Differences from the accepted surface")
+            .is_none()
+    );
 }
