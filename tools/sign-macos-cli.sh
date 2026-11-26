@@ -1,8 +1,12 @@
 #!/usr/bin/env bash
 # Signs the macOS command line tool with the Developer ID Application certificate, packs it into
 # dist/<archive> with tools/pack-cli.sh, has Apple notarize that zip, and checks the signature of the
-# binary inside it. The Installers workflow runs it in a release only, in the job that holds the Apple
-# secrets, after the binary was built in an earlier step.
+# binary inside it. The Installers workflow runs it in a release only, in the step that holds the
+# Apple secrets, after the binary was built and checked by tools/check-cli.sh in earlier steps.
+#
+# It never runs the built binary, so no code of the build runs while the secrets are in the
+# environment. Only codesign, notarytool and the system tools run here. tools/check-cli.sh runs the
+# signed binary again in a later step, without the secrets.
 #
 #   tools/sign-macos-cli.sh <archive>
 #   tools/sign-macos-cli.sh mortise-v0.3.0-macos-arm64.zip
@@ -106,6 +110,6 @@ fail() {
 grep -q '^Authority=Developer ID Application: ' <<<"$details" || fail "the binary is not signed with a Developer ID Application certificate."
 grep -Eq '^CodeDirectory .*flags=0x[0-9a-f]+\([^)]*runtime' <<<"$details" || fail "the hardened runtime is off."
 grep -q '^Timestamp=' <<<"$details" || fail "the signature has no secure timestamp."
-"$checked" --version
+cmp -s "$checked" "$binary" || fail "the binary in the zip is not the one signed."
 
 echo "dist/$archive: signed, and notarized by Apple (not stapled: a bare binary cannot hold a ticket)."

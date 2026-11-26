@@ -54,16 +54,18 @@ Each archive holds `mortise` (or `mortise.exe`), `LICENSE` and `THIRD-PARTY.md` 
 The action [`nwidart/setup-mortise`](https://github.com/nWidart/setup-mortise) computes these names
 from the version, the system and the architecture: do not rename them without changing the action.
 
-`tools/pack-cli.sh` checks a binary and packs it: the binary must print the version of `Cargo.toml`,
-exit 1 on the fixture `shop-api`, and on Linux be statically linked. The job `cli-sums` fails unless
-exactly the four names above are there. To build one archive on your machine:
+`tools/check-cli.sh` runs a binary: it must print the version of `Cargo.toml`, exit 1 on the fixture
+`shop-api`, and on Linux be statically linked. `tools/pack-cli.sh` then packs it without running it. It
+takes a file name in `dist/` only, ending in `.tar.gz` or `.zip`. The job `cli-sums` fails unless exactly
+the four names above are there. To build one archive on your machine:
 
 ```
 cargo build --release --locked -p mortise-cli --target aarch64-apple-darwin
+tools/check-cli.sh aarch64-apple-darwin
 tools/pack-cli.sh aarch64-apple-darwin mortise-v0.3.0-macos-arm64.zip
 ```
 
-A pull request that changes `crates/mortise-cli/Cargo.toml` or one of the two scripts builds the four
+A pull request that changes `crates/mortise-cli/Cargo.toml` or one of the three scripts builds the four
 archives and their sums as artifacts. A dependency update does not; run the Installers workflow by hand
 on the branch to check one.
 
@@ -164,6 +166,9 @@ The command line tool is a bare binary, which cargo-packager does not sign, so `
   downloaded binary runs. The script checks the signature of the binary in the zip as uploaded; it does
   not run `spctl`, whose answer for a bare binary depends on that online lookup right after notarizing.
 - The keychain, the key file and the search list of keychains are restored when the script ends.
+- The script never runs the built binary, so no code of the build runs while the secrets are in the
+  environment. `tools/check-cli.sh` runs it in the step before, and again on the signed binary in the
+  step after, both without the secrets.
 - The binary has no entitlements file. It reads files and opens an HTTPS connection, and neither needs an
   exception from the hardened runtime. This follows from reading, not from a signed build: run the first
   signed tool from a download on a Mac.

@@ -79,6 +79,7 @@ on:
       - assets/icon/**
       - tools/pack-installer.sh
       - crates/mortise-cli/Cargo.toml
+      - tools/check-cli.sh
       - tools/pack-cli.sh
       - tools/sign-macos-cli.sh
       - rust-toolchain.toml
@@ -363,7 +364,7 @@ jobs:
 
   # The command line tool for Linux (static, musl) and Windows. Each runner builds for its own
   # architecture, so ring and blake3 compile their C with the runner's own compiler, and
-  # tools/pack-cli.sh runs the binary before it packs it. cc finds musl-gcc by itself only for x86_64,
+  # tools/check-cli.sh runs the binary before tools/pack-cli.sh packs it. cc finds musl-gcc by itself only for x86_64,
   # so CC_<target> names it for both. Windows links the C runtime statically, so the binary needs no
   # Visual C++ redistributable; the RUSTFLAGS of the target do not reach the build scripts.
   package-cli:
@@ -414,6 +415,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y musl-tools
       - run: cargo build --release --locked -p mortise-cli --target "$TARGET"
+      - run: tools/check-cli.sh "$TARGET"
       - run: tools/pack-cli.sh "$TARGET" "$ARCHIVE"
       - uses: actions/upload-artifact@v4
         with:
@@ -439,6 +441,7 @@ jobs:
           persist-credentials: false
       - run: rustup toolchain install && rustup target add aarch64-apple-darwin
       - run: cargo build --release --locked -p mortise-cli --target aarch64-apple-darwin
+      - run: tools/check-cli.sh aarch64-apple-darwin
       - run: tools/pack-cli.sh aarch64-apple-darwin "$ARCHIVE"
       - uses: actions/upload-artifact@v4
         with:
@@ -465,8 +468,10 @@ jobs:
           ref: ${{ inputs.ref }}
           persist-credentials: false
       - run: rustup toolchain install && rustup target add aarch64-apple-darwin
-      # Built before the step that holds the secrets. Both steps share one machine: see package-macos-signed.
+      # Built and run before the step that holds the secrets, and run again after it. The step with the
+      # secrets never runs the built binary. All steps share one machine: see package-macos-signed.
       - run: cargo build --release --locked -p mortise-cli --target aarch64-apple-darwin
+      - run: tools/check-cli.sh aarch64-apple-darwin
       # A bare binary cannot hold a stapled ticket, so the zip goes to Apple and Gatekeeper looks the
       # ticket up online on first run.
       - name: Sign, pack and notarize
@@ -480,6 +485,8 @@ jobs:
           APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
           APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
         run: tools/sign-macos-cli.sh "$ARCHIVE"
+      # The signed binary, without the secrets. tools/sign-macos-cli.sh checked that the zip holds it.
+      - run: tools/check-cli.sh aarch64-apple-darwin
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: cli-macos-arm64
