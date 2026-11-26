@@ -22,8 +22,9 @@ Options:
 Exit codes:
   0  No finding fails the check, or mortise.json sets \"ci\": { \"fail\": false }
   1  A finding fails the check
-  2  The command line is wrong
+  2  The command line is wrong, or the report of --coverage cannot be read
   3  The folder cannot be read as an app
+  5  The report could not be written
 ";
 
 pub const NO_COMMAND: &str = "No command was given.";
@@ -65,8 +66,21 @@ pub fn wrong_fail_on(value: &str) -> String {
     format!("--fail-on takes warnings, not {value}.")
 }
 
-pub fn no_report(path: &str) -> String {
-    format!("The coverage report {path} is not a file.")
+/// `mortise: cannot read the coverage report /app/cov.xml: it has no coverage element. ...`
+pub fn unreadable_report(error: &str) -> String {
+    format!("mortise: {error}. Give --coverage the clover report that the tests wrote.")
+}
+
+pub fn not_written(error: &str) -> String {
+    format!(
+        "mortise: the report could not be written: {error}. Check the disk or the output, then run it again."
+    )
+}
+
+pub fn coverage_ignored(message: &str) -> String {
+    format!(
+        "mortise: the coverage block of mortise.json is ignored: {message}. The default coverage applies."
+    )
 }
 
 /// `mortise: /tmp is not a Laravel app. Run mortise check in the folder of an app ...`

@@ -22,6 +22,8 @@ const USAGE: u8 = 2;
 /// The folder cannot be read as an app.
 const NOT_AN_APP: u8 = 3;
 // 4 is kept for `mortise push`: the cloud refused the document.
+/// The report could not be written to standard output, other than to a closed pipe.
+const NOT_WRITTEN: u8 = 5;
 
 fn main() -> ExitCode {
     let code = match parse(std::env::args_os().skip(1)) {
@@ -35,11 +37,32 @@ fn main() -> ExitCode {
         }
         Ok(Command::Check(options)) => check::run(&options),
         Err(message) => {
-            eprintln!("{}", strings::usage_error(&message));
+            say(&strings::usage_error(&message));
             USAGE
         }
     };
     ExitCode::from(code)
+}
+
+/// Text that comes from the app or the command line, made safe to print. A control
+/// character or a line separator, such as a line end in a file name, is written as its
+/// escape (`\n`). So no content of the app starts a line that CI reads as a workflow
+/// command.
+fn printable(text: &str) -> String {
+    text.chars()
+        .map(|c| {
+            if c.is_control() || matches!(c, '\u{2028}' | '\u{2029}') {
+                c.escape_default().to_string()
+            } else {
+                c.to_string()
+            }
+        })
+        .collect()
+}
+
+/// Prints a diagnostic on standard error.
+fn say(text: &str) {
+    eprintln!("{}", printable(text));
 }
 
 enum Command {

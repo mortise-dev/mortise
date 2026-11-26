@@ -133,4 +133,38 @@ fn a_wrong_command_line_exits_2() {
     assert_eq!(output.status.code(), Some(2));
     assert!(stdout(&output).is_empty());
     assert!(stderr(&output).contains("--format takes text, json or github, not sarif."));
+
+    // A report given with --coverage must be a clover report: no other report is used instead.
+    let folder = tempfile::tempdir().unwrap();
+    let report = folder.path().join("clover.xml");
+    std::fs::write(&report, "<phpunit/>").unwrap();
+    let args = [fixture(), "--coverage".into(), report];
+    let args: Vec<&str> = args.iter().map(|arg| arg.to_str().unwrap()).collect();
+    let output = check(&args);
+    assert_eq!(output.status.code(), Some(2));
+    assert!(stdout(&output).is_empty());
+    assert!(stderr(&output).contains("it has no coverage element"));
+}
+
+#[test]
+fn content_of_the_app_cannot_start_a_line_of_its_own() {
+    let app = copy_with("{}");
+    std::fs::write(
+        app.path().join("modules_statuses.json"),
+        r#"{"Billing": true, "Old\n::error::injected": true}"#,
+    )
+    .unwrap();
+    for (format, escaped) in [
+        ("text", r"Old\n::error::injected"),
+        ("github", "Old%0A::error::injected"),
+    ] {
+        let output = check(&[app.path().to_str().unwrap(), "--format", format]);
+        let out = stdout(&output);
+        assert!(out.contains(escaped), "{out}");
+        assert!(
+            !out.lines()
+                .any(|line| line.starts_with("::error::injected")),
+            "{out}"
+        );
+    }
 }

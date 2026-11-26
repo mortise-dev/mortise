@@ -8,11 +8,11 @@ use std::io::Write;
 use std::path::PathBuf;
 
 use mortise_core::{
-    AppSnapshot, Check, CoverageSettings, Detail, Finding, ReadCache, ReadOptions, RulesSource,
-    Severity, read_app_cached,
+    AppSnapshot, Check, CoverageSettings, Detail, Finding, ReadCache, ReadError, ReadOptions,
+    RulesSource, Severity, read_app_cached,
 };
 
-use crate::strings;
+use crate::{printable, say, strings};
 
 pub(crate) struct Options {
     /// The app folder.
@@ -39,19 +39,10 @@ pub(crate) enum Format {
 /// Runs the check and gives the exit code.
 pub(crate) fn run(options: &Options) -> u8 {
     // A path in a flag is relative to the current folder, as the shell completes it.
-    let report = match &options.coverage {
-        Some(path) => match std::path::absolute(path) {
-            Ok(path) if path.is_file() => Some(path),
-            _ => {
-                eprintln!(
-                    "{}",
-                    strings::usage_error(&strings::no_report(&path.to_string_lossy()))
-                );
-                return crate::USAGE;
-            }
-        },
-        None => None,
-    };
+    let report = options
+        .coverage
+        .as_ref()
+        .map(|path| std::path::absolute(path).unwrap_or_else(|_| path.clone()));
     let read_options = ReadOptions {
         coverage_given: CoverageSettings {
             limit: options.coverage_limit,
@@ -66,13 +57,21 @@ pub(crate) fn run(options: &Options) -> u8 {
         &mut ReadCache::default(),
     ) {
         Ok(app) => app,
+        // A report given with --coverage that cannot be read is a wrong value of the flag.
+        Err(error @ ReadError::CoverageReport { .. }) => {
+            say(&strings::unreadable_report(&error.to_string()));
+            return crate::USAGE;
+        }
         Err(error) => {
-            eprintln!("{}", strings::not_an_app(&error.to_string()));
+            say(&strings::not_an_app(&error.to_string()));
             return crate::NOT_AN_APP;
         }
     };
     if let RulesSource::Invalid(message) = &app.rules_source {
-        eprintln!("{}", strings::invalid_rules_file(message));
+        say(&strings::invalid_rules_file(message));
+    }
+    if let Some(message) = &app.coverage_ignored {
+        say(&strings::coverage_ignored(message));
     }
 
     let findings = &app.findings;
@@ -90,10 +89,10 @@ pub(crate) fn run(options: &Options) -> u8 {
                 .iter()
                 .flat_map(|finding| lines(finding, &app))
             {
-                text.push_str(&match options.format {
+                text.push_str(&printable(&match options.format {
                     Format::Github => line.github(),
                     _ => line.text(),
-                });
+                }));
                 text.push('\n');
             }
             let (rules, checks) = findings.rules_and_checks();
@@ -108,14 +107,21 @@ pub(crate) fn run(options: &Options) -> u8 {
             text
         }
     };
-    // A closed pipe, as with `| head`, is not an error of the check.
-    let _ = std::io::stdout().lock().write_all(report.as_bytes());
+    let mut out = std::io::stdout().lock();
+    match out.write_all(report.as_bytes()).and_then(|()| out.flush()) {
+        // A closed pipe, as with `| head`, is not an error of the check.
+        Err(error) if error.kind() != std::io::ErrorKind::BrokenPipe => {
+            say(&strings::not_written(&error.to_string()));
+            return crate::NOT_WRITTEN;
+        }
+        _ => {}
+    }
 
     match (fails, app.rules.fail_ci) {
         (false, _) => crate::PASSED,
         (true, true) => crate::FAILED,
         (true, false) => {
-            eprintln!("{}", strings::CI_FAIL_OFF);
+            say(strings::CI_FAIL_OFF);
             crate::PASSED
         }
     }
@@ -195,11 +201,8 @@ fn lines(finding: &Finding, app: &AppSnapshot) -> Vec<Line> {
             let first = app
                 .circle_neighbour(module)
                 .and_then(|to| app.link(module, to))
-                .and_then(|link| {
-                    link.refs
-                        .iter()
-                        .min_by_key(|reference| (&reference.file, reference.line))
-                });
+                // The first reference, as the Boundary panel lists them.
+                .and_then(|link| link.refs.first());
             vec![match first {
                 Some(first) => line(&first.file, Some(first.line), true, sentence),
                 None => in_folder(sentence),
@@ -267,7 +270,8 @@ fn lines(finding: &Finding, app: &AppSnapshot) -> Vec<Line> {
     }
 }
 
-/// The message of a workflow command, escaped as the GitHub runner reads it.
+/// The message of a workflow command, escaped as the GitHub runner reads it. Other
+/// control characters are escaped for every format, by `printable`.
 fn data(text: &str) -> String {
     text.replace('%', "%25")
         .replace('\r', "%0D")
