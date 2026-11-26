@@ -112,6 +112,11 @@ pub fn read_error(error: &ReadError) -> String {
              the folder again.",
             tilde(path)
         ),
+        // Not in the spec. Only a report given for one read, which the window never gives.
+        ReadError::CoverageReport { path, message } => format!(
+            "Mortise could not read the coverage report {}: {message}. Choose a clover report.",
+            tilde(path)
+        ),
         // Not in the spec. The system's message is quoted as it is.
         ReadError::Io { path, source } => {
             format!("Mortise could not read {}: {source}.", tilde(path))

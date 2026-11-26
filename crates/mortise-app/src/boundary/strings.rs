@@ -169,6 +169,14 @@ pub fn rules_invalid(message: &str) -> String {
     format!("mortise.json is not valid: {message}. The default rules apply until it is corrected.")
 }
 
+/// Not in the spec: the `coverage` object of mortise.json cannot be read. The rules still apply.
+pub fn coverage_ignored(message: &str) -> String {
+    format!(
+        "The coverage block of mortise.json is ignored: {message}. Coverage comes from Settings \
+         until it is corrected."
+    )
+}
+
 pub const LINKS: &str = "Links";
 pub const SWITCH_WITH: &str = "Switch with";
 pub const SCAN_AGAIN: &str = "Scan again";

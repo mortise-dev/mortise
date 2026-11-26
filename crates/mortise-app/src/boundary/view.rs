@@ -85,6 +85,9 @@ pub fn boundary(
                 if let RulesSource::Invalid(message) = &app.rules_source {
                     y = view.note(ui, y, &strings::rules_invalid(message)) + 12.0;
                 }
+                if let Some(message) = &app.coverage_ignored {
+                    y = view.note(ui, y, &strings::coverage_ignored(message)) + 12.0;
+                }
                 // One module has two views: its links and its public surface.
                 if let Some(module) = module {
                     let scanned = state

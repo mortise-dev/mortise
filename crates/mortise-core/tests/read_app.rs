@@ -365,6 +365,24 @@ fn the_coverage_of_mortise_json_wins_over_the_window_and_a_given_value_over_both
     });
     assert_eq!(snapshot.coverage_limit, 30);
     assert!(snapshot.coverage_report.is_some());
+
+    // A report given for the read that is no clover report is an error, not a fallback.
+    std::fs::write(app.path().join("broken.xml"), "<phpunit/>").unwrap();
+    let given = ReadOptions {
+        coverage_given: CoverageSettings {
+            limit: None,
+            report: Some("broken.xml".into()),
+        },
+        ..ReadOptions::default()
+    };
+    let error = read_app_cached(
+        app.path(),
+        &BTreeMap::new(),
+        &given,
+        &mut ReadCache::default(),
+    )
+    .unwrap_err();
+    assert!(matches!(error, ReadError::CoverageReport { .. }), "{error}");
 }
 
 #[test]

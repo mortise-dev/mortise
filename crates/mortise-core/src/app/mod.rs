@@ -68,6 +68,9 @@ pub struct AppSnapshot {
     /// The boundary rules the links were checked against.
     pub rules: Rules,
     pub rules_source: RulesSource,
+    /// Why the `coverage` object of `mortise.json` is ignored, when it cannot be read.
+    /// The parser's message. Coverage then comes from the settings.
+    pub coverage_ignored: Option<String>,
     /// What the rules and the checks on files found.
     pub findings: Findings,
     /// A module covered less than this many per cent is a warning.
@@ -205,6 +208,10 @@ pub enum ReadError {
     /// `composer.lock` is not valid JSON.
     #[error("{} is not valid JSON: {message}", path.display())]
     InvalidLock { path: PathBuf, message: String },
+    /// The coverage report given for the read, such as with `mortise check --coverage`,
+    /// cannot be read or is no clover report.
+    #[error("cannot read the coverage report {}: {message}", path.display())]
+    CoverageReport { path: PathBuf, message: String },
     #[error("cannot read {}: {source}", path.display())]
     Io {
         path: PathBuf,
@@ -358,27 +365,46 @@ pub fn read_app_cached(
         .collect();
 
     // The rules, and the coverage settings that the app keeps beside them.
-    let (rules, in_file, rules_source) = rules::load_file(&root);
+    let rules::RulesFile {
+        rules,
+        source: rules_source,
+        coverage: in_file,
+        coverage_ignored,
+    } = rules::load_file(&root);
     let coverage_limit = options
         .coverage_given
         .limit
         .or(in_file.limit)
         .unwrap_or(options.coverage_limit);
 
-    // The report the user named, if it is there; else the one Mortise finds.
-    let report_path = options
-        .coverage_given
-        .report
-        .as_ref()
-        .or(in_file.report.as_ref())
-        .or(options.coverage_report.as_ref())
-        .map(|path| root.join(path))
-        .filter(|path| path.is_file())
-        .or_else(|| clover::find_report(&root));
-    let report = report_path
-        .as_ref()
-        .and_then(|path| std::fs::read(path).ok())
-        .map(|xml| clover::read_report(&xml));
+    // A report given for this read must be read; a fault is an error, not a fallback.
+    let report = match &options.coverage_given.report {
+        Some(given) => {
+            let path = root.join(given);
+            let fault = |message: String| ReadError::CoverageReport {
+                path: path.clone(),
+                message,
+            };
+            let xml = std::fs::read(&path).map_err(|error| fault(error.to_string()))?;
+            match clover::read_report(&xml) {
+                (files, None) => Some((path, files)),
+                (_, Some(message)) => return Err(fault(message)),
+            }
+        }
+        // The report the user named, if it is there; else the one Mortise finds.
+        None => in_file
+            .report
+            .as_ref()
+            .or(options.coverage_report.as_ref())
+            .map(|path| root.join(path))
+            .filter(|path| path.is_file())
+            .or_else(|| clover::find_report(&root))
+            .and_then(|path| {
+                let xml = std::fs::read(&path).ok()?;
+                Some((path, clover::read_report(&xml).0))
+            }),
+    };
+    let (report_path, report) = report.unzip();
     let coverage_of = |folder: &str| -> Option<Coverage> {
         // The report has the paths of the machine that ran the tests, so only the
         // part from the modules folder on can be compared.
@@ -505,6 +531,7 @@ pub fn read_app_cached(
         cycles,
         rules,
         rules_source,
+        coverage_ignored,
         findings,
         coverage_limit,
         package_data,

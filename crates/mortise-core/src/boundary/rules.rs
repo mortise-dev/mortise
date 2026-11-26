@@ -87,16 +87,6 @@ pub enum RulesError {
 ///     "coverage": { "limit": 70, "report": "build/coverage/clover.xml" }
 /// }
 /// ```
-#[derive(Deserialize)]
-struct FileShape {
-    #[serde(default)]
-    rules: RulesInFile,
-    #[serde(default)]
-    ci: CiInFile,
-    #[serde(default)]
-    coverage: CoverageSettings,
-}
-
 #[derive(Serialize, Deserialize)]
 struct CiInFile {
     #[serde(default = "yes")]
@@ -113,7 +103,7 @@ impl Default for CiInFile {
 struct RulesInFile {
     #[serde(rename = "no-circular-use", default = "yes")]
     no_circular_use: bool,
-    #[serde(rename = "public-surface-only", default)]
+    #[serde(rename = "public-surface-only", default, deserialize_with = "object")]
     public_surface_only: PublicSurfaceInFile,
 }
 
@@ -143,6 +133,35 @@ impl Default for RulesInFile {
     }
 }
 
+/// A struct of the file from a JSON object only. serde also takes a list for the fields
+/// of a struct, so `[false]` would read as `{ "fail": false }`.
+fn object<'de, D, T>(deserializer: D) -> Result<T, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: serde::de::DeserializeOwned,
+{
+    use serde::de::Error;
+    let value = serde_json::Value::deserialize(deserializer)?;
+    if !value.is_object() {
+        return Err(D::Error::custom("expected a JSON object"));
+    }
+    serde_json::from_value(value).map_err(D::Error::custom)
+}
+
+/// One key of the file at the top: its default when it is absent.
+fn section<T: serde::de::DeserializeOwned + Default>(
+    file: &serde_json::Map<String, serde_json::Value>,
+    key: &str,
+) -> Result<T, String> {
+    match file.get(key) {
+        None => Ok(T::default()),
+        Some(value) if value.is_object() => {
+            serde_json::from_value(value.clone()).map_err(|error| format!("{key}: {error}"))
+        }
+        Some(_) => Err(format!("{key} is not a JSON object")),
+    }
+}
+
 fn yes() -> bool {
     true
 }
@@ -154,8 +173,8 @@ fn default_folders() -> Vec<String> {
 impl Rules {
     /// Reads the rules of the app in `root`.
     pub fn load(root: &Path) -> (Self, RulesSource) {
-        let (rules, _, source) = load_file(root);
-        (rules, source)
+        let file = load_file(root);
+        (file.rules, file.source)
     }
 
     /// Writes the rules to `mortise.json` in `root`. Other keys of the file are kept.
@@ -238,40 +257,57 @@ impl Rules {
     }
 }
 
-/// Reads `mortise.json` in `root`: the rules and the coverage settings. A file that
-/// cannot be read as a whole gives the defaults for both.
-pub(crate) fn load_file(root: &Path) -> (Rules, CoverageSettings, RulesSource) {
-    let Ok(json) = std::fs::read(root.join(RULES_FILE)) else {
-        return (
-            Rules::default(),
-            CoverageSettings::default(),
-            RulesSource::Defaults,
-        );
+/// What `mortise.json` holds, as a read takes it.
+pub(crate) struct RulesFile {
+    pub(crate) rules: Rules,
+    pub(crate) source: RulesSource,
+    pub(crate) coverage: CoverageSettings,
+    /// Why the `coverage` object is ignored, when it cannot be read. The rules and `ci`
+    /// stay as read: a broken `coverage` does not throw them away.
+    pub(crate) coverage_ignored: Option<String>,
+}
+
+/// Reads `mortise.json` in `root`. A file whose `rules` or `ci` cannot be read gives the
+/// defaults for everything. A `coverage` that cannot be read is ignored on its own.
+pub(crate) fn load_file(root: &Path) -> RulesFile {
+    let defaults = |source| RulesFile {
+        rules: Rules::default(),
+        source,
+        coverage: CoverageSettings::default(),
+        coverage_ignored: None,
     };
-    // An object first: serde would also take a list for the fields of a struct.
-    let file = serde_json::from_slice::<serde_json::Map<String, serde_json::Value>>(&json)
-        .and_then(|file| serde_json::from_value::<FileShape>(file.into()))
-        .map_err(|error| error.to_string())
-        .and_then(|file| match file.coverage.limit {
+    let Ok(json) = std::fs::read(root.join(RULES_FILE)) else {
+        return defaults(RulesSource::Defaults);
+    };
+    let file = match serde_json::from_slice::<serde_json::Map<String, serde_json::Value>>(&json) {
+        Ok(file) => file,
+        Err(error) => return defaults(RulesSource::Invalid(error.to_string())),
+    };
+    let (rules, ci) = match section::<RulesInFile>(&file, "rules")
+        .and_then(|rules| Ok((rules, section::<CiInFile>(&file, "ci")?)))
+    {
+        Ok(read) => read,
+        Err(message) => return defaults(RulesSource::Invalid(message)),
+    };
+    let coverage =
+        section::<CoverageSettings>(&file, "coverage").and_then(|coverage| match coverage.limit {
             Some(limit) if limit > 100 => Err(format!("coverage limit {limit} is over 100")),
-            _ => Ok(file),
+            _ => Ok(coverage),
         });
-    match file {
-        Ok(file) => (
-            Rules {
-                no_circular_use: file.rules.no_circular_use,
-                public_surface_only: file.rules.public_surface_only.enabled,
-                public_folders: file.rules.public_surface_only.folders,
-                fail_ci: file.ci.fail,
-            },
-            file.coverage,
-            RulesSource::File,
-        ),
-        Err(message) => (
-            Rules::default(),
-            CoverageSettings::default(),
-            RulesSource::Invalid(message),
-        ),
+    let (coverage, coverage_ignored) = match coverage {
+        Ok(coverage) => (coverage, None),
+        Err(message) => (CoverageSettings::default(), Some(message)),
+    };
+    RulesFile {
+        rules: Rules {
+            no_circular_use: rules.no_circular_use,
+            public_surface_only: rules.public_surface_only.enabled,
+            public_folders: rules.public_surface_only.folders,
+            fail_ci: ci.fail,
+        },
+        source: RulesSource::File,
+        coverage,
+        coverage_ignored,
     }
 }
 
@@ -309,7 +345,7 @@ mod tests {
         };
         rules.save(app.path()).unwrap();
         assert_eq!(Rules::load(app.path()), (rules, RulesSource::File));
-        assert_eq!(load_file(app.path()).1.limit, Some(70));
+        assert_eq!(load_file(app.path()).coverage.limit, Some(70));
 
         let text = std::fs::read_to_string(&path).unwrap();
         assert_eq!(
@@ -367,10 +403,13 @@ mod tests {
         assert!(rules.fail_ci, "CI fails when the file does not say");
 
         std::fs::write(&path, r#"{"coverage": {"report": "build/clover.xml"}}"#).unwrap();
-        let (rules, coverage, source) = load_file(app.path());
-        assert_eq!((rules, source), (Rules::default(), RulesSource::File));
+        let file = load_file(app.path());
         assert_eq!(
-            coverage,
+            (file.rules, file.source),
+            (Rules::default(), RulesSource::File)
+        );
+        assert_eq!(
+            file.coverage,
             CoverageSettings {
                 limit: None,
                 report: Some("build/clover.xml".into()),
@@ -387,7 +426,10 @@ mod tests {
             "[1, 2]",
             r#"{"rules": {"no-circular-use": "yes"}}"#,
             r#"{"ci": {"fail": "no"}}"#,
-            r#"{"coverage": {"limit": 101}}"#,
+            // A list is not taken for the fields of an object.
+            r#"{"ci": [false]}"#,
+            r#"{"rules": [false]}"#,
+            r#"{"rules": {"public-surface-only": [false]}}"#,
         ] {
             std::fs::write(&path, content).unwrap();
             let (rules, source) = Rules::load(app.path());
@@ -400,6 +442,27 @@ mod tests {
             Err(RulesError::Invalid { .. })
         ));
         assert_eq!(std::fs::read_to_string(&path).unwrap(), "[1, 2]");
+    }
+
+    #[test]
+    fn a_coverage_that_cannot_be_read_is_ignored_and_keeps_the_rules() {
+        let app = tempfile::tempdir().unwrap();
+        let path = app.path().join(RULES_FILE);
+        for (coverage, why) in [
+            (r#"{"limit": 101}"#, "coverage limit 101 is over 100"),
+            ("[70]", "coverage is not a JSON object"),
+        ] {
+            std::fs::write(
+                &path,
+                format!(r#"{{"rules": {{"no-circular-use": false}}, "ci": {{"fail": false}}, "coverage": {coverage}}}"#),
+            )
+            .unwrap();
+            let file = load_file(app.path());
+            assert_eq!(file.source, RulesSource::File);
+            assert!(!file.rules.no_circular_use && !file.rules.fail_ci);
+            assert_eq!(file.coverage, CoverageSettings::default());
+            assert_eq!(file.coverage_ignored.as_deref(), Some(why));
+        }
     }
 
     #[test]
