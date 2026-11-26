@@ -1574,6 +1574,10 @@ pub fn run(chrome: Chrome, folder: Option<PathBuf>) -> eframe::Result {
     );
     let options = eframe::NativeOptions {
         viewport,
+        // eframe keeps the window size and place in a folder named after the app id. The id
+        // was `mortise` before the binary was renamed: keep that folder, so an update keeps
+        // the window where it was. eframe 0.37 takes the path of the file, `app.ron`.
+        persistence_path: eframe::storage_dir("mortise").map(|dir| dir.join("app.ron")),
         ..Default::default()
     };
     eframe::run_native(
