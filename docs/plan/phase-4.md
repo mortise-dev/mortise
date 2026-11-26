@@ -2,8 +2,8 @@
 
 Outline, version 2, 26 November 2026. Version 1 was dated 23 November.
 
-Status: approved, 26 November 2026. The owner accepts every recommendation in section 4. Milestone 24 and the P6 package work have started. A crates.io token is in the `release` environment, and the repository `nWidart/setup-mortise` exists. Version 2 draws the line between Mortise and Mortise Cloud, takes in the requests of the cloud, and renumbers the milestones after phase 3.
-The published copy is https://6h4zaivwsd5c.postplan.dev/phase-4.html (version 14).
+Status: done, 26 November 2026. Milestones 24 to 28 are merged: #51, #53, #55, #57 and #59, archived in #52, #54, #56, #58 and #60. Still open: the R5 end-to-end push against the cloud's staging, and the first release with the command line tool. Version 2 draws the line between Mortise and Mortise Cloud, takes in the requests of the cloud, and renumbers the milestones after phase 3.
+The published copy is https://6h4zaivwsd5c.postplan.dev/phase-4.html (version 16).
 
 Phase 4 makes the boundary rules a contract that CI enforces. It adds one program, the command line tool `mortise`, with two commands. `mortise check` reads an app and fails the build when a rule breaks (M1). `mortise push` sends what it read to Mortise Cloud. The window gets the accepted public surface of a module (P6).
 Everything reads the files of one app at one commit, as phase 1 does. Screen ids refer to the specification.
@@ -82,7 +82,7 @@ Open. Each has a recommendation; the outline below assumes it.
 6. **A rule for `mortise push` in `AGENTS.md`.** Recommended: "`mortise push` sends only the push document, to the cloud host, when CI or the user runs it. The token comes from `MORTISE_TOKEN` only and is never printed." The window gets no push button.
 7. **How a team gets the tool.** Recommended: cloud request R7. Binaries for Linux x86_64 and arm64 (static, musl), macOS arm64 and Windows x64 with SHA-256 sums on each GitHub release. The action `nwidart/setup-mortise`, in its own repository. `cargo install mortise-cli` from crates.io.
 8. **Signing the macOS binary.** Recommended: sign and notarize it with the app from the first release. The Apple secrets exist, and an unsigned binary would be stopped when a developer downloads it.
-9. **Order and dates.** Recommended: milestones 24, 25 and 26 first, to meet the cloud's weeks 9 and 15 (cloud question Q10). Milestone 27 waits for P6 in a laravel-modules release.
+9. **Order and dates.** Recommended: milestones 24, 25 and 26 first, to meet the cloud's weeks 9 and 15 (cloud question Q10).
 
 ## 5. Workspace changes
 
@@ -121,9 +121,9 @@ Cloud request R9, a rule of allowed dependencies, is a free rule and fits after 
 
 | Dependency | What phase 4 needs from it | Exists today | Owner | Blocks |
 |---|---|---|---|---|
-| `nwidart/laravel-modules` | P6: the `surface` key and `module:surface` | In progress | nwidart | Milestone 27 |
-| Mortise Cloud | A staging environment and the push schema version 1. Host `https://mortisecloud.com` (cloud Q1, answered 26 November 2026): `POST /api/v1/snapshots` and `POST /api/v1/deploys` | Schema written, host chosen | nwidart | The last test of milestone 25 |
-| `nwidart/setup-mortise` | A repository for the action | Exists, empty | nwidart | Milestone 26 |
+| `nwidart/laravel-modules` | P6: the `surface` key and `module:surface` | Released in 13.5.0 | nwidart | Milestone 27 |
+| Mortise Cloud | A staging environment and the push schema version 1. Host `https://mortisecloud.com` (cloud Q1, answered 26 November 2026): `POST /api/v1/snapshots` and `POST /api/v1/deploys` | Staging live. The R5 test is still to run | nwidart | The last test of milestone 25 |
+| `nwidart/setup-mortise` | A repository for the action | Released, v1.0.0 and tag `v1` | nwidart | Milestone 26 |
 | crates.io token | To publish `mortise-cli`, as a secret of the `release` environment | `CARGO_REGISTRY_TOKEN` set | nwidart | Publishing there only |
 | Apple secrets | Signing the macOS binary | Exist | nwidart | nothing |
 | PHP for the app | Only to accept a surface through the package command | Runner built | The user | nothing |
