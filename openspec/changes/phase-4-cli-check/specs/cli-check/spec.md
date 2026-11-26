@@ -36,7 +36,7 @@ The binary `mortise` of the crate `mortise-cli` SHALL depend on `mortise-core` w
 - **THEN** each of the three files that read `Invoice` gets its own `::error file=...,line=...` line, and the coverage warning has no `file`
 
 ### Requirement: Exit codes
-`mortise check` SHALL exit 0 when no finding fails the check, 1 when one does, 2 on a usage error, and 3 when the folder cannot be read as an app. A problem fails the check; a warning fails it only with `--fail-on warnings`. Code 4 SHALL stay unused by `check`.
+`mortise check` SHALL exit 0 when no finding fails the check, 1 when one does, 2 on a usage error or a report given with `--coverage` that cannot be read as clover, 3 when the folder cannot be read as an app, and 5 when the report cannot be written to standard output for a reason other than a closed pipe. A problem fails the check; a warning fails it only with `--fail-on warnings`. Code 4 SHALL stay unused by `check`.
 
 #### Scenario: No problem
 - **WHEN** both rules are off in `mortise.json` and the only finding is a warning
@@ -46,9 +46,20 @@ The binary `mortise` of the crate `mortise-cli` SHALL depend on `mortise-core` w
 - **WHEN** `--format sarif` is given
 - **THEN** the tool prints the error on standard error and exits 2
 
+#### Scenario: A given report that is no clover report
+- **WHEN** `--coverage` names a file without a `coverage` element
+- **THEN** the tool exits 2 and uses no other report
+
 #### Scenario: Not an app
 - **WHEN** `PATH` is an empty folder
 - **THEN** the tool prints the read error on standard error and exits 3
+
+### Requirement: Content of the app cannot start a line
+Every value from the app or the command line that the tool prints, on standard output or standard error, SHALL have its control characters and line separators escaped. The github format SHALL also escape `%`, carriage returns and line ends as the GitHub runner reads them.
+
+#### Scenario: A line end in a statuses entry
+- **WHEN** `modules_statuses.json` lists an entry whose name holds a line end followed by `::error::`
+- **THEN** no line of the output starts with `::error::` from that entry
 
 ### Requirement: Fail CI can be turned off
 When `ci.fail` in `mortise.json` is `false`, `mortise check` SHALL print the same report, say on standard error that the check passes, and exit 0 where it would exit 1.

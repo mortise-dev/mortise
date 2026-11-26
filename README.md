@@ -136,8 +136,8 @@ mortise check /path/to/laravel-app --format github
 ```
 
 `--format` is `text` (the default), `json` or `github`, whose lines GitHub marks in the pull request.
-The exit codes are 0 (no problem), 1 (a problem), 2 (a wrong command line) and 3 (the folder is not an
-app). `"ci": { "fail": false }` in `mortise.json`, the switch "Fail CI when a rule breaks" in the
+The exit codes are 0 (no problem), 1 (a problem), 2 (a wrong command line), 3 (the folder is not an
+app) and 5 (the report could not be written). `"ci": { "fail": false }` in `mortise.json`, the switch "Fail CI when a rule breaks" in the
 window, makes it report without failing. `"coverage": { "limit": 70, "report": "build/clover.xml" }`
 sets the coverage of the app for the window and the tool; the flags `--coverage-limit` and
 `--coverage` win over it. The [documentation](https://nwidart.github.io/mortise/reference/command-line/)

@@ -34,9 +34,12 @@ with the same action. `save` sets `fail` inside an existing `ci` object and keep
 
 ### `coverage` is read with the rules, applied in the read
 
-`rules::load_file` reads the whole file once into `(Rules, CoverageSettings, RulesSource)`.
-`Rules::load` keeps its signature. A file that cannot be read, or whose `coverage.limit` is over 100,
-is `RulesSource::Invalid` and gives the defaults for all three keys, as a broken `rules` key does today.
+`rules::load_file` reads the whole file once into a `RulesFile`: rules, source, coverage, and why the
+coverage was ignored. `Rules::load` keeps its signature. A file whose `rules` or `ci` cannot be read is
+`RulesSource::Invalid` and gives the defaults, as a broken `rules` key does today. A broken `coverage`
+(or a limit over 100) is ignored on its own and named in `AppSnapshot::coverage_ignored`, so a save from
+the window never replaces rules the loader read. Each section must be a JSON object: serde would read
+`"ci": [false]` field by field.
 
 `read_app_cached` picks each coverage value, first to last, from `ReadOptions::coverage_given` (the
 flags of the tool), the file, then `ReadOptions::coverage_limit` and `coverage_report` (the window).
@@ -50,8 +53,10 @@ second read of `mortise.json` per read and puts the order in two callers.
 ### The flag `--coverage` is relative to the current folder
 
 A path on a command line is completed by the shell from the current folder. The tool makes it
-absolute before the read; a path that is not a file is a usage error (exit 2), because falling back
-to another report in silence would check against the wrong numbers. `coverage.report` in the file is
+absolute before the read. A report given for a read (`ReadOptions::coverage_given.report`) that cannot
+be read, or has no `coverage` element, is `ReadError::CoverageReport`: falling back to another report in
+silence would check against the wrong numbers. The tool exits 2 for it, a wrong value of a flag. The
+window never gives a report this way, so it keeps its fallback. `coverage.report` in the file is
 relative to the app folder, like the desktop setting.
 
 ### Places of the findings
@@ -59,8 +64,8 @@ relative to the app folder, like the desktop setting.
 The text and github formats need a file and a line, which `Findings` does not carry. The tool takes
 them from the snapshot:
 
-- `CircularUse`: the first reference of the link from the carrier to the module of the circle it uses
-  (`AppSnapshot::circle_neighbour`), the link the window opens the circle on.
+- `CircularUse`: the first reference, in link order, of the link from the carrier to the module of the
+  circle it uses (`AppSnapshot::circle_neighbour`), the reference the window lists first.
 - `ReadsInternals`: one line per file of the link that reads an internal class, at the first such
   line, with the internal classes that file names. This marks each file, as R2 asks.
 - `InvalidManifest`, `NoManifestName`, `StaleStatus`: their file, and the line when there is one.
@@ -80,8 +85,20 @@ document in milestone 25.
 ### Output streams and exit codes
 
 The report goes to standard output; a usage error, a read error, an unreadable `mortise.json` and the
-note that `ci.fail` is off go to standard error. Exit codes: 0 pass, 1 fail, 2 usage, 3 `ReadError`.
-A closed standard output (`| head`) is ignored.
+note that `ci.fail` is off go to standard error. Exit codes: 0 pass, 1 fail, 2 usage, 3 `ReadError`,
+5 the report could not be written. A closed standard output (`| head`) is ignored; any other write
+error exits 5, so a full disk cannot pass with a truncated report.
+
+Every printed value from the app or the command line has its control characters and line separators
+escaped (`\n`). Otherwise a file name or a statuses entry with a line end could start a line that the
+GitHub runner reads as a workflow command, in any format.
+
+### The window keeps its storage folder
+
+eframe names the folder of `app.ron` (window size and place) after the viewport app id when
+`NativeOptions::persistence_path` is unset (eframe 0.37 source, read). The app id is now
+`mortise-desktop`, so the window sets `persistence_path` to `eframe::storage_dir("mortise")`, the folder
+of the old id.
 
 ### Arguments by hand
 

@@ -18,11 +18,18 @@ Defines the keys of `mortise.json` beyond the rules: whether a broken rule fails
 - **THEN** CI fails on a problem
 
 ### Requirement: The coverage object of mortise.json
-`mortise.json` SHALL accept an optional `coverage` object with an optional `limit` (0 to 100) and an optional `report` (a path relative to the app folder, or absolute). A limit over 100 SHALL make the file invalid, which gives the defaults as any invalid file does.
+`mortise.json` SHALL accept an optional `coverage` object with an optional `limit` (0 to 100) and an optional `report` (a path relative to the app folder, or absolute). A `coverage` that cannot be read, or a limit over 100, SHALL be ignored on its own: the rules and `ci` stay as read, and the window says the coverage block is ignored.
 
 #### Scenario: A limit over 100
-- **WHEN** `mortise.json` sets `"coverage": { "limit": 101 }`
-- **THEN** the file reads as invalid and the default rules apply
+- **WHEN** `mortise.json` sets custom rules and `"coverage": { "limit": 101 }`
+- **THEN** the custom rules apply, the coverage comes from the settings, and a save keeps the rules and the coverage block
+
+### Requirement: Each section of mortise.json is an object
+`rules`, `rules.public-surface-only`, `ci` and `coverage` SHALL be read only from JSON objects. A list in their place SHALL NOT be read field by field.
+
+#### Scenario: A list for ci
+- **WHEN** `mortise.json` holds `"ci": [false]`
+- **THEN** the file reads as invalid and CI fails on a problem
 
 ### Requirement: Which coverage setting wins
 For the coverage limit and for the coverage report, a read SHALL use the first that is set of: the value given for the read (a flag of `mortise check`), the `coverage` object of `mortise.json`, the setting of the window, the default. The order SHALL live in the read of `mortise-core` only.

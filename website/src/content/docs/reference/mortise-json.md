@@ -64,7 +64,11 @@ For the coverage limit and for the coverage report, the first of these that is s
 | Does not exist | The defaults |
 | Has no `rules` key | The defaults |
 | Leaves out a key | The default of that key |
-| Cannot be read, or sets a coverage limit over 100 | The defaults, for the rules, `ci` and `coverage`. The Boundary tab says "mortise.json is not valid: `<message>`. The default rules apply until it is corrected." `mortise check` says the same on standard error |
+| Is not a JSON object, or its `rules` or `ci` cannot be read | The defaults, for the rules, `ci` and `coverage`. The Boundary tab says "mortise.json is not valid: `<message>`. The default rules apply until it is corrected." `mortise check` says the same on standard error |
+| Has a `coverage` that cannot be read, or a limit over 100 | The rules and `ci` as read. `coverage` is ignored: the window's settings apply. The Boundary tab says "The coverage block of mortise.json is ignored: `<message>`. Coverage comes from Settings until it is corrected." `mortise check` says so on standard error |
+
+`rules`, `rules.public-surface-only`, `ci` and `coverage` must each be a JSON object. A list in their
+place makes the file invalid.
 
 Mortise ignores the other keys of the file.
 
