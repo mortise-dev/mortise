@@ -2,7 +2,7 @@
 
 Outline, version 1, 26 November 2026.
 
-Status: proposed. Nothing is built. The owner has not answered the questions of section 4.
+Status: approved on 26 November 2026. Nothing is built. Section 4 records the owner's answers.
 
 Phase 5 is small. It adds one boundary rule, the list of modules each module may use (cloud request R9). It closes the gap of Windows, which no one has looked at. It makes room for the first feedback after 1.0.
 Everything reads the files of one app at one commit, as phase 1 does. Screen ids refer to the specification.
@@ -100,6 +100,8 @@ Not checked: no code was written or run for this outline. Whether a GitHub runne
 ## 4. Questions for the owner
 
 Each has a recommendation; the outline assumes it.
+
+Answered on 26 November 2026. The owner chose the recommendation of questions 1, 5, 7 and 10. The other questions were not asked; their recommendations stand until the owner says otherwise.
 
 1. **Who owns R9.** Recommended: option (c) of section 2. Larch's preset reads the same key.
 2. **The shape of the key.** Recommended: `rules.allowed-use` as in section 2. A module without a list is not checked. Open inside it: a list for every module at once (the cloud says "every module may use Audit"). Recommended: none in the first version; each list names `Audit`.
