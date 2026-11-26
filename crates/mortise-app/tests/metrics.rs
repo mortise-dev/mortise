@@ -297,6 +297,21 @@ fn two_reads_give_a_figure_for_every_module_and_write_nothing() {
     harness.get_by_role_and_label(Role::Heading, "Requests per minute, Billing");
     harness.get_by_role_and_label(Role::ColumnHeader, "Route");
     harness.get_by_role_and_label(Role::Cell, "GET /billing/invoices/{invoice}");
+    harness.get_by_role_and_label(Role::ColumnHeader, "Jobs/min");
+
+    // The narrowest window with the index opened by hand: Jobs/min, en dashes for a route, gives
+    // way, and the route keeps its room.
+    harness.set_size(eframe::egui::vec2(960.0, 800.0));
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::B);
+    harness.run_steps(3);
+    assert!(harness.query_by_label("Jobs/min").is_none());
+    harness.get_by_role_and_label(Role::ColumnHeader, "Database time");
+    let route = harness.get_by_role_and_label(Role::Cell, "GET /billing/invoices/{invoice}");
+    let width = route.rect().width();
+    assert!(width >= 150.0, "the route is {width} px wide");
+    harness.set_size(eframe::egui::vec2(1280.0, 800.0));
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::B);
+    harness.run_steps(3);
 
     // Reading metrics writes nothing: not the settings, not the history.
     assert_eq!((files(&config), files(&desk.data_dir())), before);

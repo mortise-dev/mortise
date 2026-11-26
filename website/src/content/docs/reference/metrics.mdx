@@ -92,6 +92,11 @@ Rows sort by most requests first, then by name.
 | **Database time** | Database time against request time, such as "31%". **unknown**, with the tooltip "Needs a newer nwidart/laravel-modules", when no series has a `module` label. An en dash for a route |
 | **Last hour** | A sparkline of the requests per minute over the last hour |
 
+In a narrow tab the name keeps 160 px, and columns of figures give way to it, one at a time.
+For one module, **Jobs/min** goes first, then **Database time**, then **Last hour**.
+For **All modules**, **Last hour** goes first, then **Jobs/min**, then **Database time**.
+**Requests/min**, **95% under** and **Errors** stay. A name that is still cut shows in full on hover.
+
 A click on a row shows it in the chart. <kbd>J</kbd>, <kbd>K</kbd> and the arrows move the selected row while the table has focus.
 The colour of the figures is ink only: this version has no limits, so nothing on the tab is a state.
 
