@@ -224,9 +224,10 @@ jobs:
           if-no-files-found: error
 
   # Builds the command line tool alone, so mortise-core comes without its default features and
-  # nothing of the window is built: Linux gets no window packages here. Then it checks the fixture
-  # shop-api, which has two problems, so the tool must exit 1. The text format, so that the fixture's
-  # problems do not mark the pull request.
+  # nothing of the window is built: Linux gets no window packages here. Then it runs the built tool
+  # on the fixture shop-api, which has a circle and three reads of Billing internals, and checks the
+  # exit codes and the paths on each platform: relative to the app, with `/` between the parts.
+  # The github format goes to a file, so that the fixture's problems do not mark the pull request.
   cli:
     name: Command line tool (${{ matrix.name }})
     needs: changes
@@ -250,18 +251,48 @@ jobs:
       - run: rustup toolchain install
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
       - run: cargo build -p mortise-cli --locked
-      - name: Check shop-api
+      - name: Check shop-api in each format
+        shell: bash
+        run: |
+          out="$RUNNER_TEMP/check"
+          mkdir -p "$out"
+          for format in text github json; do
+            status=0
+            target/debug/mortise check fixtures/shop-api --format "$format" > "$out/$format" || status=$?
+            if [ "$status" -ne 1 ]; then
+              echo "::error::mortise check --format $format exited $status, not 1."
+              exit 1
+            fi
+          done
+          cat "$out/text"
+          grep -qxF 'Modules/Checkout/app/Listeners/RequestShipment.php:6: problem: Checkout and Shipping use each other. 2 files in Checkout, 4 files in Shipping.' "$out/text"
+          test "$(grep -cF 'problem: Checkout reads Modules\Billing\Models\Invoice directly.' "$out/text")" -eq 3
+          grep -qxF '2 problems, 1 warning. 7 modules checked against 2 rules and 4 checks.' "$out/text"
+          grep -qF '::error file=Modules/Checkout/app/Services/InvoiceSync.php,line=5,title=Public surface only::' "$out/github"
+          # No path names a drive or a root or holds a backslash. A path in text ends at the first space.
+          if grep -E '^([A-Za-z]:|/|[^ ]*\\)' "$out/text" || grep -E 'file=([A-Za-z]:|/|[^,]*\\)' "$out/github"; then
+            echo "::error::A path in the output is not relative with /."
+            exit 1
+          fi
+          jq -e '[.list[].check] == ["NoCircularUse", "PublicSurfaceOnly", "CoverageLimit"]' "$out/json"
+      - name: Check a folder that is not an app
         shell: bash
         run: |
           status=0
-          target/debug/mortise check fixtures/shop-api || status=$?
-          if [ "$status" -ne 1 ]; then
-            echo "::error::mortise check fixtures/shop-api exited $status, not 1."
-            exit 1
-          fi
+          target/debug/mortise check crates || status=$?
+          test "$status" -eq 3
+      # Users has an accepted surface in its module.json. A dry run needs no token.
       - name: Push shop-api without sending
         shell: bash
-        run: target/debug/mortise push --dry-run fixtures/shop-api
+        run: |
+          unset MORTISE_TOKEN
+          target/debug/mortise push --dry-run fixtures/shop-api > "$RUNNER_TEMP/push.json"
+          jq -e '.app_path == "fixtures/shop-api"' "$RUNNER_TEMP/push.json"
+          jq -e '.snapshot.modules[] | select(.name == "Users") | .surface.classes == ["Modules\\Users\\Contracts\\UserLookup"]' "$RUNNER_TEMP/push.json"
+          jq -e '[.snapshot.layout.modules_dir, .snapshot.layout.statuses_file, .snapshot.coverage_report.path,
+                  .snapshot.modules[].dir, .snapshot.links[].refs[].file]
+                 | all(test("^[A-Za-z]:|^/|\\\\") | not)' "$RUNNER_TEMP/push.json"
+          jq -e 'any(.snapshot.modules[].dir; . == "Modules/Billing")' "$RUNNER_TEMP/push.json"
       # The Tag release workflow publishes both crates to crates.io. This builds them as crates.io would,
       # from their packages, so a missing file or a wrong field shows here and not after a tag.
       # The feature testing builds only from files inside the crate. This checks it from the package,
