@@ -102,22 +102,34 @@ pub fn accepted_for(accepted: usize, total: usize) -> String {
 
 /// `Rule: other modules use only a module's public surface. Billing has none yet, so the
 /// folders Contracts and Events count.`
-pub fn rule_of_link(module: &str, rules: &mortise_core::Rules) -> String {
-    public_surface_rule(module, "has", rules)
+pub fn rule_of_link(module: &str, accepted: bool, rules: &mortise_core::Rules) -> String {
+    public_surface_rule(module, "has", accepted, rules)
 }
 
 /// Not in the spec: the rule under the files of two modules that use each other while
 /// the rule "No circular use" is off.
 /// `Rule: other modules use only a module's public surface. Checkout and Shipping have
 /// none yet, so the folders Contracts and Events count.`
-pub fn rule_of_links(a: &str, b: &str, rules: &mortise_core::Rules) -> String {
-    public_surface_rule(&format!("{a} and {b}"), "have", rules)
+pub fn rule_of_links(a: &str, b: &str, accepted: bool, rules: &mortise_core::Rules) -> String {
+    public_surface_rule(&format!("{a} and {b}"), "have", accepted, rules)
 }
 
-fn public_surface_rule(modules: &str, has: &str, rules: &mortise_core::Rules) -> String {
+fn public_surface_rule(
+    modules: &str,
+    has: &str,
+    accepted: bool,
+    rules: &mortise_core::Rules,
+) -> String {
     if !rules.public_surface_only {
         // Not in the spec: the rule is turned off.
         return "The rule about a module's public surface is turned off for this app.".to_owned();
+    }
+    if accepted {
+        // Not in the spec: a module with an accepted surface.
+        return format!(
+            "Rule: other modules use only a module's public surface. Where {modules} {has} an \
+             accepted one, only what it lists counts."
+        );
     }
     let folders = match rules.public_folders.as_slice() {
         [] => "no folders count".to_owned(),
@@ -195,7 +207,28 @@ pub const ROUTES_WITH_PREFIX: &str = "routes with this prefix";
 pub const A_CONSOLE_COMMAND: &str = "a console command";
 pub const NOT_USED_OUTSIDE: &str = "not used outside yet";
 pub const ADD_BY_HAND: &str = "Add a class, a route or a command";
-pub const CANNOT_STORE_SURFACE: &str = "The package cannot store a public surface yet";
+/// The first sentence is the spec's. Not in the spec: what to do next.
+pub fn cannot_store_surface(version: &str) -> String {
+    format!(
+        "The package cannot store a public surface yet. nwidart/laravel-modules {version} has \
+         no module:surface; update it to 13.5 or later."
+    )
+}
+/// Not in the spec: `module:surface` is not a command of the app's package.
+pub const NO_SURFACE_COMMAND: &str = "The package of this app has no module:surface command. \
+     Update nwidart/laravel-modules to 13.5 or later, then accept again.";
+pub const CHANGE: &str = "Change";
+pub const KEEP_ACCEPTED: &str = "Keep the accepted surface";
+pub const SCAN_MATCHES: &str = "The scan matches the accepted surface.";
+pub const NEW_IN_CODE: &str = "new in the code";
+pub const GONE_FROM_CODE: &str = "no longer in the code";
+pub const ADD_IT: &str = "add it";
+pub const REMOVE_IT: &str = "remove it";
+pub const COL_DIFFERENCE: &str = "Difference";
+pub const NOTHING: &str = "nothing";
+/// Not in the spec: the accepted surface holds classes without their kind.
+pub const CLASSES: &str = "Classes";
+pub const NOTHING_CHANGES_YET: &str = " Nothing changes until you accept.";
 pub const ROUTES_NOT_READ: &str =
     "Routes were not read. Connect an environment or set how PHP runs, then scan again.";
 /// Not in the spec as a control. The spec says that the proposal can be copied as text.
@@ -376,3 +409,105 @@ pub fn typed_verdict(typed: &mortise_core::Typed, module: &str) -> String {
 pub const VIEW: &str = "View";
 /// Not in the spec: an app whose links break no rule.
 pub const NO_LINK_BREAKS_A_RULE: &str = "No link breaks a rule.";
+
+/// `Public surface of Billing`
+pub fn surface_of(module: &str) -> String {
+    format!("Public surface of {module}")
+}
+
+/// Not in the spec, which has the date it was accepted: Mortise keeps no history,
+/// and `module.json` holds no date. `Accepted, 21 entries`
+pub fn accepted_state(entries: usize) -> String {
+    match entries {
+        1 => "Accepted, 1 entry".to_owned(),
+        n => format!("Accepted, {n} entries"),
+    }
+}
+
+/// Not in the spec: an accepted surface with empty lists.
+pub fn offers_nothing(module: &str) -> String {
+    format!("{module} offers nothing to other modules, HTTP clients or the command line.")
+}
+
+/// `Left out: Modules\Billing\Models\Invoice. The 3 files of Checkout that read it stay a finding.`
+pub fn left_out(classes: &[&str], files: usize, modules: &[&str]) -> String {
+    let files = match files {
+        1 => "The 1 file".to_owned(),
+        n => format!("The {n} files"),
+    };
+    let it = if classes.len() == 1 { "it" } else { "them" };
+    format!(
+        "Left out: {}. {files} of {} that read {it} stay a finding.",
+        crate::strings::and_list(classes),
+        crate::strings::and_list(modules)
+    )
+}
+
+/// `The scan differs from the accepted surface in 2 places.`
+pub fn scan_differs(places: usize) -> String {
+    match places {
+        1 => "The scan differs from the accepted surface in 1 place.".to_owned(),
+        n => format!("The scan differs from the accepted surface in {n} places."),
+    }
+}
+
+/// `Differences from the accepted surface of Billing`
+pub fn differences_of(module: &str) -> String {
+    format!("Differences from the accepted surface of {module}")
+}
+
+/// `20 entries are the same as accepted and are not listed.`
+pub fn same_as_accepted(entries: usize) -> String {
+    match entries {
+        1 => "1 entry is the same as accepted and is not listed.".to_owned(),
+        n => format!("{n} entries are the same as accepted and are not listed."),
+    }
+}
+
+/// `Accept 2 changes`
+pub fn accept_changes(n: usize) -> String {
+    match n {
+        1 => "Accept 1 change".to_owned(),
+        n => format!("Accept {n} changes"),
+    }
+}
+
+/// `Accepted the public surface of Billing: 21 entries.`
+pub fn accepted_surface(module: &str, entries: usize) -> String {
+    match entries {
+        1 => format!("Accepted the public surface of {module}: 1 entry."),
+        n => format!("Accepted the public surface of {module}: {n} entries."),
+    }
+}
+
+/// Not in the spec: the title of the dialog that shows the command before it runs.
+pub fn accept_title(module: &str) -> String {
+    format!("Accept the public surface of {module}?")
+}
+
+/// Not in the spec: the body of that dialog.
+pub fn accept_body(manifest: &str) -> String {
+    format!(
+        "Mortise runs this command of the package. It stores the surface in {manifest}, and \
+         Mortise reads the app again."
+    )
+}
+
+/// Not in the spec: the standard input of the command, under it in the dialog.
+pub fn accept_input(entries: usize) -> String {
+    match entries {
+        1 => "Its standard input is the 1 entry, as one JSON object.".to_owned(),
+        n => format!("Its standard input is the {n} entries, as one JSON object."),
+    }
+}
+
+/// Not in the spec: `module:surface` stored nothing.
+pub fn surface_not_stored(module: &str, reason: &str) -> String {
+    format!("The public surface of {module} was not stored: {reason}")
+}
+
+/// `Modules\Billing\Models\Invoice is still left out.`
+pub fn still_left_out(classes: &[&str]) -> String {
+    let is = if classes.len() == 1 { "is" } else { "are" };
+    format!("{} {is} still left out.", crate::strings::and_list(classes))
+}

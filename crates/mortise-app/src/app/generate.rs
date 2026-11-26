@@ -237,7 +237,7 @@ impl MortiseApp {
                     return;
                 };
                 let package = app.package.clone();
-                self.start_read(index, words, ReadFor::Catalog { package });
+                self.start_read(index, words, None, ReadFor::Catalog { package });
                 return;
             }
             GenerateAsk::ListFiles { words } => {
@@ -253,7 +253,7 @@ impl MortiseApp {
                 let args = mortise_core::with_dry_run(words.clone());
                 let words = words.clone();
                 let place = place_of(&self.settings.apps[index].php);
-                self.start_read(index, args, ReadFor::DryRun { words, place });
+                self.start_read(index, args, None, ReadFor::DryRun { words, place });
                 return;
             }
             GenerateAsk::Run(run) if run.generator != MODULE_MAKE || !forced(runner, &run.args) => {

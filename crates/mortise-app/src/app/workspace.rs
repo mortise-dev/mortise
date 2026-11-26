@@ -53,6 +53,14 @@ pub enum WorkAction {
     },
     /// Start a generator of the Generate tab, or ask first.
     Generate(crate::generate::view::GenerateAsk),
+    /// Store this surface as the accepted public surface of a module, after its
+    /// command is shown.
+    AcceptSurface {
+        module: String,
+        surface: mortise_core::AcceptedSurface,
+    },
+    /// Say something in a toast.
+    Said(&'static str),
 }
 
 /// The five tabs. They are in every build, in this order, with the keys 1 to 5.

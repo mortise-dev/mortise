@@ -1,0 +1,15 @@
+{
+  "command": "php artisan module:surface Billing --set --stdin --json --no-interaction --ansi",
+  "args": [
+    "module:surface",
+    "Billing",
+    "--set",
+    "--stdin",
+    "--json"
+  ],
+  "made_with": "nwidart/laravel-modules 13.5.0, laravel/framework 13.44.1, PHP 8.4.27, macOS",
+  "exit": 0,
+  "stdout": "{\"module\":\"Billing\",\"path\":\"/tmp/scratch-app/Modules/Billing/module.json\",\"surface\":{\"classes\":[\"Modules\\\\Billing\\\\Contracts\\\\PaymentGateway\",\"Modules\\\\Billing\\\\Events\\\\InvoicePaid\"],\"routes\":[\"api/billing/*\"],\"commands\":[\"billing:send-invoices\"]},\"changed\":true}\n",
+  "stderr": "\n  \u001b[37;44m INFO \u001b[39;49m The surface of module \u001b[1m[Billing]\u001b[22m was saved:  \n\n  \u001b[32;1mClasses\u001b[39;22m \u001b[90m..................................................................\u001b[39m 2  \n  Modules\\Billing\\Contracts\\PaymentGateway\n  Modules\\Billing\\Events\\InvoicePaid\n  \u001b[32;1mRoutes\u001b[39;22m \u001b[90m...................................................................\u001b[39m 1  \n  api/billing/*\n  \u001b[32;1mCommands\u001b[39;22m \u001b[90m.................................................................\u001b[39m 1  \n  billing:send-invoices\n\n",
+  "root": "/tmp/scratch-app"
+}

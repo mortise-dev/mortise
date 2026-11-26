@@ -360,6 +360,35 @@ fn boundary_and_the_public_surface() {
             harness.step();
         }
         shots.take_frozen(&mut harness, "s5.6-surface-scanning");
+
+        // S5.8 and S5.9: the accepted surface of Users, then a later scan after an
+        // interface came and an accepted class went.
+        let mut desk = Desk::new();
+        desk.theme = theme;
+        let root = desk.app("shop-api");
+        let users = root.join("Modules/Users");
+        std::fs::write(
+            users.join("app/Contracts/Directory.php"),
+            "<?php\n\nnamespace Modules\\Users\\Contracts;\n\ninterface Directory\n{\n}\n",
+        )
+        .unwrap();
+        let manifest = users.join("module.json");
+        let json = std::fs::read_to_string(&manifest).unwrap().replace(
+            r#""Modules\\Users\\Contracts\\UserLookup""#,
+            r#""Modules\\Users\\Contracts\\UserLookup", "Modules\\Users\\Models\\Gone""#,
+        );
+        std::fs::write(&manifest, json).unwrap();
+        desk.knows(&[(&root, "SA")]);
+        let mut harness = desk.start();
+        select(&mut harness, "Users");
+        press(&mut harness, Key::Num2);
+        press(&mut harness, Key::P);
+        shots.take(&mut harness, "s5.8-surface-accepted");
+        harness
+            .get_by_role_and_label(Role::Button, "Scan again")
+            .click();
+        harness.run_steps(6);
+        shots.take(&mut harness, "s5.9-surface-differences");
     }
 }
 

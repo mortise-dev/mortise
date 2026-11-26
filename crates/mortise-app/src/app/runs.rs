@@ -26,7 +26,13 @@ impl MortiseApp {
 
     /// Starts a read of package data in the app at `index` (design D3). It does not
     /// open the drawer. A read that cannot start ends at once with its error.
-    pub(super) fn start_read(&mut self, index: usize, args: Vec<String>, purpose: ReadFor) {
+    pub(super) fn start_read(
+        &mut self,
+        index: usize,
+        args: Vec<String>,
+        input: Option<Vec<u8>>,
+        purpose: ReadFor,
+    ) {
         let (Some(open), Some(entry)) = (self.apps.get(index), self.settings.apps.get(index))
         else {
             return;
@@ -34,7 +40,13 @@ impl MortiseApp {
         if open.busy().is_some() {
             return;
         }
-        match mortise_core::Read::start(&self.runs, &entry.root, &entry.php, &args) {
+        match mortise_core::Read::start_with_input(
+            &self.runs,
+            &entry.root,
+            &entry.php,
+            &args,
+            input,
+        ) {
             Ok(read) => {
                 self.apps[index].reading = Some(PackageRead {
                     read,
@@ -61,6 +73,7 @@ impl MortiseApp {
                 connection,
                 place,
             } => self.migrations_read(index, target, &connection, place, end),
+            ReadFor::Surface { module, entries } => self.surface_read(index, &module, entries, end),
         }
     }
 
@@ -77,7 +90,7 @@ impl MortiseApp {
             connection,
             place,
         };
-        self.start_read(index, words, purpose);
+        self.start_read(index, words, None, purpose);
     }
 
     /// Takes in a read of the migration state of `target` on `connection` (design
