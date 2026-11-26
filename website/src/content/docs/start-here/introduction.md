@@ -54,4 +54,6 @@ of your own.
 | Reference | Look up a screen, a key, a file or a setting, such as [Settings](/mortise/reference/settings/) |
 | Explanation | Understand why Mortise works as it does, such as [Module boundaries](/mortise/explanation/boundaries/) |
 
+Something wrong, or a change you want? [Report a problem](/mortise/how-to/report-a-problem/).
+
 Next: [Installation](/mortise/start-here/installation/).

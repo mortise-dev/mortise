@@ -19,6 +19,7 @@
 <p align="center">
   <a href="https://github.com/nWidart/mortise/releases/latest"><b>Download</b></a> &middot;
   <a href="https://nwidart.github.io/mortise/"><b>Documentation</b></a> &middot;
+  <a href="https://github.com/nWidart/mortise/issues/new?template=problem.yml"><b>Report a problem</b></a> &middot;
   <a href="#what-it-does">What it does</a> &middot;
   <a href="#run">Build from source</a>
 </p>

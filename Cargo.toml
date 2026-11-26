@@ -46,6 +46,7 @@ rayon = "1"
 eframe = { version = "0.37.0", default-features = false, features = [
     "accesskit",
     "clipboard",
+    "links",
     "persistence",
     "system_fonts",
     "wayland",
