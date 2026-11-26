@@ -13,6 +13,8 @@ default = ["watch", "actuator", "os-secrets", "run"]
 actuator = ["dep:ureq"]
 # Keeping secrets in the credential store of the operating system.
 os-secrets = ["dep:keyring"]
+# The push document that `mortise push` sends to Mortise Cloud. No dependency.
+push = []
 # Running artisan through the PHP the user chose for an app. A tool that only reads can leave it out.
 run = ["dep:rustix"]
 # A small actuator for tests, also for the tests of other crates.
@@ -50,7 +52,8 @@ path = "src/bin/fake-artisan.rs"
 required-features = ["testing"]
 
 [dev-dependencies]
-mortise-core = { path = ".", features = ["testing"] }
+boon.workspace = true
+mortise-core = { path = ".", features = ["testing", "push"] }
 
 [lints]
 workspace = true

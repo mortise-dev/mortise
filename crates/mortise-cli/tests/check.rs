@@ -1,29 +1,15 @@
 //! `mortise check` on the fixture shop-api: its exit codes and its three formats.
 //! The rules themselves are tested in `mortise-core`.
 
-use std::path::{Path, PathBuf};
+mod common;
+
 use std::process::{Command, Output};
 
-fn fixture() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/shop-api")
-}
+use common::fixture;
 
 /// A copy of shop-api with this `mortise.json`.
 fn copy_with(rules: &str) -> tempfile::TempDir {
-    fn copy_dir(from: &Path, to: &Path) {
-        std::fs::create_dir_all(to).unwrap();
-        for entry in std::fs::read_dir(from).unwrap() {
-            let entry = entry.unwrap();
-            let target = to.join(entry.file_name());
-            if entry.file_type().unwrap().is_dir() {
-                copy_dir(&entry.path(), &target);
-            } else {
-                std::fs::copy(entry.path(), target).unwrap();
-            }
-        }
-    }
-    let app = tempfile::tempdir().unwrap();
-    copy_dir(&fixture(), app.path());
+    let app = common::copy_of_fixture();
     std::fs::write(app.path().join("mortise.json"), rules).unwrap();
     app
 }
@@ -133,6 +119,13 @@ fn a_wrong_command_line_exits_2() {
     assert_eq!(output.status.code(), Some(2));
     assert!(stdout(&output).is_empty());
     assert!(stderr(&output).contains("--format takes text, json or github, not sarif."));
+
+    // A flag left without its value does not take the next flag as its value.
+    let output = check(&["--coverage", "--format", "github"]);
+    assert_eq!(output.status.code(), Some(2));
+    assert!(
+        stderr(&output).contains("--coverage needs a value, and --format looks like an option.")
+    );
 
     // A report given with --coverage must be a clover report: no other report is used instead.
     let folder = tempfile::tempdir().unwrap();

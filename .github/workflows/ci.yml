@@ -259,6 +259,9 @@ jobs:
             echo "::error::mortise check fixtures/shop-api exited $status, not 1."
             exit 1
           fi
+      - name: Push shop-api without sending
+        shell: bash
+        run: target/debug/mortise push --dry-run fixtures/shop-api
 
   # Feature gates do not depend on the platform, so Linux is enough. Each feature builds alone,
   # so a gate on the wrong file fails here and not only in a build with the default features.
@@ -281,7 +284,7 @@ jobs:
         env:
           RUSTFLAGS: -D warnings
         run: |
-          for features in "" watch actuator os-secrets run testing; do
+          for features in "" watch actuator os-secrets run testing push; do
             echo "::group::mortise-core with features: ${features:-none}"
             cargo check -p mortise-core --lib --bins --no-default-features ${features:+--features "$features"} --locked
             echo "::endgroup::"

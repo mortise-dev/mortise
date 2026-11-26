@@ -1,0 +1,81 @@
+---
+title: Send a read to Mortise Cloud
+description: Run mortise push in a CI job, so that Mortise Cloud keeps the read of each commit and compares each pull request with its base.
+sidebar:
+  order: 16
+---
+import { Steps, Aside } from '@astrojs/starlight/components';
+
+`mortise push` reads an app the way `mortise check` does and sends what it read to Mortise Cloud, the
+paid service beside Mortise. The cloud keeps the read of each commit and compares a pull request with
+its base. Mortise itself judges one commit; `push` only sends.
+
+<Steps>
+
+1. Look at what would be sent. From the app folder:
+
+   ```sh
+   mortise push --dry-run
+   ```
+
+   The document holds names, paths relative to the app, counts, and the class names that cross module
+   boundaries. It holds no source code and nothing from `.env`. A dry run sends nothing and needs no
+   token. To get the tool, see [Build Mortise from source](/mortise/how-to/build-from-source/#build-the-command-line-tool).
+
+2. Make a token for the app in Mortise Cloud, and keep it as a secret of the repository named
+   `MORTISE_TOKEN`. The tool reads the token from that variable only and never prints it.
+
+3. Add the push before the check in your workflow, so that a pull request with a problem still reaches
+   the cloud:
+
+   ```yaml
+   jobs:
+     boundaries:
+       runs-on: ubuntu-latest
+       steps:
+         - uses: actions/checkout@v5
+         - run: cargo install --locked --git https://github.com/nWidart/mortise mortise-cli
+         - run: mortise push
+           env:
+             MORTISE_TOKEN: ${{ secrets.MORTISE_TOKEN }}
+         - run: mortise check --format github
+   ```
+
+   On GitHub Actions the tool takes the pull request and the run from the environment, and the
+   commit that is checked out.
+   It prints the URL of the snapshot in the cloud.
+
+</Steps>
+
+<Aside>
+GitHub gives no secrets to a pull request from a fork. There `mortise push` prints a notice and exits 0.
+A Dependabot pull request also has no secrets but is not a fork: skip the step for it with
+`if: github.actor != 'dependabot[bot]'`.
+</Aside>
+
+## Record a deploy
+
+In the job that deploys, add the environment:
+
+```sh
+mortise push --environment production
+```
+
+The cloud records a deploy of the commit to that environment.
+
+## When the cloud is down
+
+An outage never fails the build. The tool tries again three times, then warns and exits 0. A plan
+limit also warns and exits 0. A wrong token, or a document the cloud refuses, exits 4: only you can fix
+it. The exit codes are in [Command line tool](/mortise/reference/command-line/#exit-codes-of-push).
+
+## Outside GitHub Actions
+
+Give what the environment would give:
+
+```sh
+mortise push --branch feature/split --pull-request 42 --base-branch main --base-commit <sha>
+```
+
+The commit and the branch default to those of `HEAD`. `MORTISE_CLOUD_URL` names another host, such as a
+staging one.

@@ -143,6 +143,23 @@ sets the coverage of the app for the window and the tool; the flags `--coverage-
 `--coverage` win over it. The [documentation](https://nwidart.github.io/mortise/reference/command-line/)
 has the rest.
 
+## Send a read to Mortise Cloud
+
+`mortise push` sends one read of the app to [Mortise Cloud](https://mortisecloud.com), the paid
+service that keeps the history of reads and compares a pull request with its base. Mortise itself
+judges one commit; the cloud does what spans commits.
+
+```
+MORTISE_TOKEN=... mortise push /path/to/laravel-app
+mortise push /path/to/laravel-app --dry-run
+```
+
+The token comes from `MORTISE_TOKEN` only and is never printed. `--dry-run` prints the document
+and sends nothing; it needs no token. On GitHub Actions the pull request and the run come from the
+environment, and the commit is the one checked out. An outage of the cloud never fails the build:
+the tool warns and exits 0. A refused token or document exits 4. The
+[how-to](https://nwidart.github.io/mortise/how-to/send-to-mortise-cloud/) has a workflow.
+
 ## Install
 
 Each [release](https://github.com/nWidart/mortise/releases/latest) has:
@@ -180,7 +197,8 @@ cargo test --workspace
 |---|---|
 | `crates/mortise-core/tests` | Reading an app, git, the file watcher, the actuator client against a local stub, the public surface scan |
 | `crates/mortise-app/tests` | The interface, run headless and asked by role and name, as a screen reader would |
-| `crates/mortise-cli/tests` | `mortise check` on the fixture shop-api: its exit codes and its three formats |
+| `crates/mortise-cli/tests` | `mortise check` on the fixture shop-api: its exit codes and its three formats. `mortise push` against a local stub of the cloud |
+| `crates/mortise-core/tests/push.rs` | The push document of shop-api against a committed file and the cloud's JSON Schema |
 | `crates/mortise-app/tests/images.rs` | The screens in both themes against the images in `tests/snapshots`. macOS only |
 | `crates/mortise-app/tests/accessibility.rs` | Every control has a name and a target of 24 by 24 px |
 | `crates/mortise-core/tests/real_php.rs` | The package's commands in a real Laravel app. Ignored by default; a CI job that is not required runs them (see `AGENTS.md`) |
@@ -201,7 +219,7 @@ UPDATE_SNAPSHOTS=1 cargo test -p mortise-app --test images
 |---|---|
 | `crates/mortise-core` | Everything that is not drawing: reading an app into a snapshot, the actuator client, the scan. No interface dependency. |
 | `crates/mortise-app` | The window, built with egui and eframe. Binary `mortise-desktop`; the installers and the app are named Mortise. |
-| `crates/mortise-cli` | The command line tool, binary `mortise`: `mortise check`. It uses `mortise-core` without its default features. |
+| `crates/mortise-cli` | The command line tool, binary `mortise`: `mortise check` and `mortise push`. It uses `mortise-core` without its default features. |
 | `assets/brand` | The README banner and the social preview, drawn from HTML by `tools/brand-images.sh`. |
 | `assets/fonts` | Asap and Inconsolata, each with its `OFL.txt`. |
 | `assets/icon` | The app icon: two drawings, `mortise.svg` and `mortise-16.svg`, and the files made from them for macOS (`.icns`), Windows (`.ico`) and Linux (hicolor PNGs). |

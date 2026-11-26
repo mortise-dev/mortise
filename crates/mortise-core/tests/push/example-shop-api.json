@@ -1,0 +1,732 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-11-24T14:03:11Z",
+  "tool": {
+    "name": "mortise",
+    "version": "0.2.0"
+  },
+  "app_path": ".",
+  "git": {
+    "repository": "acme/shop-api",
+    "commit": "9b2e4c71d0a85f3e6c1b7a24d8e0f5a3c9d61e2b",
+    "head_commit": "c41f0d9a7e3b52816d4c0a9f1e7b3d5a2c8e6f40",
+    "branch": "split-invoices",
+    "base_branch": "main",
+    "base_commit": "e07a3d5c19b84f2a6d0c7e1b9f3a5d8c2e4b6a10",
+    "pull_request": 42,
+    "shallow": false
+  },
+  "ci": {
+    "provider": "github-actions",
+    "run_id": "12093847561",
+    "run_attempt": 1,
+    "run_url": "https://github.com/acme/shop-api/actions/runs/12093847561"
+  },
+  "environment": null,
+  "snapshot": {
+    "name": "shop-api",
+    "laravel": {
+      "raw": "v13.2.0",
+      "alias": null
+    },
+    "package": {
+      "raw": "v13.3.0",
+      "alias": null
+    },
+    "actuator": {
+      "raw": "1.0.0",
+      "alias": null
+    },
+    "layout": {
+      "modules_dir": "Modules",
+      "namespace": "Modules",
+      "app_folder": "app/",
+      "statuses_file": "modules_statuses.json",
+      "activator": "file",
+      "has_config": true,
+      "assumed": []
+    },
+    "modules": [
+      {
+        "name": "Billing",
+        "code": "BLN",
+        "dir": "Modules/Billing",
+        "state": "On",
+        "description": "",
+        "priority": 0,
+        "manifest": "Valid",
+        "namespace": "Modules\\Billing",
+        "files": 19,
+        "lines": 203,
+        "kinds": [
+          {
+            "kind": "Events",
+            "files": 3
+          },
+          {
+            "kind": "Commands",
+            "files": 2
+          },
+          {
+            "kind": "Contracts",
+            "files": 2
+          },
+          {
+            "kind": "Other",
+            "files": 2
+          },
+          {
+            "kind": "Providers",
+            "files": 2
+          },
+          {
+            "kind": "Routes",
+            "files": 2
+          },
+          {
+            "kind": "Tests",
+            "files": 2
+          },
+          {
+            "kind": "Config",
+            "files": 1
+          },
+          {
+            "kind": "Controllers",
+            "files": 1
+          },
+          {
+            "kind": "Migrations",
+            "files": 1
+          },
+          {
+            "kind": "Models",
+            "files": 1
+          }
+        ],
+        "commands": [
+          "billing:retry-failed-payments",
+          "billing:send-invoices"
+        ],
+        "tests": 5,
+        "coverage": {
+          "covered": 43,
+          "statements": 53
+        },
+        "churn": {
+          "commits": 3,
+          "last_commit": 1795394002
+        },
+        "uncommitted": null
+      },
+      {
+        "name": "Catalog",
+        "code": "CTL",
+        "dir": "Modules/Catalog",
+        "state": "On",
+        "description": "",
+        "priority": 0,
+        "manifest": "Valid",
+        "namespace": "Modules\\Catalog",
+        "files": 10,
+        "lines": 90,
+        "kinds": [
+          {
+            "kind": "Other",
+            "files": 2
+          },
+          {
+            "kind": "Providers",
+            "files": 2
+          },
+          {
+            "kind": "Routes",
+            "files": 2
+          },
+          {
+            "kind": "Config",
+            "files": 1
+          },
+          {
+            "kind": "Contracts",
+            "files": 1
+          },
+          {
+            "kind": "Models",
+            "files": 1
+          },
+          {
+            "kind": "Tests",
+            "files": 1
+          }
+        ],
+        "commands": [],
+        "tests": 4,
+        "coverage": {
+          "covered": 10,
+          "statements": 13
+        },
+        "churn": {
+          "commits": 2,
+          "last_commit": 1795370087
+        },
+        "uncommitted": null
+      },
+      {
+        "name": "Checkout",
+        "code": "CHK",
+        "dir": "Modules/Checkout",
+        "state": "On",
+        "description": "",
+        "priority": 0,
+        "manifest": "Valid",
+        "namespace": "Modules\\Checkout",
+        "files": 20,
+        "lines": 212,
+        "kinds": [
+          {
+            "kind": "Listeners",
+            "files": 4
+          },
+          {
+            "kind": "Services",
+            "files": 3
+          },
+          {
+            "kind": "Events",
+            "files": 2
+          },
+          {
+            "kind": "Other",
+            "files": 2
+          },
+          {
+            "kind": "Providers",
+            "files": 2
+          },
+          {
+            "kind": "Routes",
+            "files": 2
+          },
+          {
+            "kind": "Config",
+            "files": 1
+          },
+          {
+            "kind": "Contracts",
+            "files": 1
+          },
+          {
+            "kind": "Controllers",
+            "files": 1
+          },
+          {
+            "kind": "Models",
+            "files": 1
+          },
+          {
+            "kind": "Tests",
+            "files": 1
+          }
+        ],
+        "commands": [],
+        "tests": 2,
+        "coverage": {
+          "covered": 27,
+          "statements": 50
+        },
+        "churn": {
+          "commits": 2,
+          "last_commit": 1795370087
+        },
+        "uncommitted": null
+      },
+      {
+        "name": "Inventory",
+        "code": "INV",
+        "dir": "Modules/Inventory",
+        "state": "On",
+        "description": "",
+        "priority": 0,
+        "manifest": "Valid",
+        "namespace": "Modules\\Inventory",
+        "files": 9,
+        "lines": 75,
+        "kinds": [
+          {
+            "kind": "Other",
+            "files": 2
+          },
+          {
+            "kind": "Providers",
+            "files": 2
+          },
+          {
+            "kind": "Routes",
+            "files": 2
+          },
+          {
+            "kind": "Config",
+            "files": 1
+          },
+          {
+            "kind": "Jobs",
+            "files": 1
+          },
+          {
+            "kind": "Tests",
+            "files": 1
+          }
+        ],
+        "commands": [],
+        "tests": 2,
+        "coverage": {
+          "covered": 18,
+          "statements": 25
+        },
+        "churn": {
+          "commits": 2,
+          "last_commit": 1795370087
+        },
+        "uncommitted": null
+      },
+      {
+        "name": "Notifications",
+        "code": "NTF",
+        "dir": "Modules/Notifications",
+        "state": "On",
+        "description": "",
+        "priority": 0,
+        "manifest": "Valid",
+        "namespace": "Modules\\Notifications",
+        "files": 9,
+        "lines": 68,
+        "kinds": [
+          {
+            "kind": "Listeners",
+            "files": 2
+          },
+          {
+            "kind": "Other",
+            "files": 2
+          },
+          {
+            "kind": "Providers",
+            "files": 2
+          },
+          {
+            "kind": "Routes",
+            "files": 2
+          },
+          {
+            "kind": "Config",
+            "files": 1
+          }
+        ],
+        "commands": [],
+        "tests": 0,
+        "coverage": {
+          "covered": 7,
+          "statements": 18
+        },
+        "churn": {
+          "commits": 2,
+          "last_commit": 1795370087
+        },
+        "uncommitted": null
+      },
+      {
+        "name": "Shipping",
+        "code": "SHP",
+        "dir": "Modules/Shipping",
+        "state": "On",
+        "description": "",
+        "priority": 0,
+        "manifest": "Valid",
+        "namespace": "Modules\\Shipping",
+        "files": 14,
+        "lines": 128,
+        "kinds": [
+          {
+            "kind": "Contracts",
+            "files": 2
+          },
+          {
+            "kind": "Other",
+            "files": 2
+          },
+          {
+            "kind": "Providers",
+            "files": 2
+          },
+          {
+            "kind": "Routes",
+            "files": 2
+          },
+          {
+            "kind": "Config",
+            "files": 1
+          },
+          {
+            "kind": "Controllers",
+            "files": 1
+          },
+          {
+            "kind": "Jobs",
+            "files": 1
+          },
+          {
+            "kind": "Listeners",
+            "files": 1
+          },
+          {
+            "kind": "Services",
+            "files": 1
+          },
+          {
+            "kind": "Tests",
+            "files": 1
+          }
+        ],
+        "commands": [],
+        "tests": 2,
+        "coverage": {
+          "covered": 33,
+          "statements": 50
+        },
+        "churn": {
+          "commits": 2,
+          "last_commit": 1795370087
+        },
+        "uncommitted": null
+      },
+      {
+        "name": "Users",
+        "code": "USR",
+        "dir": "Modules/Users",
+        "state": "On",
+        "description": "",
+        "priority": 0,
+        "manifest": "Valid",
+        "namespace": "Modules\\Users",
+        "files": 10,
+        "lines": 85,
+        "kinds": [
+          {
+            "kind": "Other",
+            "files": 2
+          },
+          {
+            "kind": "Providers",
+            "files": 2
+          },
+          {
+            "kind": "Routes",
+            "files": 2
+          },
+          {
+            "kind": "Config",
+            "files": 1
+          },
+          {
+            "kind": "Contracts",
+            "files": 1
+          },
+          {
+            "kind": "Models",
+            "files": 1
+          },
+          {
+            "kind": "Tests",
+            "files": 1
+          }
+        ],
+        "commands": [],
+        "tests": 3,
+        "coverage": {
+          "covered": 22,
+          "statements": 25
+        },
+        "churn": {
+          "commits": 2,
+          "last_commit": 1795370087
+        },
+        "uncommitted": null
+      }
+    ],
+    "coverage_report": {
+      "path": "build/coverage/clover.xml",
+      "written": 1795369951
+    },
+    "links": [
+      {
+        "from": "Checkout",
+        "to": "Billing",
+        "refs": [
+          {
+            "file": "Modules/Checkout/app/Http/Controllers/OrderController.php",
+            "line": 5,
+            "class": "Modules\\Billing\\Models\\Invoice",
+            "internal": true
+          },
+          {
+            "file": "Modules/Checkout/app/Listeners/CreateInvoiceOnPaid.php",
+            "line": 5,
+            "class": "Modules\\Billing\\Models\\Invoice",
+            "internal": true
+          },
+          {
+            "file": "Modules/Checkout/app/Services/InvoiceSync.php",
+            "line": 5,
+            "class": "Modules\\Billing\\Models\\Invoice",
+            "internal": true
+          },
+          {
+            "file": "Modules/Checkout/app/Listeners/MarkOrderPaid.php",
+            "line": 5,
+            "class": "Modules\\Billing\\Events\\InvoicePaid",
+            "internal": false
+          },
+          {
+            "file": "Modules/Checkout/app/Listeners/SendReceipt.php",
+            "line": 5,
+            "class": "Modules\\Billing\\Events\\InvoicePaid",
+            "internal": false
+          },
+          {
+            "file": "Modules/Checkout/app/Services/PaymentService.php",
+            "line": 5,
+            "class": "Modules\\Billing\\Contracts\\PaymentGateway",
+            "internal": false
+          }
+        ],
+        "circular": false
+      },
+      {
+        "from": "Checkout",
+        "to": "Catalog",
+        "refs": [
+          {
+            "file": "Modules/Checkout/app/Http/Controllers/OrderController.php",
+            "line": 6,
+            "class": "Modules\\Catalog\\Contracts\\ProductLookup",
+            "internal": false
+          }
+        ],
+        "circular": false
+      },
+      {
+        "from": "Checkout",
+        "to": "Shipping",
+        "refs": [
+          {
+            "file": "Modules/Checkout/app/Listeners/RequestShipment.php",
+            "line": 6,
+            "class": "Modules\\Shipping\\Contracts\\ShipmentRequester",
+            "internal": false
+          },
+          {
+            "file": "Modules/Checkout/app/Services/ShippingQuote.php",
+            "line": 5,
+            "class": "Modules\\Shipping\\Contracts\\RateCalculator",
+            "internal": false
+          }
+        ],
+        "circular": true
+      },
+      {
+        "from": "Checkout",
+        "to": "Users",
+        "refs": [
+          {
+            "file": "Modules/Checkout/app/Models/Order.php",
+            "line": 6,
+            "class": "Modules\\Users\\Contracts\\UserLookup",
+            "internal": false
+          }
+        ],
+        "circular": false
+      },
+      {
+        "from": "Inventory",
+        "to": "Catalog",
+        "refs": [
+          {
+            "file": "Modules/Inventory/app/Jobs/SyncStock.php",
+            "line": 5,
+            "class": "Modules\\Catalog\\Contracts\\ProductLookup",
+            "internal": false
+          }
+        ],
+        "circular": false
+      },
+      {
+        "from": "Notifications",
+        "to": "Billing",
+        "refs": [
+          {
+            "file": "Modules/Notifications/app/Listeners/NotifyInvoicePaid.php",
+            "line": 5,
+            "class": "Modules\\Billing\\Events\\InvoicePaid",
+            "internal": false
+          }
+        ],
+        "circular": false
+      },
+      {
+        "from": "Notifications",
+        "to": "Checkout",
+        "refs": [
+          {
+            "file": "Modules/Notifications/app/Listeners/NotifyOrderPaid.php",
+            "line": 5,
+            "class": "Modules\\Checkout\\Events\\OrderPaid",
+            "internal": false
+          }
+        ],
+        "circular": false
+      },
+      {
+        "from": "Shipping",
+        "to": "Checkout",
+        "refs": [
+          {
+            "file": "Modules/Shipping/app/Http/Controllers/TrackingController.php",
+            "line": 5,
+            "class": "Modules\\Checkout\\Contracts\\OrderLookup",
+            "internal": false
+          },
+          {
+            "file": "Modules/Shipping/app/Jobs/SyncTracking.php",
+            "line": 5,
+            "class": "Modules\\Checkout\\Events\\OrderShipped",
+            "internal": false
+          },
+          {
+            "file": "Modules/Shipping/app/Listeners/CreateShipmentForOrder.php",
+            "line": 5,
+            "class": "Modules\\Checkout\\Events\\OrderPaid",
+            "internal": false
+          },
+          {
+            "file": "Modules/Shipping/app/Services/LabelPrinter.php",
+            "line": 5,
+            "class": "Modules\\Checkout\\Contracts\\OrderLookup",
+            "internal": false
+          }
+        ],
+        "circular": true
+      }
+    ],
+    "cycles": [
+      {
+        "modules": [
+          "Checkout",
+          "Shipping"
+        ],
+        "carrier": "Checkout",
+        "files": [
+          [
+            "Checkout",
+            2
+          ],
+          [
+            "Shipping",
+            4
+          ]
+        ]
+      }
+    ],
+    "rules": {
+      "no_circular_use": true,
+      "public_surface_only": true,
+      "public_folders": [
+        "Contracts",
+        "Events"
+      ]
+    },
+    "rules_source": "Defaults",
+    "findings": {
+      "list": [
+        {
+          "severity": "Problem",
+          "check": "NoCircularUse",
+          "module": "Checkout",
+          "detail": {
+            "CircularUse": {
+              "files": [
+                [
+                  "Checkout",
+                  2
+                ],
+                [
+                  "Shipping",
+                  4
+                ]
+              ]
+            }
+          }
+        },
+        {
+          "severity": "Problem",
+          "check": "PublicSurfaceOnly",
+          "module": "Checkout",
+          "detail": {
+            "ReadsInternals": {
+              "of": "Billing",
+              "files": 3,
+              "classes": [
+                "Modules\\Billing\\Models\\Invoice"
+              ]
+            }
+          }
+        },
+        {
+          "severity": "Warning",
+          "check": "CoverageLimit",
+          "module": "Notifications",
+          "detail": {
+            "LowCoverage": {
+              "percent": 39,
+              "limit": 50
+            }
+          }
+        }
+      ],
+      "checks": [
+        {
+          "check": "NoCircularUse",
+          "checked": 7,
+          "findings": 1
+        },
+        {
+          "check": "PublicSurfaceOnly",
+          "checked": 7,
+          "findings": 1
+        },
+        {
+          "check": "ValidManifest",
+          "checked": 7,
+          "findings": 0
+        },
+        {
+          "check": "NamespaceMatchesFolder",
+          "checked": 7,
+          "findings": 0
+        },
+        {
+          "check": "NoStaleStatus",
+          "checked": 7,
+          "findings": 0
+        },
+        {
+          "check": "CoverageLimit",
+          "checked": 7,
+          "findings": 1
+        }
+      ],
+      "todo": []
+    },
+    "coverage_limit": 50
+  }
+}

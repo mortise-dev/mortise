@@ -18,6 +18,8 @@ mod package;
 mod palette;
 mod php;
 mod program;
+#[cfg(feature = "push")]
+mod push;
 mod run;
 mod runtime;
 mod settings;
@@ -77,6 +79,11 @@ pub use package::{
 pub use palette::matcher::fuzzy;
 #[cfg(feature = "run")]
 pub use palette::recent::{Ran, RecentRun, recent_runs};
+#[cfg(feature = "push")]
+pub use push::{
+    Counted, MAX_TEXT, PushCi, PushContext, PushDocument, PushGit, PushLimit, PushSnapshot,
+    PushTool, Repository, SCHEMA_VERSION, byte_limit, push_document, read_repository,
+};
 #[cfg(feature = "run")]
 pub use run::ansi;
 #[cfg(feature = "run")]
