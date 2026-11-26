@@ -59,7 +59,9 @@ Modules/Notifications: warning: Notifications is 39% covered. The limit is 50%.
 - A circle is placed on the first reference of the link from its module to the next module of the
   circle, the same reference the Boundary tab lists first.
 - A module that reads internals of another gives one line for each file that does, at the first line
-  that names an internal class.
+  that names an internal class. The sentence ends with what the other module offers: its folders, such
+  as "Billing offers Contracts and Events.", or "Billing offers its accepted public surface." when its
+  `module.json` has a `surface` key.
 - A finding of a whole module, such as a coverage warning, is placed on the module folder.
 
 ### github

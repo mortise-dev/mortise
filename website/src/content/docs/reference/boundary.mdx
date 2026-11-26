@@ -19,7 +19,7 @@ An app has two rules. Both are on by default.
 | Rule | Breaks when |
 |---|---|
 | **No circular use** | Modules use each other, directly or in a circle of three or more |
-| **Other modules use only a module's public surface** | A file of one module reads a class of another module outside its public folders. The default folders are `Contracts` and `Events` |
+| **Other modules use only a module's public surface** | A file of one module reads a class of another module outside its public surface. A module with an accepted surface offers the classes it lists. A module without one offers its public folders. The default folders are `Contracts` and `Events` |
 
 A module that is off does not run, so its links break no rule.
 The rules are kept in `mortise.json` in the app folder. See [mortise.json](/mortise/reference/mortise-json/).
@@ -67,6 +67,7 @@ For a circle, every file is marked: removing either direction ends it.
 The footer gives the rule of the link and two buttons:
 
 - For a link that reads internals: "Rule: other modules use only a module's public surface. Billing has none yet, so the folders Contracts and Events count."
+  When the used module has an accepted surface: "Rule: other modules use only a module's public surface. Where Billing has an accepted one, only what it lists counts."
 - For a circle of two: "Reported on Checkout, the side with fewer files to change. Every file in a circle is marked: removing either direction ends it."
 - For a circle of three or more: "Reported on Checkout, the module of the circle with the fewest files to change. Every file of a link in a circle is marked."
 - **Open in editor** with <kbd>Enter</kbd>: opens the selected file at its line.
@@ -101,7 +102,7 @@ Titled "Rules for shop-api", with the note "kept in mortise.json in the app fold
 | Control | What it does |
 |---|---|
 | **No circular use** | Turns the first rule on or off |
-| **Other modules use only a module's public surface** | Turns the second rule on or off. Under it: "Accepted for 0 of 7 modules. For a module without one, these folders count:" and a field with the folders |
+| **Other modules use only a module's public surface** | Turns the second rule on or off. Under it: "Accepted for 1 of 7 modules. For a module without one, these folders count:" and a field with the folders |
 | **Fail CI when a rule breaks** | On by default. Writes `ci.fail` in `mortise.json`. On, `mortise check` exits 1 when a rule breaks; off, it reports and exits 0 |
 
 The first change of any of the three asks before Mortise creates `mortise.json`: "Create mortise.json in shop-api?" with **Create mortise.json**.
@@ -176,10 +177,67 @@ Entries are grouped by kind. The columns are **Entry**, **Why it is here** and *
 | Control | What it does |
 |---|---|
 | **Add a class, a route or a command** (<kbd>A</kbd>) | Adds an entry by hand. As you type it says what the name is, such as "A class in Models. Enter adds it.", or "Nothing in Billing has this name." |
-| **Copy as text** | Copies the proposal and says "Copied the proposal." |
+| **Copy as text** | Copies the proposal and says "Copied the proposal." While you change an accepted surface, **Keep the accepted surface** stands here and goes back to it |
 | **Scan again** | Runs the scan again and keeps your choices where the entry still exists |
-| "Accept 21 entries" | Always off: "The package cannot store a public surface yet" |
+| "Accept 21 entries" (<kbd>Ctrl</kbd> <kbd>Enter</kbd>) | Shows the command that stores the checked entries, then runs it. See [Accepting](#accepting) |
 
 A scan that finds nothing says "The scan found no interface, no event and no console command in Billing, and no class that another module uses."
+
+### Accepting
+
+Mortise does not write `module.json` itself. Accept runs the package command
+`module:surface Billing --set --stdin --json` through the PHP you chose for the app.
+The checked entries go to the command on its standard input, as one JSON object.
+
+First a dialog shows the exact command: "Accept the public surface of Billing?", the line,
+and "Its standard input is the 21 entries, as one JSON object." The button that goes ahead is **Accept 21 entries**.
+When the command stored the surface, a toast says "Accepted the public surface of Billing: 21 entries."
+and Mortise reads the app again: the rule uses the new surface at once, in the window and in `mortise check`.
+
+The button is off, with the reason on hover, when:
+
+- the package is older than 13.5: "The package cannot store a public surface yet. nwidart/laravel-modules 13.4.0 has no module:surface; update it to 13.5 or later."
+- no PHP is chosen for the app: "Choose how PHP runs for shop-api in Settings."
+- the app runs another command.
+
+If the command stores nothing, a toast says why, such as
+"The public surface of Billing was not stored: The package of this app has no module:surface command. Update nwidart/laravel-modules to 13.5 or later, then accept again."
+
+### Accepted
+
+<Screen id="s5.8-surface-accepted" alt="The accepted public surface of Users: its classes, each with a check mark and who uses it today, and the buttons Change and Scan again." />
+
+The view of a module with an accepted surface, every time it is opened. The head reads "Public surface of Users"
+and "Accepted, 2 entries". The lists are **Classes**, **Routes** and **Console commands**, with the columns **Entry**
+and **Used today by**. A module whose lists are empty reads "Users offers nothing to other modules, HTTP clients or the command line."
+
+When classes of the module are read from outside and are not in the surface, the foot says so:
+"Left out: Modules\Billing\Models\Invoice. The 3 files of Checkout that read it stay a finding."
+
+| Control | What it does |
+|---|---|
+| **Change** | Scans the module, then shows the proposal with the accepted entries checked |
+| **Scan again** | Scans the module and compares it with the surface. Without a difference a toast says "The scan matches the accepted surface." |
+
+### A later scan finds a difference
+
+<Screen id="s5.9-surface-differences" alt="The differences between a later scan of Users and its accepted surface: a new interface to add and a class that is gone, each checked, with Keep the accepted surface and Accept 2 changes." />
+
+An alert reads "The scan differs from the accepted surface in 2 places. Nothing changes until you accept."
+Only the differences are listed, with the columns **Entry**, **Difference** and **Used today by**:
+
+- "new in the code", "add it": the scan proposes it and the surface lacks it.
+- "no longer in the code", "remove it": the surface lists it and the module no longer has it.
+  A route counts as gone only when the routes were read.
+
+Each difference is checked. <kbd>Space</kbd> or a click leaves one out; that entry keeps its accepted state.
+A line under the list says how many entries are the same, such as "1 entry is the same as accepted and is not listed."
+
+| Control | What it does |
+|---|---|
+| **Keep the accepted surface** | Goes back to the accepted surface. Nothing runs |
+| "Accept 2 changes" (<kbd>Ctrl</kbd> <kbd>Enter</kbd>) | Stores the surface with the checked changes, as [Accepting](#accepting) says |
+
+A difference is shown only after a scan you asked for. It is not a finding.
 
 The steps are in [How to scan the public surface](/mortise/how-to/scan-public-surface/).
