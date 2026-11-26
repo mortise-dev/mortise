@@ -65,6 +65,12 @@ deftext('Messages', [
  ('m.conn.ok', 'Settings, add app', 'Up. Exposed: health, info, mappings, scheduledtasks.'),
  ('m.php.ok', 'Settings, add app', 'Laravel Framework 13.2.0'),
  ('m.reported', 'Boundary', 'Reported on Checkout, the side with fewer files to change.'),
+ ('ar.rule', 'Boundary rules, third rule', 'A module uses only the modules of its list', 'The rule allowed use: the lists are kept in mortise.json, under rules.allowed-use. A module without a list is not checked.'),
+ ('ar.none', 'Boundary rules, under the third rule', 'No module has a list yet. Write the lists in mortise.json, under allowed-use.'),
+ ('ar.count', 'Boundary rules, under the third rule', '3 of 5 modules have a list in mortise.json. A module without one is not checked.'),
+ ('ar.broken', 'Boundary, links that break a rule', 'Audit uses Billing outside its list'),
+ ('ar.files', 'Boundary, files of a link', 'Outside its list, 2 files'),
+ ('ar.link', 'Boundary, files of a link, footer', 'Rule: a module uses only the modules of its list. mortise.json lets Audit use no module.', 'With a list: "mortise.json lets History use Audit and Billing only."'),
 ])
 deftext('Findings', [
  ('f.circular', 'Findings, Summary, Boundary', 'Checkout and Shipping use each other. 2 files in Checkout, 4 files in Shipping.'),
@@ -75,6 +81,8 @@ deftext('Findings', [
  ('f.namespace', 'Findings', 'Blog declares the namespace Modules\\Blogs. Its folder is Modules/Blog.'),
  ('f.stale', 'Findings', 'modules_statuses.json lists Legacy, which has no folder.'),
  ('f.lang', 'Findings', 'Checkout: 4 keys in en are missing in fr.'),
+ ('f.allowed', 'Findings, Summary, Boundary', '2 files in Audit use Billing. mortise.json lets Audit use no module.'),
+ ('f.allowed.name', 'Findings', 'mortise.json names Reports in allowed-use, and the app has no module of that name. Correct the name in mortise.json.', 'A warning, so that a typing mistake does not pass in silence.'),
 ])
 deftext('Errors: what happened, then what to do', [
  ('x.notlaravel', 'Add app', 'No Laravel app in ~/code/notes. The folder has no artisan file and no composer.json that requires laravel/framework. Choose the folder that holds artisan.'),
