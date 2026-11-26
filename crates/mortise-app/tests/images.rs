@@ -1419,6 +1419,15 @@ fn the_metrics_tab() {
         // One module of the index: its routes, and its name over the chart.
         select(&mut harness, "Billing");
         shots.take(&mut harness, "s7.3-metrics-module");
+
+        // The narrowest window with the index opened by hand: Jobs/min gives way to the routes.
+        harness.set_size(eframe::egui::vec2(
+            mortise_app::ui::theme::size::WINDOW_MIN_W,
+            800.0,
+        ));
+        chord(&mut harness, Key::B);
+        harness.hover_at(eframe::egui::pos2(940.0, 780.0));
+        shots.take(&mut harness, "s7.3-metrics-module-narrow");
     }
 
     // A day: 15 s per read, 5,760 reads, as fast as the stub answers and Ctrl R asks. The clock of the reads

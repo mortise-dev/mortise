@@ -297,6 +297,13 @@ fn explain(
 const STAMP_COLUMN: f32 = 34.0;
 const COLUMNS: [f32; 6] = [90.0, 80.0, 70.0, 70.0, 100.0, 70.0];
 const COLUMN_GAP: f32 = 12.0;
+/// The room a name keeps: below it, columns of figures give way (deviation S78).
+const NAME_MIN: f32 = 160.0;
+/// The order in which the columns of figures give way, by their place in `COLUMNS`. For a route,
+/// Jobs/min and Database time are en dashes, so they go first. The sparkline goes before them for
+/// a module: the chart shows the line of the selected row. Requests/min, 95% under and Errors stay.
+const GIVE_WAY_MODULE: [usize; 3] = [5, 3, 4];
+const GIVE_WAY_ROUTE: [usize; 3] = [3, 4, 5];
 /// The space between the top line, the chart box and the table box.
 const GAP: f32 = 12.0;
 /// The size of the sparkline of a row.
@@ -508,15 +515,36 @@ fn table(
             Scope::All => stamp_left + STAMP_COLUMN + COLUMN_GAP,
             Scope::Module(_) => stamp_left,
         };
-        // Each column of figures, from the right edge: its left and right.
-        let mut x = rect.right() - 10.0;
-        let mut columns = [(0.0, 0.0); 6];
-        for (column, w) in columns.iter_mut().zip(COLUMNS).rev() {
-            *column = (x - w, x);
-            x -= w + COLUMN_GAP;
+        // The columns of figures that are kept: in a narrow tab some give way to the name.
+        let figures_right = rect.right() - 10.0;
+        let mut kept = [true; 6];
+        let give_way = match view.scope {
+            Scope::All => GIVE_WAY_MODULE,
+            Scope::Module(_) => GIVE_WAY_ROUTE,
+        };
+        for at in give_way {
+            let taken: f32 = COLUMNS
+                .iter()
+                .zip(kept)
+                .filter(|(_, kept)| *kept)
+                .map(|(w, _)| w + COLUMN_GAP)
+                .sum();
+            if figures_right - taken - name_left >= NAME_MIN {
+                break;
+            }
+            kept[at] = false;
+        }
+        // Each column of figures that is kept, from the right edge: its left and right.
+        let mut x = figures_right;
+        let mut columns = [None; 6];
+        for ((column, w), kept) in columns.iter_mut().zip(COLUMNS).zip(kept).rev() {
+            if kept {
+                *column = Some((x - w, x));
+                x -= w + COLUMN_GAP;
+            }
         }
         let [requests, under, errors, jobs, database, last_hour] = columns;
-        let name_w = (requests.0 - COLUMN_GAP - name_left).max(0.0);
+        let name_w = (x - name_left).max(0.0);
 
         // Header: 26 px, 11.5 px weight 600 in ink-2, line-2 underneath.
         let head_bottom = rect.top() + size::TABLE_HEAD_H;
@@ -527,20 +555,35 @@ fn table(
             pal.line_2,
         );
         let mid = rect.top() + size::TABLE_HEAD_H / 2.0;
+        let left_of = |column: Option<(f32, f32)>| column.map(|(left, _)| left);
+        let right_of = |column: Option<(f32, f32)>| column.map(|(_, right)| right);
         let first = match view.scope {
             Scope::All => crate::strings::COL_MODULE,
             Scope::Module(_) => strings::COL_ROUTE,
         };
         let headers = [
-            (first, name_left, Align2::LEFT_CENTER),
-            (strings::COL_REQUESTS, requests.1, Align2::RIGHT_CENTER),
-            (strings::COL_UNDER_95, under.1, Align2::RIGHT_CENTER),
-            (strings::COL_ERRORS, errors.1, Align2::RIGHT_CENTER),
-            (strings::COL_JOBS, jobs.1, Align2::RIGHT_CENTER),
-            (strings::COL_DATABASE, database.1, Align2::RIGHT_CENTER),
-            (strings::COL_LAST_HOUR, last_hour.0, Align2::LEFT_CENTER),
+            (first, Some(name_left), Align2::LEFT_CENTER),
+            (
+                strings::COL_REQUESTS,
+                right_of(requests),
+                Align2::RIGHT_CENTER,
+            ),
+            (strings::COL_UNDER_95, right_of(under), Align2::RIGHT_CENTER),
+            (strings::COL_ERRORS, right_of(errors), Align2::RIGHT_CENTER),
+            (strings::COL_JOBS, right_of(jobs), Align2::RIGHT_CENTER),
+            (
+                strings::COL_DATABASE,
+                right_of(database),
+                Align2::RIGHT_CENTER,
+            ),
+            (
+                strings::COL_LAST_HOUR,
+                left_of(last_hour),
+                Align2::LEFT_CENTER,
+            ),
         ];
         for (label, x, align) in headers {
+            let Some(x) = x else { continue };
             let cell = draw::paint_text(ui, pos2(x, mid), align, label, ty::LABEL, pal.ink_2);
             draw::announce(ui, cell, Role::ColumnHeader, label);
         }
@@ -628,16 +671,20 @@ fn table(
             // database time is known.
             let unknown = !blank && !shown.route && !figures.database_known;
             let cells = [
-                (rate(rates.requests_per_minute), requests.1, false),
+                (rate(rates.requests_per_minute), right_of(requests), false),
                 (
                     or_dash(rates.under_95.map(strings::under_95)),
-                    under.1,
+                    right_of(under),
                     false,
                 ),
-                (or_dash(rates.errors.map(strings::errors)), errors.1, false),
+                (
+                    or_dash(rates.errors.map(strings::errors)),
+                    right_of(errors),
+                    false,
+                ),
                 (
                     or_dash((!shown.route).then(|| strings::per_minute(rates.jobs_per_minute))),
-                    jobs.1,
+                    right_of(jobs),
                     false,
                 ),
                 (
@@ -646,11 +693,12 @@ fn table(
                     } else {
                         or_dash(rates.database.map(strings::database))
                     },
-                    database.1,
+                    right_of(database),
                     unknown,
                 ),
             ];
             for (text, x, unknown) in cells {
+                let Some(x) = x else { continue };
                 let cell = draw::paint_text(
                     ui,
                     pos2(x, mid),
@@ -664,17 +712,18 @@ fn table(
                     draw::tooltip(named, pal, strings::NEEDS_NEWER_PACKAGE);
                 }
             }
-            let spark =
-                Rect::from_min_size(pos2(last_hour.0, (mid - SPARK.y / 2.0).round()), SPARK);
-            let name = strings::spark_name(&shown.name);
-            chart::spark(
-                ui,
-                pal,
-                spark,
-                &shown.row.last_hour,
-                Range::Hour.span(),
-                &name,
-            );
+            if let Some(at) = left_of(last_hour) {
+                let spark = Rect::from_min_size(pos2(at, (mid - SPARK.y / 2.0).round()), SPARK);
+                let name = strings::spark_name(&shown.name);
+                chart::spark(
+                    ui,
+                    pal,
+                    spark,
+                    &shown.row.last_hour,
+                    Range::Hour.span(),
+                    &name,
+                );
+            }
         }
         if let Some(at) = selected.filter(|at| Some(&rows[*at].row.of) != view.row.as_ref()) {
             asked = Some(WorkAction::Metrics(MetricsAction::Row(
