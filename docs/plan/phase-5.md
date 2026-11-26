@@ -2,12 +2,12 @@
 
 Outline, version 1, 26 November 2026.
 
-Status: approved on 26 November 2026. Nothing is built. Section 4 records the owner's answers.
+Status: approved on 26 November 2026. Milestones 29 to 32 are built (#76, #79, #77, #78), with two tasks open: 31.5 and 32.4. Milestone 33 is in progress: 33.2 to 33.4 are built; 33.1, 33.5 and 33.6 are open. Section 4 records the owner's answers.
 
 Phase 5 is small. It adds one boundary rule, the list of modules each module may use (cloud request R9). It closes the gap of Windows, which no one has looked at. It makes room for the first feedback after 1.0.
 Everything reads the files of one app at one commit, as phase 1 does. Screen ids refer to the specification.
 
-Phase 5 builds no new screen id. It changes 2 of phase 1: the rules of S5.3 and the links that break a rule on S5.7.
+Phase 5 builds no new screen id. It changes 2 of phase 1: the rules of S5.3 and the links that break a rule. The plan named S5.7 for the break; S5.7 is the proposal of the public surface in the spec, so the break is drawn on S5.1 (and in the list of S5.3).
 
 ## 1. The line with Mortise Cloud
 
@@ -139,7 +139,7 @@ crates/mortise-core/src/
 crates/mortise-cli/
   src/check.rs                 the new finding in text, json and github
 crates/mortise-app/
-  src/boundary/                the third row of S5.3; the links on S5.7
+  src/boundary/                the third row of S5.3; the links on S5.1
 fixtures/
   layered/                     NEW: a small app with an allowed-use key and one break
 .github/
@@ -153,13 +153,13 @@ fixtures/
 
 Each milestone is one OpenSpec change, built in its own worktree and merged through one pull request.
 
-| # | Milestone | Core and tool | Screens | Needs |
-|---|---|---|---|---|
-| 29 | Allowed use rule | The key in `mortise.json`. The check, the finding, `mortise check` in three formats, the push document. Cloud R9 | none | Question 1 and 2. The mago branch merged |
-| 30 | Allowed use in the window | none | The third row of S5.3. A link that breaks the rule on the graph and on S5.7 | 29. Question 3 and 4 |
-| 31 | Windows looked at | A CI job that starts the window on Windows and keeps what it shows | Every screen written on Windows. The deviation rows with a Windows result | Question 7 for the last task |
-| 32 | Room for feedback | Issue forms. The rule for a request and the line | A "Report a problem" link | Question 8 and 9 |
-| 33 | Hardening and release | The shared fixtures with Larch. The tool on three platforms with the new rule | Images in both themes, accessibility, docs site, deviations, release 1.1.0 | 29 to 32 |
+| # | Milestone | Core and tool | Screens | Needs | State |
+|---|---|---|---|---|---|
+| 29 | Allowed use rule | The key in `mortise.json`. The check, the finding, `mortise check` in three formats, the push document. Cloud R9 | none | Question 1 and 2. The mago branch merged | Done, #76 |
+| 30 | Allowed use in the window | none | The third row of S5.3. A link that breaks the rule on the graph and on S5.1 | 29. Question 3 and 4 | Done, #79 |
+| 31 | Windows looked at | A CI job that starts the window on Windows and keeps what it shows | Every screen written on Windows. The deviation rows with a Windows result | Question 7 for the last task | Done, #77. Task 31.5 waits for a Windows machine |
+| 32 | Room for feedback | Issue forms. The rule for a request and the line | A "Report a problem" link | Question 8 and 9 | Done, #78. Task 32.4, the feedback slot, is open |
+| 33 | Hardening and release | The shared fixtures with Larch. The tool on three platforms with the new rule | Images in both themes, accessibility, docs site, deviations, release 1.1.0 | 29 to 32 | Tasks 33.2 to 33.4 are built; 33.1, 33.5 and 33.6 are open |
 
 Milestones 29, 31 and 32 share no file and can run at the same time. Milestone 30 follows 29.
 
@@ -168,6 +168,8 @@ Milestones 29, 31 and 32 share no file and can run at the same time. Milestone 3
 The model column follows `AGENTS.md`: Sonnet for a simple, well-defined change, Opus for standard building and tests, Fable only where the reasoning is hard.
 
 ### 29. Allowed use rule
+
+Done in #76.
 
 | Id | Task | Done when | Needs | Model |
 |---|---|---|---|---|
@@ -180,14 +182,18 @@ The model column follows `AGENTS.md`: Sonnet for a simple, well-defined change, 
 
 ### 30. Allowed use in the window
 
+Done in #79. The plan named S5.7 for the break of the rule. S5.7 is the proposal of the public surface in the spec, so the break is drawn on S5.1.
+
 | Id | Task | Done when | Needs | Model |
 |---|---|---|---|---|
 | 30.1 | The third row in `docs/spec`, S5.3, and the text of a break | The spec builds. The text follows section 10 of the spec | Question 4 | Opus |
 | 30.2 | The row on S5.3 with its switch | The switch writes `enabled` and keeps the lists. Without the key the row says that no module has a list, and the switch is off. Mortise asks before it creates `mortise.json`, as today | 29, 30.1 | Opus |
-| 30.3 | The break on the graph and on S5.7 | A link that breaks the rule has the mark of the other rules. S5.7 names the rule and the files | 30.2 | Opus |
+| 30.3 | The break on the graph and on S5.1 | A link that breaks the rule has the mark of the other rules. S5.1 names the rule and the files | 30.2 | Opus |
 | 30.4 | Images, accessibility | The changed images in both themes, each looked at. The switch has a name and a target of 24 by 24 px | 30.3 | Sonnet |
 
 ### 31. Windows looked at
+
+Done in #77, except 31.5, which waits for a Windows machine (WIN-1). The rows of `docs/deviations.md` that need a real session say "needs a machine".
 
 | Id | Task | Done when | Needs | Model |
 |---|---|---|---|---|
@@ -199,6 +205,8 @@ The model column follows `AGENTS.md`: Sonnet for a simple, well-defined change, 
 
 ### 32. Room for feedback
 
+Done in #78, except 32.4, the feedback slot, which is open.
+
 | Id | Task | Done when | Needs | Model |
 |---|---|---|---|---|
 | 32.1 | Two issue forms: a problem, a request. Fields: Mortise version, platform, laravel-modules version, what happened, what was expected | A new issue offers both forms. The request form says what belongs to Mortise Cloud | Question 8 | Sonnet |
@@ -207,6 +215,8 @@ The model column follows `AGENTS.md`: Sonnet for a simple, well-defined change, 
 | 32.4 | The feedback slot | Each change taken has an issue, the label `free`, one pull request and no new screen id. The slot closes with at most 5 changes, or empty, when 29 to 31 are merged. The rest is listed for phase 6 | Question 9 | Opus per change. Fable for the triage against the line |
 
 ### 33. Hardening and release
+
+33.2 to 33.4 are built. 33.1, 33.5 and 33.6 are open.
 
 | Id | Task | Done when | Needs | Model |
 |---|---|---|---|---|

@@ -44,9 +44,13 @@ metrics. This is optional. Mortise asks for the actuator base path, `health`, `i
 A token or a password goes to the credential store of the operating system and is never written
 to a file.
 
-Status: phase 1 (read only), phase 2 (running the package's commands) and phase 3 (the running app, per
-module) are built. The plans are `docs/plan/phase-1.md`, `docs/plan/phase-2.md` and
-`docs/plan/phase-3.md`. The plan for phase 4 is `docs/plan/phase-4.md`. Where the build differs from
+Status: phase 1 (read only), phase 2 (running the package's commands), phase 3 (the running app, per
+module) and phase 4 (the public surface and the command line tool) are built. Milestones 29 to 32 of
+phase 5 are built: the third rule, the Windows look and room for feedback. The window with the third rule was
+not seen on Windows or Linux, and the link "Report a problem" was not opened from the window on either:
+`docs/deviations.md` has the list. Milestone 33 (hardening and the release 1.1.0) is open. The plans are `docs/plan/phase-1.md`, `docs/plan/phase-2.md` and
+`docs/plan/phase-3.md`. The plans for phase 4 and phase 5 are `docs/plan/phase-4.md` and
+`docs/plan/phase-5.md`. Where the build differs from
 the specification is in `docs/deviations.md`.
 
 ## What it does
@@ -54,7 +58,8 @@ the specification is in `docs/deviations.md`.
 - Lists the modules of an app with their state, files, lines, kinds, tests and coverage.
 - Shows which module uses which, from the PHP source, and finds circular use.
 - Checks three rules, kept in `mortise.json` in the app folder so that a team shares them.
-  The third, the list of modules each module may use, is written in the file; the window does not show it yet.
+  The third, the list of modules each module may use, is written in the file; the window shows its switch and
+  the links that break it.
   The command line tool `mortise check` checks the same rules in CI (see "Check the rules in CI" below).
 - Lists findings: what breaks a rule or a check, each where it lives.
 - Scans a module and proposes its public surface. The scan writes nothing.

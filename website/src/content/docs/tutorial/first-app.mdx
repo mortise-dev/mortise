@@ -62,7 +62,7 @@ one of your apps is open, with at least two modules and a way to run PHP.
 
 ## Add a boundary rule
 
-By default two rules apply, and the classes in the folders `Contracts` and `Events` of a module count
+Of the three rules, two apply by default, and the classes in the folders `Contracts` and `Events` of a module count
 as public. We make the rule stricter: only `Contracts` counts.
 
 <Steps>
@@ -70,7 +70,7 @@ as public. We make the rule stricter: only `Contracts` counts.
 1. Select **All modules** in the index. The **Boundary** tab now shows the graph of the whole app and,
    on the right, the box **Rules for** your app.
 
-   <Screen id="s5.3-boundary-all" alt="The Boundary tab of All modules: the graph of seven modules, the box Links that break a rule with 2 problems, and the box Rules for shop-api with No circular use and Other modules use only a module's public surface checked, and the folders Contracts, Events" />
+   <Screen id="s5.3-boundary-all" alt="The Boundary tab of All modules: the graph of seven modules, the box Links that break a rule with 2 problems, and the box Rules for shop-api with No circular use and Other modules use only a module's public surface checked, A module uses only the modules of its list off, and the folders Contracts, Events" />
 
 2. In the field under **Other modules use only a module's public surface**, change `Contracts, Events`
    to `Contracts`. Then press <kbd>Tab</kbd> to leave the field.

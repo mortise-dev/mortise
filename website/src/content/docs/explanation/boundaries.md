@@ -85,8 +85,9 @@ the rule one module at a time, with no baseline. A module that is off breaks no 
 does. Without the key, the rule does nothing.
 
 The rule says which module. The second rule still says which classes of it. Mortise checks the imports
-it reads without PHP. [nwidart/larch](https://github.com/nWidart/larch) reads the same list in Pest, and
-can also check the links that only the booted app shows.
+it reads without PHP. A release of [nwidart/larch](https://github.com/nWidart/larch) that reads `allowed-use` reads the same
+list in Pest, and can also check the links that only the booted app shows. See
+[Check runtime links with Larch](/mortise/how-to/check-runtime-links-with-larch/).
 
 ## Why the rules live in mortise.json
 
