@@ -34,6 +34,11 @@ pub struct Link {
     pub refs: Vec<Reference>,
     /// True when the two modules are in one circle and every module of it is on.
     pub circular: bool,
+    /// True when the link breaks the rule allowed use: the rule is on, both modules are
+    /// on, and `from` has a list that does not name `to`. Not in the push document,
+    /// which carries the finding.
+    #[serde(skip)]
+    pub outside_allowed: bool,
 }
 
 impl Link {
@@ -60,6 +65,7 @@ impl Link {
     pub fn is_problem(&self, rules: &Rules) -> bool {
         (rules.no_circular_use && self.circular)
             || (rules.public_surface_only && self.internal_files() > 0)
+            || self.outside_allowed
     }
 }
 
@@ -221,11 +227,19 @@ pub(crate) fn build(modules: &[ModuleSource<'_>], rules: &Rules) -> (Vec<Link>, 
                     .then_with(|| a.line.cmp(&b.line))
             });
             let circular = circle_of(&from).is_some() && circle_of(&from) == circle_of(&to);
+            // A module that is off breaks no rule, and no link to it does.
+            let outside_allowed = rules
+                .allowed_use
+                .as_ref()
+                .is_some_and(|allowed| allowed.enabled && !allowed.allows(&from, &to))
+                && is_on(&from)
+                && is_on(&to);
             Link {
                 from,
                 to,
                 refs,
                 circular,
+                outside_allowed,
             }
         })
         .collect();
@@ -636,6 +650,7 @@ mod tests {
             to: to.into(),
             refs: Vec::new(),
             circular: false,
+            outside_allowed: false,
         };
         let links = [
             link("Notifications", "Checkout"),

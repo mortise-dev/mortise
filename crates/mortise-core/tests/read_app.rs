@@ -978,6 +978,13 @@ fn a_module_with_a_list_uses_only_the_modules_of_its_list() {
             ("Modules/Audit/app/Services/ChargeTrail.php", 6),
         ]
     );
+    // The link of the break is the only one that breaks a rule. A link to Legacy, which
+    // is off, breaks none.
+    let broken: Vec<(&str, &str)> = app
+        .problem_links()
+        .map(|link| (link.from.as_str(), link.to.as_str()))
+        .collect();
+    assert_eq!(broken, [("Audit", "Billing")]);
     // Three rules ran. The modules with a list are the ones checked.
     assert_eq!(findings.rules_and_checks(), (3, 3));
     let result = &findings.checks[2];
@@ -993,6 +1000,7 @@ fn a_module_with_a_list_uses_only_the_modules_of_its_list() {
     std::fs::write(&path, json.replace("true", "false")).unwrap();
     let app = read_app(copy.path()).unwrap();
     assert!(app.findings.list.is_empty());
+    assert_eq!(app.problem_links().count(), 0);
     assert_eq!(app.findings.rules_and_checks(), (2, 3));
     assert_eq!(app.rules.allowed_use.unwrap().modules.len(), 3);
 }

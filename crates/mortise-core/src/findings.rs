@@ -267,17 +267,10 @@ pub(crate) fn find(subject: &Subject<'_>) -> Findings {
     let in_app = |name: &str| modules.iter().any(|module| module.name == name);
     let allowed_use = subject.rules.allowed_use.as_ref();
     if let Some(allowed) = allowed_use.filter(|allowed| allowed.enabled) {
-        // A module that is off breaks no rule, and no link to it does.
-        let on = |name: &str| {
-            modules
-                .iter()
-                .any(|module| module.name == name && module.state != ModuleState::Off)
-        };
         let mut found: Vec<Finding> = subject
             .links
             .iter()
-            .filter(|link| on(&link.from) && on(&link.to))
-            .filter(|link| !allowed.allows(&link.from, &link.to))
+            .filter(|link| link.outside_allowed)
             .map(|link| Finding {
                 severity: Severity::Problem,
                 check: Check::AllowedUse,
