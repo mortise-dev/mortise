@@ -184,13 +184,24 @@ impl AppSnapshot {
     }
 }
 
-fn shown(root: &Path, path: &Path) -> String {
-    path.strip_prefix(root)
-        .unwrap_or(path)
-        .components()
-        .map(|part| part.as_os_str().to_string_lossy())
-        .collect::<Vec<_>>()
-        .join("/")
+/// `path` relative to `root` when it is inside it, else whole. Parts are joined with `/`
+/// on every platform, so a line opens in an editor and in a CI log on Windows too.
+pub(crate) fn shown(root: &Path, path: &Path) -> String {
+    use std::path::Component;
+    let rest = path.strip_prefix(root).unwrap_or(path);
+    let mut start = String::new();
+    let mut parts: Vec<String> = Vec::new();
+    for component in rest.components() {
+        match component {
+            // `C:` or `\\server\share` on Windows.
+            Component::Prefix(prefix) => {
+                start = prefix.as_os_str().to_string_lossy().replace('\\', "/");
+            }
+            Component::RootDir => start.push('/'),
+            other => parts.push(other.as_os_str().to_string_lossy().into_owned()),
+        }
+    }
+    start + &parts.join("/")
 }
 
 /// Why a folder could not be read as an app.
@@ -555,6 +566,21 @@ fn requires_laravel(root: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_path_is_shown_with_slashes_and_whole_when_outside_the_app() {
+        let (root, outside, whole) = if cfg!(windows) {
+            (r"C:\ci\app", r"D:\shared\Modules", "D:/shared/Modules")
+        } else {
+            ("/ci/app", "/shared/Modules", "/shared/Modules")
+        };
+        let root = Path::new(root);
+        assert_eq!(
+            shown(root, &root.join("Modules").join("Billing")),
+            "Modules/Billing"
+        );
+        assert_eq!(shown(root, Path::new(outside)), whole);
+    }
 
     #[test]
     fn the_url_and_the_environment_of_the_app_are_read_from_their_lines() {

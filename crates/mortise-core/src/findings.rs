@@ -197,14 +197,7 @@ pub(crate) fn find(subject: &Subject<'_>) -> Findings {
     let mut list: Vec<Finding> = Vec::new();
     let mut checks: Vec<CheckResult> = Vec::new();
     let modules = subject.modules;
-    let shown = |path: &Path| -> String {
-        path.strip_prefix(subject.root)
-            .unwrap_or(path)
-            .components()
-            .map(|part| part.as_os_str().to_string_lossy())
-            .collect::<Vec<_>>()
-            .join("/")
-    };
+    let shown = |path: &Path| crate::app::shown(subject.root, path);
     let mut ran = |check: Check, checked: usize, found: Vec<Finding>| {
         checks.push(CheckResult {
             check,
