@@ -10,7 +10,7 @@ use std::path::{Component, Path, PathBuf};
 
 use serde::Serialize;
 
-use crate::app::{AppSnapshot, CoverageReport};
+use crate::app::{AppSnapshot, CoverageReport, lexical};
 use crate::boundary::links::{Cycle, Link};
 use crate::boundary::rules::{Rules, RulesSource};
 use crate::findings::{Detail, Findings};
@@ -313,14 +313,18 @@ pub fn byte_limit(document: usize, body: usize) -> Option<PushLimit> {
 /// with `..`. Without a common start, such as on another Windows drive, only the file
 /// name is kept: no absolute path leaves CI.
 fn relative(root: &Path, path: &Path) -> PathBuf {
-    let root = parts(root);
-    let path = parts(path);
+    // Parts compare as components, so `//server/share` is the same start as `\\server\share`.
+    let root = lexical(root);
+    let path = lexical(path);
+    let root: Vec<Component<'_>> = root.components().collect();
+    let path: Vec<Component<'_>> = path.components().collect();
     let common = root.iter().zip(&path).take_while(|(a, b)| a == b).count();
+    let name = |part: &Component<'_>| part.as_os_str().to_string_lossy().into_owned();
     if common == 0 {
-        return PathBuf::from(path.last().map(String::as_str).unwrap_or("."));
+        return PathBuf::from(path.last().map(name).unwrap_or_else(|| ".".into()));
     }
-    let mut relative: Vec<&str> = vec![".."; root.len() - common];
-    relative.extend(path[common..].iter().map(String::as_str));
+    let mut relative: Vec<String> = vec!["..".into(); root.len() - common];
+    relative.extend(path[common..].iter().map(name));
     if relative.is_empty() {
         return PathBuf::from(".");
     }
@@ -333,23 +337,6 @@ fn relative_text(root: &Path, text: &mut String) {
     if path.is_absolute() || path.has_root() {
         *text = relative(root, path).to_string_lossy().into_owned();
     }
-}
-
-/// The parts of a path, with `.` and `..` resolved by name.
-fn parts(path: &Path) -> Vec<String> {
-    let mut parts: Vec<String> = Vec::new();
-    for component in path.components() {
-        match component {
-            Component::CurDir => {}
-            Component::ParentDir => {
-                if parts.len() > 1 {
-                    parts.pop();
-                }
-            }
-            other => parts.push(other.as_os_str().to_string_lossy().into_owned()),
-        }
-    }
-    parts
 }
 
 #[cfg(test)]
@@ -371,5 +358,14 @@ mod tests {
         );
         // A relative path has no common start with an absolute root.
         assert_eq!(shown("clover.xml"), Path::new("clover.xml"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_unc_path_as_the_core_writes_it_keeps_its_folders() {
+        let root = Path::new(r"\\server\share\repo");
+        let mut text = "//server/share/shared/Modules/Billing/app/Invoice.php".to_owned();
+        relative_text(root, &mut text);
+        assert_eq!(text, "../shared/Modules/Billing/app/Invoice.php");
     }
 }

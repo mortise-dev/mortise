@@ -36,8 +36,14 @@
 
 ### D1. A path outside the app is printed whole, with `/`
 
-`shown(root, path)` strips the app folder when it can. It then walks the components: a Windows prefix
-is kept with `\` turned to `/`, the root becomes one `/`, and every other part is joined with `/`.
+`shown(root, path)` first resolves `.` and `..` by name (`lexical`), without the file system, so
+`base_path('../shared/Modules')` is outside the app. It strips the app folder when it can. It then walks
+the components: a drive stays `D:`, a UNC share becomes `//server/share`, the root becomes one `/`, and
+every other part is joined with `/`. A verbatim `\\?\D:` or `\\?\UNC\server\share` names the same
+folder as `D:` or `\\server\share` and is written as that; Windows needs `\` in a verbatim path, so
+`//?/D:` would open nothing. Any other verbatim path, such as `\\?\Volume{...}`, keeps its spelling.
+The push document compares `Component`s, not text, so `//server/share` and `\\server\share` are one
+start and a reference keeps its folders.
 `findings.rs` calls the same function. The check prints the whole path because the user reads it on
 their own machine; the push document keeps its own rule (Context).
 
@@ -48,7 +54,7 @@ harder to read in a terminal than the folder itself, and a path on another drive
 
 `grep` and `jq` are on the Linux, macOS and Windows runners, and the steps run in bash on all three.
 The github format goes to a file, so the fixture's problems do not mark the pull request. The job
-checks: exit 1 in each format, the circle line, three reads of `Invoice`, the summary, one `::error
+checks: exit 1 in each format, the exact `file` of `InvalidManifest` for a copy with a broken `module.json`, the circle line, three reads of `Invoice`, the summary, one `::error
 file=` line, the order of the checks in json, exit 3 for a folder that is not an app, and in the dry
 run `app_path`, the surface of Users and that no path names a drive, a root or a backslash.
 

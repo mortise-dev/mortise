@@ -275,6 +275,18 @@ jobs:
             exit 1
           fi
           jq -e '[.list[].check] == ["NoCircularUse", "PublicSurfaceOnly", "CoverageLimit"]' "$out/json"
+      # A copy of shop-api with a broken module.json gives a finding with a path in the json format.
+      - name: Check the path of a broken module.json in json
+        shell: bash
+        run: |
+          app="$RUNNER_TEMP/broken/shop-api"
+          mkdir -p "$RUNNER_TEMP/broken"
+          cp -R fixtures/shop-api "$app"
+          echo '{ "name": ' > "$app/Modules/Catalog/module.json"
+          status=0
+          target/debug/mortise check "$app" --format json > "$RUNNER_TEMP/broken.json" || status=$?
+          test "$status" -eq 1
+          jq -e '[.list[].detail.InvalidManifest.file // empty] == ["Modules/Catalog/module.json"]' "$RUNNER_TEMP/broken.json"
       - name: Check a folder that is not an app
         shell: bash
         run: |

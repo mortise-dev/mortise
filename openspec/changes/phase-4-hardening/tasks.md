@@ -6,6 +6,7 @@ One branch, `change/phase-4-hardening`, in its own worktree. One pull request to
 
 - [x] 1.1 Make `shown` in `app/mod.rs` write a path outside the app whole, with `/` (design D1); verify with a unit test that fails on the old function
 - [x] 1.2 Make `findings.rs` use `shown`; verify `cargo test -p mortise-cli` still compares the exact output of shop-api
+- [x] 1.3 Resolve `..` by name in `shown`, write UNC and verbatim prefixes as paths that open, and compare components in the push document's `relative`; verify with the unit tests of `app/mod.rs` and `push/mod.rs` (the prefix tests run on Windows only)
 
 ## 2. CI
 
