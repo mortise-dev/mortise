@@ -2600,6 +2600,8 @@ dependencies = [
  "rfd",
  "serde_json",
  "tempfile",
+ "windows",
+ "zbus",
 ]
 
 [[package]]

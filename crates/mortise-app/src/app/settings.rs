@@ -85,7 +85,7 @@ impl MortiseApp {
         match self.system_motion.filter(fresh) {
             Some((reduced, _)) => reduced,
             None => {
-                let reduced = system_reduces_motion();
+                let reduced = super::motion::system_reduces_motion();
                 self.system_motion = Some((reduced, std::time::Instant::now()));
                 reduced
             }
@@ -142,18 +142,4 @@ impl MortiseApp {
             self.toast = Some(Toast::failed(strings::could_not_open_the_editor(&error)));
         }
     }
-}
-
-/// True when the operating system is set to reduce motion.
-///
-/// macOS is asked. On Windows and Linux neither egui nor winit gives the setting,
-/// and reading it needs code this crate does not allow: there "System" moves as "Full".
-#[cfg(target_os = "macos")]
-fn system_reduces_motion() -> bool {
-    objc2_app_kit::NSWorkspace::sharedWorkspace().accessibilityDisplayShouldReduceMotion()
-}
-
-#[cfg(not(target_os = "macos"))]
-fn system_reduces_motion() -> bool {
-    false
 }
