@@ -48,6 +48,12 @@ version=${tag#v}
 git switch -c "release/$tag"
 cliff --unreleased --bump="$bump" --prepend CHANGELOG.md
 perl -pi -e 's/^version = "[^"]*"/version = "'"$version"'"/ if !$done && /^version = / && ($done = 1)' Cargo.toml
+# mortise-cli depends on exactly the mortise-core of its own version (crates.io needs a version).
+perl -pi -e 's/^(mortise-core = \{ path = "crates\/mortise-core", version = "=)[^"]*"/${1}'"$version"'"/' Cargo.toml
+if ! grep -qF "mortise-core = { path = \"crates/mortise-core\", version = \"=$version\" }" Cargo.toml; then
+  echo "Cargo.toml has no mortise-core workspace dependency to set to =$version." >&2
+  exit 1
+fi
 cargo update --workspace --quiet
 git commit -q -am "chore(release): $tag"
 

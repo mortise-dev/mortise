@@ -5,7 +5,14 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-publish.workspace = true
+license-file = "../../LICENSE"
+repository.workspace = true
+homepage.workspace = true
+readme = "README.md"
+keywords = ["laravel", "modules", "architecture", "ci", "boundaries"]
+categories = ["command-line-utilities", "development-tools"]
+publish = true
+include = ["src/**", "README.md"]
 
 [[bin]]
 name = "mortise"
@@ -13,7 +20,7 @@ path = "src/main.rs"
 
 [dependencies]
 # Reading and the push document only: no watch, no actuator, no credential store, no PHP runner.
-mortise-core = { path = "../mortise-core", default-features = false, features = ["push"] }
+mortise-core = { workspace = true, default-features = false, features = ["push"] }
 serde_json.workspace = true
 # Sending the push document: rustls with the certificates of the computer, no redirect.
 ureq.workspace = true
