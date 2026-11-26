@@ -267,6 +267,9 @@ fn nothing_found_says_what_to_try_and_esc_closes() {
     type_query(&mut harness, "zzq");
     harness.get_by_label_contains("Nothing matches \"zzq\".");
     assert!(palette_rows(&harness).is_empty());
+    // The field keeps focus without restarting the input method in each frame.
+    let ime = harness.output().platform_output.ime.as_ref();
+    assert!(ime.is_some_and(|ime| !ime.should_interrupt_composition));
 
     harness.key_press(Key::Escape);
     harness.run_steps(3);
