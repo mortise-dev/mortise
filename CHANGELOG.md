@@ -2,6 +2,25 @@
 
 All notable changes to this project are listed here.
 <!-- git-cliff: end of header -->
+## [1.0.0] - 2026-11-26
+
+### Features
+
+- Add the command line rule check (milestone 24) (#51)
+- *(cli)* Add the push document and mortise push (#53)
+- Accept a public surface for a module (milestone 27) (#57)
+
+### Documentation
+
+- Add the documentation site (#48)
+- Add start here and three how-to guides (#49)
+- Add the phase 4 plan (#50)
+- Archive the phase 4 command line check change (#52)
+- Archive the phase 4 push change (#54)
+- Archive the phase 4 distribution change (#56)
+- Archive the phase 4 surface change (#58)
+- Archive the phase 4 hardening change (#60)
+
 ## [0.2.0] - 2026-11-25
 
 ### Features
