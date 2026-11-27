@@ -162,7 +162,7 @@ has the rest.
 
 ## Send a read to Mortise Cloud
 
-`mortise push` sends one read of the app to [Mortise Cloud](https://mortisecloud.com), the paid
+`mortise push` sends one read of the app to [Mortise Cloud](https://mortisecloud.com/push?utm_source=mortise-readme&utm_medium=referral), the paid
 service that keeps the history of reads and compares a pull request with its base. Mortise itself
 judges one commit; the cloud does what spans commits.
 
