@@ -1,8 +1,8 @@
 //! The push document of shop-api, whose shape is a contract with Mortise Cloud (its request R8).
 //!
-//! `push/push-document-1.schema.json` and `push/example-shop-api.json` are copies of
-//! `mortise-cloud/docs/spec/contract` at `064a015`. `push/shop-api.json` is the document this
-//! Mortise writes. After a change to a type in the document, write it again with
+//! The schema is `website/public/schema/push-document-1.json`, the file the docs site publishes at its
+//! `$id`. `push/example-shop-api.json` is a copy of `mortise-cloud/docs/spec/contract` at `064a015`.
+//! `push/shop-api.json` is the document this Mortise writes. After a change to a type in the document, write it again with
 //! `UPDATE_SNAPSHOTS=1 cargo test -p mortise-core --test push` and review the change: a member that
 //! is removed, renamed or changes its type needs a new `SCHEMA_VERSION`.
 
@@ -12,6 +12,9 @@ use mortise_core::Detail;
 
 use mortise_core::{PushCi, PushContext, PushGit, push_document, read_app};
 use serde_json::{Value, json};
+
+/// The public URL of schema version 1. A new version gets a new file and URL; this one stays.
+const SCHEMA_ID: &str = "https://mortise-dev.github.io/mortise/schema/push-document-1.json";
 
 fn here(file: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -77,18 +80,16 @@ fn holds(actual: &Value, expected: &Value, skip: &[&str], at: &str) {
 
 /// Panics when `value` is not valid against the cloud's schema.
 fn assert_valid(value: &Value) {
+    let file = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../website/public/schema/push-document-1.json");
+    let schema_json: Value = serde_json::from_str(&std::fs::read_to_string(file).unwrap()).unwrap();
+    let id = schema_json["$id"].as_str().unwrap().to_owned();
+    assert_eq!(id, SCHEMA_ID);
     let mut schemas = boon::Schemas::new();
     let mut compiler = boon::Compiler::new();
     compiler.enable_format_assertions();
-    compiler
-        .add_resource(
-            "push-document-1.schema.json",
-            json("push-document-1.schema.json"),
-        )
-        .unwrap();
-    let schema = compiler
-        .compile("push-document-1.schema.json", &mut schemas)
-        .unwrap();
+    compiler.add_resource(&id, schema_json).unwrap();
+    let schema = compiler.compile(&id, &mut schemas).unwrap();
     if let Err(error) = schemas.validate(value, schema) {
         panic!("not valid against the schema: {error:#}");
     }

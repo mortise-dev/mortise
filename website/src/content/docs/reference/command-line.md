@@ -125,6 +125,13 @@ It sends no source code, nothing from `.env` and no absolute path. Paths are rel
 A flag wins over the environment. `app_path`, the app folder relative to the top of the git
 repository, and `shallow` always come from git. On a shallow clone the commits per module are left out.
 
+### Schema of the push document
+
+The JSON Schema of the push document is public. Schema version 1 is at
+`https://mortise-dev.github.io/mortise/schema/push-document-1.json`, and the same URL is its `$id`.
+A new schema version gets a new file, such as `push-document-2.json`. The file of an older version
+stays where it is.
+
 ### Environment
 
 | Variable | Meaning |

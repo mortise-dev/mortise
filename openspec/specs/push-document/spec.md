@@ -28,7 +28,7 @@ The push document SHALL hold the snapshot of the app without `root`, `app_url`, 
 - **THEN** its path in the document starts with `../`
 
 ### Requirement: The shape is frozen by a test
-A test SHALL serialize the document of `fixtures/shop-api` with a fixed envelope and compare it with a committed file. The same document SHALL be valid against a copy of the cloud's `push-document-1.schema.json` kept in the repository, and SHALL hold every member of the cloud's `example-shop-api.json` with the same value, except `churn`. A change that removes or renames a member or changes its type SHALL raise `SCHEMA_VERSION`.
+A test SHALL serialize the document of `fixtures/shop-api` with a fixed envelope and compare it with a committed file. The same document SHALL be valid against the cloud's `push-document-1.schema.json`, which the repository keeps once as `website/public/schema/push-document-1.json` and the docs site publishes at `https://mortise-dev.github.io/mortise/schema/push-document-1.json` (its `$id`), and SHALL hold every member of the cloud's `example-shop-api.json` with the same value, except `churn`. A change that removes or renames a member or changes its type SHALL raise `SCHEMA_VERSION`.
 
 #### Scenario: A renamed member
 - **WHEN** a field of a type in the document is renamed
