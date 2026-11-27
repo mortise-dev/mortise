@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:mortise:push-document:1",
+  "$id": "https://mortise-dev.github.io/mortise/schema/push-document-1.json",
   "title": "Mortise push document, schema version 1",
   "description": "The JSON document that `mortise push` sends to Mortise Cloud. The `snapshot` member is the serde output of `mortise_core::AppSnapshot` after the push projection (docs/spec/02-snapshot-contract.md). Unknown members are allowed so that Mortise can add optional fields within version 1; the cloud ignores them.",
   "type": "object",

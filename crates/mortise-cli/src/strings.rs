@@ -149,8 +149,8 @@ pub fn invalid_rules_file(message: &str) -> String {
 pub const HIDDEN_TOKEN: &str = "[MORTISE_TOKEN]";
 
 pub const NO_TOKEN: &str = "mortise: MORTISE_TOKEN is not set, so nothing can be sent. \
-     Make a token for the app in Mortise Cloud and give it to this run as MORTISE_TOKEN, \
-     or use --dry-run to see the document.";
+     Make a token for the app at https://mortisecloud.com/push?utm_source=mortise-cli \
+     and give it to this run as MORTISE_TOKEN, or use --dry-run to see the document.";
 
 pub const WRONG_TOKEN: &str = "mortise: MORTISE_TOKEN holds a space or a control character, \
      which a token cannot have. Copy the token again from Mortise Cloud.";

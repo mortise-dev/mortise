@@ -229,7 +229,9 @@ fn without_a_token_a_fork_passes_and_any_other_run_fails() {
     on_push.push(("GITHUB_EVENT_NAME", "push"));
     let output = push(&[path.to_str().unwrap()], &on_push);
     assert_eq!(output.status.code(), Some(2));
-    assert!(stderr(&output).contains("MORTISE_TOKEN is not set"));
+    let message = stderr(&output);
+    assert!(message.contains("MORTISE_TOKEN is not set"));
+    assert!(message.contains("https://mortisecloud.com/push?utm_source=mortise-cli"));
 }
 
 #[test]
