@@ -291,13 +291,11 @@ fn git(folder: &Path, args: &[&str]) {
     let output = Command::new("git")
         .current_dir(folder)
         .args(["-c", "user.name=Test", "-c", "user.email=test@example.com"])
-        .args([
-            "-c",
-            "commit.gpgsign=false",
-            "-c",
-            "protocol.file.allow=always",
-        ])
+        .args(["-c", "commit.gpgsign=false"])
         .args(args)
+        // Without the settings of this computer, such as its hooks.
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .env("GIT_CONFIG_SYSTEM", "/dev/null")
         .output()
         .unwrap();
     assert!(output.status.success(), "git {args:?}: {}", stderr(&output));
@@ -316,15 +314,11 @@ fn a_shallow_clone_is_sent_without_commits_per_module_and_says_so() {
     );
     let folder = tempfile::tempdir().unwrap();
     let clone = folder.path().join("clone");
-    // A path is cloned with links to the files and no depth: a URL is not.
-    let path = origin.path().to_str().unwrap().replace('\\', "/");
-    let url = format!(
-        "file://{}{path}",
-        if path.starts_with('/') { "" } else { "/" }
-    );
+    // Without `--no-local`, git copies a path as it is and ignores the depth.
+    let origin = origin.path().to_str().unwrap();
     git(
         folder.path(),
-        &["clone", "-q", "--depth", "1", &url, "clone"],
+        &["clone", "-q", "--no-local", "--depth", "1", origin, "clone"],
     );
 
     let (url, taken) = stub(vec![(202, "", r#"{"id": "snp_1", "status": "queued"}"#)]);
