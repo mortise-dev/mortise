@@ -741,6 +741,8 @@ return new class extends Migration
             r#"<?php
             use Some\Thing;
             return [
+                // The last of two equal keys wins, as in PHP.
+                'namespace' => 'Old',
                 'namespace' => 'Modules',
                 "paths" => ['app_folder' => 'app/', 'generate' => true, 'depth' => 2],
                 'nothing' => null,
@@ -785,12 +787,6 @@ return new class extends Migration
         for key in ["d", "e", "f", "g"] {
             assert_eq!(config.get(key), Some(&ConfigValue::Unknown), "key {key}");
         }
-    }
-
-    #[test]
-    fn the_last_of_two_equal_keys_wins() {
-        let config = read("<?php return ['a' => 'one', 'a' => 'two'];");
-        assert_eq!(config.get("a"), Some(&ConfigValue::Str("two".into())));
     }
 
     #[test]
@@ -853,10 +849,7 @@ return new class extends Migration
             "#,
         );
         assert_eq!(tests, 4);
-    }
 
-    #[test]
-    fn a_file_without_tests_counts_none() {
         assert_eq!(count_tests(b"<?php class Helper { function make() {} }"), 0);
         assert_eq!(count_tests(b""), 0);
         // A call that is not complete is not a test yet.

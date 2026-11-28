@@ -69,27 +69,8 @@ pub struct LiveRuntime {
 }
 
 impl LiveRuntime {
-    /// Starts asking the environment. `on_change` is called from the worker thread
-    /// after every answer.
-    pub fn open(
-        environment: Environment,
-        secret: Secret,
-        on_change: impl Fn() + Send + 'static,
-    ) -> Self {
-        Self::open_with(environment, secret, Pace::default(), on_change)
-    }
-
-    /// As [`LiveRuntime::open`], at another pace. Tests use it.
-    pub fn open_with(
-        environment: Environment,
-        secret: Secret,
-        pace: Pace,
-        on_change: impl Fn() + Send + 'static,
-    ) -> Self {
-        Self::open_with_metrics(environment, secret, pace, on_change, |_| {})
-    }
-
-    /// As [`LiveRuntime::open_with`], and hands every answer of `prometheus` to `on_metrics`,
+    /// Starts asking the environment at `pace`. `on_change` is called from the worker
+    /// thread after every answer. Every answer of `prometheus` goes to `on_metrics`,
     /// on the worker thread, before `on_change` is called.
     pub fn open_with_metrics(
         environment: Environment,

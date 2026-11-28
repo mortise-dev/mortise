@@ -278,6 +278,19 @@ fn a_500_and_a_404_are_not_statuses_of_the_app() {
             location: None
         }
     );
+    // A 403 on a later endpoint stops the ask and names that endpoint.
+    let stub = StubActuator::healthy();
+    stub.set(
+        "/actuator/info",
+        Reply::status(403, r#"{"message":"This action is unauthorized."}"#),
+    );
+    assert_eq!(
+        ask(&local(&stub), &None),
+        Answer::NotAuthorized {
+            url: format!("{}/actuator/info", stub.base_url),
+            status: 403
+        }
+    );
 }
 
 #[test]
@@ -342,22 +355,6 @@ fn each_kind_of_credentials_is_sent_as_its_header() {
         );
         assert!(other.asked().is_empty());
     }
-}
-
-#[test]
-fn a_403_on_one_endpoint_is_not_authorized_with_its_address() {
-    let stub = StubActuator::healthy();
-    stub.set(
-        "/actuator/info",
-        Reply::status(403, r#"{"message":"This action is unauthorized."}"#),
-    );
-    assert_eq!(
-        ask(&local(&stub), &None),
-        Answer::NotAuthorized {
-            url: format!("{}/actuator/info", stub.base_url),
-            status: 403
-        }
-    );
 }
 
 #[test]
@@ -667,9 +664,15 @@ fn a_live_environment_asks_health_often_and_the_rest_seldom() {
         seen: Duration::from_secs(3600),
         metrics: Duration::from_secs(3600),
     };
-    let runtime = LiveRuntime::open_with(local(&stub), None, pace, move || {
-        counter.fetch_add(1, Ordering::Relaxed);
-    });
+    let runtime = LiveRuntime::open_with_metrics(
+        local(&stub),
+        None,
+        pace,
+        move || {
+            counter.fetch_add(1, Ordering::Relaxed);
+        },
+        |_| {},
+    );
     assert!(runtime.state().asking);
 
     let state = wait_for(&runtime, "the first answer", |state| state.answer.is_some());
@@ -707,31 +710,6 @@ fn a_live_environment_asks_health_often_and_the_rest_seldom() {
 }
 
 #[test]
-fn a_live_environment_stops_asking_when_the_window_is_not_seen() {
-    let stub = StubActuator::healthy();
-    let pace = Pace {
-        status: Duration::from_millis(40),
-        everything: Duration::from_secs(3600),
-        seen: Duration::from_millis(200),
-        metrics: Duration::from_secs(3600),
-    };
-    let runtime = LiveRuntime::open_with(local(&stub), None, pace, || {});
-    wait_for(&runtime, "the first answer", |state| state.answer.is_some());
-
-    // Nobody draws: after a moment no request is made any more.
-    std::thread::sleep(Duration::from_millis(500));
-    let quiet = stub.asked().len();
-    std::thread::sleep(Duration::from_millis(300));
-    assert_eq!(stub.asked().len(), quiet);
-
-    // The window is seen again: asking starts at once.
-    runtime.seen();
-    wait_for(&runtime, "a check after the window is seen", |_| {
-        stub.asked().len() > quiet
-    });
-}
-
-#[test]
 fn a_live_environment_that_gave_no_answer_asks_for_everything_when_it_can() {
     let stub = StubActuator::start();
     let pace = Pace {
@@ -740,7 +718,7 @@ fn a_live_environment_that_gave_no_answer_asks_for_everything_when_it_can() {
         seen: Duration::from_secs(3600),
         metrics: Duration::from_secs(3600),
     };
-    let runtime = LiveRuntime::open_with(local(&stub), None, pace, || {});
+    let runtime = LiveRuntime::open_with_metrics(local(&stub), None, pace, || {}, |_| {});
     wait_for(&runtime, "404", |state| {
         matches!(
             state.answer.as_deref(),

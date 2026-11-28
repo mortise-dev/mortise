@@ -70,10 +70,7 @@ mod tests {
         assert!(fuzzy("mm bil", "module:make-model Billing").is_some());
         assert!(fuzzy("", "anything").is_some());
         assert!(fuzzy("  ", "anything").is_some());
-    }
 
-    #[test]
-    fn letters_out_of_order_or_missing_do_not_match() {
         assert_eq!(fuzzy("zzq", "Checkout"), None);
         assert_eq!(fuzzy("tuo", "Checkout"), None);
         assert_eq!(fuzzy("bil mm", "module:make-model Billing"), None);

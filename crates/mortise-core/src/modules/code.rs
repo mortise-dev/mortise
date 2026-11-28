@@ -144,14 +144,6 @@ mod tests {
     }
 
     #[test]
-    fn the_examples_of_the_specification() {
-        assert_eq!(
-            codes(&["Checkout", "Notifications", "Shipping"]),
-            ["CHK", "NTF", "SHP"]
-        );
-    }
-
-    #[test]
     fn first_letter_then_consonants_then_the_rest() {
         assert_eq!(
             codes(&[

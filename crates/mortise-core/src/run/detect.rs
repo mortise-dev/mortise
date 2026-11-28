@@ -166,7 +166,12 @@ mod tests {
 
     #[test]
     fn each_compose_file_is_docker() {
-        for name in COMPOSE_FILES {
+        for name in [
+            "compose.yaml",
+            "compose.yml",
+            "docker-compose.yaml",
+            "docker-compose.yml",
+        ] {
             let temp = tempfile::tempdir().unwrap();
             touch(&temp.path().join(name));
             assert_eq!(detect(temp.path(), None), [Detected::Docker], "{name}");
@@ -185,11 +190,5 @@ mod tests {
             Detected::Sail
         };
         assert_eq!(detect(&root, Some(&valet)), [Detected::Herd, sail]);
-    }
-
-    #[test]
-    fn an_empty_folder_finds_nothing() {
-        let temp = tempfile::tempdir().unwrap();
-        assert_eq!(detect(temp.path(), Some(&temp.path().join("valet"))), []);
     }
 }

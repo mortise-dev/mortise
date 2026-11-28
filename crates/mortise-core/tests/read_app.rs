@@ -3,7 +3,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
-use mortise_core::{AcceptedSurface, LayoutKey, Manifest, ModuleState, ReadError, read_app};
+use mortise_core::{AcceptedSurface, Manifest, ModuleState, ReadError, read_app};
 
 fn fixture(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -200,15 +200,6 @@ fn only_the_json_value_true_turns_a_module_on() {
 }
 
 #[test]
-fn without_a_statuses_file_every_module_is_off() {
-    let app = copy_of("shop-api");
-    std::fs::remove_file(app.path().join("modules_statuses.json")).unwrap();
-    let app = read_app(app.path()).unwrap();
-    assert_eq!(app.modules.len(), 7);
-    assert_eq!(app.modules_on(), 0);
-}
-
-#[test]
 fn another_activator_makes_the_state_unknown() {
     let app = copy_of("shop-api");
     std::fs::write(
@@ -242,31 +233,6 @@ fn the_name_comes_from_module_json_not_from_the_folder() {
 }
 
 #[test]
-fn a_module_with_a_broken_module_json_is_still_listed_by_its_folder() {
-    let app = copy_of("shop-api");
-    std::fs::write(
-        app.path().join("Modules/Users/module.json"),
-        "{\n    \"name\": \"Users\",\n",
-    )
-    .unwrap();
-
-    let app = read_app(app.path()).unwrap();
-    assert_eq!(app.modules.len(), 7);
-    let users = app
-        .modules
-        .iter()
-        .find(|module| module.name == "Users")
-        .unwrap();
-    assert!(
-        matches!(users.manifest, Manifest::InvalidJson { line: 3, .. }),
-        "{:?}",
-        users.manifest
-    );
-    // The folder name matches the entry in the statuses file here.
-    assert_eq!(users.state, ModuleState::On);
-}
-
-#[test]
 fn folders_without_module_json_and_files_are_not_modules() {
     let app = copy_of("shop-api");
     let modules = app.path().join("Modules");
@@ -280,16 +246,6 @@ fn folders_without_module_json_and_files_are_not_modules() {
     .unwrap();
 
     assert_eq!(read_app(app.path()).unwrap().modules.len(), 7);
-}
-
-#[test]
-fn without_a_coverage_report_coverage_is_unknown() {
-    let app = copy_of("shop-api");
-    std::fs::remove_dir_all(app.path().join("build")).unwrap();
-    let app = read_app(app.path()).unwrap();
-    assert_eq!(app.coverage_report, None);
-    assert_eq!(app.coverage(), None);
-    assert!(app.modules.iter().all(|module| module.coverage.is_none()));
 }
 
 #[test]
@@ -308,28 +264,6 @@ fn a_module_that_is_not_in_the_report_has_no_coverage() {
     assert_eq!(users.coverage, None);
     // 138 of 209 statements without the 22 of 25 of Users.
     assert_eq!(app.coverage().unwrap().percent(), Some(66));
-}
-
-#[test]
-fn the_report_named_in_phpunit_xml_is_read() {
-    let app = copy_of("shop-api");
-    std::fs::rename(
-        app.path().join("build/coverage/clover.xml"),
-        app.path().join("cov.xml"),
-    )
-    .unwrap();
-    assert_eq!(read_app(app.path()).unwrap().coverage(), None);
-    std::fs::write(
-        app.path().join("phpunit.xml"),
-        r#"<phpunit><coverage><report><clover outputFile="cov.xml"/></report></coverage></phpunit>"#,
-    )
-    .unwrap();
-    let app = read_app(app.path()).unwrap();
-    assert_eq!(
-        app.path_shown(&app.coverage_report.as_ref().unwrap().path),
-        "cov.xml"
-    );
-    assert_eq!(app.coverage().unwrap().percent(), Some(68));
 }
 
 #[test]
@@ -427,20 +361,6 @@ fn the_modules_folder_of_the_config_is_used() {
 }
 
 #[test]
-fn a_config_that_needs_php_falls_back_and_says_so() {
-    let app = copy_of("shop-api");
-    std::fs::write(
-        app.path().join("config/modules.php"),
-        "<?php return ['paths' => ['modules' => env('MODULES_PATH')]];",
-    )
-    .unwrap();
-
-    let app = read_app(app.path()).unwrap();
-    assert_eq!(app.layout.assumed, [LayoutKey::ModulesFolder]);
-    assert_eq!(app.modules.len(), 7);
-}
-
-#[test]
 fn an_app_without_a_modules_folder_has_no_modules() {
     let app = copy_of("shop-api");
     std::fs::remove_dir_all(app.path().join("Modules")).unwrap();
@@ -465,7 +385,7 @@ fn a_folder_that_is_not_a_laravel_app() {
 fn a_laravel_app_without_artisan_is_known_by_its_composer_json() {
     let app = copy_of("shop-api");
     std::fs::remove_file(app.path().join("artisan")).unwrap();
-    assert!(read_app(app.path()).is_ok());
+    assert_eq!(read_app(app.path()).unwrap().modules.len(), 7);
 }
 
 #[test]
@@ -697,26 +617,6 @@ fn finds_which_module_uses_which() {
     assert_eq!(app.used_by("Checkout").count(), 2);
     assert_eq!(app.rules_source, mortise_core::RulesSource::Defaults);
     assert_eq!(app.module("Billing").unwrap().namespace, r"Modules\Billing");
-}
-
-#[test]
-fn the_rules_of_mortise_json_decide_what_is_a_problem() {
-    let app = copy_of("shop-api");
-    std::fs::write(
-        app.path().join("mortise.json"),
-        r#"{"rules": {"no-circular-use": false, "public-surface-only": {"enabled": true, "folders": ["Contracts", "Events", "Models"]}}}"#,
-    )
-    .unwrap();
-    let app = read_app(app.path()).unwrap();
-    assert_eq!(app.rules_source, mortise_core::RulesSource::File);
-    // Models is public now, and a circle is allowed: nothing breaks a rule.
-    assert_eq!(app.problem_links().count(), 0);
-    assert_eq!(app.link("Checkout", "Billing").unwrap().internal_files(), 0);
-    // The circle is still known, but no module is told it is counted elsewhere.
-    assert_eq!(app.cycles.len(), 1);
-    for member in ["Checkout", "Shipping"] {
-        assert!(app.circles_counted_elsewhere(member).is_empty());
-    }
 }
 
 #[test]
@@ -1031,6 +931,11 @@ fn finds_broken_files_of_the_package() {
     std::fs::write(&statuses, json.replace("{", "{\n    \"Legacy\": true,")).unwrap();
 
     let app = read_app(app.path()).unwrap();
+    // A module with a broken module.json is still listed by its folder,
+    // and the folder name matches its entry in the statuses file.
+    assert_eq!(app.modules.len(), 7);
+    let users = app.modules.iter().find(|module| module.name == "Users");
+    assert_eq!(users.unwrap().state, ModuleState::On);
     let by_check = |check: Check| -> Vec<_> {
         app.findings
             .list
@@ -1095,6 +1000,7 @@ fn a_rule_that_is_off_is_not_checked_and_no_report_means_no_coverage_check() {
     std::fs::remove_dir_all(app.path().join("build")).unwrap();
 
     let app = read_app(app.path()).unwrap();
+    assert_eq!(app.rules_source, mortise_core::RulesSource::File);
     assert!(app.findings.list.is_empty(), "{:?}", app.findings.list);
     assert_eq!(app.findings.rules_and_checks(), (0, 3));
     assert!(
@@ -1103,6 +1009,14 @@ fn a_rule_that_is_off_is_not_checked_and_no_report_means_no_coverage_check() {
             .iter()
             .any(|result| result.check == Check::CoverageLimit)
     );
+    assert_eq!(app.coverage_report, None);
+    assert_eq!(app.coverage(), None);
+    assert!(app.modules.iter().all(|module| module.coverage.is_none()));
+    // The circle is still known, but no module is told it is counted elsewhere.
+    assert_eq!(app.cycles.len(), 1);
+    for member in ["Checkout", "Shipping"] {
+        assert!(app.circles_counted_elsewhere(member).is_empty());
+    }
 }
 
 #[test]

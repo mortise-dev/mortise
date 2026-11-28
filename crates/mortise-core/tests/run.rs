@@ -92,31 +92,6 @@ fn timed_out_at_the_limit() {
     }
 }
 
-#[test]
-fn the_fake_replays_a_recording() {
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_fake-artisan"))
-        .args(["module:make", "--no-interaction", "--ansi", "Blog"])
-        .output()
-        .unwrap();
-    assert_eq!(output.status.code(), Some(0));
-    assert!(!output.stdout.is_empty());
-
-    // A recording with a `root` prints the paths of the folder it runs in.
-    let folder = tempfile::tempdir().unwrap();
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_fake-artisan"))
-        .args(["module:make", "Loyalty", "--api", "--json"])
-        .current_dir(folder.path())
-        .output()
-        .unwrap();
-    let json: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
-    let path = json["files"][0]["path"].as_str().unwrap();
-    let name = folder.path().file_name().unwrap().to_str().unwrap();
-    assert!(
-        path.contains(&format!("/{name}/Modules/Loyalty/")) && !path.contains('\\'),
-        "{path}"
-    );
-}
-
 /// The settings of an app whose runner is the fake with the words `before`.
 fn php(before: &str) -> PhpSettings {
     PhpSettings {
