@@ -1,7 +1,7 @@
 //! The push document of shop-api, whose shape is a contract with Mortise Cloud (its request R8).
 //!
 //! The schema is `website/public/schema/push-document-1.json`, the file the docs site publishes at its
-//! `$id`, with the same members as the cloud's copy. `push/example-shop-api.json` is a copy of `mortise-cloud/docs/spec/contract` at `064a015`.
+//! `$id`, with the same members as the cloud's copy. `push/example-shop-api.json` is a copy of `mortise-cloud/docs/spec/contract` at `fedac7e`.
 //! `push/shop-api.json` is the document this Mortise writes. After a change to a type in the document, write it again with
 //! `UPDATE_SNAPSHOTS=1 cargo test -p mortise-core --test push` and review the change: a member that
 //! is removed, renamed or changes its type needs a new `SCHEMA_VERSION`.
