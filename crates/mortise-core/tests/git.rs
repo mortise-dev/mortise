@@ -90,6 +90,12 @@ fn counts_the_commits_of_30_days_for_each_module() {
     commit_all(&root, 2, "two files of one module");
     touch(&root, "composer.json");
     commit_all(&root, 1, "outside the modules");
+    std::fs::rename(
+        root.join("Modules/Users/tests/Unit/UserTest.php"),
+        root.join("Modules/Catalog/tests/Unit/UserTest.php"),
+    )
+    .unwrap();
+    commit_all(&root, 3, "a file moves to another module");
 
     let app = read_app(&root).unwrap();
     let Git::Repository { branch, commit } = &app.git else {
@@ -116,6 +122,9 @@ fn counts_the_commits_of_30_days_for_each_module() {
     assert_eq!(days_since(churn("Checkout").last_commit), 2);
     assert_eq!(churn("Shipping").commits, 1);
     assert_eq!(days_since(churn("Shipping").last_commit), 10);
+    // A move touches the module the file left and the one it joined.
+    assert_eq!(churn("Users").commits, 1);
+    assert_eq!(churn("Catalog").commits, 1);
     // Quiet for 30 days: the last commit is still known.
     assert_eq!(churn("Billing").commits, 0);
     assert_eq!(days_since(churn("Billing").last_commit), 90);

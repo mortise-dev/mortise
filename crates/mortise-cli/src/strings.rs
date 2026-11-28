@@ -159,6 +159,10 @@ pub const WRONG_TOKEN: &str = "mortise: MORTISE_TOKEN holds a space or a control
 pub const FORK_WITHOUT_TOKEN: &str = "mortise: this pull request comes from a fork, and GitHub \
      gives such a run no secrets, so MORTISE_TOKEN is not set. Nothing was sent; the build goes on.";
 
+/// Not in the spec. The clone has only a part of the history.
+pub const SHALLOW_CLONE: &str = "mortise: shallow clone: commits per module are not sent. \
+     Set `fetch-depth: 0` on `actions/checkout`.";
+
 pub const NO_EVENT_FILE: &str = "mortise: GITHUB_EVENT_PATH is not set on a pull request run, \
      so the pull request is unknown. Give --pull-request, --base-branch and --base-commit.";
 

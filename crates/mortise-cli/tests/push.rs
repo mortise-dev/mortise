@@ -286,6 +286,73 @@ fn an_accepted_document_prints_the_snapshot_url() {
     assert_eq!(document["ci"]["provider"], "other");
 }
 
+/// Runs git in `folder` and fails the test when git does.
+fn git(folder: &Path, args: &[&str]) {
+    let output = Command::new("git")
+        .current_dir(folder)
+        .args(["-c", "user.name=Test", "-c", "user.email=test@example.com"])
+        .args([
+            "-c",
+            "commit.gpgsign=false",
+            "-c",
+            "protocol.file.allow=always",
+        ])
+        .args(args)
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "git {args:?}: {}", stderr(&output));
+}
+
+#[test]
+fn a_shallow_clone_is_sent_without_commits_per_module_and_says_so() {
+    // A repository with two commits, and a clone that has only the last one.
+    let origin = common::copy_of_fixture();
+    git(origin.path(), &["init", "-q"]);
+    git(origin.path(), &["add", "-A"]);
+    git(origin.path(), &["commit", "-q", "-m", "first"]);
+    git(
+        origin.path(),
+        &["commit", "-q", "--allow-empty", "-m", "second"],
+    );
+    let folder = tempfile::tempdir().unwrap();
+    let clone = folder.path().join("clone");
+    // A path is cloned with links to the files and no depth: a URL is not.
+    let path = origin.path().to_str().unwrap().replace('\\', "/");
+    let url = format!(
+        "file://{}{path}",
+        if path.starts_with('/') { "" } else { "/" }
+    );
+    git(
+        folder.path(),
+        &["clone", "-q", "--depth", "1", &url, "clone"],
+    );
+
+    let (url, taken) = stub(vec![(202, "", r#"{"id": "snp_1", "status": "queued"}"#)]);
+    let output = push(
+        &[clone.to_str().unwrap()],
+        &[("MORTISE_TOKEN", TOKEN), ("MORTISE_CLOUD_URL", &url)],
+    );
+    assert_eq!(output.status.code(), Some(0), "{}", stderr(&output));
+    let notice = "mortise: shallow clone: commits per module are not sent. \
+                  Set `fetch-depth: 0` on `actions/checkout`.";
+    assert_eq!(
+        stderr(&output).matches(notice).count(),
+        1,
+        "{}",
+        stderr(&output)
+    );
+
+    let [request] = requests(&taken).try_into().ok().unwrap();
+    let mut json = String::new();
+    flate2::read::GzDecoder::new(request.body.as_slice())
+        .read_to_string(&mut json)
+        .unwrap();
+    let document: Value = serde_json::from_str(&json).unwrap();
+    assert_eq!(document["git"]["shallow"], true);
+    let modules = document["snapshot"]["modules"].as_array().unwrap();
+    assert!(modules.iter().all(|module| module["churn"].is_null()));
+}
+
 #[test]
 fn a_refused_document_fails_and_a_plan_limit_does_not() {
     for (status, body, code, said) in [
