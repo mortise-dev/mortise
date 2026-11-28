@@ -333,6 +333,9 @@ pub struct ReadOptions {
     pub coverage_given: CoverageSettings,
     /// What the package said in the reads the user started. Kept in memory only.
     pub package: PackageData,
+    /// Read no coverage report, even one that is there: for a commit whose tests did
+    /// not run.
+    pub no_coverage: bool,
 }
 
 impl Default for ReadOptions {
@@ -342,6 +345,7 @@ impl Default for ReadOptions {
             coverage_report: None,
             coverage_given: CoverageSettings::default(),
             package: PackageData::default(),
+            no_coverage: false,
         }
     }
 }
@@ -423,6 +427,7 @@ pub fn read_app_cached(
 
     // A report given for this read must be read; a fault is an error, not a fallback.
     let report = match &options.coverage_given.report {
+        _ if options.no_coverage => None,
         Some(given) => {
             let path = root.join(given);
             let fault = |message: String| ReadError::CoverageReport {

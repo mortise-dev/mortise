@@ -2,7 +2,7 @@
 //! draws no command line, so none of this text is in the spec. The sentences of the
 //! findings follow those of the Findings list.
 
-use mortise_core::{Check, Counted, MAX_TEXT, PushLimit, Severity};
+use mortise_core::{Check, Counted, MAX_TEXT, PastError, PushLimit, ReadError, Severity};
 
 pub const HELP: &str = "\
 Mortise checks the boundary rules of a Laravel app that uses nwidart/laravel-modules,
@@ -10,6 +10,7 @@ and sends what it read to Mortise Cloud.
 
 Usage: mortise check [PATH] [OPTIONS]
        mortise push [PATH] [OPTIONS]
+       mortise backfill [PATH] [OPTIONS]
 
 PATH is the app folder. It defaults to the current folder.
 
@@ -31,19 +32,32 @@ Options of push:
   --base-commit <sha>         The tip of the base branch
   --repository <owner/name>   Default: GITHUB_REPOSITORY
 
+Options of backfill:
+  --weeks <number>            For a test run: read no commit older than this many weeks.
+                              The cloud then takes what was sent as the history
+  --dry-run                   Print the commits and send nothing. With --weeks, needs no token
+  --branch <name>             The default branch. Default: the branch that is checked out
+  --repository <owner/name>   Default: GITHUB_REPOSITORY
+
   -h, --help                  Print this help
   -V, --version               Print the version
 
-push reads the token from MORTISE_TOKEN and the host from MORTISE_CLOUD_URL
-(default https://mortisecloud.com). It never prints the token.
+push and backfill read the token from MORTISE_TOKEN and the host from MORTISE_CLOUD_URL
+(default https://mortisecloud.com). They never print the token.
+
+backfill sends one document for the last commit of each past week of the default
+branch, as far back as Mortise Cloud asks. It needs the full history of git.
 
 Exit codes:
   0  check: no finding fails the check, or mortise.json sets \"ci\": { \"fail\": false }
-     push: sent; or not sent because the cloud is down or for a plan reason, with a warning
+     push, backfill: sent; or not sent because the cloud is down or for a plan reason,
+     with a warning
   1  check: a finding fails the check
-  2  The command line is wrong, the report of --coverage cannot be read, or push has no token
+  2  The command line is wrong, the report of --coverage cannot be read, push or
+     backfill has no token, or backfill is not in a git repository
   3  The folder cannot be read as an app
   4  push: the cloud refused the document, or it is over a limit of the cloud
+     backfill: the cloud refused the token or a document
   5  The report or the document could not be written
 ";
 
@@ -59,7 +73,7 @@ pub fn usage_error(message: &str) -> String {
 }
 
 pub fn unknown_command(command: &str) -> String {
-    format!("{command} is not a command. The commands are check and push.")
+    format!("{command} is not a command. The commands are check, push and backfill.")
 }
 
 pub fn unknown_flag(command: &str, flag: &str) -> String {
@@ -112,6 +126,10 @@ pub fn wrong_pull_request(value: &str) -> String {
     format!("--pull-request takes a number from 1, not {value}.")
 }
 
+pub fn wrong_weeks(value: &str) -> String {
+    format!("--weeks takes a number from 1, not {value}.")
+}
+
 pub fn wrong_repository(value: &str) -> String {
     format!("--repository takes owner/name, such as acme/shop-api, not {value}.")
 }
@@ -148,9 +166,18 @@ pub fn invalid_rules_file(message: &str) -> String {
 /// Stands for the token where text from the cloud names it.
 pub const HIDDEN_TOKEN: &str = "[MORTISE_TOKEN]";
 
-pub const NO_TOKEN: &str = "mortise: MORTISE_TOKEN is not set, so nothing can be sent. \
-     Make a token for the app at https://mortisecloud.com/push?utm_source=mortise-cli \
-     and give it to this run as MORTISE_TOKEN, or use --dry-run to see the document.";
+/// `dry_run` says what a run without a token can still show.
+pub fn no_token(dry_run: &str) -> String {
+    format!(
+        "mortise: MORTISE_TOKEN is not set, so nothing can be sent. \
+         Make a token for the app at https://mortisecloud.com/push?utm_source=mortise-cli \
+         and give it to this run as MORTISE_TOKEN, or use {dry_run}."
+    )
+}
+
+pub const DRY_RUN_OF_PUSH: &str = "--dry-run to see the document";
+
+pub const DRY_RUN_OF_BACKFILL: &str = "--dry-run with --weeks to see the commits";
 
 pub const WRONG_TOKEN: &str = "mortise: MORTISE_TOKEN holds a space or a control character, \
      which a token cannot have. Copy the token again from Mortise Cloud.";
@@ -205,7 +232,12 @@ pub fn document_not_written(error: &str) -> String {
 
 /// `mortise: the document has 2,100 modules. Mortise Cloud takes at most 2,000. Nothing was sent.`
 pub fn over_limit(limit: &PushLimit) -> String {
-    let head = match limit {
+    format!("mortise: {}. Nothing was sent.", limit_passed(limit))
+}
+
+/// `the document has 2,100 modules. Mortise Cloud takes at most 2,000`
+pub fn limit_passed(limit: &PushLimit) -> String {
+    match limit {
         PushLimit::TooMany { what, count, limit } => {
             let what = match what {
                 Counted::Modules => "modules",
@@ -229,8 +261,7 @@ pub fn over_limit(limit: &PushLimit) -> String {
                 thousands(MAX_TEXT)
             )
         }
-    };
-    format!("mortise: {head}. Nothing was sent.")
+    }
 }
 
 /// `Sent to Mortise Cloud: https://mortisecloud.com/orgs/acme/apps/shop-api/snapshots/snp_01`
@@ -269,6 +300,140 @@ pub fn refused(status: u16, problem: &str) -> String {
 /// `  /git/commit: Must be a full commit SHA of 40 hexadecimal characters.`
 pub fn refused_member(pointer: &str, message: &str) -> String {
     format!("  {pointer}: {message}")
+}
+
+/// The clone has only a part of the history, so no past commit can be read.
+pub const BACKFILL_SHALLOW: &str = "mortise: backfill needs the full history. \
+     Set `fetch-depth: 0` on `actions/checkout`, then run the workflow again.";
+
+pub fn backfill_without_git(path: &str) -> String {
+    format!(
+        "mortise: backfill reads the history of git, and {path} is not in a git repository \
+         with a commit. Run it in a checkout of the app."
+    )
+}
+
+pub const BACKFILL_BRANCH_UNKNOWN: &str = "mortise: the default branch is unknown: no branch is \
+     checked out. Give --branch.";
+
+pub const BACKFILL_NOT_NEEDED: &str = "History is already filled.";
+
+pub const BACKFILL_NO_COMMITS: &str = "No past commits to send.";
+
+pub const BACKFILL_NONE_READ: &str = "No past commit could be read as an app. Nothing was sent.";
+
+pub const BACKFILL_SENT_NONE: &str = "Sent no past commits.";
+
+/// `Sent 12 past commits, back to 31 Aug 2026.`
+pub fn backfill_sent(commits: usize, oldest: &str) -> String {
+    format!(
+        "Sent {}, back to {oldest}.",
+        count(commits, "past commit", "past commits")
+    )
+}
+
+/// The answer is from a newer cloud than this Mortise knows.
+pub const BACKFILL_ANSWER_NOT_READ: &str = "mortise: Mortise Cloud asks for past commits in a way \
+     that this version of Mortise does not know. Nothing was sent; the build goes on. \
+     Update Mortise to fill the history.";
+
+/// A billing state: the build goes on.
+pub fn backfill_not_taken(status: u16, problem: &str) -> String {
+    format!(
+        "mortise: Mortise Cloud takes no past commits for this app (HTTP {status}): {problem} \
+         The build goes on."
+    )
+}
+
+/// An outage: the build goes on.
+pub fn backfill_not_asked(reason: &str) -> String {
+    format!(
+        "mortise: Mortise Cloud could not say which past commits to send after 4 tries: {reason}. \
+         Nothing was sent; the build goes on. The next run asks again."
+    )
+}
+
+/// The run is on another branch than the default branch of the app in the cloud.
+pub fn backfill_other_branch(branch: &str, default: &str) -> String {
+    format!(
+        "mortise: this run reads the branch {branch}, and Mortise Cloud takes past commits of \
+         {default}, the default branch of the app. Nothing was sent; the build goes on. \
+         Run the backfill on {default}, or change the default branch in the settings of the app \
+         in Mortise Cloud."
+    )
+}
+
+/// The run had nothing to send, and the cloud does not know it.
+pub fn backfill_not_told(reason: &str) -> String {
+    format!(
+        "mortise: Mortise Cloud could not be told that the run has nothing to send: {reason}. \
+         The build goes on. The next run tells it again."
+    )
+}
+
+pub fn backfill_refused(status: u16, problem: &str) -> String {
+    format!(
+        "mortise: Mortise Cloud refused the request (HTTP {status}): {problem} \
+         Check MORTISE_TOKEN and MORTISE_CLOUD_URL."
+    )
+}
+
+/// `mortise: commit 9b2e4c7 is left out: it has no composer.lock.`
+pub fn backfill_left_out(commit: &str, reason: &str) -> String {
+    format!("mortise: commit {commit} is left out: {reason}.")
+}
+
+/// Why a past commit gives no app, without the temporary folder its files were in.
+pub fn past_error(error: &PastError, app_path: &str) -> String {
+    match error {
+        PastError::NoFolder => format!("it has no folder {app_path}"),
+        PastError::NoFiles => "git could not give its files".to_owned(),
+        PastError::TemporaryInside => {
+            "the temporary folder of this computer is inside the repository".to_owned()
+        }
+        PastError::Outside => "it keeps its modules outside the app folder".to_owned(),
+        PastError::NotAnApp(ReadError::NotLaravel { .. }) => "it holds no Laravel app".to_owned(),
+        PastError::NotAnApp(ReadError::NoLock { .. }) => "it has no composer.lock".to_owned(),
+        PastError::NotAnApp(ReadError::NoPackage { .. }) => {
+            "it does not use nwidart/laravel-modules".to_owned()
+        }
+        PastError::NotAnApp(ReadError::InvalidLock { message, .. }) => {
+            format!("its composer.lock is not valid JSON: {message}")
+        }
+        PastError::NotAnApp(ReadError::CoverageReport { .. } | ReadError::Io { .. }) => {
+            "its files could not be read".to_owned()
+        }
+    }
+}
+
+pub fn backfill_invalid_rules(commit: &str, message: &str) -> String {
+    format!(
+        "mortise: the mortise.json of commit {commit} cannot be read: {message}. \
+         The default rules apply to it."
+    )
+}
+
+/// A billing state: the build goes on.
+pub fn backfill_stopped_not_taken(commit: &str, status: u16, problem: &str) -> String {
+    format!(
+        "mortise: Mortise Cloud did not take commit {commit} (HTTP {status}): {problem} \
+         The backfill stops here; the build goes on."
+    )
+}
+
+/// An outage or a rate limit: the build goes on.
+pub fn backfill_stopped_unreachable(commit: &str, reason: &str) -> String {
+    format!(
+        "mortise: Mortise Cloud could not take commit {commit} after 4 tries: {reason}. \
+         The backfill stops here; the build goes on. The next run sends the rest."
+    )
+}
+
+pub fn backfill_stopped_refused(commit: &str, status: u16, problem: &str) -> String {
+    format!(
+        "mortise: Mortise Cloud refused the document of commit {commit} (HTTP {status}): {problem} \
+         Check MORTISE_TOKEN and MORTISE_CLOUD_URL."
+    )
 }
 
 /// `2000000` as `2,000,000`.

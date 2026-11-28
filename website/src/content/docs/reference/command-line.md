@@ -1,6 +1,6 @@
 ---
 title: Command line tool
-description: The flags, output and exit codes of mortise check, which checks the boundary rules of an app in CI, and of mortise push, which sends a read to Mortise Cloud.
+description: The flags, output and exit codes of mortise check, which checks the boundary rules of an app in CI, of mortise push, which sends a read to Mortise Cloud, and of mortise backfill, which sends past commits.
 sidebar:
   order: 16
 ---
@@ -8,7 +8,8 @@ sidebar:
 The command line tool is the binary `mortise`. It reads an app through the same code as the window,
 so the two report the same findings. It runs no PHP and writes nothing in the app. `mortise check`
 writes only to standard output and standard error. `mortise push` also sends one document to Mortise
-Cloud. The window is a separate binary, `mortise-desktop`.
+Cloud, and `mortise backfill` one document for each past week. The window is a separate binary,
+`mortise-desktop`.
 [Install the command line tool](/mortise/start-here/installation/#install-the-command-line-tool) says
 how to get it.
 
@@ -129,7 +130,7 @@ on `actions/checkout`." It still sends the document and exits 0.
 
 `git.committed_at` is the committer date of the commit that the document names, in UTC, such as
 `2026-11-24T14:01:52Z`. It is `null` when the repository does not hold that commit. The author date
-is not sent. `backfill` is `null`: only a run that sends past commits sets it.
+is not sent. `backfill` is `null`: only [`mortise backfill`](#mortise-backfill) sets it.
 
 ### Schema of the push document
 
@@ -177,6 +178,105 @@ fix it.
 
 `mortise push` does not compare with a base branch, keep a history, call the GitHub API or post a
 comment. Mortise Cloud does that with what it receives.
+
+## mortise backfill
+
+```
+mortise backfill [PATH] [--weeks <n>] [--dry-run]
+                 [--branch <name>] [--repository <owner/name>]
+```
+
+`mortise backfill` sends one push document for the last commit of each past week of the default
+branch, so that Mortise Cloud has a history on the first day. Mortise Cloud says how far back to go
+and which commits it has. The tool reads each commit on its own: it compares nothing and keeps nothing.
+
+| Argument | Meaning |
+|---|---|
+| `PATH` | The app folder. Default: the current folder |
+| `--weeks <n>` | For a test run. Reads no commit older than `n` weeks. It can lower what the cloud asks for and never raises it. After a run that sent documents, the cloud takes the history as filled and answers that nothing is needed, although the older weeks were not sent. A run with `--weeks` that has nothing to send tells the cloud nothing |
+| `--dry-run` | Prints the commits it would read, one line each with the SHA and the committer date, and sends nothing. With `--weeks` it needs no token and asks nothing |
+| `--branch <name>` | The default branch. Default: the branch that is checked out. With a detached `HEAD` on GitHub Actions, the branch of `GITHUB_REF` when `GITHUB_SHA` is the commit checked out |
+| `--repository <owner/name>` | Default: `GITHUB_REPOSITORY` |
+
+It reads `MORTISE_TOKEN` and `MORTISE_CLOUD_URL` as `mortise push` does.
+
+### Which commits
+
+1. The tool asks `GET /api/v1/backfill` on the cloud host. The answer gives the start of the period
+   and the commits the cloud has. When nothing is needed, the tool prints "History is already filled."
+   and exits 0.
+2. It walks the first-parent history of `HEAD` and keeps the commits whose committer date is in the
+   period.
+3. It picks the last commit of each week by committer date. A week runs from Monday to Sunday in UTC.
+4. It leaves out the commit at `HEAD`, which `mortise push` sends, and the commits the cloud has.
+
+The answer can name the default branch that is set on the app in the cloud. When the run reads another
+branch, the tool sends nothing, prints a warning that names both branches, and exits 0. Run it on that
+branch, or change the default branch in the settings of the app in Mortise Cloud.
+
+When the cloud asks for a period and the run has no document to send, the tool tells the cloud that
+the run is done, with `POST /api/v1/backfill` and no body. The cloud then stops asking. When that call
+fails, the tool warns and exits 0, and the next run tells it again. Only a wrong token exits 4. A run with `--weeks` never sends it.
+
+Run it on the default branch: the history it walks is that of the commit that is checked out.
+
+A shallow clone has no past commits. There the tool sends nothing, with or without a token, prints "backfill needs the full
+history. Set `fetch-depth: 0` on `actions/checkout`, then run the workflow again." and exits 0.
+
+### How a past commit is read
+
+The tool asks git to write the files of the app folder at that commit to a temporary folder outside
+the app, reads them as it reads any app, and removes the folder. The working tree, the index and
+`HEAD` of the checkout stay as they are. The files are those of a checkout of that commit, without
+what could run a program: no git hook and no filter program runs, such as the one of Git LFS, and a
+link is written as a plain file. An app below the top of the repository is read under the
+`.gitignore` and `.ignore` files of the folders above it, as in the checkout. A commit whose `config/modules.php` keeps the modules outside the app folder is left out,
+because those files are not in the commit.
+
+Listing the commits downloads nothing. In a clone made with `--filter=blob:none`, git downloads the
+files of the app folder that the commit needs, in one request per commit, and keeps them in `.git` as
+it does for any command. The clone needs its credentials for that: on `actions/checkout`, leave
+`persist-credentials` on.
+
+It reads every commit before it sends the first document. A commit that cannot be read as an app, such
+as one from before the app used `nwidart/laravel-modules`, is left out with one line, and the run goes on.
+So is a commit whose document is over a limit of the cloud.
+
+### The documents
+
+Each document is a push document as `mortise push` writes it, with these values:
+
+| Member | Value |
+|---|---|
+| `git.commit`, `git.committed_at` | The past commit and its committer date |
+| `git.branch` | The default branch |
+| `git.pull_request` and the head and base members | `null` |
+| `git.shallow` | `false` |
+| `environment` | `null` |
+| `backfill` | `{ "position": n, "of": m }`: document `n` of the `m` that the run sends, counted from the newest |
+| Coverage | None. The tests of a past commit did not run, so a report in the commit is not read |
+| `churn` of a module | The commits of the 30 days before that commit |
+
+The newest commit goes first, so a run that stops early keeps the most useful part.
+
+### Answers of the cloud
+
+| Answer | What the tool does |
+|---|---|
+| `200`, `202` | Goes on with the next commit |
+| `429`, `5xx`, no answer | Waits for `Retry-After`, up to 60 seconds, or 2, 4 and 8 seconds, and sends the same document again. After 3 waits in a row it warns, stops and exits 0 |
+| `402`, `403` | A plan limit or an inactive app. Warns, stops and exits 0 |
+| Any other | Prints the problem, stops and exits 4 |
+
+The last line counts what was sent: "Sent 12 past commits, back to 31 Aug 2026."
+
+### Exit codes of backfill
+
+| Code | Meaning |
+|---|---|
+| 0 | Sent, or nothing to send. Also: stopped because the cloud could not be reached, limited the rate or refused for a plan reason, with a warning; a shallow clone; or a pull request from a fork without a token |
+| 2 | The command line is wrong, `MORTISE_TOKEN` is not set, the folder is in no git repository with a commit, no branch is known, or `MORTISE_CLOUD_URL` is not `https` |
+| 4 | The cloud refused the token or a document |
 
 ## Related pages
 

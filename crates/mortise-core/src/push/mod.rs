@@ -4,6 +4,7 @@
 //! version 1). A member that is removed, renamed or changes its type needs a new
 //! [`SCHEMA_VERSION`]. `tests/push.rs` compares the document of a fixture with a committed file.
 
+mod past;
 mod repository;
 
 use std::path::{Component, Path, PathBuf};
@@ -18,6 +19,7 @@ use crate::modules::composer::Version;
 use crate::modules::layout::Layout;
 use crate::modules::module::Module;
 
+pub use past::{PastCommit, PastError, read_past_app, weekly_commits};
 pub use repository::{Repository, commit_time, read_repository};
 
 /// The version of the push document that this Mortise writes.

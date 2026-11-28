@@ -77,24 +77,20 @@ pub(crate) fn run(options: &Options) -> u8 {
     let cloud = if options.dry_run {
         None
     } else {
-        let fork = github
-            .as_ref()
-            .and_then(|github| github.pull_request.as_ref())
-            .is_some_and(|pull| pull.fork);
-        match (token(), cloud_url()) {
-            (Ok(None), _) if fork => {
+        match Cloud::read() {
+            Ok(Some(cloud)) => Some(cloud),
+            Ok(None) if from_fork(github.as_ref()) => {
                 say(strings::FORK_WITHOUT_TOKEN);
                 return crate::PASSED;
             }
-            (Ok(None), _) => {
-                say(strings::NO_TOKEN);
+            Ok(None) => {
+                say(&strings::no_token(strings::DRY_RUN_OF_PUSH));
                 return crate::USAGE;
             }
-            (Err(message), _) | (_, Err(message)) => {
+            Err(message) => {
                 say(&message);
                 return crate::USAGE;
             }
-            (Ok(Some(token)), Ok(url)) => Some((url, token)),
         }
     };
 
@@ -178,18 +174,17 @@ pub(crate) fn run(options: &Options) -> u8 {
         return crate::REFUSED;
     }
 
-    let Some((url, token)) = cloud else {
+    let Some(cloud) = cloud else {
         return crate::PASSED;
     };
-    // Text from the cloud could echo the token. It never reaches the log.
-    let hide = |text: &str| hide_token(text, &token);
-    match send::send(&url, &token, &body, &mut std::thread::sleep) {
-        Outcome::Accepted { url, warnings } => {
-            for warning in warnings {
+    let hide = |text: &str| cloud.hide(text);
+    match cloud.send(SNAPSHOTS, Some(&body)) {
+        Outcome::Accepted { answer } => {
+            for warning in send::warnings(&answer) {
                 say(&strings::cloud_warning(&hide(&warning)));
             }
-            match url {
-                Some(url) => println!("{}", crate::printable(&strings::sent(&hide(&url)))),
+            match answer["url"].as_str() {
+                Some(url) => println!("{}", crate::printable(&strings::sent(&hide(url)))),
                 None => println!("{}", strings::SENT_WITHOUT_URL),
             }
             crate::PASSED
@@ -212,14 +207,54 @@ pub(crate) fn run(options: &Options) -> u8 {
     }
 }
 
-/// `text` with the token, and the secret part of it, replaced by a mark.
-fn hide_token(text: &str, token: &str) -> String {
-    let text = text.replace(token, strings::HIDDEN_TOKEN);
-    // `mortise_<id>_<secret>`: the secret alone is as good as the token.
-    match token.rsplit_once('_') {
-        Some((_, secret)) if secret.len() >= 16 => text.replace(secret, strings::HIDDEN_TOKEN),
-        _ => text,
+/// The path of the endpoint that takes push documents.
+pub(crate) const SNAPSHOTS: &str = "/api/v1/snapshots";
+
+/// The cloud host, and the token of the app.
+pub(crate) struct Cloud {
+    /// The host, without a `/` at its end.
+    base: String,
+    token: String,
+}
+
+impl Cloud {
+    /// The host of `MORTISE_CLOUD_URL` and the token of `MORTISE_TOKEN`. `Ok(None)` when
+    /// no token is set.
+    pub(crate) fn read() -> Result<Option<Self>, String> {
+        let Some(token) = token()? else {
+            return Ok(None);
+        };
+        let base = github::var("MORTISE_CLOUD_URL").unwrap_or_else(|| DEFAULT_CLOUD_URL.to_owned());
+        Ok(Some(Self {
+            base: cloud_base(&base)?,
+            token,
+        }))
     }
+
+    /// Sends `body`, a gzipped push document, to `path` on the host, or asks `path`
+    /// without one.
+    pub(crate) fn send(&self, path: &str, body: Option<&[u8]>) -> Outcome {
+        let url = format!("{}{path}", self.base);
+        send::send(&url, &self.token, body, &mut std::thread::sleep)
+    }
+
+    /// `text` with the token, and the secret part of it, replaced by a mark. Text from
+    /// the cloud could echo the token. It never reaches the log.
+    pub(crate) fn hide(&self, text: &str) -> String {
+        let text = text.replace(&self.token, strings::HIDDEN_TOKEN);
+        // `mortise_<id>_<secret>`: the secret alone is as good as the token.
+        match self.token.rsplit_once('_') {
+            Some((_, secret)) if secret.len() >= 16 => text.replace(secret, strings::HIDDEN_TOKEN),
+            _ => text,
+        }
+    }
+}
+
+/// True on a pull request from a fork. GitHub gives such a run no secrets.
+pub(crate) fn from_fork(github: Option<&GitHub>) -> bool {
+    github
+        .and_then(|github| github.pull_request.as_ref())
+        .is_some_and(|pull| pull.fork)
 }
 
 /// `MORTISE_TOKEN`, without the space around it. `Ok(None)` when it is not set.
@@ -235,17 +270,10 @@ fn token() -> Result<Option<String>, String> {
     Ok(Some(token.to_owned()))
 }
 
-/// The endpoint for snapshots on the cloud host. The token is sent in clear only to this
-/// computer.
-fn cloud_url() -> Result<String, String> {
-    let base = github::var("MORTISE_CLOUD_URL").unwrap_or_else(|| DEFAULT_CLOUD_URL.to_owned());
-    endpoint(&base)
-}
-
-/// The endpoint for snapshots under `base`. `base` is `https`, or `http` on this computer
-/// only, and names no user: the token must not cross a network in clear or reach a host
-/// that hides behind a user name.
-fn endpoint(base: &str) -> Result<String, String> {
+/// `base`, the cloud host, without a `/` at its end. It is `https`, or `http` on this
+/// computer only, and names no user: the token must not cross a network in clear or reach
+/// a host that hides behind a user name.
+fn cloud_base(base: &str) -> Result<String, String> {
     let base = base.trim().trim_end_matches('/');
     let wrong = || strings::wrong_cloud_url(base);
     let uri: ureq::http::Uri = base.parse().map_err(|_| wrong())?;
@@ -262,7 +290,7 @@ fn endpoint(base: &str) -> Result<String, String> {
         Some(scheme) if scheme.eq_ignore_ascii_case("http") && local => {}
         _ => return Err(wrong()),
     }
-    Ok(format!("{base}/api/v1/snapshots"))
+    Ok(base.to_owned())
 }
 
 /// The envelope. A flag wins over GitHub Actions, which wins over git, except for the
@@ -320,20 +348,6 @@ fn context(
         .or_else(|| pull.and_then(|pull| pull.head_branch.clone()))
         .or_else(|| github.and_then(|github| github.branch.clone()))
         .or_else(|| repository.and_then(|repository| repository.branch.clone()));
-    let ci = match github {
-        Some(github) => PushCi {
-            provider: "github-actions".to_owned(),
-            run_id: github.run_id.clone(),
-            run_attempt: github.run_attempt,
-            run_url: github.run_url.clone(),
-        },
-        None => PushCi {
-            provider: "other".to_owned(),
-            run_id: None,
-            run_attempt: None,
-            run_url: None,
-        },
-    };
     // The date of the commit that the document names, which a flag can set.
     let committed_at = commit_time(root, &commit)
         .and_then(|seconds| jiff::Timestamp::from_second(seconds).ok())
@@ -357,20 +371,38 @@ fn context(
             shallow: repository.is_some_and(|repository| repository.shallow),
             committed_at,
         },
-        ci,
+        ci: ci(github),
         environment: options.environment.clone(),
         // Only a run that sends past commits sets it.
         backfill: None,
     })
 }
 
+/// The CI run of the envelope.
+pub(crate) fn ci(github: Option<&GitHub>) -> PushCi {
+    match github {
+        Some(github) => PushCi {
+            provider: "github-actions".to_owned(),
+            run_id: github.run_id.clone(),
+            run_attempt: github.run_attempt,
+            run_url: github.run_url.clone(),
+        },
+        None => PushCi {
+            provider: "other".to_owned(),
+            run_id: None,
+            run_attempt: None,
+            run_url: None,
+        },
+    }
+}
+
 /// `time` as RFC 3339 in UTC, to the second.
-fn utc(time: jiff::Timestamp) -> String {
+pub(crate) fn utc(time: jiff::Timestamp) -> String {
     time.strftime("%Y-%m-%dT%H:%M:%SZ").to_string()
 }
 
 /// The body as sent: the document, gzipped.
-fn gzip(json: &[u8]) -> Vec<u8> {
+pub(crate) fn gzip(json: &[u8]) -> Vec<u8> {
     let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
     encoder
         .write_all(json)
@@ -384,17 +416,16 @@ mod tests {
 
     #[test]
     fn the_token_goes_in_clear_only_to_this_computer() {
-        let path = "/api/v1/snapshots";
         assert_eq!(
-            endpoint("https://mortisecloud.com/").unwrap(),
-            format!("https://mortisecloud.com{path}")
+            cloud_base("https://mortisecloud.com/").unwrap(),
+            "https://mortisecloud.com"
         );
         for local in [
             "http://localhost:8000",
             "http://127.0.0.1",
             "http://[::1]:80/",
         ] {
-            assert!(endpoint(local).is_ok(), "{local}");
+            assert!(cloud_base(local).is_ok(), "{local}");
         }
         // The URLs with user info are built at run time, so the secret scan of CI
         // does not read them as credentials.
@@ -408,7 +439,7 @@ mod tests {
             "ftp://localhost".to_string(),
             "mortisecloud.com".to_string(),
         ] {
-            assert!(endpoint(&wrong).is_err(), "{wrong}");
+            assert!(cloud_base(&wrong).is_err(), "{wrong}");
         }
     }
 }

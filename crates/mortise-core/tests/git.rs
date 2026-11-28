@@ -3,7 +3,7 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use mortise_core::{Git, read_app};
+use mortise_core::{Git, PastCommit, PastError, read_app, read_past_app};
 
 fn fixture(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -152,6 +152,91 @@ fn counts_the_commits_of_30_days_for_each_module() {
         .find(|module| module.name == "Checkout")
         .unwrap();
     assert_eq!(checkout.churn.unwrap().commits, 2);
+
+    // The app as it was at the commit of 40 days ago, read from that clone into a
+    // temporary folder. The checkout stays as it is.
+    let said = |args: &[&str]| {
+        let mut git = Command::new("git");
+        let output = git.arg("-C").arg(&clone).args(args).output().unwrap();
+        String::from_utf8(output.stdout).unwrap()
+    };
+    let found = said(&["log", "-1", "--format=%H %ct", "HEAD~4"]);
+    let (sha, time) = found.trim().split_once(' ').unwrap();
+    let commit = PastCommit {
+        commit: sha.to_owned(),
+        committed_at: time.parse().unwrap(),
+    };
+    let past = read_past_app(&clone, ".", &commit).unwrap();
+    assert_eq!(said(&["status", "--porcelain"]), "");
+    assert_eq!(past.name, "treeless");
+    let module = |name: &str| past.modules.iter().find(|module| module.name == name);
+    // The 30 days before that commit hold only the commit itself.
+    let checkout = module("Checkout").unwrap().churn.unwrap();
+    assert_eq!(
+        (checkout.commits, checkout.last_commit),
+        (1, Some(commit.committed_at))
+    );
+    let billing = module("Billing").unwrap().churn.unwrap();
+    assert_eq!((billing.commits, days_since(billing.last_commit)), (0, 90));
+    // The tests of a past commit did not run: the report in the fixture is not read.
+    assert!(past.coverage_report.is_none());
+    assert!(past.modules.iter().all(|module| module.coverage.is_none()));
+    // A filter program of the computer does not run on the files of a past commit. This
+    // one fails, and git would stop at it.
+    for (key, value) in [("smudge", "exit 1"), ("required", "true")] {
+        git(
+            &clone,
+            0,
+            &["config", &format!("filter.broken.{key}"), value],
+        );
+    }
+    std::fs::write(clone.join(".git/info/attributes"), "* filter=broken\n").unwrap();
+    // Nor does a hook, which would get the environment of the run.
+    let hook = clone.join(".git/hooks/post-index-change");
+    std::fs::write(
+        &hook,
+        "#!/bin/sh\ntouch \"$(git rev-parse --git-dir)/hook-ran\"\n",
+    )
+    .unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    assert!(read_past_app(&clone, ".", &commit).is_ok());
+    assert!(!clone.join(".git/hook-ran").exists());
+    // A commit that keeps its modules outside the app folder is not read from there.
+    let elsewhere = dir.path().join("elsewhere");
+    copy_dir(&root.join("Modules"), &elsewhere);
+    let config = root.join("config/modules.php");
+    let php = std::fs::read_to_string(&config).unwrap();
+    let path = format!("'{}'", elsewhere.to_str().unwrap().replace('\\', "/"));
+    std::fs::write(&config, php.replace("base_path('Modules')", &path)).unwrap();
+    commit_all(&root, 0, "modules elsewhere");
+    assert_eq!(
+        read_app(&root).unwrap().modules[0].dir.parent(),
+        Some(&*elsewhere)
+    );
+    let mut head = Command::new("git");
+    let head = head.arg("-C").arg(&root).args(["rev-parse", "HEAD"]);
+    let head = String::from_utf8(head.output().unwrap().stdout).unwrap();
+    let outside = PastCommit {
+        commit: head.trim().to_owned(),
+        ..commit.clone()
+    };
+    assert!(matches!(
+        read_past_app(&root, ".", &outside),
+        Err(PastError::Outside)
+    ));
+    // A commit that the repository does not hold gives no app.
+    let unknown = PastCommit {
+        commit: "0".repeat(40),
+        ..commit
+    };
+    assert!(matches!(
+        read_past_app(&clone, ".", &unknown),
+        Err(PastError::NoFolder)
+    ));
 }
 
 #[test]

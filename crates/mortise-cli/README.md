@@ -8,6 +8,8 @@ PHP, and checks its boundary rules in CI.
   breaks. `--format github` marks each problem on its line in a pull request.
 - `mortise push` sends one read of the app to [Mortise Cloud](https://mortisecloud.com). The token comes
   from `MORTISE_TOKEN` only.
+- `mortise backfill` sends one read for the last commit of each past week of the default branch, so
+  the cloud has a history on the first day. It reads each commit on its own from a temporary folder.
 
 The tool writes nothing in the app.
 
