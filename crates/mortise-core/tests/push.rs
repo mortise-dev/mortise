@@ -1,7 +1,7 @@
 //! The push document of shop-api, whose shape is a contract with Mortise Cloud (its request R8).
 //!
 //! The schema is `website/public/schema/push-document-1.json`, the file the docs site publishes at its
-//! `$id`. `push/example-shop-api.json` is a copy of `mortise-cloud/docs/spec/contract` at `064a015`.
+//! `$id`, with the same members as the cloud's copy. `push/example-shop-api.json` is a copy of `mortise-cloud/docs/spec/contract` at `064a015`.
 //! `push/shop-api.json` is the document this Mortise writes. After a change to a type in the document, write it again with
 //! `UPDATE_SNAPSHOTS=1 cargo test -p mortise-core --test push` and review the change: a member that
 //! is removed, renamed or changes its type needs a new `SCHEMA_VERSION`.
@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 
 use mortise_core::Detail;
 
-use mortise_core::{PushCi, PushContext, PushGit, push_document, read_app};
+use mortise_core::{PushBackfill, PushCi, PushContext, PushGit, push_document, read_app};
 use serde_json::{Value, json};
 
 /// The public URL of schema version 1. A new version gets a new file and URL; this one stays.
@@ -42,6 +42,7 @@ fn context() -> PushContext {
             base_commit: sha("e07a3d5c19b84f2a6d0c7e1b9f3a5d8c2e4b6a10"),
             pull_request: Some(42),
             shallow: true,
+            committed_at: sha("2026-11-24T14:01:52Z"),
         },
         ci: PushCi {
             provider: "github-actions".to_owned(),
@@ -50,6 +51,7 @@ fn context() -> PushContext {
             run_url: sha("https://github.com/acme/shop-api/actions/runs/12093847561"),
         },
         environment: None,
+        backfill: None,
     }
 }
 
@@ -78,8 +80,8 @@ fn holds(actual: &Value, expected: &Value, skip: &[&str], at: &str) {
     }
 }
 
-/// Panics when `value` is not valid against the cloud's schema.
-fn assert_valid(value: &Value) {
+/// Whether `value` is valid against the cloud's schema, with what is wrong when it is not.
+fn validate(value: &Value) -> Result<(), String> {
     let file = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../website/public/schema/push-document-1.json");
     let schema_json: Value = serde_json::from_str(&std::fs::read_to_string(file).unwrap()).unwrap();
@@ -90,8 +92,15 @@ fn assert_valid(value: &Value) {
     compiler.enable_format_assertions();
     compiler.add_resource(&id, schema_json).unwrap();
     let schema = compiler.compile(&id, &mut schemas).unwrap();
-    if let Err(error) = schemas.validate(value, schema) {
-        panic!("not valid against the schema: {error:#}");
+    schemas
+        .validate(value, schema)
+        .map_err(|error| format!("{error:#}"))
+}
+
+/// Panics when `value` is not valid against the cloud's schema.
+fn assert_valid(value: &Value) {
+    if let Err(error) = validate(value) {
+        panic!("not valid against the schema: {error}");
     }
 }
 
@@ -116,6 +125,38 @@ fn the_document_of_shop_api_keeps_its_shape() {
 
     let value: Value = serde_json::from_str(&written).unwrap();
     assert_valid(&value);
+    assert_eq!(value["git"]["committed_at"], "2026-11-24T14:01:52Z");
+    assert_eq!(value["backfill"], Value::Null);
+
+    // A document of Mortise 1.0.0 has neither member and stays valid.
+    let mut older = value.clone();
+    older["git"].as_object_mut().unwrap().remove("committed_at");
+    older.as_object_mut().unwrap().remove("backfill");
+    assert_valid(&older);
+
+    // A document of a run that sends past commits names a branch, a commit time and no deploy.
+    let mut past = document.clone();
+    past.backfill = Some(PushBackfill {
+        position: 3,
+        of: 13,
+    });
+    let past = |change: &dyn Fn(&mut mortise_core::PushDocument)| {
+        let mut past = past.clone();
+        change(&mut past);
+        validate(&serde_json::to_value(&past).unwrap())
+    };
+    assert!(past(&|_| {}).is_err(), "a pull request");
+    assert_eq!(past(&|past| past.git.pull_request = None), Ok(()));
+    let without_time = past(&|past| {
+        past.git.pull_request = None;
+        past.git.committed_at = None;
+    });
+    assert!(without_time.is_err(), "no commit time");
+    let deploy = past(&|past| {
+        past.git.pull_request = None;
+        past.environment = Some("production".to_owned());
+    });
+    assert!(deploy.is_err(), "a deploy");
 
     // The example was read from a full clone, so its churn is there and ours is not.
     holds(

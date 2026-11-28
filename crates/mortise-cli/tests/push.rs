@@ -159,6 +159,17 @@ fn a_dry_run_on_a_pull_request_fills_the_envelope_and_sends_nothing() {
         .output()
         .unwrap();
     let head = String::from_utf8(head.stdout).unwrap().trim().to_owned();
+    // The committer date as git prints it, with the offset of the committer.
+    let committed = Command::new("git")
+        .args(["show", "-s", "--format=%cI", "HEAD"])
+        .current_dir(fixture())
+        .output()
+        .unwrap();
+    let committed: jiff::Timestamp = String::from_utf8(committed.stdout)
+        .unwrap()
+        .trim()
+        .parse()
+        .unwrap();
     assert!(
         stderr(&output).contains(&format!(
             "the checkout is at {head}, not at GITHUB_SHA {SHA}"
@@ -177,8 +188,10 @@ fn a_dry_run_on_a_pull_request_fills_the_envelope_and_sends_nothing() {
             "base_commit": "e07a3d5c19b84f2a6d0c7e1b9f3a5d8c2e4b6a10",
             "pull_request": 42,
             "shallow": document["git"]["shallow"],
+            "committed_at": committed.strftime("%Y-%m-%dT%H:%M:%SZ").to_string(),
         })
     );
+    assert_eq!(document["backfill"], Value::Null);
     assert_eq!(
         document["ci"],
         serde_json::json!({
@@ -283,6 +296,8 @@ fn an_accepted_document_prints_the_snapshot_url() {
         .unwrap();
     let document: Value = serde_json::from_str(&json).unwrap();
     assert_eq!(document["environment"], "production");
+    // The repository does not hold the commit that the flag names.
+    assert_eq!(document["git"]["committed_at"], Value::Null);
     assert_eq!(document["ci"]["provider"], "other");
 }
 

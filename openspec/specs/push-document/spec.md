@@ -65,3 +65,14 @@ The push document SHALL carry the check `AllowedUse`, its details `OutsideAllowe
 #### Scenario: The fixture shop-api
 - **WHEN** the document of `fixtures/shop-api`, which has no `mortise.json`, is built
 - **THEN** it equals the committed file, with no `allowed_use` member
+
+### Requirement: The commit time and the backfill member need no new schema version
+The push document SHALL carry `git.committed_at`, a string or null, and `backfill`, null or an object with the integers `position` and `of`, both from 1, without raising `SCHEMA_VERSION`. The schema SHALL require neither member, so a document of Mortise 1.0.0 stays valid. When `backfill` is an object, the schema SHALL require `git.committed_at` to be a string, and `git.pull_request` and `environment` to be null.
+
+#### Scenario: The document of shop-api
+- **WHEN** the document of shop-api is built with a commit time and no backfill
+- **THEN** it equals the committed file, with `git.committed_at` and a null `backfill`, and it is valid with and without the two members
+
+#### Scenario: A backfill document of a pull request
+- **WHEN** `backfill` is an object and `git.pull_request` is a number, `git.committed_at` is null or `environment` is set
+- **THEN** the document is not valid against `push-document-1.schema.json`

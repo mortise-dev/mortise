@@ -18,7 +18,7 @@ use crate::modules::composer::Version;
 use crate::modules::layout::Layout;
 use crate::modules::module::Module;
 
-pub use repository::{Repository, read_repository};
+pub use repository::{Repository, commit_time, read_repository};
 
 /// The version of the push document that this Mortise writes.
 pub const SCHEMA_VERSION: u32 = 1;
@@ -48,6 +48,8 @@ pub struct PushDocument {
     pub ci: PushCi,
     /// Set only when this run deploys the commit, such as `production`.
     pub environment: Option<String>,
+    /// Set only by a run that sends past commits. `None` on every other push.
+    pub backfill: Option<PushBackfill>,
     pub snapshot: PushSnapshot,
 }
 
@@ -76,6 +78,16 @@ pub struct PushGit {
     pub pull_request: Option<u64>,
     /// True when the clone was shallow. Churn is then left out.
     pub shallow: bool,
+    /// The committer date of `commit`, RFC 3339 in UTC. `None` when git gives none.
+    pub committed_at: Option<String>,
+}
+
+/// The place of a document in a run that sends past commits: number `position` of the
+/// `of` documents the run plans to send. Both count from 1.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct PushBackfill {
+    pub position: u32,
+    pub of: u32,
 }
 
 /// The CI run, for a link back from the cloud.
@@ -98,6 +110,7 @@ pub struct PushContext {
     pub git: PushGit,
     pub ci: PushCi,
     pub environment: Option<String>,
+    pub backfill: Option<PushBackfill>,
 }
 
 /// [`AppSnapshot`] without what must not leave CI: no absolute path, nothing from `.env`,
@@ -202,6 +215,7 @@ pub fn push_document(app: AppSnapshot, context: PushContext) -> PushDocument {
         git: context.git,
         ci: context.ci,
         environment: context.environment,
+        backfill: context.backfill,
         snapshot: PushSnapshot {
             name,
             laravel,

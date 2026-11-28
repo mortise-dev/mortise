@@ -65,6 +65,16 @@ On a shallow clone `mortise push` SHALL print one notice on standard error that 
 #### Scenario: A clone of depth 1
 - **WHEN** `mortise push` runs in a clone made with `--depth 1` and the cloud accepts the document
 - **THEN** standard error holds the notice once, the document has `git.shallow` true and a null `churn` for each module, and the exit code is 0
+### Requirement: The document carries the commit time
+`git.committed_at` SHALL be the committer date of `git.commit`, as RFC 3339 in UTC to the second, on every push. It SHALL be null when the repository does not hold the commit or the folder is in no repository. The author date SHALL NOT be sent. `mortise push` SHALL send `backfill` as null.
+
+#### Scenario: A checkout in a repository
+- **WHEN** `mortise push --dry-run` runs in a checkout
+- **THEN** `git.committed_at` equals `git show -s --format=%cI HEAD` moved to UTC, and `backfill` is null
+
+#### Scenario: A commit the repository does not hold
+- **WHEN** `--commit` names a commit that the repository does not hold
+- **THEN** `git.committed_at` is null, and the document is sent
 
 ### Requirement: A flag does not take a flag as its value
 A value given as a separate argument SHALL NOT start with `-`; such a value is a usage error. A value after `=` may start with `-`.

@@ -47,3 +47,25 @@ pub fn read_repository(root: &Path) -> Option<Repository> {
         shallow: text(&["rev-parse", "--is-shallow-repository"]).as_deref() == Some("true"),
     })
 }
+
+/// When `commit` was committed, in seconds since 1970: its committer date, not its author
+/// date, which a rebase keeps from the first draft. `commit` is a full SHA. `None` when the
+/// folder is in no repository, or the repository does not hold the commit.
+pub fn commit_time(root: &Path, commit: &str) -> Option<i64> {
+    // Only a SHA reaches git: a name from the environment could read as an option.
+    if commit.is_empty() || !commit.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return None;
+    }
+    git(
+        root,
+        &[
+            "show",
+            "-s",
+            "--format=%ct",
+            &format!("{commit}^{{commit}}"),
+        ],
+    )?
+    .trim()
+    .parse()
+    .ok()
+}

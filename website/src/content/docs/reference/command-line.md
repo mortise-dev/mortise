@@ -127,6 +127,10 @@ repository, and `shallow` always come from git. On a shallow clone the commits p
 and the tool prints one notice: "shallow clone: commits per module are not sent. Set `fetch-depth: 0`
 on `actions/checkout`." It still sends the document and exits 0.
 
+`git.committed_at` is the committer date of the commit that the document names, in UTC, such as
+`2026-11-24T14:01:52Z`. It is `null` when the repository does not hold that commit. The author date
+is not sent. `backfill` is `null`: only a run that sends past commits sets it.
+
 ### Schema of the push document
 
 The JSON Schema of the push document is public. Schema version 1 is at

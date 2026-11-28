@@ -6,11 +6,11 @@
 
 use std::collections::BTreeMap;
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use mortise_core::{
     CoverageSettings, PushCi, PushContext, PushGit, ReadCache, ReadError, ReadOptions, Repository,
-    RulesSource, byte_limit, push_document, read_app_cached, read_repository,
+    RulesSource, byte_limit, commit_time, push_document, read_app_cached, read_repository,
 };
 
 use crate::github::{self, GitHub};
@@ -134,7 +134,7 @@ pub(crate) fn run(options: &Options) -> u8 {
     }
 
     let repository = read_repository(&app.root);
-    let context = match context(options, github.as_ref(), repository.as_ref()) {
+    let context = match context(options, &app.root, github.as_ref(), repository.as_ref()) {
         Ok(context) => context,
         Err(message) => {
             say(&message);
@@ -269,6 +269,7 @@ fn endpoint(base: &str) -> Result<String, String> {
 /// commit: the one checked out is the one read.
 fn context(
     options: &Options,
+    root: &Path,
     github: Option<&GitHub>,
     repository: Option<&Repository>,
 ) -> Result<PushContext, String> {
@@ -333,10 +334,12 @@ fn context(
             run_url: None,
         },
     };
+    // The date of the commit that the document names, which a flag can set.
+    let committed_at = commit_time(root, &commit)
+        .and_then(|seconds| jiff::Timestamp::from_second(seconds).ok())
+        .map(utc);
     Ok(PushContext {
-        generated_at: jiff::Timestamp::now()
-            .strftime("%Y-%m-%dT%H:%M:%SZ")
-            .to_string(),
+        generated_at: utc(jiff::Timestamp::now()),
         tool_version: env!("CARGO_PKG_VERSION").to_owned(),
         app_path: repository
             .map_or_else(|| ".".to_owned(), |repository| repository.app_path.clone()),
@@ -352,10 +355,18 @@ fn context(
             base_commit,
             pull_request,
             shallow: repository.is_some_and(|repository| repository.shallow),
+            committed_at,
         },
         ci,
         environment: options.environment.clone(),
+        // Only a run that sends past commits sets it.
+        backfill: None,
     })
+}
+
+/// `time` as RFC 3339 in UTC, to the second.
+fn utc(time: jiff::Timestamp) -> String {
+    time.strftime("%Y-%m-%dT%H:%M:%SZ").to_string()
 }
 
 /// The body as sent: the document, gzipped.
