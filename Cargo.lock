@@ -2594,7 +2594,7 @@ dependencies = [
 
 [[package]]
 name = "mortise-app"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "base64 0.22.1",
  "eframe",
@@ -2616,7 +2616,7 @@ dependencies = [
 
 [[package]]
 name = "mortise-cli"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "flate2",
  "jiff",
@@ -2628,7 +2628,7 @@ dependencies = [
 
 [[package]]
 name = "mortise-core"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "boon",
  "directories",
