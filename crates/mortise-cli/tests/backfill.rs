@@ -67,10 +67,13 @@ fn history() -> History {
     };
     let monday = monday();
     let no_app = commit(monday - 70 * DAY + DAY, "README.md");
+    copy_dir(&fixture(), &app);
+    std::fs::write(repository.join(".gitignore"), "Ignored.php\n").unwrap();
+    std::fs::write(app.join("Modules/Billing/app/Ignored.php"), "<?php\n").unwrap();
+    git(&repository, &["add", "-f", "apps"]);
+    commit(monday - 56 * DAY + DAY, "README.md");
     // A commit with a date before any period stands between commits in it.
     commit(monday - 300 * DAY, "README.md");
-    copy_dir(&fixture(), &app);
-    commit(monday - 56 * DAY + DAY, "README.md");
     let order = "apps/shop-api/Modules/Checkout/app/Models/Order.php";
     let invoice = "apps/shop-api/Modules/Billing/app/Models/Invoice.php";
     History {
@@ -222,6 +225,15 @@ fn a_clone_without_file_contents_sends_the_last_commit_of_each_week_newest_first
     let modules = first["snapshot"]["modules"].as_array().unwrap();
     let billing = modules.iter().find(|module| module["name"] == "Billing");
     assert_eq!(billing.unwrap()["churn"]["commits"], 3);
+    // A tracked file that the `.gitignore` above the app leaves out is not counted.
+    let files = |app: &Path| {
+        let output = mortise("push", &["--dry-run", app.to_str().unwrap()], &[]);
+        let live: Value = serde_json::from_str(&common::stdout(&output)).unwrap();
+        let modules = live["snapshot"]["modules"].as_array().unwrap().clone();
+        let billing = modules.iter().find(|module| module["name"] == "Billing");
+        billing.unwrap()["files"].clone()
+    };
+    assert_eq!(billing.unwrap()["files"], files(Path::new(app)));
 
     // A dry run with a number of weeks asks nothing and reads nothing.
     let output = backfill(&[app, "--dry-run", "--weeks", "30"], &[]);

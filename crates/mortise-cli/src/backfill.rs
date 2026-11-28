@@ -60,7 +60,9 @@ fn asked(answer: &Value) -> Result<Option<Asked>, ()> {
         .and_then(|since| since.parse().ok())
         .ok_or(())?;
     Ok(Some(Asked {
-        since: since.as_second(),
+        // A commit has a whole second. One in the same second as a later cutoff is
+        // before it.
+        since: since.as_second() + i64::from(since.subsec_nanosecond() > 0),
         have: answer["have"]
             .as_array()
             .into_iter()
@@ -165,7 +167,8 @@ pub(crate) fn run(options: &Options) -> u8 {
     let since = since.expect("the cloud or --weeks gives the period");
 
     // The last commit of each week. `mortise push` sends the one that is checked out.
-    let Some(commits) = weekly_commits(&options.path, since) else {
+    // The walk starts at the commit that was checked out when the run began.
+    let Some(commits) = weekly_commits(&options.path, head, since) else {
         say(&strings::backfill_without_git(
             &options.path.to_string_lossy(),
         ));

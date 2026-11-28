@@ -27,7 +27,7 @@ The tool SHALL ask `GET /api/v1/backfill` on the cloud host first. The answer ho
 - **THEN** standard output is "History is already filled.", one request was made, and the exit code is 0
 
 ### Requirement: One commit per week, newest first
-The tool SHALL walk the whole first-parent history of `HEAD`, keep the commits whose committer date is at or after `since`, and pick the last one of each ISO week in UTC by committer date. From these it SHALL leave out the commit at `HEAD` and every commit in `have`. It SHALL send the newest first. `--weeks <n>` SHALL move the start of the period to at most `n` weeks ago and never earlier than `since`.
+The tool SHALL walk the whole first-parent history of the commit that was checked out when the run began, keep the commits whose committer date is at or after `since`, and pick the last one of each ISO week in UTC by committer date. From these it SHALL leave out the commit at `HEAD` and every commit in `have`. It SHALL send the newest first. `--weeks <n>` SHALL move the start of the period to at most `n` weeks ago and never earlier than `since`.
 
 #### Scenario: A history of ten weeks
 - **WHEN** the cloud has the commit of one week and asks for a period that holds four weeks with commits, besides the week of `HEAD`
@@ -55,8 +55,15 @@ No filter program and no git hook of the computer SHALL run on the files of a pa
 - **WHEN** the `config/modules.php` of a past commit names an absolute modules folder outside the app
 - **THEN** the commit is left out with one line
 
+### Requirement: The app keeps its place in the repository
+An app below the top of the repository SHALL be read under the `.gitignore` files that the commit holds in the folders above it, as a read of the checkout obeys them.
+
+#### Scenario: A tracked file that is ignored from above
+- **WHEN** the `.gitignore` at the top of the repository names a tracked file of a module
+- **THEN** the document of a past commit counts the files of that module as a push of the checkout does
+
 ### Requirement: Each document stands for its commit
-Each document SHALL carry the commit, its committer date as `git.committed_at`, `git.branch` set to the default branch, null pull request members, `git.shallow` false, a null `environment`, and `backfill` set to `{ "position": n, "of": m }`. The document SHALL hold no coverage, also when the commit holds a coverage report. The churn of a module SHALL count the 30 days before the commit, up to its committer date.
+Each document SHALL carry the commit, its committer date as `git.committed_at`, `git.branch` set to the default branch, null pull request members, `git.shallow` false, a null `environment`, and `backfill` set to `{ "position": n, "of": m }`. The document SHALL hold no coverage, also when the commit holds a coverage report. The churn of a module SHALL count the commits of its history dated in the 30 days up to its committer date, also behind a commit with an older date.
 
 #### Scenario: A commit older than 30 days
 - **WHEN** a module had 3 commits in the 30 days before a past commit, all older than 30 days now

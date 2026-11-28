@@ -44,12 +44,16 @@ pub enum PastError {
     NotAnApp(#[from] ReadError),
 }
 
-/// The last commit of each week on the first-parent history of `HEAD`, newest first,
-/// among the commits committed at or after `since` (seconds since 1970). A week is an
+/// The last commit of each week on the first-parent history of `from`, a full SHA, newest
+/// first, among the commits committed at or after `since` (seconds since 1970). A week is an
 /// ISO week in UTC, Monday to Sunday, by committer date. `None` when git fails.
 ///
 /// Git answers from the commits the checkout holds and downloads nothing.
-pub fn weekly_commits(root: &Path, since: i64) -> Option<Vec<PastCommit>> {
+pub fn weekly_commits(root: &Path, from: &str, since: i64) -> Option<Vec<PastCommit>> {
+    // Only a SHA reaches git: the walk starts at one commit, whatever is checked out now.
+    if from.is_empty() || !from.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return None;
+    }
     let list = git_local(
         root,
         &[
@@ -60,7 +64,7 @@ pub fn weekly_commits(root: &Path, since: i64) -> Option<Vec<PastCommit>> {
             // walked: a commit before the period can stand before one in it, such as
             // after a clock was set right.
             "--timestamp",
-            "HEAD",
+            from,
             "--",
         ],
     )?;
@@ -152,7 +156,26 @@ pub fn read_past_app(
         .ok()
         .and_then(|root| root.file_name().map(ToOwned::to_owned))
         .unwrap_or_else(|| "app".into());
-    let files = folder.path().join("files").join(name);
+    // An app below the top of the repository keeps its place, under the `.gitignore`
+    // files of the folders above it, which the read of an app obeys.
+    let files = if app_path == "." {
+        folder.path().join("files").join(name)
+    } else {
+        let top = folder.path().join("files");
+        let mut above = String::new();
+        for part in app_path.split('/') {
+            let rules = ["--no-replace-objects", "cat-file", "blob"];
+            let name = format!("{sha}:{above}.gitignore");
+            if let Some(rules) = git(root, &[&rules[..], &[&name]].concat()) {
+                let folder = top.join(&above);
+                std::fs::create_dir_all(&folder)
+                    .and_then(|()| std::fs::write(folder.join(".gitignore"), rules))
+                    .map_err(|_| PastError::NoFiles)?;
+            }
+            above = format!("{above}{part}/");
+        }
+        top.join(app_path)
+    };
     std::fs::create_dir_all(&files).map_err(|_| PastError::NoFiles)?;
     let (index, no_hooks) = (folder.path().join("index"), folder.path().join("hooks"));
     if !export(root, &tree, &files, &index, &no_hooks) {

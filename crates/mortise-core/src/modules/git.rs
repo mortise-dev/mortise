@@ -52,6 +52,8 @@ fn command(root: &Path, args: &[&str]) -> std::process::Command {
         // Never take a lock or write the index: Mortise only reads.
         .env("GIT_OPTIONAL_LOCKS", "0")
         .env("GIT_TERMINAL_PROMPT", "0")
+        // A program that git starts, such as one that checks a signature, gets no token.
+        .env_remove("MORTISE_TOKEN")
         .stderr(Stdio::null());
     command
 }
@@ -185,9 +187,24 @@ pub(crate) fn churn_at(
     churn_from(root, commit, &since.to_string(), Some(&until), folders)
 }
 
+/// The end of a `git log` call that gives each commit as a marker line with its time,
+/// then the files it touched, relative to the app folder.
+const LOG_OF_FILES: [&str; 6] = [
+    "--format=%x01%ct",
+    // A setting can print the state of the signature, and start a program for it.
+    "--no-show-signature",
+    "--name-only",
+    "--relative",
+    // A moved file counts for the folder it left and the one it joined. Finding a
+    // rename compares file contents, which a clone without blobs has to download.
+    "--no-renames",
+    "--",
+];
+
 /// The churn of `folders` in the history of `from`, counting the commits after `since`,
-/// a date as `git log --since` takes it: git stops at the first commit before that date.
-/// With `until`, no commit after that date counts.
+/// a date as `git log --since` takes it. With `until`, the history is that of a past
+/// commit: no commit after that date counts, and a commit dated before `since` does not
+/// hide older commits that are dated after it, such as after a clock was set right.
 fn churn_from(
     root: &Path,
     from: &str,
@@ -200,29 +217,29 @@ fn churn_from(
         return churn;
     }
 
-    // One call for the window: each commit as a marker line with its time, then
-    // the files it touched, relative to the app folder.
-    let since = format!("--since={since}");
     // A past commit is counted in its own history, not in one that stands in for it.
     let original: &[&str] = match until {
         Some(_) => &["--no-replace-objects"],
         None => &[],
     };
     let until = until.map(|until| format!("--until={until}"));
-    let mut args = original.to_vec();
-    args.extend(["log", from, &since]);
-    args.extend(until.as_deref());
-    args.extend([
-        "--format=%x01%ct",
-        "--name-only",
-        "--relative",
-        // A moved file counts for the folder it left and the one it joined. Finding a
-        // rename compares file contents, which a clone without blobs has to download.
-        "--no-renames",
-        "--",
-    ]);
-    args.extend(folders.iter().map(String::as_str));
-    let log = git(root, &args).unwrap_or_default();
+    // Git from 2.37 can walk the whole history and keep the commits after a date. An
+    // older Git, and the count of the checkout, stop at the first commit before it.
+    let whole = format!("--since-as-filter={since}");
+    let since = format!("--since={since}");
+    let log = |since: &str| {
+        let mut args = original.to_vec();
+        args.extend(["log", from, since]);
+        args.extend(until.as_deref());
+        args.extend(LOG_OF_FILES);
+        args.extend(folders.iter().map(String::as_str));
+        git(root, &args)
+    };
+    let log = until
+        .as_ref()
+        .and_then(|_| log(&whole))
+        .or_else(|| log(&since))
+        .unwrap_or_default();
     for commit in log.split('\u{1}').skip(1) {
         let mut lines = commit.lines();
         let Some(time) = lines
@@ -256,7 +273,7 @@ fn churn_from(
             continue;
         }
         let mut args = original.to_vec();
-        args.extend(["log", "-1", "--format=%ct", from]);
+        args.extend(["log", "-1", "--format=%ct", "--no-show-signature", from]);
         args.extend(until.as_deref());
         args.extend(["--", folder]);
         let last = git(root, &args).and_then(|time| time.trim().parse().ok());

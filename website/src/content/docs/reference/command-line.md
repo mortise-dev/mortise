@@ -221,7 +221,8 @@ The tool asks git to write the files of the app folder at that commit to a tempo
 the app, reads them as it reads any app, and removes the folder. The working tree, the index and
 `HEAD` of the checkout stay as they are. The files are those of a checkout of that commit, without
 what could run a program: no git hook and no filter program runs, such as the one of Git LFS, and a
-link is written as a plain file. A commit whose `config/modules.php` keeps the modules outside the app folder is left out,
+link is written as a plain file. An app below the top of the repository is read under the
+`.gitignore` files of the folders above it, as in the checkout. A commit whose `config/modules.php` keeps the modules outside the app folder is left out,
 because those files are not in the commit.
 
 Listing the commits downloads nothing. In a clone made with `--filter=blob:none`, git downloads the
