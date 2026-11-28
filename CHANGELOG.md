@@ -2,6 +2,21 @@
 
 All notable changes to this project are listed here.
 <!-- git-cliff: end of header -->
+## [1.2.0] - 2026-11-28
+
+### Features
+
+- Count a moved file for both modules and say when a clone is shallow (#87)
+- *(cli)* Send the commit time and a null backfill in the push document (#86)
+- *(app)* Update the desktop app from the window (#108)
+
+### Documentation
+
+- Name the one tree rule for agents (#88)
+- Add download buttons and short download links (#89)
+- Stop telling every agent thread to act as lead orchestrator (#91)
+- *(plan)* Record the owner answer to question 3 of phase 5 (#111)
+
 ## [1.1.0] - 2026-11-26
 
 ### Features
