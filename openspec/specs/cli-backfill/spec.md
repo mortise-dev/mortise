@@ -45,11 +45,18 @@ The tool SHALL read the app at each commit from a temporary folder outside the a
 - **THEN** each document holds the modules of its commit, and `git status` of the clone is clean
 
 ### Requirement: Each document stands for its commit
-Each document SHALL carry the commit, its committer date as `git.committed_at`, `git.branch` set to the default branch, null pull request members, `git.shallow` false, a null `environment`, and `backfill` set to `{ "position": n, "of": m }`. The default branch is `--branch`, else the branch of the run on GitHub Actions, else the branch that is checked out. The document SHALL hold no coverage, also when the commit holds a coverage report. The churn of a module SHALL count the 30 days before the commit.
+Each document SHALL carry the commit, its committer date as `git.committed_at`, `git.branch` set to the default branch, null pull request members, `git.shallow` false, a null `environment`, and `backfill` set to `{ "position": n, "of": m }`. The document SHALL hold no coverage, also when the commit holds a coverage report. The churn of a module SHALL count the 30 days before the commit.
 
 #### Scenario: A commit older than 30 days
 - **WHEN** a module had 3 commits in the 30 days before a past commit, all older than 30 days now
 - **THEN** the document of that commit gives the module 3 commits
+
+### Requirement: The default branch has three sources
+The default branch SHALL be `--branch`, else the branch of the run on GitHub Actions, else the branch that is checked out. Without any of them the tool SHALL exit 2, except on a dry run, which writes no document.
+
+#### Scenario: A detached HEAD
+- **WHEN** no branch is checked out, `--branch` is not given and the run is not on GitHub Actions
+- **THEN** the tool exits 2 and names `--branch`
 
 ### Requirement: The place of a document counts the documents that are sent
 The tool SHALL read every picked commit before it sends the first document. A commit that cannot be read as an app, or whose document is over a limit of the cloud, SHALL be left out with one line on standard error, and the run goes on. `of` SHALL be the number of documents left, and `position` SHALL count from 1 with the newest.
