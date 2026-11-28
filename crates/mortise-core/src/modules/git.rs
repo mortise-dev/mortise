@@ -74,6 +74,7 @@ pub(crate) fn git(root: &Path, args: &[&str]) -> Option<String> {
 /// checkout holds and downloads none. A partial clone would otherwise fetch a missing
 /// object from its remote and write it. Git before 2.34 does not know
 /// `GIT_NO_LAZY_FETCH`, so no transport is allowed either, which every Git obeys.
+#[cfg(feature = "push")]
 pub(crate) fn git_local(root: &Path, args: &[&str]) -> Option<String> {
     let mut command = command(root, args);
     command
