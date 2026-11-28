@@ -23,7 +23,7 @@ When a check finds a newer version, the window SHALL show a toast that stays unt
 - **THEN** the toast says "Mortise 9.0.0 is available." with "Install and restart", and nothing was downloaded
 
 ### Requirement: Only a download with the signature of the update key is installed
-"Install and restart" SHALL download the newer version, verify its signature with the public key built into the app, replace the app and start it again. A download whose signature does not verify, or whose signed file name is not that of the offered version and this platform, SHALL be discarded, and the window SHALL say that it was not installed.
+"Install and restart" SHALL download the newer version, from an address the window builds from the version and the platform on the release host, verify its signature with the public key built into the app, replace the app and start it again. A download whose signature does not verify, or whose signed file name is not that of the offered version and this platform, SHALL be discarded, and the window SHALL say that it was not installed.
 
 #### Scenario: The right signature
 - **WHEN** the download carries the signature of the key
@@ -38,11 +38,15 @@ When a check finds a newer version, the window SHALL show a toast that stays unt
 - **THEN** nothing is installed
 
 ### Requirement: An install and a command never run together
-The install SHALL wait while a command runs in an app. While the app is replaced, no command SHALL start, and closing the window SHALL wait until the replacing has ended.
+The install SHALL wait while a command or a test of PHP runs in an app, and while another window of Mortise is open. While the app is replaced, no command SHALL start, and closing the window SHALL wait until the replacing has ended.
 
 #### Scenario: A command runs
 - **WHEN** the download ends while a command runs in an app
 - **THEN** General says the update installs when the command ends, and it installs then
+
+#### Scenario: Another window is open
+- **WHEN** the download ends while a second window of Mortise is open
+- **THEN** nothing is installed until that window closes
 
 #### Scenario: A command is asked for during the install
 - **WHEN** the user starts a command while the app is replaced
@@ -56,7 +60,7 @@ A `.deb` install, a build from source, a macOS app that runs from a translocated
 - **THEN** the toast and General offer "Open the download page" and no install
 
 ### Requirement: A release publishes signed updates and their manifest
-A release SHALL sign the packed macOS app, the Windows setup and the AppImage with the update key, verify each signature with the public key of the source, and publish `latest.json` with the version and, per platform, the address, the signature and the format. A release SHALL fail before it publishes when the key is missing or a signature does not verify. The update key SHALL reach one job only, and that job SHALL build nothing of the app.
+A release SHALL sign the packed macOS app, the Windows setup and the AppImage with the update key, verify each signature with the public key of the source, and publish `latest.json` with the version and, per platform, the signature. A release SHALL fail before it publishes when the key is missing or a signature does not verify. The update key SHALL reach one job only, and that job SHALL build nothing of the app.
 
 #### Scenario: The key is missing
 - **WHEN** a release runs and the secret of the update key is empty

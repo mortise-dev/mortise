@@ -86,19 +86,28 @@ impl MortiseApp {
 
     /// Every frame: what a check, a download or an install ended with.
     pub(super) fn poll_updates(&mut self, ctx: &egui::Context) {
-        // A test of PHP in Settings or in the add panel is a command too.
-        let busy = self
-            .apps
-            .iter()
-            .any(|open| open.busy().is_some() || open.php_test.running())
-            || self
-                .adding
-                .as_ref()
-                .is_some_and(|panel| panel.php_test.running());
         let Some(updates) = &mut self.updates else {
             return;
         };
-        for outcome in updates.poll(ctx, busy) {
+        // A test of PHP in Settings or in the add panel is a command too. Its end is
+        // taken in here, because Settings does that only while it is drawn. None
+        // starts while Mortise replaces itself.
+        let installing = updates.is_installing();
+        let tests = self
+            .apps
+            .iter_mut()
+            .map(|open| &mut open.php_test)
+            .chain(self.adding.as_mut().map(|panel| &mut panel.php_test));
+        let mut testing = false;
+        for test in tests {
+            test.poll();
+            test.hold(installing);
+            testing |= test.running();
+        }
+        let running = testing || self.apps.iter().any(|open| open.busy().is_some());
+        let before = updates.phase().clone();
+        let instance = &mut self.instance;
+        for outcome in updates.poll(ctx, running, &mut || instance.alone()) {
             match outcome {
                 Outcome::Checked { newer, asked } => {
                     // Settings shows the answer to a check the user asked for.
@@ -111,6 +120,18 @@ impl MortiseApp {
                 Outcome::Failed(error) => self.toast = Some(Toast::failed(error)),
                 Outcome::Restart => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
             }
+        }
+        // The toast follows the download: it must not say "downloading" once that ended.
+        let Some(updates) = &self.updates else {
+            return;
+        };
+        match updates.phase() {
+            now if *now == before => {}
+            Phase::Waiting(_) => self.toast = Some(Toast::done(strings::WAITING).staying()),
+            Phase::Installing(_) => {
+                self.toast = Some(Toast::done(strings::INSTALLING).staying());
+            }
+            _ => {}
         }
     }
 
@@ -136,5 +157,47 @@ impl MortiseApp {
     pub(super) fn open_download_page(&mut self, ctx: &egui::Context) {
         self.toast = None;
         ctx.open_url(egui::OpenUrl::new_tab(DOWNLOAD_PAGE));
+    }
+}
+
+/// The mark of an open window of Mortise: a lock on `instance.lock` beside the settings.
+///
+/// Every window holds it shared. A window that is about to replace the app takes it
+/// alone, which works only when no other window is open. So an install never runs
+/// under another window: its commands are not cut off, and two windows do not replace
+/// the app at once.
+pub(super) struct Instance {
+    file: Option<std::fs::File>,
+    alone: bool,
+}
+
+impl Instance {
+    /// `settings` is where the settings are kept. Without it there is no other window to know of.
+    pub(super) fn open(settings: Option<&std::path::Path>) -> Self {
+        let file = settings.and_then(|settings| {
+            std::fs::create_dir_all(settings.parent()?).ok()?;
+            std::fs::File::create(settings.with_file_name("instance.lock")).ok()
+        });
+        if let Some(file) = &file {
+            // Refused while another window installs. This window then goes unmarked.
+            let _ = file.try_lock_shared();
+        }
+        Self { file, alone: false }
+    }
+
+    /// True when no other window of Mortise is open. From then on this window holds
+    /// the lock alone.
+    fn alone(&mut self) -> bool {
+        let Some(file) = &self.file else {
+            return true;
+        };
+        if !self.alone {
+            let _ = file.unlock();
+            self.alone = file.try_lock().is_ok();
+            if !self.alone {
+                let _ = file.try_lock_shared();
+            }
+        }
+        self.alone
     }
 }

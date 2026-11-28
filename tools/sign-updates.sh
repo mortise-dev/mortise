@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Signs the three files a window updates from with the update key, checks each signature against the
-# public key the app is built with, and writes the update manifest dist/latest.json.
+# public key the app is built with, and writes the update manifest dist/latest.json: the version, and
+# the signature per platform. A window builds the address of its file itself, from the version.
 # The Installers workflow runs it in a release, in the one job that holds the update key.
 #
 #   tools/sign-updates.sh <tag>
@@ -48,15 +49,15 @@ printf '%s' "$public_key" | base64 -d > "$work/update.pub"
 
 # The key of the manifest is <system>-<architecture>, as `Release::of_this_build` in update/mod.rs makes it.
 platforms=(
-  "macos-aarch64 app Mortise-$tag-macos-arm64.app.tar.gz"
-  "windows-x86_64 nsis Mortise-$tag-windows-x64-setup.exe"
-  "linux-x86_64 appimage Mortise-$tag-linux-x86_64.AppImage"
+  "macos-aarch64 Mortise-$tag-macos-arm64.app.tar.gz"
+  "windows-x86_64 Mortise-$tag-windows-x64-setup.exe"
+  "linux-x86_64 Mortise-$tag-linux-x86_64.AppImage"
 )
 
 manifest=$(jq -n --arg version "${tag#v}" --arg date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   '{version: $version, pub_date: $date, platforms: {}}')
 for platform in "${platforms[@]}"; do
-  read -r target format file <<<"$platform"
+  read -r target file <<<"$platform"
   if [ ! -f "dist/$file" ]; then
     echo "::error::dist/$file is missing."
     exit 1
@@ -69,9 +70,8 @@ for platform in "${platforms[@]}"; do
     echo "::error::The signature of $file does not verify with the public key in $source. The update key of the release environment is not the key the app is built with."
     exit 1
   fi
-  manifest=$(jq --arg target "$target" --arg format "$format" --arg signature "$signature" \
-    --arg url "https://github.com/mortise-dev/mortise/releases/download/$tag/$file" \
-    '.platforms[$target] = {url: $url, signature: $signature, format: $format}' <<<"$manifest")
+  manifest=$(jq --arg target "$target" --arg signature "$signature" \
+    '.platforms[$target] = {signature: $signature}' <<<"$manifest")
   echo "$file: signed for $target."
 done
 

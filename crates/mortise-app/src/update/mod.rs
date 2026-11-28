@@ -21,6 +21,9 @@ pub mod strings;
 /// Where a copy that cannot replace itself gets the newer version.
 pub const DOWNLOAD_PAGE: &str = "https://github.com/mortise-dev/mortise/releases/latest";
 
+/// Where the files of a release are, before `/vX.Y.Z/<file>`.
+const DOWNLOADS: &str = "https://github.com/mortise-dev/mortise/releases/download";
+
 /// The update manifest of the newest release. tag-release.yml publishes it.
 const MANIFEST: &str =
     "https://github.com/mortise-dev/mortise/releases/latest/download/latest.json";
@@ -79,7 +82,6 @@ fn version(text: &str) -> Option<(u64, u64, u64)> {
 /// What the manifest offers this platform.
 struct Offer {
     version: String,
-    url: String,
     /// The contents of the `.sig` file: a minisign signature in base64.
     signature: String,
 }
@@ -87,6 +89,9 @@ struct Offer {
 /// The releases of Mortise on GitHub.
 pub struct Release {
     manifest: String,
+    /// Where the files of a release are. The manifest does not say where to download
+    /// from: it is not signed, and could send the window anywhere.
+    downloads: String,
     public_key: String,
     current: (u64, u64, u64),
     /// The key of this platform in the manifest, such as `macos-aarch64`.
@@ -99,6 +104,7 @@ impl Release {
     pub fn of_this_build() -> Self {
         Self {
             manifest: MANIFEST.to_owned(),
+            downloads: DOWNLOADS.to_owned(),
             public_key: PUBLIC_KEY.to_owned(),
             current: version(env!("CARGO_PKG_VERSION")).expect("the version of the crate is X.Y.Z"),
             target: format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH),
@@ -106,11 +112,13 @@ impl Release {
         }
     }
 
-    /// A client with the certificates this computer trusts. It follows the redirects
-    /// of GitHub and changes nothing in the process.
-    fn agent(timeout: Duration) -> ureq::Agent {
+    /// A client with the certificates this computer trusts, for `address`. It follows
+    /// the redirects of GitHub, to HTTPS only when the address is HTTPS, and changes
+    /// nothing in the process.
+    fn agent(address: &str, timeout: Duration) -> ureq::Agent {
         let config = ureq::Agent::config_builder()
             .timeout_global(Some(timeout))
+            .https_only(address.starts_with("https://"))
             .tls_config(
                 ureq::tls::TlsConfig::builder()
                     .root_certs(ureq::tls::RootCerts::PlatformVerifier)
@@ -122,7 +130,7 @@ impl Release {
 
     /// Asks for the manifest and gives what it offers this platform, if that is newer.
     fn newer(&self) -> Result<Option<Offer>, String> {
-        let text = Self::agent(CHECK_TIMEOUT)
+        let text = Self::agent(&self.manifest, CHECK_TIMEOUT)
             .get(&self.manifest)
             .call()
             .and_then(|mut answer| answer.body_mut().read_to_string())
@@ -145,7 +153,6 @@ impl Release {
         let platform = &manifest["platforms"][&self.target];
         Ok(Some(Offer {
             version: offered.trim_start_matches('v').to_owned(),
-            url: said(platform, "url")?,
             signature: said(platform, "signature")?,
         }))
     }
@@ -189,8 +196,13 @@ impl Release {
 
         let failed =
             |error: &dyn std::fmt::Display| strings::could_not_download(&error.to_string());
-        let mut answer = Self::agent(DOWNLOAD_TIMEOUT)
-            .get(&offer.url)
+        // The address follows from the version and the platform, on the release host.
+        let address = format!(
+            "{}/v{}/Mortise-v{}-{}",
+            self.downloads, offer.version, offer.version, self.artifact
+        );
+        let mut answer = Self::agent(&address, DOWNLOAD_TIMEOUT)
+            .get(&address)
             .call()
             .map_err(|error| failed(&error))?;
         let total = answer.body().content_length().filter(|total| *total > 0);
@@ -250,20 +262,23 @@ impl Channel for Release {
         let Some(place) = place() else {
             return Err(strings::INSTALLED_RESTART.to_owned());
         };
-        // On Windows the setup starts Mortise again itself.
+        // `open` ends once macOS took the app or refused it. On Windows the setup
+        // starts Mortise again itself.
         let started = if cfg!(target_os = "macos") {
-            std::process::Command::new("open")
+            std::process::Command::new("/usr/bin/open")
                 .arg("-n")
                 .arg(place)
-                .spawn()
+                .status()
+                .is_ok_and(|status| status.success())
         } else if cfg!(target_os = "linux") {
-            std::process::Command::new(place).spawn()
+            std::process::Command::new(place).spawn().is_ok()
         } else {
-            return Ok(());
+            true
         };
-        match started {
-            Ok(_) => Ok(()),
-            Err(_) => Err(strings::INSTALLED_RESTART.to_owned()),
+        if started {
+            Ok(())
+        } else {
+            Err(strings::INSTALLED_RESTART.to_owned())
         }
     }
 }
@@ -550,7 +565,16 @@ impl Updates {
 
     /// Takes what ended since the last frame. `busy` says a command runs in an app:
     /// a download waits for its end, because the install closes Mortise.
-    pub fn poll(&mut self, ctx: &egui::Context, busy: bool) -> Vec<Outcome> {
+    ///
+    /// `alone` says no other window of Mortise is open. It is asked only for a download
+    /// that is ready and has no command to wait for, because asking takes the lock of
+    /// the windows.
+    pub fn poll(
+        &mut self,
+        ctx: &egui::Context,
+        busy: bool,
+        alone: &mut dyn FnMut() -> bool,
+    ) -> Vec<Outcome> {
         let mut outcomes = Vec::new();
         while let Ok(event) = self.events.try_recv() {
             let asked = std::mem::take(&mut self.asked);
@@ -572,26 +596,28 @@ impl Updates {
                     self.ready = Some(install);
                     self.phase = Phase::Waiting(version);
                 }
-                (Event::Installed(Ok(())), _) => match self.channel.restart() {
-                    Ok(()) => outcomes.push(Outcome::Restart),
-                    Err(error) => self.fail(error, &mut outcomes),
-                },
+                (Event::Installed(Ok(())), _) => outcomes.push(Outcome::Restart),
                 (Event::Downloaded(Err(error)) | Event::Installed(Err(error)), _) => {
                     self.fail(error, &mut outcomes);
                 }
                 (Event::Downloaded(Ok(_)), _) => {}
             }
         }
-        // The end of a command asks for no frame by itself.
-        if busy && self.ready.is_some() {
+        let held = self.ready.is_some() && (busy || !alone());
+        // The end of a command, or of another window, asks for no frame by itself.
+        if held {
             ctx.request_repaint_after(Duration::from_millis(500));
         }
-        if let (false, Phase::Waiting(version)) = (busy, self.phase.clone())
+        if let (false, Phase::Waiting(version)) = (held, self.phase.clone())
             && let Some(install) = self.ready.take()
         {
             self.phase = Phase::Installing(version);
-            // Off the frame: on macOS the install can ask for an administrator.
-            self.installing = Some(self.work(ctx, move || Event::Installed(install())));
+            // Off the frame: unpacking takes a moment, and starting the new version
+            // waits for the system to say whether it started.
+            let channel = Arc::clone(&self.channel);
+            self.installing = Some(self.work(ctx, move || {
+                Event::Installed(install().and_then(|()| channel.restart()))
+            }));
         }
         outcomes
     }
@@ -613,16 +639,18 @@ mod tests {
     const TEST_KEY: &str = "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDYwRjdGRDAxQ0NCNjk1NzUKUldSMWxiYk1BZjMzWUNzdWJCcVR0OE1vZzVuYThneS9sc1lGSktxV04vQlR6THd5LzhvTnd3RmoK";
     const SIGNATURE: &str = "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIGNhcmdvLXBhY2thZ2VyIHNlY3JldCBrZXkKUlVSMWxiYk1BZjMzWUlJUG9tREhJdWtEK0JGbmhxWm1sSWZaZk5xLzY4Vy9vaDQyWkl4NHhxdVJJekpYQnJ0cEN3WlRFOTY1M1hhN1lCOVgwTXFobmJudkgxNWZ5VVZWWndJPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk1ODYyNjk0CWZpbGU6TW9ydGlzZS12OS4wLjAtdGVzdApQelZweHQrM0pvanhlYlRPd3lkT1dKS1F6OUQ3YkhWb1NFRTFlWWpJM21GV21jVG01SW4wSyt2b3FTaTNwZEg3THpubGZSeVd6emtJdTczRktNamJBUT09Cg==";
     const PAYLOAD: &str = "a signed update of Mortise";
+    /// Where the window looks for 9.0.0 of the platform `test`.
+    const FILE: &str = "/v9.0.0/Mortise-v9.0.0-test";
 
     /// A release server that offers `version` with the signature of 9.0.0.
     fn release(server: &StubActuator, current: &str, version: &str) -> Release {
         let manifest = format!(
-            r#"{{"version":"{version}","platforms":{{"test":{{"url":"{}/update","signature":"{SIGNATURE}","format":"appimage"}}}}}}"#,
-            server.base_url
+            r#"{{"version":"{version}","platforms":{{"test":{{"signature":"{SIGNATURE}"}}}}}}"#
         );
         server.set("/latest.json", Reply::ok(&manifest));
         Release {
             manifest: format!("{}/latest.json", server.base_url),
+            downloads: server.base_url.clone(),
             public_key: TEST_KEY.to_owned(),
             current: super::version(current).unwrap(),
             target: "test".to_owned(),
@@ -637,15 +665,15 @@ mod tests {
         assert_eq!(offered.check(), Ok(Some("9.0.0".to_owned())));
         assert!(offered.is_newer("9.0.0") && !offered.is_newer("1.0.0"));
 
-        server.set("/update", Reply::ok(PAYLOAD));
+        server.set(FILE, Reply::ok(PAYLOAD));
         assert!(offered.verified(&|_| {}).is_ok());
 
-        server.set("/update", Reply::ok("something else under the same name"));
+        server.set(FILE, Reply::ok("something else under the same name"));
         let refused = offered.verified(&|_| {}).err();
         assert_eq!(refused.as_deref(), Some(strings::BAD_SIGNATURE));
 
         // A manifest that calls the signed 9.0.0 a newer version: the name does not fit.
-        server.set("/update", Reply::ok(PAYLOAD));
+        server.set(FILE, Reply::ok(PAYLOAD));
         let renamed = release(&server, "9.2.0", "9.5.0").verified(&|_| {}).err();
         assert_eq!(renamed.as_deref(), Some(strings::BAD_SIGNATURE));
 
@@ -743,15 +771,15 @@ mod tests {
         // A command runs: the download waits, however long.
         let mut outcomes = Vec::new();
         while *updates.phase() != Phase::Waiting("9.0.0".to_owned()) {
-            outcomes.extend(updates.poll(&ctx, true));
+            outcomes.extend(updates.poll(&ctx, true, &mut || true));
             std::thread::yield_now();
         }
-        assert!(updates.poll(&ctx, true).is_empty());
+        assert!(updates.poll(&ctx, true, &mut || true).is_empty());
         assert_eq!(installs.load(Ordering::SeqCst), 0);
 
         // The command ended.
         while !outcomes.contains(&Outcome::Restart) {
-            outcomes.extend(updates.poll(&ctx, false));
+            outcomes.extend(updates.poll(&ctx, false, &mut || true));
             std::thread::yield_now();
         }
         assert_eq!(installs.load(Ordering::SeqCst), 1);

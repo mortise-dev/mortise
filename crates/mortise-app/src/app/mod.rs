@@ -283,6 +283,8 @@ pub struct MortiseApp {
     updates: Option<crate::update::Updates>,
     /// When the window asked for a newer Mortise last, and the answer.
     update_check: UpdateCheck,
+    /// The mark that this window is open, for the install of an update.
+    instance: update::Instance,
 }
 
 impl MortiseApp {
@@ -324,6 +326,7 @@ impl MortiseApp {
         let mut app = Self {
             updates,
             update_check,
+            instance: update::Instance::open(config.settings_path.as_deref()),
             chrome: config.chrome,
             current: None,
             settings,
@@ -380,6 +383,11 @@ impl MortiseApp {
     }
 
     // --- What tests and the screens ask ---
+
+    /// Where the update of Mortise is.
+    pub fn update_phase(&self) -> Option<&crate::update::Phase> {
+        self.updates.as_ref().map(crate::update::Updates::phase)
+    }
 
     /// The names of the apps, in the order of the rail.
     pub fn app_names(&self) -> Vec<&str> {

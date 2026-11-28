@@ -228,8 +228,8 @@ What a release does with it:
 - The job "Build dmg (signed)" packs the notarized app as `Mortise-vX.Y.Z-macos-arm64.app.tar.gz` and checks
   that the app still passes `tools/verify-macos-app.sh` once it is unpacked.
 - `tools/sign-updates.sh` signs that archive, the Windows setup and the AppImage, checks each signature with
-  the public key of the source, and writes `latest.json`: the version, and per platform the address, the
-  signature and the format. A missing key, or a key that is not the one in the source, fails the release
+  the public key of the source, and writes `latest.json`: the version, and per platform the signature.
+  A window builds the address of its file from the version, on the release host, and takes none from the manifest. A missing key, or a key that is not the one in the source, fails the release
   before anything is published.
 - `tag-release.yml` publishes `latest.json` with the release. A window reads it at
   `https://github.com/mortise-dev/mortise/releases/latest/download/latest.json`.

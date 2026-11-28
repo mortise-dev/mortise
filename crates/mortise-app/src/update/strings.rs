@@ -9,7 +9,8 @@ pub const INSTALL_AND_RESTART: &str = "Install and restart";
 pub const OPEN_DOWNLOAD_PAGE: &str = "Open the download page";
 pub const CHECKING: &str = "Checking for a newer version.";
 pub const LATEST: &str = "This is the newest version.";
-pub const WAITING: &str = "Downloaded. It installs when the running command ends.";
+pub const WAITING: &str =
+    "Downloaded. It installs when no command runs and no other window of Mortise is open.";
 pub const INSTALLING: &str = "Installing. Mortise restarts when it is done.";
 pub const NOT_AVAILABLE: &str =
     "The newer version is no longer offered. Check again in a few minutes.";

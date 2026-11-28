@@ -77,3 +77,20 @@ that `APPDIR` names. A copy started from inside another AppImage inherits both v
 
 **D15. One check a day across windows.** `UpdateCheck::claim` reads and writes `update.json` under a lock
 file, so of two windows that start together one asks.
+
+## Decisions after the third review
+
+**D16. The window builds the download address.** `<release host>/vX.Y.Z/Mortise-vX.Y.Z-<platform>`. The
+manifest carries the version and the signatures only. An unsigned manifest can no longer send the window to
+another host, and the client follows redirects to HTTPS only.
+
+**D17. An install needs to be the only window.** Every window holds a shared lock on `instance.lock` beside
+the settings. A window with a download that is ready takes the lock alone, which works only when no other
+window is open, and waits otherwise. So the Windows setup, which ends every running Mortise, finds none
+with a command, and two windows cannot replace the app at once or one after the other with an older
+download. Two windows that both become ready in the same half second can still both try; neither has a
+command then.
+
+**D18. Starting the new version is part of the install.** It runs on the install thread, and on macOS waits
+for `open` to say whether the app started. A version that is installed and does not start leaves the old
+window open with the message to open Mortise again.
