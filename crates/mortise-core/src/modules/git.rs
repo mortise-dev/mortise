@@ -51,6 +51,9 @@ pub(crate) fn git(root: &Path, args: &[&str]) -> Option<String> {
         // Never take a lock or write the index: Mortise only reads.
         .env("GIT_OPTIONAL_LOCKS", "0")
         .env("GIT_TERMINAL_PROMPT", "0")
+        // Never download an object that a partial clone left out: Mortise only reads
+        // what the checkout holds.
+        .env("GIT_NO_LAZY_FETCH", "1")
         .stderr(Stdio::null())
         .output()
         .ok()?;

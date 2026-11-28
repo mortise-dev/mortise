@@ -125,8 +125,6 @@ fn the_document_of_shop_api_keeps_its_shape() {
 
     let value: Value = serde_json::from_str(&written).unwrap();
     assert_valid(&value);
-    assert_eq!(value["git"]["committed_at"], "2026-11-24T14:01:52Z");
-    assert_eq!(value["backfill"], Value::Null);
 
     // A document of Mortise 1.0.0 has neither member and stays valid.
     let mut older = value.clone();

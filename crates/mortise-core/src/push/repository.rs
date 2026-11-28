@@ -50,7 +50,8 @@ pub fn read_repository(root: &Path) -> Option<Repository> {
 
 /// When `commit` was committed, in seconds since 1970: its committer date, not its author
 /// date, which a rebase keeps from the first draft. `commit` is a full SHA. `None` when the
-/// folder is in no repository, or the repository does not hold the commit.
+/// folder is in no repository, or the repository does not hold the commit. A clone that
+/// can download a missing commit does not: git runs without lazy fetch.
 pub fn commit_time(root: &Path, commit: &str) -> Option<i64> {
     // Only a SHA reaches git: a name from the environment could read as an option.
     if commit.is_empty() || !commit.bytes().all(|b| b.is_ascii_hexdigit()) {
@@ -59,10 +60,16 @@ pub fn commit_time(root: &Path, commit: &str) -> Option<i64> {
     git(
         root,
         &[
+            // The date of the commit that the document names, not of one that stands in for it.
+            "--no-replace-objects",
             "show",
             "-s",
+            // A setting can print the state of the signature before the date.
+            "--no-show-signature",
             "--format=%ct",
             &format!("{commit}^{{commit}}"),
+            // A commit, not a file of that name.
+            "--",
         ],
     )?
     .trim()

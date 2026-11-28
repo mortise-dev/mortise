@@ -161,7 +161,7 @@ fn a_dry_run_on_a_pull_request_fills_the_envelope_and_sends_nothing() {
     let head = String::from_utf8(head.stdout).unwrap().trim().to_owned();
     // The committer date as git prints it, with the offset of the committer.
     let committed = Command::new("git")
-        .args(["show", "-s", "--format=%cI", "HEAD"])
+        .args(["show", "-s", "--no-show-signature", "--format=%cI", "HEAD"])
         .current_dir(fixture())
         .output()
         .unwrap();
