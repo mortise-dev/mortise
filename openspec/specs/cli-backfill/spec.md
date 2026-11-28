@@ -45,7 +45,7 @@ The tool SHALL read the app at each commit from a temporary folder outside the a
 - **THEN** each document holds the modules of its commit, and `git status` of the clone is clean
 
 ### Requirement: A past commit is read from its own files only
-The files of a past commit SHALL hold the bytes that are committed: no filter program of the computer SHALL run on them, and a link SHALL be written as a plain file. A commit whose modules folder or statuses file is outside the app folder SHALL be left out. The tree SHALL be the one of the commit that the document names, not of a replacement.
+No filter program and no git hook of the computer SHALL run on the files of a past commit, and a link SHALL be written as a plain file. A commit whose modules folder or statuses file is outside the app folder SHALL be left out before anything is read from there. No file of a past commit SHALL be written inside the repository, also when the temporary folder of the computer is there. The tree SHALL be the one of the commit that the document names, not of a replacement.
 
 #### Scenario: A filter that fails
 - **WHEN** the repository sets a required filter whose program fails for every file

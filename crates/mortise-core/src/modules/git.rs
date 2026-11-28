@@ -88,11 +88,11 @@ pub(crate) fn git_local(root: &Path, args: &[&str]) -> Option<String> {
 /// working tree and the index of the repository stay as they are. A clone without file
 /// contents downloads the files of this tree it lacks, in one request. False when git fails.
 ///
-/// The files hold the bytes that are committed: no filter program of the computer runs
-/// on them, and a link is written as a file that holds its target, so nothing in `into`
-/// leads out of it.
+/// The files are those of a checkout of the tree, without what could run a program or
+/// lead out of `into`: no filter program and no hook of the computer runs, and a link is
+/// written as a file that holds its target. `no_hooks` is a folder that does not exist.
 #[cfg(feature = "push")]
-pub(crate) fn export(root: &Path, tree: &str, into: &Path, index: &Path) -> bool {
+pub(crate) fn export(root: &Path, tree: &str, into: &Path, index: &Path, no_hooks: &Path) -> bool {
     // Every filter that a setting of the computer or the repository names, such as the
     // one of Git LFS. An empty program is no filter.
     let filters: std::collections::BTreeSet<String> = git(
@@ -109,6 +109,10 @@ pub(crate) fn export(root: &Path, tree: &str, into: &Path, index: &Path) -> bool
         // The bytes as they are committed.
         "core.autocrlf=false".to_owned(),
         "core.symlinks=false".to_owned(),
+        // The index is one file beside `into`, with no part in the repository.
+        "core.splitIndex=false".to_owned(),
+        // A hook would run with the environment of this process, which holds the token.
+        format!("core.hooksPath={}", no_hooks.display()),
     ];
     for filter in &filters {
         settings.push(format!("filter.{filter}.smudge="));
@@ -199,8 +203,14 @@ fn churn_from(
     // One call for the window: each commit as a marker line with its time, then
     // the files it touched, relative to the app folder.
     let since = format!("--since={since}");
+    // A past commit is counted in its own history, not in one that stands in for it.
+    let original: &[&str] = match until {
+        Some(_) => &["--no-replace-objects"],
+        None => &[],
+    };
     let until = until.map(|until| format!("--until={until}"));
-    let mut args = vec!["log", from, &since];
+    let mut args = original.to_vec();
+    args.extend(["log", from, &since]);
     args.extend(until.as_deref());
     args.extend([
         "--format=%x01%ct",
@@ -245,7 +255,8 @@ fn churn_from(
         if churn.contains_key(folder) {
             continue;
         }
-        let mut args = vec!["log", "-1", "--format=%ct", from];
+        let mut args = original.to_vec();
+        args.extend(["log", "-1", "--format=%ct", from]);
         args.extend(until.as_deref());
         args.extend(["--", folder]);
         let last = git(root, &args).and_then(|time| time.trim().parse().ok());

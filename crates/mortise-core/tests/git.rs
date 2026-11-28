@@ -191,7 +191,20 @@ fn counts_the_commits_of_30_days_for_each_module() {
         );
     }
     std::fs::write(clone.join(".git/info/attributes"), "* filter=broken\n").unwrap();
+    // Nor does a hook, which would get the environment of the run.
+    let hook = clone.join(".git/hooks/post-index-change");
+    std::fs::write(
+        &hook,
+        "#!/bin/sh\ntouch \"$(git rev-parse --git-dir)/hook-ran\"\n",
+    )
+    .unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
     assert!(read_past_app(&clone, ".", &commit).is_ok());
+    assert!(!clone.join(".git/hook-ran").exists());
     // A commit that keeps its modules outside the app folder is not read from there.
     let elsewhere = dir.path().join("elsewhere");
     copy_dir(&root.join("Modules"), &elsewhere);

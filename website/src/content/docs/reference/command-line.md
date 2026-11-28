@@ -219,9 +219,9 @@ history. Set `fetch-depth: 0` on `actions/checkout`, then run the workflow again
 
 The tool asks git to write the files of the app folder at that commit to a temporary folder outside
 the app, reads them as it reads any app, and removes the folder. The working tree, the index and
-`HEAD` of the checkout stay as they are, and no git hook runs. The files hold the bytes that are
-committed: no filter program runs on them, such as the one of Git LFS, and a link is written as a
-plain file. A commit whose `config/modules.php` keeps the modules outside the app folder is left out,
+`HEAD` of the checkout stay as they are. The files are those of a checkout of that commit, without
+what could run a program: no git hook and no filter program runs, such as the one of Git LFS, and a
+link is written as a plain file. A commit whose `config/modules.php` keeps the modules outside the app folder is left out,
 because those files are not in the commit.
 
 Listing the commits downloads nothing. In a clone made with `--filter=blob:none`, git downloads the

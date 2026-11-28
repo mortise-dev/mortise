@@ -9,6 +9,7 @@ use std::path::Path;
 
 use crate::app::{AppSnapshot, ReadError, ReadOptions, lexical, read_app_cached, shown};
 use crate::modules::git::{churn_at, export, git, git_local};
+use crate::modules::layout::read_layout;
 use crate::modules::module::ReadCache;
 
 /// A commit in the history of the checkout.
@@ -30,6 +31,10 @@ pub enum PastError {
     /// contents cannot download them.
     #[error("git could not give the files of the commit")]
     NoFiles,
+    /// The temporary folder of the computer is inside the repository. Mortise writes no
+    /// file of a past commit there.
+    #[error("the temporary folder is inside the repository")]
+    TemporaryInside,
     /// The commit keeps its modules or its statuses file outside the app folder. Those
     /// files are not in the commit, so they are not read.
     #[error("the commit keeps its modules outside the app folder")]
@@ -132,6 +137,15 @@ pub fn read_past_app(
         .and_then(|found| id(&format!("{found}^{{tree}}")))
         .ok_or(PastError::NoFolder)?;
 
+    // The files of a past commit never go into the checkout.
+    let real = |path: &Path| std::fs::canonicalize(path).ok();
+    let top = git_local(root, &["rev-parse", "--show-toplevel"])
+        .and_then(|top| real(Path::new(top.trim_end_matches(['\n', '\r']))));
+    if let (Some(top), Some(temporary)) = (top, real(&std::env::temp_dir()))
+        && temporary.starts_with(top)
+    {
+        return Err(PastError::TemporaryInside);
+    }
     let folder = tempfile::tempdir().map_err(|_| PastError::NoFiles)?;
     // The app keeps the name of its folder, which the snapshot shows.
     let name = std::fs::canonicalize(root)
@@ -140,8 +154,16 @@ pub fn read_past_app(
         .unwrap_or_else(|| "app".into());
     let files = folder.path().join("files").join(name);
     std::fs::create_dir_all(&files).map_err(|_| PastError::NoFiles)?;
-    if !export(root, &tree, &files, &folder.path().join("index")) {
+    let (index, no_hooks) = (folder.path().join("index"), folder.path().join("hooks"));
+    if !export(root, &tree, &files, &index, &no_hooks) {
         return Err(PastError::NoFiles);
+    }
+    // A path in `config/modules.php` can lead out of the app folder, to files of today.
+    // A commit stands for nothing that is not in it, so nothing is read from there.
+    let layout = read_layout(&files);
+    let inside = |path: &Path| lexical(path).starts_with(lexical(&files));
+    if !inside(&layout.modules_dir) || !inside(&layout.statuses_file) {
+        return Err(PastError::Outside);
     }
 
     let options = ReadOptions {
@@ -154,15 +176,6 @@ pub fn read_past_app(
         &options,
         &mut ReadCache::default(),
     )?;
-    // A path in `config/modules.php` can lead out of the app folder, to files of today.
-    // A commit stands for nothing that is not in it.
-    let inside = |path: &Path| lexical(path).starts_with(lexical(&app.root));
-    if !inside(&app.layout.modules_dir)
-        || !inside(&app.layout.statuses_file)
-        || !app.modules.iter().all(|module| inside(&module.dir))
-    {
-        return Err(PastError::Outside);
-    }
     // The temporary folder is in no repository. The history is in the checkout.
     let folders: Vec<String> = app
         .modules
