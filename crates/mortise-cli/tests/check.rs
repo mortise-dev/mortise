@@ -67,17 +67,6 @@ fn github_marks_each_file_that_reads_an_internal_class() {
 }
 
 #[test]
-fn json_is_the_findings_as_serde_writes_them() {
-    let output = check(&["--format=json", fixture().to_str().unwrap()]);
-    assert_eq!(output.status.code(), Some(1));
-    let printed: mortise_core::Findings = serde_json::from_str(&stdout(&output)).unwrap();
-    assert_eq!(
-        printed,
-        mortise_core::read_app(&fixture()).unwrap().findings
-    );
-}
-
-#[test]
 fn without_a_problem_the_check_passes_unless_warnings_fail_it() {
     let app = copy_with(
         r#"{"rules": {"no-circular-use": false, "public-surface-only": {"enabled": false}}}"#,
@@ -93,15 +82,6 @@ fn without_a_problem_the_check_passes_unless_warnings_fail_it() {
     // Under a limit of 30 Notifications is no longer a warning.
     let output = check(&[path, "--fail-on", "warnings", "--coverage-limit", "30"]);
     assert_eq!(output.status.code(), Some(0), "{}", stdout(&output));
-}
-
-#[test]
-fn with_ci_fail_off_a_problem_is_reported_and_the_check_passes() {
-    let app = copy_with(r#"{"ci": {"fail": false}}"#);
-    let output = check(&[app.path().to_str().unwrap()]);
-    assert_eq!(output.status.code(), Some(0));
-    assert!(stdout(&output).contains("2 problems, 1 warning."));
-    assert!(stderr(&output).contains("mortise.json turns off"));
 }
 
 #[test]
@@ -131,7 +111,7 @@ mortise.json: warning: mortise.json names Reports in allowed-use, and the app ha
         ]
     );
 
-    let output = check(&[path, "--format", "json"]);
+    let output = check(&[path, "--format=json"]);
     assert_eq!(output.status.code(), Some(1));
     let printed: mortise_core::Findings = serde_json::from_str(&stdout(&output)).unwrap();
     assert_eq!(printed, mortise_core::read_app(&layered).unwrap().findings);
@@ -145,6 +125,7 @@ mortise.json: warning: mortise.json names Reports in allowed-use, and the app ha
     let output = check(&[app.path().to_str().unwrap()]);
     assert_eq!(output.status.code(), Some(0), "{}", stderr(&output));
     assert!(stdout(&output).contains("1 problem, 1 warning."));
+    assert!(stderr(&output).contains("mortise.json turns off"));
 }
 
 #[test]

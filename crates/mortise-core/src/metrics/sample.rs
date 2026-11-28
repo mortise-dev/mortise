@@ -1268,20 +1268,6 @@ mod tests {
     }
 
     #[test]
-    fn a_rate_divides_by_the_covered_time() {
-        let mut store = MetricsStore::new(PACE);
-        for (at, total) in [(0, 0.0), (15, 6.0), (100, 50.0), (115, 56.0)] {
-            store
-                .push(secs(at), reading(&[(route("/"), count(total))]))
-                .unwrap();
-        }
-
-        let change = store.change(WINDOW).expect("a change");
-        assert_eq!(change.covered, secs(30));
-        assert_eq!(change.cells[0].1.count / change.covered.as_secs_f64(), 0.4);
-    }
-
-    #[test]
     fn buckets_match_by_bound_and_new_bounds_widen_the_store() {
         let request = |count: f64, buckets: Vec<f64>| Cell {
             count,

@@ -561,28 +561,6 @@ fn palette_and_settings() {
 }
 
 #[test]
-fn an_app_without_the_actuator() {
-    // One set of results for the test: both themes are compared when it ends.
-    let mut shots = Shots::new();
-    for (theme, name) in THEMES {
-        shots.theme = name;
-        // S6.5 a: the runtime box says how to install the package.
-        let mut desk = Desk::new();
-        desk.theme = theme;
-        let root = desk.app("shop-api");
-        let lock = std::fs::read_to_string(root.join("composer.lock")).unwrap();
-        std::fs::write(
-            root.join("composer.lock"),
-            lock.replace("laravel-actuator", "laravel-other"),
-        )
-        .unwrap();
-        desk.knows(&[(&root, "SA")]);
-        let mut harness = desk.start();
-        shots.take(&mut harness, "s6.5a-not-installed");
-    }
-}
-
-#[test]
 fn the_runtime_box_of_a_module() {
     // Billing enabled and missing on disk, as the modules component of 13.4 says it.
     let missing = r#"{"status":"DOWN","components":{"ping":{"status":"UP"},
@@ -1521,10 +1499,23 @@ fn the_runtime_box_in_each_state() {
     let mut shots = Shots::new();
     for (theme, name) in THEMES {
         shots.theme = name;
-        for letter in ['b', 'c', 'd', 'f', 'g', 'h', 'i'] {
+        for letter in ['a', 'b', 'c', 'd', 'f', 'g', 'h', 'i'] {
             let mut desk = Desk::new();
             desk.theme = theme;
             let root = desk.app("shop-api");
+            if letter == 'a' {
+                // S6.5 a: the runtime box says how to install the package.
+                let lock = std::fs::read_to_string(root.join("composer.lock")).unwrap();
+                std::fs::write(
+                    root.join("composer.lock"),
+                    lock.replace("laravel-actuator", "laravel-other"),
+                )
+                .unwrap();
+                desk.knows(&[(&root, "SA")]);
+                let mut harness = desk.start();
+                shots.take(&mut harness, "s6.5a-not-installed");
+                continue;
+            }
             desk.knows(&[(&root, "SA")]);
             // S6.5 b has no environment yet; c answers nothing; the others answer as the stub says.
             match (letter, common::runtime_state(letter)) {

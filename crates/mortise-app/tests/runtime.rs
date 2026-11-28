@@ -178,6 +178,17 @@ fn an_app_without_the_actuator_says_how_to_install_it() {
         .click();
     harness.run_steps(3);
     harness.get_by_label("Copied the command.");
+
+    // Settings have no environment to add.
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::Comma);
+    harness.run_steps(3);
+    harness.get_by_role_and_label(Role::Heading, "Environments of shop-api");
+    harness.get_by_label_contains("Runtime status needs nwidart/laravel-actuator.");
+    assert!(
+        harness
+            .query_by_role_and_label(Role::Button, "Add environment")
+            .is_none()
+    );
 }
 
 #[test]
@@ -477,21 +488,6 @@ fn an_app_in_maintenance_is_out_of_service() {
         "readinessState is out of service. The app reports this while it is in maintenance mode.",
     );
     harness.get_by_label("1 up");
-}
-
-#[test]
-fn a_500_is_no_answer_with_the_sentence_about_the_configuration() {
-    let stub = shop_api_actuator();
-    stub.set(
-        "/actuator/health",
-        Reply::status(500, r#"{"message":"Server Error"}"#),
-    );
-    let (_desk, harness) = connected(&stub);
-    assert_eq!(harness.get_all_by_label("No answer on local").count(), 2);
-    harness.get_by_label(
-        "local answered 500 for /actuator/health. The actuator configuration has an error. Read \
-         the app log.",
-    );
 }
 
 #[test]

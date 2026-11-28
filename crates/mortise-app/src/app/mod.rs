@@ -453,12 +453,6 @@ impl MortiseApp {
             .unwrap_or_default()
     }
 
-    /// The environments of the current app, as the settings have them.
-    pub fn environments(&self) -> &[Environment] {
-        self.current
-            .map_or(&[], |current| &self.settings.apps[current].environments)
-    }
-
     /// True when a secret is kept for an environment of the current app.
     pub fn has_secret(&self, environment: &str) -> bool {
         self.current.is_some_and(|current| {

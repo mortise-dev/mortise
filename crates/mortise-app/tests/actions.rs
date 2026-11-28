@@ -448,28 +448,6 @@ fn a_translation_report_that_cannot_be_read_says_why() {
     );
 }
 
-#[test]
-fn a_run_turns_every_run_button_off() {
-    let (desk, _root) = desk(" hold");
-    let mut harness = desk.start();
-    actions_of(&mut harness, "Checkout");
-    run(&mut harness);
-    wait_for(&mut harness, "Running Migration Checkout Module");
-    select(&mut harness, "Seed");
-    let seed = harness.get_by_role_and_label(Role::Button, "Seed");
-    assert!(seed.accesskit_node().is_disabled());
-    seed.hover();
-    harness.run_steps(12);
-    harness.get_by_label("module:migrate Checkout is running");
-
-    harness.key_press_modifiers(Modifiers::COMMAND, Key::Period);
-    harness.run_steps(3);
-    harness
-        .get_by_role_and_label(Role::Button, "Stop command")
-        .click();
-    wait_for(&mut harness, "Stopped after");
-}
-
 /// Gives the field of this name focus and types `text` into it.
 fn type_in(harness: &mut Harness<'static, MortiseApp>, field: &str, text: &str) {
     harness

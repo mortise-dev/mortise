@@ -52,6 +52,20 @@ fn the_boundary_of_a_module_shows_its_neighbours_and_the_first_broken_link() {
     );
     harness
         .get_by_label_contains("Billing has none yet, so the folders Contracts and Events count.");
+
+    // Copy path copies the selected file and says so.
+    harness
+        .get_by_role_and_label(
+            Role::Row,
+            "Modules/Checkout/app/Services/PaymentService.php",
+        )
+        .click();
+    harness.run();
+    harness
+        .get_by_role_and_label(Role::Button, "Copy path")
+        .click();
+    harness.run_steps(3);
+    harness.get_by_label("Copied the path.");
 }
 
 #[test]
@@ -167,28 +181,6 @@ fn a_link_one_way_in_a_circle_of_three_is_shown_as_part_of_the_circle() {
 }
 
 #[test]
-fn copy_path_copies_the_selected_file_and_says_so() {
-    let (_desk, mut harness) = shop_api();
-    harness
-        .get_by_role_and_label(Role::ListBoxOption, "Checkout")
-        .click();
-    harness.key_press(Key::Num2);
-    harness.run();
-    harness
-        .get_by_role_and_label(
-            Role::Row,
-            "Modules/Checkout/app/Services/PaymentService.php",
-        )
-        .click();
-    harness.run();
-    harness
-        .get_by_role_and_label(Role::Button, "Copy path")
-        .click();
-    harness.run_steps(3);
-    harness.get_by_label("Copied the path.");
-}
-
-#[test]
 fn the_boundary_of_the_app_lists_the_links_that_break_a_rule() {
     let (_desk, mut harness) = shop_api();
     harness.key_press(Key::Num2);
@@ -213,6 +205,20 @@ fn the_boundary_of_the_app_lists_the_links_that_break_a_rule() {
     let switch = harness.get_by_role_and_label(Role::CheckBox, crate_strings::RULE_ALLOWED_USE);
     assert_eq!(switch.accesskit_node().toggled(), Some(Toggled::False));
 
+    // A node of the graph selects its module.
+    harness
+        .get_by_role_and_label(Role::Button, "Inventory")
+        .click();
+    harness.run();
+    assert_eq!(
+        harness.state().selection(),
+        Selection::Module("Inventory".into())
+    );
+    harness.get_by_role_and_label(Role::Heading, "Inventory uses Catalog");
+    harness.key_press(Key::Home);
+    harness.run();
+    assert_eq!(harness.state().selection(), Selection::All);
+
     // A row lands on the module's Boundary, on that link.
     harness
         .get_by_role_and_label(Role::Row, "Checkout and Shipping use each other")
@@ -224,22 +230,6 @@ fn the_boundary_of_the_app_lists_the_links_that_break_a_rule() {
     );
     assert_eq!(harness.state().tab(), Tab::Boundary);
     harness.get_by_role_and_label(Role::Heading, "Checkout and Shipping use each other");
-}
-
-#[test]
-fn a_node_of_the_app_graph_selects_its_module() {
-    let (_desk, mut harness) = shop_api();
-    harness.key_press(Key::Num2);
-    harness.run();
-    harness
-        .get_by_role_and_label(Role::Button, "Inventory")
-        .click();
-    harness.run();
-    assert_eq!(
-        harness.state().selection(),
-        Selection::Module("Inventory".into())
-    );
-    harness.get_by_role_and_label(Role::Heading, "Inventory uses Catalog");
 }
 
 #[test]

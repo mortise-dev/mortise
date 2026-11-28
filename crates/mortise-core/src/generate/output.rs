@@ -268,10 +268,6 @@ mod tests {
                 FileOutcome::Left
             )]
         );
-    }
-
-    #[test]
-    fn a_forced_run_replaces_its_file() {
         assert_eq!(
             files("module-make-policy-force", true),
             vec![(

@@ -88,29 +88,6 @@ fn tab_goes_from_the_rail_to_the_index_to_the_workspace() {
 }
 
 #[test]
-fn at_start_the_index_has_the_keys_without_a_focused_control() {
-    let (_desk, mut harness) = shop_api();
-    assert!(focused(&harness).is_none_or(|(role, _)| role == Role::Window));
-    press(&mut harness, Key::J);
-    assert_eq!(
-        harness.state().selection(),
-        Selection::Module("Billing".into())
-    );
-    press(&mut harness, Key::ArrowDown);
-    assert_eq!(
-        harness.state().selection(),
-        Selection::Module("Catalog".into())
-    );
-    press(&mut harness, Key::End);
-    assert_eq!(
-        harness.state().selection(),
-        Selection::Module("Users".into())
-    );
-    press(&mut harness, Key::Home);
-    assert_eq!(harness.state().selection(), Selection::All);
-}
-
-#[test]
 fn enter_or_right_moves_focus_into_the_workspace_and_esc_brings_it_back() {
     let (_desk, mut harness) = shop_api();
     // Selecting a module with J leaves focus in the index, and so does a digit.

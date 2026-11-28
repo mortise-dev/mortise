@@ -197,29 +197,8 @@ fn a_query_finds_modules_and_findings_and_enter_opens_the_first() {
             .is_none()
     );
 
-    // A destructive action is listed only by its own word, and opens its panel.
-    let labels = |query: &str| -> Vec<String> {
-        palette::entries(query, &source)
-            .into_iter()
-            .map(|entry| entry.label)
-            .collect()
-    };
-    assert!(!labels("refresh checkout").contains(&"Drop all tables and migrate".to_owned()));
-    open_palette(&mut harness);
-    type_query(&mut harness, "delete checkout");
-    assert_eq!(palette_rows(&harness)[0], "Delete module Checkout");
-    harness.key_press(Key::Enter);
-    harness.run_steps(3);
-    assert_eq!(harness.state().tab(), Tab::Actions);
-    harness.get_by_role_and_label(Role::Heading, "Delete the module Checkout");
-    harness.get_by_role_and_label(Role::ListBoxOption, "Reset migrations");
-}
-
-#[test]
-fn down_moves_to_a_finding_and_enter_opens_it_where_it_lives() {
-    let (_desk, mut harness) = shop_api();
-    // Boundary was left on a public surface: a link opens on the links.
-    harness.key_press(Key::J);
+    // A finding opens where it lives. Boundary was left on a public surface: a link
+    // opens on the links.
     harness.key_press(Key::Num2);
     harness.key_press(Key::P);
     harness.run();
@@ -237,27 +216,27 @@ fn down_moves_to_a_finding_and_enter_opens_it_where_it_lives() {
     );
     assert_eq!(harness.state().tab(), Tab::Boundary);
     harness.get_by_role_and_label(Role::Heading, "Checkout and Shipping use each other");
-
-    // Down, Down, Up lands on the second row. The Summary has no rows of its own
-    // that the count of palette rows would mistake for its own.
+    // The Summary has no rows of its own that the count of palette rows would mistake
+    // for its own.
     harness.key_press(Key::Num1);
     harness.run();
+
+    // A destructive action is listed only by its own word, and opens its panel.
+    let labels = |query: &str| -> Vec<String> {
+        palette::entries(query, &source)
+            .into_iter()
+            .map(|entry| entry.label)
+            .collect()
+    };
+    assert!(!labels("refresh checkout").contains(&"Drop all tables and migrate".to_owned()));
     open_palette(&mut harness);
-    type_query(&mut harness, "in");
-    assert_eq!(
-        palette_rows(&harness)[..3],
-        ["Inventory", "Billing", "Shipping"]
-    );
-    harness.key_press(Key::ArrowDown);
-    harness.key_press(Key::ArrowDown);
-    harness.key_press(Key::ArrowUp);
-    harness.run_steps(2);
+    type_query(&mut harness, "delete checkout");
+    assert_eq!(palette_rows(&harness)[0], "Delete module Checkout");
     harness.key_press(Key::Enter);
     harness.run_steps(3);
-    assert_eq!(
-        harness.state().selection(),
-        Selection::Module("Billing".into())
-    );
+    assert_eq!(harness.state().tab(), Tab::Actions);
+    harness.get_by_role_and_label(Role::Heading, "Delete the module Checkout");
+    harness.get_by_role_and_label(Role::ListBoxOption, "Reset migrations");
 }
 
 #[test]

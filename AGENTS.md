@@ -140,6 +140,10 @@ Environment for work on Mortise itself:
 - Test a rule once, at the layer that owns it. A screen test in `mortise-app` proves the wiring once; it does not replay the cases of the `mortise-core` function behind it. Do not repeat a shared code path once per fixture app or once per caller.
 - Do not test data the test defines, constants, removed features, egui or eframe defaults, or test helpers.
 - Do not export a symbol only so a test can reach it.
+- Do not test a test helper or a fake, such as `fake-artisan`. The tests that use it prove it.
+- A test that builds the same fixture and screen state as another test adds its assertions to that test.
+- A test whose only assertion repeats a case of the same function is one more line in that test.
+- A public constructor or accessor that only tests call is made private or deleted.
 - Advisory: a PR adding more than 400 net test lines should offset them elsewhere or say why in its body.
 
 ## Layout

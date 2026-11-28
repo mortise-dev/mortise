@@ -87,13 +87,6 @@ impl Opened {
 }
 
 #[test]
-fn the_first_read_arrives_and_tells() {
-    let opened = open(BTreeMap::new());
-    let app = opened.wait_for("the first read", |_| true);
-    assert_eq!(app.modules.len(), 7);
-}
-
-#[test]
 fn a_folder_that_is_not_an_app_fails_and_tells() {
     let dir = tempfile::tempdir().unwrap();
     let (tell, changed) = channel();

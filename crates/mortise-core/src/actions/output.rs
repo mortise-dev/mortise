@@ -179,16 +179,13 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn a_plain_failure_names_no_migration() {
-        let lines = recording("module-failing");
-        assert_eq!(failed_migration(&lines), None);
-        assert!(!prohibited(&lines));
-    }
-
-    #[test]
     fn a_prohibited_command_reads_as_prohibited() {
         let lines = recording("module-migrate-reset-prohibited");
         assert!(prohibited(&lines));
         assert_eq!(failed_migration(&lines), None);
+
+        let lines = recording("module-failing");
+        assert_eq!(failed_migration(&lines), None);
+        assert!(!prohibited(&lines));
     }
 }
