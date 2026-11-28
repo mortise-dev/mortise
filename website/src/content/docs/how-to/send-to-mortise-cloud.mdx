@@ -69,6 +69,28 @@ mortise push --environment production
 
 The cloud records a deploy of the commit to that environment.
 
+## Fill the history from past commits
+
+A new app in the cloud has one point in its charts. The history is already in git:
+
+```sh
+mortise backfill
+```
+
+`mortise backfill` asks the cloud how far back to go, then sends one document for the last commit of
+each past week of the default branch, the newest first. Run it once on the default branch, after
+`mortise push`, in a checkout with `fetch-depth: 0`. A later run sends only what the cloud lacks.
+
+To see which commits it would read, without a token:
+
+```sh
+mortise backfill --dry-run --weeks 13
+```
+
+It reads each commit from a temporary folder and leaves the checkout as it is. A past commit has no
+coverage, because its tests did not run. The details are in
+[Command line tool](/mortise/reference/command-line/#mortise-backfill).
+
 ## When the cloud is down
 
 An outage never fails the build. The tool tries again three times, then warns and exits 0. A plan

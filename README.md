@@ -235,7 +235,7 @@ cargo test --workspace
 |---|---|
 | `crates/mortise-core/tests` | Reading an app, git, the file watcher, the actuator client against a local stub, the public surface scan |
 | `crates/mortise-app/tests` | The interface, run headless and asked by role and name, as a screen reader would |
-| `crates/mortise-cli/tests` | `mortise check` on the fixtures shop-api and layered: its exit codes and its three formats. `mortise push` against a local stub of the cloud |
+| `crates/mortise-cli/tests` | `mortise check` on the fixtures shop-api and layered: its exit codes and its three formats. `mortise push` and `mortise backfill` against a local stub of the cloud |
 | `crates/mortise-core/tests/push.rs` | The push document of shop-api against a committed file and the cloud's JSON Schema, and the document of layered against the schema |
 | `crates/mortise-app/tests/images.rs` | The screens in both themes against the images in `tests/snapshots`. macOS only |
 | `crates/mortise-app/tests/accessibility.rs` | Every control has a name and a target of 24 by 24 px |
@@ -264,7 +264,7 @@ SmartScreen, and Narrator through AccessKit.
 |---|---|
 | `crates/mortise-core` | Everything that is not drawing: reading an app into a snapshot, the actuator client, the scan. No interface dependency. |
 | `crates/mortise-app` | The window, built with egui and eframe. Binary `mortise-desktop`; the installers and the app are named Mortise. |
-| `crates/mortise-cli` | The command line tool, binary `mortise`: `mortise check` and `mortise push`. It uses `mortise-core` without its default features. |
+| `crates/mortise-cli` | The command line tool, binary `mortise`: `mortise check`, `mortise push` and `mortise backfill`. It uses `mortise-core` without its default features. |
 | `assets/brand` | The README banner and the social preview, drawn from HTML by `tools/brand-images.sh`. |
 | `assets/fonts` | Asap and Inconsolata, each with its `OFL.txt`. |
 | `assets/icon` | The app icon: two drawings, `mortise.svg` and `mortise-16.svg`, and the files made from them for macOS (`.icns`), Windows (`.ico`) and Linux (hicolor PNGs). |

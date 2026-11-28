@@ -4,106 +4,18 @@
 
 mod common;
 
-use std::io::{BufRead, BufReader, Read, Write};
-use std::net::TcpListener;
+use std::io::Read;
 use std::path::Path;
 use std::process::{Command, Output};
-use std::sync::mpsc::{Receiver, channel};
-use std::time::Duration;
 
-use common::fixture;
+use common::{TOKEN, fixture, git, mortise, requests, stderr, stdout, stub};
 use serde_json::Value;
 
-const TOKEN: &str = "mortise_01jd8k2x9q4m_secretsecretsecret";
 const SHA: &str = "9b2e4c71d0a85f3e6c1b7a24d8e0f5a3c9d61e2b";
 
-/// One request the stub took.
-struct Request {
-    line: String,
-    /// Names in lower case.
-    headers: Vec<(String, String)>,
-    body: Vec<u8>,
-}
-
-impl Request {
-    fn header(&self, name: &str) -> Option<&str> {
-        self.headers
-            .iter()
-            .find(|(key, _)| key == name)
-            .map(|(_, value)| value.as_str())
-    }
-}
-
-/// A cloud that gives these answers, one per connection, in order: status, extra header
-/// lines and body. Gives its base URL and the requests it takes.
-fn stub(answers: Vec<(u16, &'static str, &'static str)>) -> (String, Receiver<Request>) {
-    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-    let url = format!("http://127.0.0.1:{}", listener.local_addr().unwrap().port());
-    let (sent, taken) = channel();
-    std::thread::spawn(move || {
-        for (status, headers, body) in answers {
-            let (mut stream, _) = listener.accept().unwrap();
-            let mut reader = BufReader::new(stream.try_clone().unwrap());
-            let mut line = String::new();
-            reader.read_line(&mut line).unwrap();
-            let mut fields = Vec::new();
-            loop {
-                let mut field = String::new();
-                reader.read_line(&mut field).unwrap();
-                let Some((name, value)) = field.trim_end().split_once(':') else {
-                    break;
-                };
-                fields.push((name.to_lowercase(), value.trim().to_owned()));
-            }
-            let length = fields
-                .iter()
-                .find(|(name, _)| name == "content-length")
-                .map_or(0, |(_, value)| value.parse().unwrap());
-            let mut content = vec![0; length];
-            reader.read_exact(&mut content).unwrap();
-            write!(
-                stream,
-                "HTTP/1.1 {status} Answer\r\nContent-Type: application/json\r\n{headers}\
-                 Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
-                body.len()
-            )
-            .unwrap();
-            let _ = sent.send(Request {
-                line: line.trim_end().to_owned(),
-                headers: fields,
-                body: content,
-            });
-        }
-    });
-    (url, taken)
-}
-
-/// Every request the stub took, waiting a little for each.
-fn requests(taken: &Receiver<Request>) -> Vec<Request> {
-    std::iter::from_fn(|| taken.recv_timeout(Duration::from_secs(2)).ok()).collect()
-}
-
-/// `mortise push` with these variables, and none of the variables of the CI or the proxy
-/// of the computer that runs the tests. The cloud is a closed port unless `vars` names one.
+/// `mortise push` with these variables. The cloud is a closed port unless `vars` names one.
 fn push(args: &[&str], vars: &[(&str, &str)]) -> Output {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_mortise"));
-    command.arg("push").args(args);
-    for (name, _) in std::env::vars() {
-        let proxy = name.to_ascii_lowercase().ends_with("_proxy");
-        if name.starts_with("GITHUB_") || name.starts_with("MORTISE_") || proxy {
-            command.env_remove(name);
-        }
-    }
-    command.env("MORTISE_CLOUD_URL", "http://127.0.0.1:9");
-    command.envs(vars.iter().copied()).output().unwrap()
-}
-
-fn stdout(output: &Output) -> String {
-    String::from_utf8(output.stdout.clone()).unwrap()
-}
-
-fn stderr(output: &Output) -> String {
-    String::from_utf8(output.stderr.clone()).unwrap()
+    mortise("push", args, vars)
 }
 
 /// A pull request from a fork, on GitHub Actions.
@@ -299,21 +211,6 @@ fn an_accepted_document_prints_the_snapshot_url() {
     // The repository does not hold the commit that the flag names.
     assert_eq!(document["git"]["committed_at"], Value::Null);
     assert_eq!(document["ci"]["provider"], "other");
-}
-
-/// Runs git in `folder` and fails the test when git does.
-fn git(folder: &Path, args: &[&str]) {
-    let output = Command::new("git")
-        .current_dir(folder)
-        .args(["-c", "user.name=Test", "-c", "user.email=test@example.com"])
-        .args(["-c", "commit.gpgsign=false"])
-        .args(args)
-        // Without the settings of this computer, such as its hooks.
-        .env("GIT_CONFIG_GLOBAL", "/dev/null")
-        .env("GIT_CONFIG_SYSTEM", "/dev/null")
-        .output()
-        .unwrap();
-    assert!(output.status.success(), "git {args:?}: {}", stderr(&output));
 }
 
 #[test]

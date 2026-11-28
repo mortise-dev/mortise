@@ -1,0 +1,330 @@
+//! `mortise backfill`: sends one push document for each of the past weeks of the default
+//! branch, so that Mortise Cloud has a history on the first day.
+//!
+//! Mortise Cloud says which period to fill and which commits it has. Each commit is read
+//! on its own, as `mortise push` reads the checkout: nothing is compared and nothing is
+//! kept. A plan reason, a rate limit or an outage never fails the build.
+
+use std::collections::BTreeSet;
+use std::io::{Read, Write};
+use std::path::PathBuf;
+
+use mortise_core::{
+    PastCommit, PushBackfill, PushContext, PushGit, RulesSource, byte_limit, push_document,
+    read_past_app, read_repository, weekly_commits,
+};
+use serde_json::Value;
+
+use crate::push::{self, Cloud};
+use crate::send::{self, Outcome};
+use crate::{github, say, strings};
+
+/// The path of the endpoint that says which past commits to send.
+const BACKFILL: &str = "/api/v1/backfill";
+
+#[derive(Default)]
+pub(crate) struct Options {
+    /// The app folder.
+    pub(crate) path: PathBuf,
+    /// Read no commit older than this many weeks.
+    pub(crate) weeks: Option<u32>,
+    /// Print the commits; read and send nothing.
+    pub(crate) dry_run: bool,
+    /// The default branch.
+    pub(crate) branch: Option<String>,
+    pub(crate) repository: Option<String>,
+}
+
+/// What Mortise Cloud asks for.
+struct Asked {
+    /// The start of the period, in seconds since 1970.
+    since: i64,
+    /// The commits it has.
+    have: BTreeSet<String>,
+}
+
+/// The answer of the cloud to the question. `Ok(None)` when it needs nothing, `Err` when
+/// this Mortise cannot read it.
+fn asked(answer: &Value) -> Result<Option<Asked>, ()> {
+    match answer["needed"].as_bool() {
+        Some(true) => {}
+        Some(false) => return Ok(None),
+        None => return Err(()),
+    }
+    // One commit per week is the only pace this Mortise knows.
+    if answer["every"] != "week" {
+        return Err(());
+    }
+    let since: jiff::Timestamp = answer["since"]
+        .as_str()
+        .and_then(|since| since.parse().ok())
+        .ok_or(())?;
+    Ok(Some(Asked {
+        since: since.as_second(),
+        have: answer["have"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|commit| commit.as_str().map(str::to_ascii_lowercase))
+            .collect(),
+    }))
+}
+
+/// Runs the backfill and gives the exit code.
+pub(crate) fn run(options: &Options) -> u8 {
+    let github = github::read();
+
+    // A dry run with `--weeks` knows its period, so it needs no token.
+    let cloud = match Cloud::read() {
+        Ok(Some(cloud)) => Some(cloud),
+        Ok(None) if options.dry_run && options.weeks.is_some() => None,
+        Ok(None) if push::from_fork(github.as_ref()) => {
+            say(strings::FORK_WITHOUT_TOKEN);
+            return crate::PASSED;
+        }
+        Ok(None) => {
+            say(&strings::no_token(strings::DRY_RUN_OF_BACKFILL));
+            return crate::USAGE;
+        }
+        Err(message) => {
+            say(&message);
+            return crate::USAGE;
+        }
+    };
+
+    let repository = read_repository(&options.path);
+    let Some((repository, head)) = repository
+        .as_ref()
+        .and_then(|repository| Some((repository, repository.commit.as_ref()?)))
+    else {
+        say(&strings::backfill_without_git(
+            &options.path.to_string_lossy(),
+        ));
+        return crate::USAGE;
+    };
+    if repository.shallow {
+        say(strings::BACKFILL_SHALLOW);
+        return crate::PASSED;
+    }
+    // A document names the default branch. A dry run writes none.
+    let branch = options
+        .branch
+        .clone()
+        .or_else(|| github.as_ref().and_then(|github| github.branch.clone()))
+        .or_else(|| repository.branch.clone());
+    if branch.is_none() && !options.dry_run {
+        say(strings::BACKFILL_BRANCH_UNKNOWN);
+        return crate::USAGE;
+    }
+
+    // The period: what the cloud asks for, and never more than `--weeks`.
+    let now = jiff::Timestamp::now();
+    let mut since = options
+        .weeks
+        .map(|weeks| now.as_second() - i64::from(weeks) * 7 * 86_400);
+    let mut have = BTreeSet::new();
+    if let Some(cloud) = &cloud {
+        let hide = |text: &str| cloud.hide(text);
+        let answer = match cloud.send(BACKFILL, None) {
+            Outcome::Accepted { answer } => answer,
+            Outcome::NotTaken { status, problem } => {
+                say(&strings::backfill_not_taken(
+                    status,
+                    &hide(&problem.summary()),
+                ));
+                return crate::PASSED;
+            }
+            Outcome::Unreachable { reason } => {
+                say(&strings::backfill_not_asked(&hide(&reason)));
+                return crate::PASSED;
+            }
+            Outcome::Refused { status, problem } => {
+                say(&strings::backfill_refused(
+                    status,
+                    &hide(&problem.summary()),
+                ));
+                return crate::REFUSED;
+            }
+        };
+        match asked(&answer) {
+            Ok(Some(asked)) => {
+                since = Some(since.map_or(asked.since, |weeks| weeks.max(asked.since)));
+                have = asked.have;
+            }
+            Ok(None) => {
+                println!("{}", strings::BACKFILL_NOT_NEEDED);
+                return crate::PASSED;
+            }
+            Err(()) => {
+                say(strings::BACKFILL_ANSWER_NOT_READ);
+                return crate::PASSED;
+            }
+        }
+    }
+    let since = since.expect("the cloud or --weeks gives the period");
+
+    // The last commit of each week. `mortise push` sends the one that is checked out.
+    let Some(commits) = weekly_commits(&options.path, since) else {
+        say(&strings::backfill_without_git(
+            &options.path.to_string_lossy(),
+        ));
+        return crate::USAGE;
+    };
+    let commits: Vec<PastCommit> = commits
+        .into_iter()
+        .filter(|commit| commit.commit != *head && !have.contains(&commit.commit))
+        .collect();
+    if commits.is_empty() {
+        println!("{}", strings::BACKFILL_NO_COMMITS);
+        return crate::PASSED;
+    }
+    if options.dry_run {
+        let mut out = std::io::stdout().lock();
+        for commit in &commits {
+            // A closed pipe, as with `| head`, is not an error.
+            let _ = writeln!(out, "{} {}", commit.commit, time(commit.committed_at));
+        }
+        return crate::PASSED;
+    }
+    let cloud = cloud.expect("only a dry run goes on without a token");
+
+    // Read every commit first: the place of a document in the run counts only the
+    // commits that can be sent. A document waits as its gzipped JSON.
+    let planned = u32::try_from(commits.len()).unwrap_or(u32::MAX);
+    let mut documents: Vec<(&PastCommit, Vec<u8>)> = Vec::new();
+    for commit in &commits {
+        let short = &commit.commit[..commit.commit.len().min(7)];
+        let app = match read_past_app(&options.path, &repository.app_path, commit) {
+            Ok(app) => app,
+            Err(error) => {
+                let reason = strings::past_error(&error, &repository.app_path);
+                say(&strings::backfill_left_out(short, &reason));
+                continue;
+            }
+        };
+        if let RulesSource::Invalid(message) = &app.rules_source {
+            say(&strings::backfill_invalid_rules(short, message));
+        }
+        let context = PushContext {
+            generated_at: push::utc(jiff::Timestamp::now()),
+            tool_version: env!("CARGO_PKG_VERSION").to_owned(),
+            app_path: repository.app_path.clone(),
+            git: PushGit {
+                repository: options
+                    .repository
+                    .clone()
+                    .or_else(|| github.as_ref().and_then(|github| github.repository.clone())),
+                commit: commit.commit.clone(),
+                head_commit: None,
+                branch: branch.clone(),
+                base_branch: None,
+                base_commit: None,
+                pull_request: None,
+                shallow: false,
+                committed_at: Some(time(commit.committed_at)),
+            },
+            ci: push::ci(github.as_ref()),
+            environment: None,
+            // The widest place, for the size. `placed` writes the true one.
+            backfill: Some(PushBackfill {
+                position: planned,
+                of: planned,
+            }),
+        };
+        let document = push_document(app, context);
+        let json = serde_json::to_vec(&document).expect("the document is plain data");
+        let body = push::gzip(&json);
+        if let Some(limit) = document
+            .over_limit()
+            .or_else(|| byte_limit(json.len(), body.len()))
+        {
+            say(&strings::backfill_left_out(
+                short,
+                &strings::limit_passed(&limit),
+            ));
+            continue;
+        }
+        documents.push((commit, body));
+    }
+    if documents.is_empty() {
+        println!("{}", strings::BACKFILL_NONE_READ);
+        return crate::PASSED;
+    }
+
+    // The newest first: a run that stops early keeps the most useful part.
+    let of = u32::try_from(documents.len()).unwrap_or(u32::MAX);
+    let hide = |text: &str| cloud.hide(text);
+    let mut warned = BTreeSet::new();
+    let mut sent: Option<(usize, i64)> = None;
+    let mut code = crate::PASSED;
+    for (position, (commit, body)) in (1..).zip(&documents) {
+        let short = &commit.commit[..commit.commit.len().min(7)];
+        match cloud.send(push::SNAPSHOTS, Some(&placed(body, position, of))) {
+            Outcome::Accepted { answer } => {
+                for warning in send::warnings(&answer) {
+                    // The same warning for every commit is said once.
+                    if warned.insert(warning.clone()) {
+                        say(&strings::cloud_warning(&hide(&warning)));
+                    }
+                }
+                sent = Some((position as usize, commit.committed_at));
+            }
+            Outcome::NotTaken { status, problem } => {
+                say(&strings::backfill_stopped_not_taken(
+                    short,
+                    status,
+                    &hide(&problem.summary()),
+                ));
+                break;
+            }
+            Outcome::Unreachable { reason } => {
+                say(&strings::backfill_stopped_unreachable(
+                    short,
+                    &hide(&reason),
+                ));
+                break;
+            }
+            Outcome::Refused { status, problem } => {
+                say(&strings::backfill_stopped_refused(
+                    short,
+                    status,
+                    &hide(&problem.summary()),
+                ));
+                for (pointer, message) in &problem.errors {
+                    say(&strings::refused_member(&hide(pointer), &hide(message)));
+                }
+                code = crate::REFUSED;
+                break;
+            }
+        }
+    }
+    let summary = match sent {
+        Some((count, oldest)) => {
+            let day = jiff::Timestamp::from_second(oldest)
+                .map(|oldest| oldest.strftime("%-d %b %Y").to_string())
+                .unwrap_or_default();
+            strings::backfill_sent(count, &day)
+        }
+        None => strings::BACKFILL_SENT_NONE.to_owned(),
+    };
+    println!("{summary}");
+    code
+}
+
+/// A committer date as RFC 3339 in UTC.
+fn time(seconds: i64) -> String {
+    jiff::Timestamp::from_second(seconds)
+        .map(push::utc)
+        .unwrap_or_default()
+}
+
+/// `body`, a gzipped push document, with its place in the run.
+fn placed(body: &[u8], position: u32, of: u32) -> Vec<u8> {
+    let mut json = Vec::new();
+    flate2::read::GzDecoder::new(body)
+        .read_to_end(&mut json)
+        .expect("the body was gzipped here");
+    let mut document: Value = serde_json::from_slice(&json).expect("the body is JSON");
+    document["backfill"] = serde_json::json!({ "position": position, "of": of });
+    push::gzip(&serde_json::to_vec(&document).expect("the document is plain data"))
+}

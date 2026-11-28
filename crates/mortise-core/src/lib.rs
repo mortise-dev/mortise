@@ -83,9 +83,9 @@ pub use palette::matcher::fuzzy;
 pub use palette::recent::{Ran, RecentRun, recent_runs};
 #[cfg(feature = "push")]
 pub use push::{
-    Counted, MAX_TEXT, PushBackfill, PushCi, PushContext, PushDocument, PushGit, PushLimit,
-    PushSnapshot, PushTool, Repository, SCHEMA_VERSION, byte_limit, commit_time, push_document,
-    read_repository,
+    Counted, MAX_TEXT, PastCommit, PastError, PushBackfill, PushCi, PushContext, PushDocument,
+    PushGit, PushLimit, PushSnapshot, PushTool, Repository, SCHEMA_VERSION, byte_limit,
+    commit_time, push_document, read_past_app, read_repository, weekly_commits,
 };
 #[cfg(feature = "run")]
 pub use run::ansi;

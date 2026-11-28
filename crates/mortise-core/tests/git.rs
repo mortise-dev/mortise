@@ -3,7 +3,7 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use mortise_core::{Git, read_app};
+use mortise_core::{Git, PastCommit, PastError, read_app, read_past_app};
 
 fn fixture(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -152,6 +152,44 @@ fn counts_the_commits_of_30_days_for_each_module() {
         .find(|module| module.name == "Checkout")
         .unwrap();
     assert_eq!(checkout.churn.unwrap().commits, 2);
+
+    // The app as it was at the commit of 40 days ago, read from that clone into a
+    // temporary folder. The checkout stays as it is.
+    let said = |args: &[&str]| {
+        let mut git = Command::new("git");
+        let output = git.arg("-C").arg(&clone).args(args).output().unwrap();
+        String::from_utf8(output.stdout).unwrap()
+    };
+    let found = said(&["log", "-1", "--format=%H %ct", "HEAD~4"]);
+    let (sha, time) = found.trim().split_once(' ').unwrap();
+    let commit = PastCommit {
+        commit: sha.to_owned(),
+        committed_at: time.parse().unwrap(),
+    };
+    let past = read_past_app(&clone, ".", &commit).unwrap();
+    assert_eq!(said(&["status", "--porcelain"]), "");
+    assert_eq!(past.name, "treeless");
+    let module = |name: &str| past.modules.iter().find(|module| module.name == name);
+    // The 30 days before that commit hold only the commit itself.
+    let checkout = module("Checkout").unwrap().churn.unwrap();
+    assert_eq!(
+        (checkout.commits, checkout.last_commit),
+        (1, Some(commit.committed_at))
+    );
+    let billing = module("Billing").unwrap().churn.unwrap();
+    assert_eq!((billing.commits, days_since(billing.last_commit)), (0, 90));
+    // The tests of a past commit did not run: the report in the fixture is not read.
+    assert!(past.coverage_report.is_none());
+    assert!(past.modules.iter().all(|module| module.coverage.is_none()));
+    // A commit that the repository does not hold gives no app.
+    let unknown = PastCommit {
+        commit: "0".repeat(40),
+        ..commit
+    };
+    assert!(matches!(
+        read_past_app(&clone, ".", &unknown),
+        Err(PastError::NoFolder)
+    ));
 }
 
 #[test]

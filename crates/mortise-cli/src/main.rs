@@ -3,8 +3,10 @@
 //! It reads an app through `mortise-core`, as the window does, so the two cannot
 //! disagree on a rule. It runs no PHP and writes nothing in the app. `check` writes only
 //! to standard output and standard error. `push` also sends the push document to
-//! Mortise Cloud, and writes it to a file when asked.
+//! Mortise Cloud, and writes it to a file when asked. `backfill` sends one push document
+//! for each of the past weeks.
 
+mod backfill;
 mod check;
 mod github;
 mod push;
@@ -44,6 +46,7 @@ fn main() -> ExitCode {
         }
         Ok(Command::Check(options)) => check::run(&options),
         Ok(Command::Push(options)) => push::run(&options),
+        Ok(Command::Backfill(options)) => backfill::run(&options),
         Err(message) => {
             say(&strings::usage_error(&message));
             USAGE
@@ -79,6 +82,7 @@ enum Command {
     Version,
     Check(check::Options),
     Push(push::Options),
+    Backfill(backfill::Options),
 }
 
 /// Reads the arguments after the name of the program.
@@ -90,6 +94,7 @@ fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Command, String> {
     match first.to_str() {
         Some("check") => parse_check(Args(args)),
         Some("push") => parse_push(Args(args)),
+        Some("backfill") => parse_backfill(Args(args)),
         Some("help" | "--help" | "-h") => Ok(Command::Help),
         Some("--version" | "-V") => Ok(Command::Version),
         _ => Err(strings::unknown_command(&first.to_string_lossy())),
@@ -302,4 +307,56 @@ fn parse_push(mut args: Args<impl Iterator<Item = OsString>>) -> Result<Command,
     }
     options.path = path.unwrap_or_else(|| PathBuf::from("."));
     Ok(Command::Push(options))
+}
+
+/// `backfill [PATH] [--weeks <n>] [--dry-run] [--branch <name>] [--repository <owner/name>]`.
+fn parse_backfill(mut args: Args<impl Iterator<Item = OsString>>) -> Result<Command, String> {
+    let mut path: Option<PathBuf> = None;
+    let mut options = backfill::Options::default();
+    while let Some(arg) = args.next() {
+        let (name, inline) = match arg {
+            Arg::Folder(arg) => {
+                folder(&mut path, "backfill", arg)?;
+                continue;
+            }
+            Arg::Help => return Ok(Command::Help),
+            Arg::Flag { name, inline } => (name, inline),
+        };
+        match name.as_str() {
+            "--dry-run" => {
+                if inline.is_some() {
+                    return Err(strings::takes_no_value(&name));
+                }
+                options.dry_run = true;
+            }
+            "--weeks" => {
+                let weeks = args.text(
+                    &name,
+                    inline,
+                    |text| text.parse::<u32>().is_ok_and(|n| n >= 1),
+                    strings::wrong_weeks,
+                )?;
+                options.weeks = weeks.parse().ok();
+            }
+            "--branch" => {
+                options.branch = Some(args.text(
+                    &name,
+                    inline,
+                    |text| !text.trim().is_empty(),
+                    |_| strings::missing_value(&name),
+                )?);
+            }
+            "--repository" => {
+                options.repository = Some(args.text(
+                    &name,
+                    inline,
+                    push::is_repository,
+                    strings::wrong_repository,
+                )?);
+            }
+            _ => return Err(strings::unknown_flag("backfill", &name)),
+        }
+    }
+    options.path = path.unwrap_or_else(|| PathBuf::from("."));
+    Ok(Command::Backfill(options))
 }

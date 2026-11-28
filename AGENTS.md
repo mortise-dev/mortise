@@ -22,6 +22,9 @@ room for feedback). Milestone 33 (hardening and the release 1.1.0) is open. The 
   and `prometheus` only. It never asks for `env` and follows no redirect.
 - `mortise push` sends only the push document, to the cloud host, when CI or the user runs it.
   The token comes from `MORTISE_TOKEN` only and is never printed. The window has no push button.
+- `mortise backfill` sends one push document for each past week, under the same rules. It reads a past
+  commit from a temporary folder outside the app and leaves the checkout as it is. In a clone without
+  file contents, git downloads the files of that commit into `.git`; Mortise writes nothing there itself.
 - The window makes one request by itself: the update manifest of the newest release, at start, at most once
   a day, unless the user turned it off. It carries nothing of an app. Mortise downloads a newer version only
   when the user asks, and installs it only when its signature verifies with the key in `update/mod.rs`.
@@ -33,7 +36,8 @@ room for feedback). Milestone 33 (hardening and the release 1.1.0) is open. The 
 - Every change must work on macOS, Windows and Linux. Say what was not run on a platform.
 - Mortise judges one tree: one app, at one commit, on one machine, for one person. It does not compare
   two commits or two branches, draws no chart over the git history, has no module owners and no
-  notifications, and no view or policy over several apps. Those belong to Mortise Cloud
+  notifications, and no view or policy over several apps. `mortise backfill` reads several commits in
+  one run: it reads each commit on its own, compares nothing and keeps nothing. Those belong to Mortise Cloud
   (`docs/plan/phase-4.md`, section 1). Ask the owner before you add a feature that is not clearly one tree.
 
 ## Branches and worktrees
@@ -144,7 +148,7 @@ Environment for work on Mortise itself:
 |---|---|
 | `crates/mortise-core` | Reading an app into a snapshot, links, rules, findings, the scan, the actuator client, settings. One folder per feature (`modules`, `app`, `boundary`, `runtime`, `run`, `actions`, `generate`, `palette`, `push`); `lib.rs` re-exports every public name. Features `watch`, `actuator`, `os-secrets`, `run` are on by default; `push` gives the push document; `testing` gives a stub actuator |
 | `crates/mortise-app` | The window, theme, components and screens. Binary `mortise-desktop`. One folder per feature, each with a `view.rs` and a `strings.rs`; `ui/` holds the theme and components; `app/` holds the window and one wiring file per feature |
-| `crates/mortise-cli` | The command line tool, binary `mortise`: `mortise check` and `mortise push`. It uses `mortise-core` with `default-features = false` and the feature `push`, runs no PHP and writes nothing in the app |
+| `crates/mortise-cli` | The command line tool, binary `mortise`: `mortise check`, `mortise push` and `mortise backfill`. It uses `mortise-core` with `default-features = false` and the feature `push`, runs no PHP and writes nothing in the app |
 | `fixtures` | Laravel apps for the tests. They are never installed or run |
 | `docs/spec` | The design specification (HTML). Screen ids such as S4.2 refer to it |
 | `docs/spec-build` | The scripts that build `docs/spec` |

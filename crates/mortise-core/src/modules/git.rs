@@ -83,6 +83,37 @@ pub(crate) fn git_local(root: &Path, args: &[&str]) -> Option<String> {
     output(command)
 }
 
+/// Writes the files of `tree`, a tree of the repository of `root`, into the folder `into`,
+/// which is outside the repository. `index` is a file for git to keep beside it. The
+/// working tree and the index of the repository stay as they are. A clone without file
+/// contents downloads the files of this tree it lacks, in one request. False when git fails.
+#[cfg(feature = "push")]
+pub(crate) fn export(root: &Path, tree: &str, into: &Path, index: &Path) -> bool {
+    let mut command = command(
+        root,
+        &[
+            // Every file of the tree, whatever the checkout leaves out.
+            "-c",
+            "core.sparseCheckout=false",
+            // The bytes as they are committed.
+            "-c",
+            "core.autocrlf=false",
+            "--no-replace-objects",
+            "read-tree",
+            "-m",
+            "-u",
+            tree,
+        ],
+    );
+    command
+        .env("GIT_INDEX_FILE", index)
+        .env("GIT_WORK_TREE", into)
+        // A large file kept outside git stays a pointer: Mortise reads PHP and JSON.
+        .env("GIT_LFS_SKIP_SMUDGE", "1")
+        .stdout(Stdio::null());
+    command.status().is_ok_and(|status| status.success())
+}
+
 /// Reads the branch and commit of the app in `root`.
 pub(crate) fn read(root: &Path) -> Git {
     let started = crate::program::command("git")
@@ -116,6 +147,26 @@ pub(crate) fn read(root: &Path) -> Git {
 /// Counts the commits of the last [`CHURN_DAYS`] days for each folder, and finds
 /// when each was last touched. `folders` are paths relative to `root`, with `/`.
 pub(crate) fn churn(root: &Path, folders: &[String]) -> BTreeMap<String, Churn> {
+    churn_from(root, "HEAD", &format!("{CHURN_DAYS}.days"), folders)
+}
+
+/// As [`churn`], as it was at `commit`, a full SHA committed at `time`: the commits of
+/// the [`CHURN_DAYS`] days before it, in its own history.
+#[cfg(feature = "push")]
+pub(crate) fn churn_at(
+    root: &Path,
+    commit: &str,
+    time: i64,
+    folders: &[String],
+) -> BTreeMap<String, Churn> {
+    // A number of this size is seconds since 1970 to git.
+    let since = time - i64::from(CHURN_DAYS) * 86_400;
+    churn_from(root, commit, &since.to_string(), folders)
+}
+
+/// The churn of `folders` in the history of `from`, counting the commits after `since`,
+/// a date as `git log --since` takes it.
+fn churn_from(root: &Path, from: &str, since: &str, folders: &[String]) -> BTreeMap<String, Churn> {
     let mut churn: BTreeMap<String, Churn> = BTreeMap::new();
     if folders.is_empty() {
         return churn;
@@ -123,9 +174,10 @@ pub(crate) fn churn(root: &Path, folders: &[String]) -> BTreeMap<String, Churn> 
 
     // One call for the window: each commit as a marker line with its time, then
     // the files it touched, relative to the app folder.
-    let since = format!("--since={CHURN_DAYS}.days");
+    let since = format!("--since={since}");
     let mut args = vec![
         "log",
+        from,
         &since,
         "--format=%x01%ct",
         "--name-only",
@@ -169,7 +221,7 @@ pub(crate) fn churn(root: &Path, folders: &[String]) -> BTreeMap<String, Churn> 
         if churn.contains_key(folder) {
             continue;
         }
-        let last = git(root, &["log", "-1", "--format=%ct", "--", folder])
+        let last = git(root, &["log", "-1", "--format=%ct", from, "--", folder])
             .and_then(|time| time.trim().parse().ok());
         churn.insert(
             folder.clone(),
