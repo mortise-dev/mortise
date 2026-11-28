@@ -216,7 +216,7 @@ pub struct RunOver<'a> {
 
 /// The runs of one app: the one on screen, and the history kept on disk.
 #[derive(Debug, Default)]
-pub struct AppRuns {
+pub(crate) struct AppRuns {
     history: Option<History>,
     entries: Vec<Listed>,
     current: Option<Current>,
@@ -637,7 +637,7 @@ pub struct Inputs<'a> {
 }
 
 /// Paints the drawer into `rect`, the bottom of the workspace column.
-pub fn drawer(
+pub(crate) fn drawer(
     ui: &mut Ui,
     pal: &Palette,
     rect: Rect,

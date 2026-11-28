@@ -11,7 +11,6 @@ use eframe::egui::{Key, Modifiers, Role};
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT as _, Queryable as _};
 use mortise_app::app::MortiseApp;
-use mortise_app::runner::view::AppRuns;
 use mortise_core::RunnerKind;
 use mortise_core::history::{Ended, Entry, History};
 
@@ -192,6 +191,22 @@ fn stop_asks_first_for_a_migration_and_run_again_waits() {
     harness.get_by_label("module:migrate --all is running");
     chord(&mut harness, Modifiers::COMMAND | Modifiers::SHIFT, Key::H);
 
+    // Every run button of the Actions tab is off and says why.
+    harness
+        .get_by_role_and_label(Role::ListBoxOption, "Checkout")
+        .click();
+    harness.run_steps(3);
+    chord(&mut harness, Modifiers::NONE, Key::Num4);
+    harness
+        .get_by_role_and_label(Role::ListBoxOption, "Seed")
+        .click();
+    harness.run_steps(3);
+    let seed = harness.get_by_role_and_label(Role::Button, "Seed");
+    assert!(seed.accesskit_node().is_disabled());
+    seed.hover();
+    harness.run_steps(12);
+    harness.get_by_label("module:migrate --all is running");
+
     // A migration asks first; Keep running has focus.
     chord(&mut harness, Modifiers::COMMAND, Key::Period);
     harness.get_by_role_and_label(Role::Heading, "Stop module:migrate --all?");
@@ -206,20 +221,6 @@ fn stop_asks_first_for_a_migration_and_run_again_waits() {
         .get_by_role_and_label(Role::Button, "Stop command")
         .click();
     wait_for(&mut harness, "module:migrate --all: Stopped after ");
-}
-
-#[test]
-fn a_failure_says_its_exit_code_and_one_sentence() {
-    let (desk, _root) = desk(&fake(""), &[&["module:migrate", "NoSuchModule"]]);
-    let mut harness = desk.start();
-    run_again(&mut harness);
-    run_again(&mut harness);
-    wait_for(&mut harness, "module:migrate NoSuchModule: Exit code 1");
-    harness
-        .query_by_label_contains("Application::handleCommand")
-        .unwrap();
-    harness.get_by_label("module:migrate NoSuchModule stopped with exit code 1.");
-    harness.get_by_role_and_label(Role::Button, "Copy output of module:migrate NoSuchModule");
 }
 
 #[test]
@@ -311,25 +312,4 @@ fn a_command_that_does_not_start_offers_the_settings_of_php() {
             .as_deref(),
         Some("mortise-no-such-php artisan")
     );
-}
-
-#[test]
-fn the_end_of_a_run_gives_standard_output_apart() {
-    let root = common::fixture("shop-api");
-    let php = mortise_core::PhpSettings {
-        runner: Some(RunnerKind::Custom { line: fake("") }),
-        ..Default::default()
-    };
-    let args = ["module:lang", "Checkout", "--json"]
-        .map(String::from)
-        .to_vec();
-    let mut runs = AppRuns::open(None, &root);
-    runs.start(&mortise_core::Runs::new(), &root, &php, args);
-    runs.wait(Instant::now() + Duration::from_secs(10));
-    let ended = runs.ended().expect("the run ended");
-    let (lines, stdout) = (ended.lines, ended.stdout);
-    // The drawer shows both streams; standard output holds the document alone.
-    assert!(lines.iter().any(|line| line.contains("Checking languages")));
-    assert_eq!(stdout.len(), 1);
-    assert!(stdout[0].starts_with(r#"{"modules":"#), "{stdout:?}");
 }

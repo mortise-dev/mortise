@@ -49,6 +49,18 @@ fn settings_take_the_place_of_the_workbench_and_esc_returns() {
     harness.run();
     harness.get_by_role_and_label(Role::Heading, "All modules");
 
+    // The tile on the rail opens Settings and closes them again.
+    harness
+        .get_by_role_and_label(Role::Button, "Settings")
+        .click();
+    harness.run();
+    harness.get_by_role_and_label(Role::Heading, "Apps");
+    harness
+        .get_by_role_and_label(Role::Button, "Settings")
+        .click();
+    harness.run();
+    harness.get_by_role_and_label(Role::Heading, "All modules");
+
     // Over the Findings list, Esc closes Settings and leaves the list as it was.
     harness.key_press(Key::F);
     harness.run();
@@ -505,21 +517,6 @@ fn the_question_mark_shows_the_shortcuts_and_they_can_be_searched() {
     ] {
         harness.get_by_label(keys);
     }
-}
-
-#[test]
-fn the_settings_tile_on_the_rail_opens_and_closes_them() {
-    let (_desk, mut harness) = shop_api();
-    harness
-        .get_by_role_and_label(Role::Button, "Settings")
-        .click();
-    harness.run();
-    harness.get_by_role_and_label(Role::Heading, "Apps");
-    harness
-        .get_by_role_and_label(Role::Button, "Settings")
-        .click();
-    harness.run();
-    harness.get_by_role_and_label(Role::Heading, "All modules");
 }
 
 #[test]

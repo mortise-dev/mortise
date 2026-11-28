@@ -373,52 +373,6 @@ fn the_first_run_and_an_app_with_many_modules() {
     audit(&harness, "Metrics, not connected");
 }
 
-#[test]
-fn the_runner_drawer() {
-    let desk = Desk::new();
-    let root = desk.app("shop-api");
-    desk.knows(&[(&root, "SA")]);
-    let mut settings = desk.saved();
-    settings.apps[0].php.runner = Some(mortise_core::RunnerKind::Custom {
-        line: format!("\"{}\"", env!("CARGO_BIN_EXE_app-fake-artisan")),
-    });
-    settings.save(&desk.settings_path()).unwrap();
-    let args = ["module:migrate", "Shipping"].map(str::to_owned).to_vec();
-    let entry = mortise_core::history::Entry {
-        id: 1,
-        label: args.join(" "),
-        args,
-        started_ms: 1,
-        ended: mortise_core::history::Ended::Failed {
-            code: Some(1),
-            ms: 412,
-        },
-        cut: false,
-    };
-    mortise_core::history::History::open(&desk.data_dir(), &root)
-        .record(entry, &[])
-        .unwrap();
-    let mut harness = desk.start();
-
-    harness.key_press_modifiers(Modifiers::CTRL, Key::Backtick);
-    harness.run_steps(3);
-    audit(&harness, "runner drawer, history");
-    harness.key_press_modifiers(Modifiers::COMMAND | Modifiers::SHIFT, Key::R);
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
-    while harness
-        .query_by_label_contains("stopped with exit code 1")
-        .is_none()
-    {
-        assert!(std::time::Instant::now() < deadline, "the run did not end");
-        std::thread::sleep(std::time::Duration::from_millis(20));
-        harness.run_steps(2);
-    }
-    audit(&harness, "runner drawer, failed");
-    harness.key_press_modifiers(Modifiers::CTRL, Key::Backtick);
-    harness.run_steps(3);
-    audit(&harness, "runner drawer, collapsed");
-}
-
 /// A desk for shop-api that runs `line`, with these runs in the history of the app.
 fn runner_desk(line: &str, runs: &[&[&str]]) -> Desk {
     let desk = Desk::new();
@@ -498,6 +452,34 @@ fn the_runner_drawer_empty_done_running_and_not_started() {
     run_again(&mut harness);
     harness.run_steps(3);
     audit(&harness, "runner drawer, did not start");
+
+    // The history with a failed run, the run failed again, and the drawer collapsed.
+    let desk = runner_desk(&fake(""), &[]);
+    let args = ["module:migrate", "Shipping"].map(str::to_owned).to_vec();
+    let entry = mortise_core::history::Entry {
+        id: 1,
+        label: args.join(" "),
+        args,
+        started_ms: 1,
+        ended: mortise_core::history::Ended::Failed {
+            code: Some(1),
+            ms: 412,
+        },
+        cut: false,
+    };
+    mortise_core::history::History::open(&desk.data_dir(), &desk.path().join("shop-api"))
+        .record(entry, &[])
+        .unwrap();
+    let mut harness = desk.start();
+    harness.key_press_modifiers(Modifiers::CTRL, Key::Backtick);
+    harness.run_steps(3);
+    audit(&harness, "runner drawer, history");
+    run_again(&mut harness);
+    wait_for(&mut harness, "stopped with exit code 1");
+    audit(&harness, "runner drawer, failed");
+    harness.key_press_modifiers(Modifiers::CTRL, Key::Backtick);
+    harness.run_steps(3);
+    audit(&harness, "runner drawer, collapsed");
 }
 
 /// Selects a row of the index or of the actions list.
@@ -607,6 +589,44 @@ fn the_actions_and_findings_of_an_app_with_package_data() {
     let desk = runner_desk(&fake(""), &[]);
     common::package_version(&desk.path().join("shop-api"), "v13.4.0");
     let mut harness = desk.start();
+    // S9.1: the button that reads the generators, then its "Read again".
+    select(&mut harness, "Billing");
+    press(&mut harness, Key::Num3);
+    audit(&harness, "Generate, picker before the read");
+    harness
+        .get_by_role_and_label(Role::Button, "Read the generators of shop-api")
+        .click();
+    wait_for(&mut harness, "Read from shop-api at ");
+    harness.get_by_role_and_label(Role::Button, "Read again");
+    audit(&harness, "Generate, picker after the read");
+    // S9.3: the dry run finds the policy of Invoice, so "exists" shows.
+    select(&mut harness, "Model");
+    type_name(&mut harness, "Model name", "Invoice");
+    for flag in ["Migration", "Policy"] {
+        harness.get_by_role_and_label(Role::CheckBox, flag).click();
+        harness.run_steps(3);
+    }
+    harness
+        .get_by_role_and_label(Role::Button, "List files")
+        .click();
+    wait_for(&mut harness, "3 files, 1 exists already");
+    audit(
+        &harness,
+        "Generate, model form with its files and an existing file",
+    );
+    // S9.4: the new module form with its file list.
+    chord(&mut harness, Key::N);
+    type_name(&mut harness, "Module names", "Loyalty");
+    harness
+        .get_by_role_and_label(Role::RadioButton, "API")
+        .click();
+    harness.run_steps(3);
+    harness
+        .get_by_role_and_label(Role::Button, "List files")
+        .click();
+    wait_for(&mut harness, "Modules/Loyalty does not exist yet");
+    audit(&harness, "Generate, new module form with its files");
+
     select(&mut harness, "Checkout");
     press(&mut harness, Key::Num4);
     audit(&harness, "Migrate, state not read");
@@ -706,48 +726,4 @@ fn the_generate_tab_its_result_and_replace() {
     audit(&harness, "Generate, new module form");
     chord(&mut harness, Key::Enter);
     audit(&harness, "Generate, Replace module dialog");
-}
-
-#[test]
-fn the_generate_tab_of_a_13_4_app() {
-    let desk = runner_desk(&fake(""), &[]);
-    common::package_version(&desk.path().join("shop-api"), "v13.4.0");
-    let mut harness = desk.start();
-    // S9.1: the button that reads the generators, then its "Read again".
-    select(&mut harness, "Billing");
-    press(&mut harness, Key::Num3);
-    audit(&harness, "Generate, picker before the read");
-    harness
-        .get_by_role_and_label(Role::Button, "Read the generators of shop-api")
-        .click();
-    wait_for(&mut harness, "Read from shop-api at ");
-    harness.get_by_role_and_label(Role::Button, "Read again");
-    audit(&harness, "Generate, picker after the read");
-    // S9.3: the dry run finds the policy of Invoice, so "exists" shows.
-    select(&mut harness, "Model");
-    type_name(&mut harness, "Model name", "Invoice");
-    for flag in ["Migration", "Policy"] {
-        harness.get_by_role_and_label(Role::CheckBox, flag).click();
-        harness.run_steps(3);
-    }
-    harness
-        .get_by_role_and_label(Role::Button, "List files")
-        .click();
-    wait_for(&mut harness, "3 files, 1 exists already");
-    audit(
-        &harness,
-        "Generate, model form with its files and an existing file",
-    );
-    // S9.4: the new module form with its file list.
-    chord(&mut harness, Key::N);
-    type_name(&mut harness, "Module names", "Loyalty");
-    harness
-        .get_by_role_and_label(Role::RadioButton, "API")
-        .click();
-    harness.run_steps(3);
-    harness
-        .get_by_role_and_label(Role::Button, "List files")
-        .click();
-    wait_for(&mut harness, "Modules/Loyalty does not exist yet");
-    audit(&harness, "Generate, new module form with its files");
 }

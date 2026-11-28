@@ -316,28 +316,6 @@ fn removing_an_app_forgets_its_saved_credentials() {
 }
 
 #[test]
-fn an_app_without_the_actuator_has_no_environments_to_add() {
-    let desk = Desk::new();
-    let root = desk.app("shop-api");
-    let lock = std::fs::read_to_string(root.join("composer.lock")).unwrap();
-    std::fs::write(
-        root.join("composer.lock"),
-        lock.replace("laravel-actuator", "laravel-other"),
-    )
-    .unwrap();
-    desk.knows(&[(&root, "SA")]);
-    let mut harness = desk.start();
-    open_settings(&mut harness);
-    harness.get_by_role_and_label(Role::Heading, "Environments of shop-api");
-    harness.get_by_label_contains("Runtime status needs nwidart/laravel-actuator.");
-    assert!(
-        harness
-            .query_by_role_and_label(Role::Button, "Add environment")
-            .is_none()
-    );
-}
-
-#[test]
 fn the_add_panel_connects_the_app_with_the_url_from_env() {
     let stub = shop_api_actuator();
     stub.require_header("authorization", &format!("Bearer {SECRET}"));

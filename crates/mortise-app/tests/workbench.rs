@@ -50,6 +50,12 @@ fn shows_the_app_and_its_modules() {
 fn j_and_k_move_through_the_modules_and_the_workspace_follows() {
     let (_desk, mut harness) = shop_api();
     let module = |name: &str| Selection::Module(name.into());
+    // At start no control holds focus, and the index takes the keys.
+    assert!(
+        harness
+            .query_by(|node| node.is_focused())
+            .is_none_or(|node| node.accesskit_node().role() == Role::Window)
+    );
 
     harness.key_press(Key::J);
     harness.run();
@@ -100,6 +106,12 @@ fn the_digits_open_the_tabs_and_the_tab_is_kept_while_moving() {
         assert_eq!(harness.state().tab(), tab);
     }
 
+    // Every tab is always there, none is disabled, and a click opens it.
+    assert_eq!(harness.get_all_by_role(Role::Tab).count(), 5);
+    harness.get_by_role_and_label(Role::Tab, "Metrics").click();
+    harness.run();
+    assert_eq!(harness.state().tab(), Tab::Metrics);
+
     harness.key_press(Key::Num3);
     harness.key_press(Key::J);
     harness.run();
@@ -108,30 +120,6 @@ fn the_digits_open_the_tabs_and_the_tab_is_kept_while_moving() {
         harness.state().selection(),
         Selection::Module("Billing".into())
     );
-}
-
-#[test]
-fn every_tab_is_there_and_a_click_opens_it() {
-    let (_desk, mut harness) = shop_api();
-    harness.get_by_role_and_label(Role::Tab, "Metrics").click();
-    harness.run();
-    assert_eq!(harness.state().tab(), Tab::Metrics);
-    // Every tab is always there, and none is disabled.
-    assert_eq!(harness.get_all_by_role(Role::Tab).count(), 5);
-}
-
-#[test]
-fn a_click_selects_a_module() {
-    let (_desk, mut harness) = shop_api();
-    harness
-        .get_by_role_and_label(Role::ListBoxOption, "Shipping")
-        .click();
-    harness.run();
-    assert_eq!(
-        harness.state().selection(),
-        Selection::Module("Shipping".into())
-    );
-    harness.get_by_role_and_label(Role::Heading, "Shipping");
 }
 
 #[test]
@@ -147,6 +135,11 @@ fn a_module_that_is_turned_off_says_so() {
         .get_by_role_and_label(Role::ListBoxOption, "Notifications")
         .click();
     harness.run();
+    assert_eq!(
+        harness.state().selection(),
+        Selection::Module("Notifications".into())
+    );
+    harness.get_by_role_and_label(Role::Heading, "Notifications");
     harness.get_by_label("Module state");
     harness.get_by_label("Off");
 }
@@ -182,7 +175,7 @@ fn an_app_whose_folder_is_gone_says_why() {
 }
 
 #[test]
-fn the_index_says_how_much_of_each_module_is_covered() {
+fn the_summary_shows_the_stats_strip_and_the_coverage_by_module() {
     let (_desk, harness) = shop_api();
     // The second line of a row is part of the row, so it is read from the summary instead.
     harness.get_by_label("Lines of PHP");

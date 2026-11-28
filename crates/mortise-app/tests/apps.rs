@@ -2,7 +2,7 @@
 
 mod common;
 
-use common::{Desk, shop_api, wait_until};
+use common::{Desk, wait_until};
 use eframe::egui::{Key, Modifiers, Role, vec2};
 use egui_kittest::kittest::{NodeT as _, Queryable as _};
 use mortise_app::ui::theme::size;
@@ -33,22 +33,11 @@ fn the_first_run_has_no_apps_and_one_action() {
     harness.get_by_role_and_label(Role::Button, "Choose folder");
     // Focus is in the path field.
     assert!(harness.get_by_role(Role::TextInput).is_focused());
-}
-
-#[test]
-fn the_add_tile_opens_the_panel_and_esc_closes_it() {
-    let (_desk, mut harness) = shop_api();
-    harness
-        .get_by_role_and_label(Role::Button, "Add app")
-        .click();
-    harness.run();
-    assert!(harness.state().is_adding());
-    harness.get_by_role_and_label(Role::Heading, "Add app");
 
     harness.key_press(Key::Escape);
     harness.run();
     assert!(!harness.state().is_adding());
-    harness.get_by_role_and_label(Role::Heading, "All modules");
+    harness.get_by_role_and_label(Role::Heading, "No apps yet");
 }
 
 #[test]

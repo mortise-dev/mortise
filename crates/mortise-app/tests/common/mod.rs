@@ -41,7 +41,6 @@ pub struct Desk {
     pub theme: Theme,
     pub chrome: Chrome,
     pub size: egui::Vec2,
-    pub scale: f32,
     pub os: egui::os::OperatingSystem,
     /// How long the window waits for a folder before it goes on without the result.
     /// Long, so that a test sees the folder in the frame it chose it in.
@@ -64,7 +63,6 @@ impl Desk {
                 controls_left: false,
             },
             size: egui::vec2(1280.0, 800.0),
-            scale: 1.0,
             os: egui::os::OperatingSystem::Nix,
             quick_read: Duration::from_secs(30),
             pace: Pace::default(),
@@ -153,7 +151,6 @@ impl Desk {
         };
         let mut harness = Harness::builder()
             .with_size(self.size)
-            .with_pixels_per_point(self.scale)
             .with_theme(self.theme)
             .with_os(self.os)
             .build_eframe(move |cc| MortiseApp::new(cc, config));
@@ -577,7 +574,6 @@ pub fn runtime_state(letter: char) -> Option<mortise_core::testing::StubActuator
 /// Releases that offer one newer version, or none, without a network.
 pub struct FakeRelease {
     pub newer: Option<&'static str>,
-    pub can_install: bool,
     /// GitHub cannot be reached.
     pub fails: std::sync::atomic::AtomicBool,
     /// How many times it was asked for the newest version.
@@ -590,7 +586,6 @@ impl FakeRelease {
     pub fn offering(newer: Option<&'static str>) -> std::sync::Arc<Self> {
         std::sync::Arc::new(Self {
             newer,
-            can_install: true,
             fails: Default::default(),
             checks: Default::default(),
             installs: Default::default(),
@@ -613,7 +608,7 @@ impl mortise_app::update::Channel for FakeRelease {
     }
 
     fn can_install(&self) -> bool {
-        self.can_install
+        true
     }
 
     fn download(&self, progress: &dyn Fn(f32)) -> Result<mortise_app::update::Install, String> {
