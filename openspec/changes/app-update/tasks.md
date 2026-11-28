@@ -6,7 +6,7 @@
 
 ## 2. App
 
-- [x] 2.1 `update/mod.rs`: `Channel`, `Release` on `cargo-packager-updater`, `place()`, and `Updates` with its phases. Verify with `update::tests`: a download is kept only with the signature of the key for that version, and installs only once no command runs
+- [x] 2.1 `update/mod.rs`: `Channel`, `Release` on `ureq` and `minisign-verify`, `install`, `place()`, and `Updates` with its phases. Verify with `update::tests`: a download is kept only with the signature of the key for that version, and installs only once no command runs
 - [x] 2.2 `General::check_for_updates` and `UpdateCheck` with its own file in `mortise-core`. Verify through `tests/settings.rs`
 - [x] 2.3 `app/update.rs`: the check at start, the day between two checks, the toast, the install that waits for commands, the restart
 - [x] 2.4 The row "Updates" in General and a done toast that stays. Verify with `tests/settings.rs`, the audit of General in `tests/accessibility.rs` and the image S8.3

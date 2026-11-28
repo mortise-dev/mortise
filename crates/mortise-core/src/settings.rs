@@ -181,10 +181,38 @@ impl UpdateCheck {
             .unwrap_or_default()
     }
 
+    /// Writes it under a lock, so two windows of Mortise do not write at once.
     pub fn save(&self, path: &Path) -> std::io::Result<()> {
+        let _lock = Self::lock(path)?;
+        self.write(path)
+    }
+
+    /// Takes the check of this day for the caller, if nobody asked within `every`
+    /// seconds before `now`. It then keeps `now` as the time, with the newer version
+    /// that was known, and gives what it kept. Reading and writing happen under one
+    /// lock: of two windows that start together, one gets it.
+    pub fn claim(path: &Path, now: u64, every: u64) -> Option<Self> {
+        let _lock = Self::lock(path).ok()?;
+        let last = Self::load(path);
+        if now.saturating_sub(last.at) < every {
+            return None;
+        }
+        let claimed = Self { at: now, ..last };
+        claimed.write(path).ok()?;
+        Some(claimed)
+    }
+
+    /// A lock file beside `path`, held until the file is dropped.
+    fn lock(path: &Path) -> std::io::Result<std::fs::File> {
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir)?;
         }
+        let lock = std::fs::File::create(path.with_extension("lock"))?;
+        lock.lock()?;
+        Ok(lock)
+    }
+
+    fn write(&self, path: &Path) -> std::io::Result<()> {
         let json = serde_json::to_vec_pretty(self).expect("an update check is plain data");
         let partial = path.with_extension("json.partial");
         std::fs::write(&partial, json)?;

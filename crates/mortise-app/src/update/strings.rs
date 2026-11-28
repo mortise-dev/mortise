@@ -63,3 +63,14 @@ pub fn could_not_install(error: &str) -> String {
 pub fn manifest_lacks(key: &str) -> String {
     format!("the update manifest has no {key}")
 }
+
+pub const TOO_LARGE: &str = "The download is larger than any version of Mortise, so it was stopped. \
+     Download Mortise from the download page instead.";
+
+/// `The newer version could not be put in place, and the app that ran is now at ...`
+pub fn old_app_kept(kept: &std::path::Path) -> String {
+    format!(
+        "the newer version could not be put in place, and the app that ran is now at {}. Move it back to where it was",
+        kept.display()
+    )
+}

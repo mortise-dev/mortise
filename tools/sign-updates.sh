@@ -46,7 +46,7 @@ work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 printf '%s' "$public_key" | base64 -d > "$work/update.pub"
 
-# The key of the manifest is <system>-<architecture>, as cargo-packager-updater names them.
+# The key of the manifest is <system>-<architecture>, as `Release::of_this_build` in update/mod.rs makes it.
 platforms=(
   "macos-aarch64 app Mortise-$tag-macos-arm64.app.tar.gz"
   "windows-x86_64 nsis Mortise-$tag-windows-x64-setup.exe"

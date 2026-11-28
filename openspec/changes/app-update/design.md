@@ -8,9 +8,8 @@ verifies a minisign signature and replaces the app on macOS (`.app`), Windows (N
 
 ## Decisions
 
-**D1. Use `cargo-packager-updater`, not own code.** Downloading, verifying and replacing a running app is
-the part where a mistake costs most, and the crate matches the packages cargo-packager builds. The cost is
-`reqwest` and about 56 more crates in the desktop app. The command line tool gets none of them.
+**D1. First `cargo-packager-updater`, then own code (see D13).** The first build used the crate for the
+download, the signature check and the replacing.
 
 **D2. The update code lives in `mortise-app`.** `mortise-core` is published and the command line tool
 builds on it. The code replaces the desktop app only. It draws nothing: `update/mod.rs` holds the logic,
@@ -60,14 +59,21 @@ with the bytes, and `cargo packager signer sign` puts the file name in it. The w
 whose signed name is not `Mortise-v<offered version>-<this platform>`, so a manifest cannot pass an older
 signed file as a newer version, or the file of another platform.
 
-**D10. Mortise asks for the manifest itself.** The check of the crate sets two environment variables on
-Linux from a worker thread, which Rust calls unsafe once other threads run. `ureq` is in the workspace
-already and needs no such thing.
+**D10 to D12** took the check, the macOS administrator path and the Windows install away from the crate
+after the first review. D13 replaces them.
 
-**D11. No administrator on macOS.** The crate falls back to an AppleScript that runs a shell command as
-administrator, with the paths written into it unescaped. A folder that needs an administrator therefore
-gets the download page.
+**D13. No `cargo-packager-updater`.** Two reviews found the same kind of fault in the crate: its check
+changes the process environment on Linux, its download has no size limit, its macOS install drops the old
+app when the last move fails and can run a shell command as administrator, and its Windows install ends
+the process behind a hidden PowerShell. What is left to do is small, so Mortise does it: `ureq` downloads
+with a limit of 400 MB, `minisign-verify` checks the signature, and `install` replaces the app. On macOS
+it unpacks beside the app with `/usr/bin/tar`, keeps the old app until the new one is in place, and moves
+it back on failure. On Linux it writes beside the AppImage and moves over it in one step. On Windows it
+starts the setup with `/P /R`. The desktop app gains one crate, not 56. The signatures stay those of
+`cargo packager signer sign`, so the release side is unchanged.
 
-**D12. Mortise starts the Windows setup itself.** The crate starts it through a hidden PowerShell and ends
-the process at once. Mortise writes the verified setup to a temporary file, starts it with `/P /R`, and
-closes the usual way, so a setup that cannot start is an error the user reads.
+**D14. The AppImage must be this program's.** `APPIMAGE` counts only when the program lies in the mount
+that `APPDIR` names. A copy started from inside another AppImage inherits both variables.
+
+**D15. One check a day across windows.** `UpdateCheck::claim` reads and writes `update.json` under a lock
+file, so of two windows that start together one asks.

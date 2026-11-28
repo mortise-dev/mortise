@@ -26,9 +26,14 @@ impl MortiseApp {
         if !self.settings.general.check_for_updates {
             return;
         }
-        if now().saturating_sub(self.update_check.at) >= CHECK_EVERY {
+        // Claimed in the file, so two windows that start together ask once.
+        let claimed = match &self.settings_path {
+            Some(settings) => UpdateCheck::claim(&UpdateCheck::path(settings), now(), CHECK_EVERY),
+            None => Some(UpdateCheck::default()),
+        };
+        if let Some(check) = claimed {
+            self.update_check = check;
             updates.check(ctx, false);
-            self.asked_for_updates();
         } else if let Phase::Available(version) = updates.phase().clone() {
             self.update_notice(&version);
         }
@@ -81,7 +86,15 @@ impl MortiseApp {
 
     /// Every frame: what a check, a download or an install ended with.
     pub(super) fn poll_updates(&mut self, ctx: &egui::Context) {
-        let busy = self.apps.iter().any(|open| open.busy().is_some());
+        // A test of PHP in Settings or in the add panel is a command too.
+        let busy = self
+            .apps
+            .iter()
+            .any(|open| open.busy().is_some() || open.php_test.running())
+            || self
+                .adding
+                .as_ref()
+                .is_some_and(|panel| panel.php_test.running());
         let Some(updates) = &mut self.updates else {
             return;
         };

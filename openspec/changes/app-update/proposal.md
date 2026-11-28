@@ -22,8 +22,8 @@ newer version runs by itself at start, at most once a day, with a setting that t
   in the source, fails before it publishes.
 - `settings.json` gains `general.check_for_updates`. A new file `update.json` beside it keeps when the
   window asked last and the newer version the answer named.
-- New dependencies of `mortise-app`: `cargo-packager-updater` 0.2.3, with `reqwest` behind it, and
-  `minisign-verify`, `base64`, `ureq` and `serde_json`, which the workspace already holds.
+- New dependencies of `mortise-app`: `minisign-verify` and `base64`, and `ureq` and `serde_json`, which
+  the workspace already holds.
 
 Out of scope: the command line tool, an update that installs without a press, release notes in the window,
 a channel for pre-releases, and builds for platforms that have no installer today.

@@ -5,17 +5,15 @@
 //! carries nothing of an app. Nothing is downloaded before the user asks for it, and
 //! nothing replaces the app unless it carries the signature of the update key.
 
-use std::path::PathBuf;
+use std::io::Read as _;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::mpsc::{Receiver, Sender};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
 use base64::Engine as _;
-use cargo_packager_updater::http::HeaderMap;
-use cargo_packager_updater::semver::Version;
-use cargo_packager_updater::{Config, Error, Update, UpdateFormat};
 use eframe::egui;
 
 pub mod strings;
@@ -47,6 +45,10 @@ pub const CHECK_EVERY: u64 = 24 * 60 * 60;
 const CHECK_TIMEOUT: Duration = Duration::from_secs(15);
 const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 
+/// No update is larger. The installers of 1.1.0 are under 40 MB. A download that goes
+/// on past this is stopped before its signature is looked at.
+const LARGEST_UPDATE: u64 = 400 * 1024 * 1024;
+
 /// Replaces the app with a download that passed the signature check.
 pub type Install = Box<dyn FnOnce() -> Result<(), String> + Send>;
 
@@ -66,11 +68,27 @@ pub trait Channel: Send + Sync {
     fn restart(&self) -> Result<(), String>;
 }
 
+/// A release version, `X.Y.Z`. tag-release.yml tags nothing else.
+fn version(text: &str) -> Option<(u64, u64, u64)> {
+    let mut parts = text.trim_start_matches('v').split('.');
+    let mut next = || parts.next()?.parse().ok();
+    let version = (next()?, next()?, next()?);
+    parts.next().is_none().then_some(version)
+}
+
+/// What the manifest offers this platform.
+struct Offer {
+    version: String,
+    url: String,
+    /// The contents of the `.sig` file: a minisign signature in base64.
+    signature: String,
+}
+
 /// The releases of Mortise on GitHub.
 pub struct Release {
     manifest: String,
     public_key: String,
-    current: Version,
+    current: (u64, u64, u64),
     /// The key of this platform in the manifest, such as `macos-aarch64`.
     target: String,
     artifact: &'static str,
@@ -82,29 +100,29 @@ impl Release {
         Self {
             manifest: MANIFEST.to_owned(),
             public_key: PUBLIC_KEY.to_owned(),
-            current: env!("CARGO_PKG_VERSION")
-                .parse()
-                .expect("the version of the crate is valid"),
+            current: version(env!("CARGO_PKG_VERSION")).expect("the version of the crate is X.Y.Z"),
             target: format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH),
             artifact: ARTIFACT,
         }
     }
 
-    /// Asks for the manifest and gives what it offers this platform, if that is newer.
-    ///
-    /// The request goes out with the certificates this computer trusts and follows the
-    /// redirects of GitHub. It changes nothing in the process, which the check of
-    /// `cargo-packager-updater` does on Linux.
-    fn newer(&self) -> Result<Option<Update>, String> {
+    /// A client with the certificates this computer trusts. It follows the redirects
+    /// of GitHub and changes nothing in the process.
+    fn agent(timeout: Duration) -> ureq::Agent {
         let config = ureq::Agent::config_builder()
-            .timeout_global(Some(CHECK_TIMEOUT))
+            .timeout_global(Some(timeout))
             .tls_config(
                 ureq::tls::TlsConfig::builder()
                     .root_certs(ureq::tls::RootCerts::PlatformVerifier)
                     .build(),
             )
             .build();
-        let text = ureq::Agent::new_with_config(config)
+        ureq::Agent::new_with_config(config)
+    }
+
+    /// Asks for the manifest and gives what it offers this platform, if that is newer.
+    fn newer(&self) -> Result<Option<Offer>, String> {
+        let text = Self::agent(CHECK_TIMEOUT)
             .get(&self.manifest)
             .call()
             .and_then(|mut answer| answer.body_mut().read_to_string())
@@ -117,39 +135,18 @@ impl Release {
                 .map(str::to_owned)
                 .ok_or_else(|| strings::manifest_lacks(key))
         };
-        let version: Version = said(&manifest, "version")?
-            .trim_start_matches('v')
-            .parse()
-            .map_err(|_| strings::manifest_lacks("version"))?;
-        if version <= self.current {
+        let offered = said(&manifest, "version")?;
+        let Some(number) = version(&offered) else {
+            return Err(strings::manifest_lacks("version"));
+        };
+        if number <= self.current {
             return Ok(None);
         }
         let platform = &manifest["platforms"][&self.target];
-        let format = match said(platform, "format")?.as_str() {
-            "app" => UpdateFormat::App,
-            "appimage" => UpdateFormat::AppImage,
-            "nsis" => UpdateFormat::Nsis,
-            _ => return Err(strings::manifest_lacks("format")),
-        };
-        Ok(Some(Update {
-            config: Config {
-                pubkey: self.public_key.clone(),
-                ..Default::default()
-            },
-            body: None,
-            current_version: self.current.to_string(),
-            version: version.to_string(),
-            date: None,
-            target: self.target.clone(),
-            // Set when it installs: only a copy that can replace itself has one.
-            extract_path: PathBuf::new(),
-            download_url: said(platform, "url")?
-                .parse()
-                .map_err(|_| strings::manifest_lacks("url"))?,
+        Ok(Some(Offer {
+            version: offered.trim_start_matches('v').to_owned(),
+            url: said(platform, "url")?,
             signature: said(platform, "signature")?,
-            timeout: Some(DOWNLOAD_TIMEOUT),
-            headers: HeaderMap::new(),
-            format,
         }))
     }
 
@@ -159,62 +156,80 @@ impl Release {
     /// The manifest itself is not signed. The signature covers the bytes and a comment
     /// that names the file, `Mortise-vX.Y.Z-<platform>`. So a manifest that calls an
     /// older signed file a newer version is refused: the name does not fit.
-    fn verified(&self, progress: &dyn Fn(f32)) -> Result<(Update, Vec<u8>), String> {
+    fn verified(&self, progress: &dyn Fn(f32)) -> Result<Vec<u8>, String> {
         // Asked again, so the address and the signature are those of this moment.
-        let update = match self.newer() {
-            Ok(Some(update)) => update,
+        let offer = match self.newer() {
+            Ok(Some(offer)) => offer,
             Ok(None) => return Err(strings::NOT_AVAILABLE.to_owned()),
             Err(error) => return Err(strings::could_not_check(&error)),
         };
-        let wanted = format!("Mortise-v{}-{}", update.version, self.artifact);
-        if signed_name(&update.signature).as_deref() != Some(&wanted) {
-            return Err(strings::BAD_SIGNATURE.to_owned());
-        }
-        let got = AtomicU64::new(0);
-        let on_chunk = |chunk: usize, total: Option<u64>| {
-            let got = got.fetch_add(chunk as u64, Ordering::Relaxed) + chunk as u64;
-            if let Some(total) = total.filter(|total| *total > 0) {
-                progress(got as f32 / total as f32);
-            }
+        let bad = || strings::BAD_SIGNATURE.to_owned();
+        let text = |encoded: &str| {
+            let bytes = base64::engine::general_purpose::STANDARD
+                .decode(encoded)
+                .ok()?;
+            String::from_utf8(bytes).ok()
         };
-        // `download_extended` returns the bytes only when the signature, which covers
-        // the comment too, is that of the key.
-        match update.download_extended(on_chunk, || {}) {
-            Ok(bytes) => Ok((update, bytes)),
-            Err(Error::Minisign(_) | Error::Base64(_) | Error::SignatureUtf8(_)) => {
-                Err(strings::BAD_SIGNATURE.to_owned())
-            }
-            Err(error) => Err(strings::could_not_download(&error.to_string())),
+        let signature = text(&offer.signature)
+            .and_then(|text| minisign_verify::Signature::decode(&text).ok())
+            .ok_or_else(bad)?;
+        let key = text(&self.public_key)
+            .and_then(|text| minisign_verify::PublicKey::decode(&text).ok())
+            .ok_or_else(bad)?;
+        // The comment is `timestamp:<seconds>\tfile:<name>`. It is trusted once the
+        // signature verifies, below.
+        let wanted = format!("file:Mortise-v{}-{}", offer.version, self.artifact);
+        if !signature
+            .trusted_comment()
+            .split('\t')
+            .any(|part| part == wanted)
+        {
+            return Err(bad());
         }
-    }
-}
 
-/// The file a signature says it signed, from its trusted comment
-/// `timestamp:<seconds>\tfile:<name>`. Trusted only once the signature verifies.
-fn signed_name(signature: &str) -> Option<String> {
-    let text = base64::engine::general_purpose::STANDARD
-        .decode(signature)
-        .ok()?;
-    let signature = minisign_verify::Signature::decode(&String::from_utf8(text).ok()?).ok()?;
-    signature
-        .trusted_comment()
-        .split('\t')
-        .find_map(|part| part.strip_prefix("file:"))
-        .map(str::to_owned)
+        let failed =
+            |error: &dyn std::fmt::Display| strings::could_not_download(&error.to_string());
+        let mut answer = Self::agent(DOWNLOAD_TIMEOUT)
+            .get(&offer.url)
+            .call()
+            .map_err(|error| failed(&error))?;
+        let total = answer.body().content_length().filter(|total| *total > 0);
+        if total.is_some_and(|total| total > LARGEST_UPDATE) {
+            return Err(strings::TOO_LARGE.to_owned());
+        }
+        // One byte more than the largest, so that "too large" is told from "all of it".
+        let mut body = answer.body_mut().as_reader().take(LARGEST_UPDATE + 1);
+        let mut bytes = Vec::new();
+        let mut chunk = vec![0; 64 * 1024];
+        loop {
+            let read = body.read(&mut chunk).map_err(|error| failed(&error))?;
+            if read == 0 {
+                break;
+            }
+            bytes.extend_from_slice(&chunk[..read]);
+            if bytes.len() as u64 > LARGEST_UPDATE {
+                return Err(strings::TOO_LARGE.to_owned());
+            }
+            if let Some(total) = total {
+                progress(bytes.len() as f32 / total as f32);
+            }
+        }
+        // The bytes and the comment, by the update key.
+        key.verify(&bytes, &signature, false).map_err(|_| bad())?;
+        Ok(bytes)
+    }
 }
 
 impl Channel for Release {
     fn check(&self) -> Result<Option<String>, String> {
         match self.newer() {
-            Ok(update) => Ok(update.map(|update| update.version)),
+            Ok(offer) => Ok(offer.map(|offer| offer.version)),
             Err(error) => Err(strings::could_not_check(&error)),
         }
     }
 
-    fn is_newer(&self, version: &str) -> bool {
-        version
-            .parse::<Version>()
-            .is_ok_and(|version| version > self.current)
+    fn is_newer(&self, found: &str) -> bool {
+        version(found).is_some_and(|found| found > self.current)
     }
 
     fn can_install(&self) -> bool {
@@ -225,10 +240,9 @@ impl Channel for Release {
         let Some(place) = place() else {
             return Err(strings::NOT_AVAILABLE.to_owned());
         };
-        let (mut update, bytes) = self.verified(progress)?;
-        update.extract_path = place;
+        let bytes = self.verified(progress)?;
         Ok(Box::new(move || {
-            install(&update, bytes).map_err(|error| strings::could_not_install(&error))
+            install(&place, &bytes).map_err(|error| strings::could_not_install(&error.to_string()))
         }))
     }
 
@@ -254,49 +268,104 @@ impl Channel for Release {
     }
 }
 
-/// Puts a verified download in place: the `.app` on macOS, the AppImage on Linux.
-#[cfg(not(windows))]
-fn install(update: &Update, bytes: Vec<u8>) -> Result<(), String> {
-    update.install(bytes).map_err(|error| error.to_string())
+/// Puts the verified `.app` of the archive in the place of the one that runs.
+///
+/// Everything happens in a folder beside the app, on the same volume, so each step is
+/// one rename. The old app is kept until the new one is in place, and is moved back
+/// when that fails. Nothing here asks for an administrator: a step that is not
+/// allowed is an error the user reads.
+#[cfg(target_os = "macos")]
+fn install(app: &Path, archive: &[u8]) -> std::io::Result<()> {
+    let other = |message: &str| std::io::Error::other(message.to_owned());
+    let (Some(folder), Some(name)) = (app.parent(), app.file_name()) else {
+        return Err(other("the app has no folder"));
+    };
+    let staging = tempfile::Builder::new()
+        .prefix(".mortise-update-")
+        .tempdir_in(folder)?;
+    let packed = staging.path().join("update.tar.gz");
+    std::fs::write(&packed, archive)?;
+    let unpacked = staging.path().join("new");
+    std::fs::create_dir(&unpacked)?;
+    // The tar of macOS keeps what the signature of the app needs.
+    let tar = std::process::Command::new("/usr/bin/tar")
+        .arg("-xzf")
+        .arg(&packed)
+        .arg("-C")
+        .arg(&unpacked)
+        .status()?;
+    let new = unpacked.join("Mortise.app");
+    if !tar.success() || !new.join("Contents/MacOS").is_dir() {
+        return Err(other("the archive holds no Mortise.app"));
+    }
+    let old = staging.path().join(name);
+    std::fs::rename(app, &old)?;
+    if let Err(error) = std::fs::rename(&new, app) {
+        // Back to the app that ran. If even that fails, the old app stays where it
+        // is, in the folder beside, and is not deleted.
+        if std::fs::rename(&old, app).is_err() {
+            let kept = staging.keep();
+            return Err(other(&strings::old_app_kept(&kept.join(name))));
+        }
+        return Err(error);
+    }
+    Ok(())
+}
+
+/// Puts the verified AppImage in the place of the one that runs: written beside it,
+/// then moved over it in one step, so the file is the old one or the new one.
+#[cfg(target_os = "linux")]
+fn install(image: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    use std::io::Write as _;
+    let folder = image
+        .parent()
+        .ok_or_else(|| std::io::Error::other("the AppImage has no folder"))?;
+    let mut new = tempfile::Builder::new()
+        .prefix(".mortise-update-")
+        .tempfile_in(folder)?;
+    new.write_all(bytes)?;
+    new.as_file()
+        .set_permissions(std::fs::metadata(image)?.permissions())?;
+    new.persist(image).map_err(|error| error.error)?;
+    Ok(())
 }
 
 /// Starts the verified setup of the newer version: `/P` shows its progress only, `/R`
-/// starts Mortise again when it is done. The window then closes the usual way.
-///
-/// `cargo-packager-updater` starts the setup through a hidden PowerShell and ends the
-/// process at once, so a setup that cannot start is never seen. Mortise starts the
-/// setup itself and hears when that fails. The setup installs for the current user
-/// and needs no administrator.
-#[cfg(windows)]
-fn install(_: &Update, bytes: Vec<u8>) -> Result<(), String> {
+/// starts Mortise again when it is done. The window then closes the usual way, and a
+/// setup that cannot start is an error the user reads. The setup installs for the
+/// current user and needs no administrator.
+#[cfg(target_os = "windows")]
+fn install(_: &Path, bytes: &[u8]) -> std::io::Result<()> {
     use std::io::Write as _;
-    let said = |error: std::io::Error| error.to_string();
     let mut setup = tempfile::Builder::new()
         .prefix("mortise-update-")
         .suffix(".exe")
-        .tempfile()
-        .map_err(said)?;
-    setup.write_all(&bytes).map_err(said)?;
+        .tempfile()?;
+    setup.write_all(bytes)?;
     // The file stays: the setup runs after Mortise is gone.
-    let (file, path) = setup.keep().map_err(|error| error.to_string())?;
+    let (file, path) = setup.keep().map_err(|error| error.error)?;
     drop(file);
     std::process::Command::new(path)
         .args(["/P", "/R"])
         .spawn()
         .map(|_| ())
-        .map_err(said)
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+fn install(_: &Path, _: &[u8]) -> std::io::Result<()> {
+    Err(std::io::Error::other("no update for this platform"))
 }
 
 /// What an update replaces and starts again, when this copy can replace itself.
 ///
 /// - macOS: the `.app` folder, in a folder the user can write. Not an app that macOS
 ///   runs from a random read-only place because it was never moved out of its download
-///   folder. Not an app in a folder that needs an administrator: the install of
-///   `cargo-packager-updater` would then put paths into a shell command that runs as
-///   administrator, so such a copy gets the download page. For the same reason, not a
-///   path with a quote or a backslash in it.
-/// - Linux: the AppImage, in a folder the user can write. A `.deb` install belongs to
-///   the package manager.
+///   folder, and not an app in a folder that needs an administrator.
+/// - Linux: the AppImage this program runs from, in a folder the user can write. The
+///   AppImage runtime names the image in `APPIMAGE` and its mount in `APPDIR`. A
+///   program started from inside another AppImage inherits both, so the image counts
+///   only when this program lies in that mount. A `.deb` install belongs to the
+///   package manager.
 /// - Windows: the program the setup installed, which has its uninstaller beside it.
 ///
 /// A build run with `cargo run` is none of these.
@@ -308,13 +377,14 @@ fn place() -> Option<PathBuf> {
         let moved_by_macos = app
             .components()
             .any(|part| part.as_os_str() == "AppTranslocation");
-        let plain = !app.to_string_lossy().contains(['\'', '"', '\\']);
         let writable = tempfile::tempfile_in(app.parent()?).is_ok();
-        (is_app && !moved_by_macos && plain && writable).then(|| app.to_owned())
+        (is_app && !moved_by_macos && writable).then(|| app.to_owned())
     } else if cfg!(target_os = "linux") {
         let image = PathBuf::from(std::env::var_os("APPIMAGE")?);
+        let mount = PathBuf::from(std::env::var_os("APPDIR")?);
+        let own = executable.starts_with(&mount);
         let writable = tempfile::tempfile_in(image.parent()?).is_ok();
-        (image.is_file() && writable).then_some(image)
+        (own && image.is_file() && writable).then_some(image)
     } else if cfg!(target_os = "windows") {
         let installed = executable.parent()?.join("uninstall.exe").is_file();
         installed.then_some(executable)
@@ -512,6 +582,10 @@ impl Updates {
                 (Event::Downloaded(Ok(_)), _) => {}
             }
         }
+        // The end of a command asks for no frame by itself.
+        if busy && self.ready.is_some() {
+            ctx.request_repaint_after(Duration::from_millis(500));
+        }
         if let (false, Phase::Waiting(version)) = (busy, self.phase.clone())
             && let Some(install) = self.ready.take()
         {
@@ -550,7 +624,7 @@ mod tests {
         Release {
             manifest: format!("{}/latest.json", server.base_url),
             public_key: TEST_KEY.to_owned(),
-            current: current.parse().unwrap(),
+            current: super::version(current).unwrap(),
             target: "test".to_owned(),
             artifact: "test",
         }
@@ -577,6 +651,61 @@ mod tests {
 
         // The copy that already is the newest gets nothing.
         assert_eq!(release(&server, "9.0.0", "9.0.0").check(), Ok(None));
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn the_app_is_replaced_and_an_archive_without_one_leaves_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let app = dir.path().join("Mortise.app");
+        let build = |root: &Path, marks: &str| {
+            let binary = root.join("Mortise.app/Contents/MacOS");
+            std::fs::create_dir_all(&binary).unwrap();
+            std::fs::write(binary.join("mortise-desktop"), marks).unwrap();
+        };
+        let packed = |folder: &str| {
+            let archive = dir.path().join("packed.tar.gz");
+            let tar = std::process::Command::new("/usr/bin/tar")
+                .arg("-czf")
+                .arg(&archive)
+                .arg("-C")
+                .arg(dir.path().join("source"))
+                .arg(folder)
+                .status()
+                .unwrap();
+            assert!(tar.success());
+            std::fs::read(archive).unwrap()
+        };
+        let installed = || std::fs::read_to_string(app.join("Contents/MacOS/mortise-desktop"));
+        build(dir.path(), "old");
+        build(&dir.path().join("source"), "new");
+        std::fs::create_dir_all(dir.path().join("source/Other.app")).unwrap();
+
+        assert!(install(&app, &packed("Other.app")).is_err());
+        assert_eq!(installed().unwrap(), "old");
+
+        install(&app, &packed("Mortise.app")).unwrap();
+        assert_eq!(installed().unwrap(), "new");
+        // Nothing is left beside the app but what the test put there.
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 3);
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn the_appimage_is_replaced_and_stays_a_program() {
+        use std::os::unix::fs::PermissionsExt as _;
+        let dir = tempfile::tempdir().unwrap();
+        let image = dir.path().join("Mortise.AppImage");
+        std::fs::write(&image, "old").unwrap();
+        std::fs::set_permissions(&image, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        install(&image, b"new").unwrap();
+        assert_eq!(std::fs::read_to_string(&image).unwrap(), "new");
+        assert_eq!(
+            image.metadata().unwrap().permissions().mode() & 0o777,
+            0o755
+        );
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
     }
 
     /// Releases whose download is ready at once and counts its installs.

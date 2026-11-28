@@ -8,32 +8,31 @@ holds only a part of them.
 The fonts in `assets/fonts` are under the SIL Open Font License 1.1.
 Each folder there holds its `OFL.txt` with the copyright line.
 
-612 crates.
+557 crates.
 
 ## By licence
 
 | Licence | Crates |
 |---|---|
-| MIT OR Apache-2.0 | 310 |
-| MIT | 117 |
-| Apache-2.0 OR MIT | 54 |
+| MIT OR Apache-2.0 | 277 |
+| MIT | 105 |
+| Apache-2.0 OR MIT | 51 |
 | Unicode-3.0 | 18 |
-| MIT/Apache-2.0 | 15 |
-| Zlib OR Apache-2.0 OR MIT | 14 |
-| Apache-2.0 | 13 |
+| MIT/Apache-2.0 | 13 |
+| Zlib OR Apache-2.0 OR MIT | 13 |
+| Apache-2.0 | 12 |
 | Unlicense OR MIT | 12 |
 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT | 7 |
-| MIT OR Apache-2.0 OR Zlib | 7 |
+| MIT OR Apache-2.0 OR Zlib | 6 |
 | ISC | 5 |
 | Zlib | 4 |
-| Apache-2.0 OR ISC OR MIT | 3 |
 | BSL-1.0 | 3 |
 | (MIT OR Apache-2.0) AND Unicode-3.0 | 2 |
+| Apache-2.0 OR ISC OR MIT | 2 |
 | BSD-2-Clause OR Apache-2.0 OR MIT | 2 |
 | BSD-3-Clause OR Apache-2.0 | 2 |
 | BSD-3-Clause OR MIT OR Apache-2.0 | 2 |
 | CC0-1.0 | 2 |
-| CC0-1.0 OR MIT-0 OR Apache-2.0 | 2 |
 | CDLA-Permissive-2.0 | 2 |
 | MIT OR Apache-2.0 OR LGPL-2.1-or-later | 2 |
 | MIT OR Zlib OR Apache-2.0 | 2 |
@@ -46,6 +45,7 @@ Each folder there holds its `OFL.txt` with the copyright line.
 | Apache-2.0/MIT | 1 |
 | BSD-3-Clause | 1 |
 | CC0-1.0 OR Apache-2.0 OR Apache-2.0 WITH LLVM-exception | 1 |
+| CC0-1.0 OR MIT-0 OR Apache-2.0 | 1 |
 | MIT / Apache-2.0 | 1 |
 | MPL-2.0 | 1 |
 
@@ -114,14 +114,11 @@ Each folder there holds its `OFL.txt` with the copyright line.
 | calloop | 0.14.5 | MIT | https://github.com/Smithay/calloop |
 | calloop-wayland-source | 0.3.0 | MIT | https://github.com/smithay/calloop-wayland-source |
 | calloop-wayland-source | 0.4.1 | MIT | https://github.com/smithay/calloop-wayland-source |
-| cargo-packager-updater | 0.2.3 | Apache-2.0 OR MIT | https://github.com/crabnebula-dev/cargo-packager |
-| cargo-packager-utils | 0.1.1 | Apache-2.0 OR MIT | https://github.com/crabnebula-dev/cargo-packager |
 | cbc | 0.2.1 | MIT OR Apache-2.0 | https://github.com/RustCrypto/block-modes |
 | cc | 1.11.3 | MIT OR Apache-2.0 | https://github.com/rust-lang/cc-rs |
 | cfg-if | 1.0.5 | MIT OR Apache-2.0 | https://github.com/rust-lang/cfg-if |
 | cfg_aliases | 0.2.2 | MIT | https://github.com/katharostech/cfg_aliases |
 | cgl | 0.3.2 | MIT / Apache-2.0 | https://github.com/servo/cgl-rs |
-| chacha20 | 0.10.2 | MIT OR Apache-2.0 | https://github.com/RustCrypto/stream-ciphers |
 | cipher | 0.5.2 | MIT OR Apache-2.0 | https://github.com/RustCrypto/traits |
 | clipboard-win | 5.4.3 | BSL-1.0 | https://github.com/DoumanAsh/clipboard-win |
 | cmov | 0.5.4 | Apache-2.0 OR MIT | https://github.com/RustCrypto/utils |
@@ -145,14 +142,10 @@ Each folder there holds its `OFL.txt` with the copyright line.
 | crossbeam-utils | 0.8.23 | MIT OR Apache-2.0 | https://github.com/crossbeam-rs/crossbeam |
 | crunchy | 0.2.4 | MIT | https://github.com/eira-fransham/crunchy |
 | crypto-common | 0.2.2 | MIT OR Apache-2.0 | https://github.com/RustCrypto/traits |
-| ctor | 0.2.9 | Apache-2.0 OR MIT | https://github.com/mmastrac/rust-ctor |
 | ctutils | 0.4.8 | Apache-2.0 OR MIT | https://github.com/RustCrypto/utils |
 | cursor-icon | 1.2.0 | MIT OR Apache-2.0 OR Zlib | https://github.com/rust-windowing/cursor-icon |
-| deranged | 0.5.9 | MIT OR Apache-2.0 | https://github.com/jhpratt/deranged |
 | digest | 0.11.3 | MIT OR Apache-2.0 | https://github.com/RustCrypto/traits |
 | directories | 6.0.0 | MIT OR Apache-2.0 | https://github.com/soc/directories-rs |
-| dirs | 5.0.1 | MIT OR Apache-2.0 | https://github.com/soc/dirs-rs |
-| dirs-sys | 0.4.1 | MIT OR Apache-2.0 | https://github.com/dirs-dev/dirs-sys-rs |
 | dirs-sys | 0.5.0 | MIT OR Apache-2.0 | https://github.com/dirs-dev/dirs-sys-rs |
 | dispatch | 0.2.0 | MIT | http://github.com/SSheldon/rust-dispatch |
 | dispatch2 | 0.3.1 | Zlib OR Apache-2.0 OR MIT | https://github.com/madsmtm/objc2 |
@@ -161,7 +154,6 @@ Each folder there holds its `OFL.txt` with the copyright line.
 | document-features | 0.2.12 | MIT OR Apache-2.0 | https://github.com/slint-ui/document-features |
 | downcast-rs | 1.2.1 | MIT/Apache-2.0 | https://github.com/marcianx/downcast-rs |
 | dpi | 0.1.2 | Apache-2.0 AND MIT | https://github.com/rust-windowing/winit |
-| dunce | 1.0.5 | CC0-1.0 OR MIT-0 OR Apache-2.0 | https://gitlab.com/kornelski/dunce |
 | dyn-clone | 1.0.20 | MIT OR Apache-2.0 | https://github.com/dtolnay/dyn-clone |
 | ecolor | 0.37.0 | MIT OR Apache-2.0 | https://github.com/emilk/egui |
 | eframe | 0.37.0 | MIT OR Apache-2.0 | https://github.com/emilk/egui/tree/main/crates/eframe |
@@ -188,7 +180,6 @@ Each folder there holds its `OFL.txt` with the copyright line.
 | fdeflate | 0.3.7 | MIT OR Apache-2.0 | https://github.com/image-rs/fdeflate |
 | fearless_simd | 0.4.1 | Apache-2.0 OR MIT | https://github.com/linebender/fearless_simd |
 | file-id | 0.2.3 | MIT OR Apache-2.0 | https://github.com/notify-rs/notify.git |
-| filetime | 0.2.30 | MIT/Apache-2.0 | https://github.com/alexcrichton/filetime |
 | find-msvc-tools | 0.1.15 | MIT OR Apache-2.0 | https://github.com/rust-lang/cc-rs |
 | fixedbitset | 0.5.9 | MIT OR Apache-2.0 | https://github.com/petgraph/fixedbitset |
 | flate2 | 1.1.11 | MIT OR Apache-2.0 | https://github.com/rust-lang/flate2-rs |
@@ -200,12 +191,10 @@ Each folder there holds its `OFL.txt` with the copyright line.
 | foreign-types-macros | 0.2.4 | MIT/Apache-2.0 | https://github.com/sfackler/foreign-types |
 | foreign-types-shared | 0.3.1 | MIT/Apache-2.0 | https://github.com/sfackler/foreign-types |
 | form_urlencoded | 1.2.3 | MIT OR Apache-2.0 | https://github.com/servo/rust-url |
-| futures-channel | 0.3.34 | MIT OR Apache-2.0 | https://github.com/rust-lang/futures-rs |
 | futures-core | 0.3.34 | MIT OR Apache-2.0 | https://github.com/rust-lang/futures-rs |
 | futures-io | 0.3.34 | MIT OR Apache-2.0 | https://github.com/rust-lang/futures-rs |
 | futures-lite | 2.6.1 | Apache-2.0 OR MIT | https://github.com/smol-rs/futures-lite |
 | futures-macro | 0.3.34 | MIT OR Apache-2.0 | https://github.com/rust-lang/futures-rs |
-| futures-sink | 0.3.34 | MIT OR Apache-2.0 | https://github.com/rust-lang/futures-rs |
 | futures-task | 0.3.34 | MIT OR Apache-2.0 | https://github.com/rust-lang/futures-rs |
 | futures-util | 0.3.34 | MIT OR Apache-2.0 | https://github.com/rust-lang/futures-rs |
 | gethostname | 1.1.0 | Apache-2.0 | https://codeberg.org/swsnr/gethostname.rs.git |
@@ -235,13 +224,8 @@ Each folder there holds its `OFL.txt` with the copyright line.
 | hkdf | 0.13.0 | MIT OR Apache-2.0 | https://github.com/RustCrypto/KDFs/ |
 | hmac | 0.13.0 | MIT OR Apache-2.0 | https://github.com/RustCrypto/MACs |
 | http | 1.5.0 | MIT OR Apache-2.0 | https://github.com/hyperium/http |
-| http-body | 1.1.0 | MIT | https://github.com/hyperium/http-body |
-| http-body-util | 0.1.5 | MIT | https://github.com/hyperium/http-body |
 | httparse | 1.10.1 | MIT OR Apache-2.0 | https://github.com/seanmonstar/httparse |
 | hybrid-array | 0.4.15 | MIT OR Apache-2.0 | https://github.com/RustCrypto/hybrid-array |
-| hyper | 1.13.0 | MIT | https://github.com/hyperium/hyper |
-| hyper-rustls | 0.27.10 | Apache-2.0 OR ISC OR MIT | https://github.com/rustls/hyper-rustls |
-| hyper-util | 0.1.21 | MIT | https://github.com/hyperium/hyper-util |
 | icu_collections | 2.4.0 | Unicode-3.0 | https://github.com/unicode-org/icu4x |
 | icu_locale_core | 2.4.0 | Unicode-3.0 | https://github.com/unicode-org/icu4x |
 | icu_normalizer | 2.4.0 | Unicode-3.0 | https://github.com/unicode-org/icu4x |
@@ -257,7 +241,6 @@ Each folder there holds its `OFL.txt` with the copyright line.
 | inotify | 0.11.5 | ISC | https://github.com/hannobraun/inotify-rs |
 | inotify-sys | 0.1.8 | ISC | https://github.com/hannobraun/inotify-sys |
 | inout | 0.2.6 | MIT OR Apache-2.0 | https://github.com/RustCrypto/utils |
-| ipnet | 2.12.2 | MIT OR Apache-2.0 | https://github.com/krisprice/ipnet |
 | itertools | 0.15.0 | MIT OR Apache-2.0 | https://github.com/rust-itertools/itertools |
 | itoa | 1.0.19 | MIT OR Apache-2.0 | https://github.com/dtolnay/itoa |
 | jiff | 0.2.28 | Unlicense OR MIT | https://github.com/BurntSushi/jiff |
@@ -290,7 +273,6 @@ Each folder there holds its `OFL.txt` with the copyright line.
 | litrs | 1.0.1 | MIT OR Apache-2.0 | https://github.com/LukasKalbertodt/litrs |
 | lock_api | 0.4.14 | MIT OR Apache-2.0 | https://github.com/Amanieu/parking_lot |
 | log | 0.4.35 | MIT OR Apache-2.0 | https://github.com/rust-lang/log |
-| lru-slab | 0.1.3 | MIT OR Apache-2.0 OR Zlib | https://github.com/Ralith/lru-slab |
 | mago-allocator | 1.61.0 | MIT OR Apache-2.0 | https://github.com/carthage-software/mago |
 | mago-bytes | 1.61.0 | MIT OR Apache-2.0 | https://github.com/carthage-software/mago |
 | mago-database | 1.61.0 | MIT OR Apache-2.0 | https://github.com/carthage-software/mago |
@@ -325,7 +307,6 @@ Each folder there holds its `OFL.txt` with the copyright line.
 | num | 0.4.3 | MIT OR Apache-2.0 | https://github.com/rust-num/num |
 | num-bigint | 0.4.8 | MIT OR Apache-2.0 | https://github.com/rust-num/num-bigint |
 | num-complex | 0.4.6 | MIT OR Apache-2.0 | https://github.com/rust-num/num-complex |
-| num-conv | 0.2.2 | MIT OR Apache-2.0 | https://github.com/jhpratt/num-conv |
 | num-integer | 0.1.47 | MIT OR Apache-2.0 | https://github.com/rust-num/num-integer |
 | num-iter | 0.1.46 | MIT OR Apache-2.0 | https://github.com/rust-num/num-iter |
 | num-rational | 0.4.2 | MIT OR Apache-2.0 | https://github.com/rust-num/num-rational |
@@ -394,7 +375,6 @@ Each folder there holds its `OFL.txt` with the copyright line.
 | portable-atomic | 1.15.0 | Apache-2.0 OR MIT | https://github.com/taiki-e/portable-atomic |
 | portable-atomic-util | 0.2.8 | Apache-2.0 OR MIT | https://github.com/taiki-e/portable-atomic-util |
 | potential_utf | 0.1.6 | Unicode-3.0 | https://github.com/unicode-org/icu4x |
-| powerfmt | 0.2.1 | MIT OR Apache-2.0 | https://github.com/jhpratt/powerfmt |
 | presser | 0.3.1 | MIT OR Apache-2.0 | https://github.com/EmbarkStudios/presser |
 | proc-macro-crate | 3.5.0 | MIT OR Apache-2.0 | https://github.com/bkchr/proc-macro-crate |
 | proc-macro2 | 1.0.107 | MIT OR Apache-2.0 | https://github.com/dtolnay/proc-macro2 |
@@ -403,17 +383,11 @@ Each folder there holds its `OFL.txt` with the copyright line.
 | quick-error | 2.0.1 | MIT/Apache-2.0 | http://github.com/tailhook/quick-error |
 | quick-xml | 0.41.0 | MIT | https://github.com/tafia/quick-xml |
 | quick-xml | 0.42.0 | MIT | https://github.com/tafia/quick-xml |
-| quinn | 0.11.12 | MIT OR Apache-2.0 | https://github.com/quinn-rs/quinn |
-| quinn-proto | 0.11.19 | MIT OR Apache-2.0 | https://github.com/quinn-rs/quinn |
-| quinn-udp | 0.5.16 | MIT OR Apache-2.0 | https://github.com/quinn-rs/quinn |
 | quote | 1.0.47 | MIT OR Apache-2.0 | https://github.com/dtolnay/quote |
 | r-efi | 5.3.0 | MIT OR Apache-2.0 OR LGPL-2.1-or-later | https://github.com/r-efi/r-efi |
 | r-efi | 6.0.0 | MIT OR Apache-2.0 OR LGPL-2.1-or-later | https://github.com/r-efi/r-efi |
-| rand | 0.10.4 | MIT OR Apache-2.0 | https://github.com/rust-random/rand |
 | rand | 0.8.8 | MIT OR Apache-2.0 | https://github.com/rust-random/rand |
-| rand_core | 0.10.1 | MIT OR Apache-2.0 | https://github.com/rust-random/rand_core |
 | rand_core | 0.6.4 | MIT OR Apache-2.0 | https://github.com/rust-random/rand |
-| rand_pcg | 0.10.3 | MIT OR Apache-2.0 | https://github.com/rust-random/rngs |
 | range-alloc | 0.1.5 | MIT OR Apache-2.0 | https://github.com/gfx-rs/range-alloc |
 | raw-window-handle | 0.6.2 | MIT OR Apache-2.0 OR Zlib | https://github.com/rust-windowing/raw-window-handle |
 | raw-window-metal | 1.1.0 | MIT OR Apache-2.0 | https://github.com/rust-windowing/raw-window-metal |
@@ -423,7 +397,6 @@ Each folder there holds its `OFL.txt` with the copyright line.
 | redox_syscall | 0.4.1 | MIT | https://gitlab.redox-os.org/redox-os/syscall |
 | redox_syscall | 0.5.18 | MIT | https://gitlab.redox-os.org/redox-os/syscall |
 | redox_syscall | 0.9.5 | MIT | https://gitlab.redox-os.org/redox-os/kernel |
-| redox_users | 0.4.6 | MIT | https://gitlab.redox-os.org/redox-os/users |
 | redox_users | 0.5.3 | MIT | https://gitlab.redox-os.org/redox-os/users |
 | ref-cast | 1.0.27 | MIT OR Apache-2.0 | https://github.com/dtolnay/ref-cast |
 | ref-cast-impl | 1.0.27 | MIT OR Apache-2.0 | https://github.com/dtolnay/ref-cast |
@@ -431,7 +404,6 @@ Each folder there holds its `OFL.txt` with the copyright line.
 | regex-automata | 0.4.19 | MIT OR Apache-2.0 | https://github.com/rust-lang/regex |
 | regex-syntax | 0.8.12 | MIT OR Apache-2.0 | https://github.com/rust-lang/regex |
 | renderdoc-sys | 1.1.0 | MIT OR Apache-2.0 | https://github.com/ebkalderon/renderdoc-rs |
-| reqwest | 0.12.28 | MIT OR Apache-2.0 | https://github.com/seanmonstar/reqwest |
 | rfd | 0.18.0 | MIT | https://github.com/PolyMeilex/rfd |
 | ring | 0.17.14 | Apache-2.0 AND ISC | https://github.com/briansmith/ring |
 | ron | 0.12.3 | MIT OR Apache-2.0 | https://github.com/ron-rs/ron |
@@ -467,7 +439,6 @@ Each folder there holds its `OFL.txt` with the copyright line.
 | serde_derive_internals | 0.30.0 | MIT OR Apache-2.0 | https://github.com/serde-rs/serde |
 | serde_json | 1.0.154 | MIT OR Apache-2.0 | https://github.com/serde-rs/json |
 | serde_repr | 0.1.21 | MIT OR Apache-2.0 | https://github.com/dtolnay/serde-repr |
-| serde_urlencoded | 0.7.1 | MIT/Apache-2.0 | https://github.com/nox/serde_urlencoded |
 | sha2 | 0.11.1 | MIT OR Apache-2.0 | https://github.com/RustCrypto/hashes |
 | shlex | 2.0.1 | MIT OR Apache-2.0 | https://github.com/comex/rust-shlex |
 | signal-hook-registry | 1.4.8 | MIT OR Apache-2.0 | https://github.com/vorner/signal-hook |
@@ -483,7 +454,6 @@ Each folder there holds its `OFL.txt` with the copyright line.
 | smithay-client-toolkit | 0.20.0 | MIT | https://github.com/smithay/client-toolkit |
 | smithay-clipboard | 0.7.3 | MIT | https://github.com/smithay/smithay-clipboard |
 | smol_str | 0.2.2 | MIT OR Apache-2.0 | https://github.com/rust-analyzer/smol_str |
-| socket2 | 0.6.5 | MIT OR Apache-2.0 | https://github.com/rust-lang/socket2 |
 | spirv | 0.4.0+sdk-1.4.341.0 | Apache-2.0 | https://github.com/gfx-rs/rspirv |
 | stable_deref_trait | 1.2.1 | MIT OR Apache-2.0 | https://github.com/storyyeller/stable_deref_trait |
 | static_assertions | 1.1.0 | MIT OR Apache-2.0 | https://github.com/nvzqz/static-assertions-rs |
@@ -492,10 +462,8 @@ Each folder there holds its `OFL.txt` with the copyright line.
 | subtle | 2.6.1 | BSD-3-Clause | https://github.com/dalek-cryptography/subtle |
 | syn | 2.0.119 | MIT OR Apache-2.0 | https://github.com/dtolnay/syn |
 | syn | 3.0.10 | MIT OR Apache-2.0 | https://github.com/dtolnay/syn |
-| sync_wrapper | 1.0.2 | Apache-2.0 | https://github.com/Actyx/sync_wrapper |
 | synstructure | 0.14.0 | MIT | https://github.com/mystor/synstructure |
 | sys-locale | 0.3.2 | MIT OR Apache-2.0 | https://github.com/1Password/sys-locale |
-| tar | 0.4.46 | MIT OR Apache-2.0 | https://github.com/composefs/tar-rs |
 | tempfile | 3.27.0 | MIT OR Apache-2.0 | https://github.com/Stebalien/tempfile |
 | termcolor | 1.4.1 | Unlicense OR MIT | https://github.com/BurntSushi/termcolor |
 | thiserror | 1.0.69 | MIT OR Apache-2.0 | https://github.com/dtolnay/thiserror |
@@ -503,26 +471,15 @@ Each folder there holds its `OFL.txt` with the copyright line.
 | thiserror-impl | 1.0.69 | MIT OR Apache-2.0 | https://github.com/dtolnay/thiserror |
 | thiserror-impl | 2.0.21 | MIT OR Apache-2.0 | https://github.com/dtolnay/thiserror |
 | tiff | 0.11.3 | MIT | https://github.com/image-rs/image-tiff |
-| time | 0.3.55 | MIT OR Apache-2.0 | https://github.com/time-rs/time |
-| time-core | 0.1.9 | MIT OR Apache-2.0 | https://github.com/time-rs/time |
-| time-macros | 0.2.32 | MIT OR Apache-2.0 | https://github.com/time-rs/time |
 | tinystr | 0.8.5 | Unicode-3.0 | https://github.com/unicode-org/icu4x |
-| tinyvec | 1.13.3 | Zlib OR Apache-2.0 OR MIT | https://github.com/Lokathor/tinyvec |
 | tokio | 1.54.1 | MIT | https://github.com/tokio-rs/tokio |
-| tokio-rustls | 0.26.6 | MIT OR Apache-2.0 | https://github.com/rustls/tokio-rustls |
-| tokio-util | 0.7.20 | MIT | https://github.com/tokio-rs/tokio |
 | toml_datetime | 1.1.3+spec-1.1.0 | MIT OR Apache-2.0 | https://github.com/toml-rs/toml |
 | toml_edit | 0.25.20+spec-1.1.0 | MIT OR Apache-2.0 | https://github.com/toml-rs/toml |
 | toml_parser | 1.1.6+spec-1.1.0 | MIT OR Apache-2.0 | https://github.com/toml-rs/toml |
-| tower | 0.5.3 | MIT | https://github.com/tower-rs/tower |
-| tower-http | 0.6.11 | MIT | https://github.com/tower-rs/tower-http |
-| tower-layer | 0.3.3 | MIT | https://github.com/tower-rs/tower |
-| tower-service | 0.3.3 | MIT | https://github.com/tower-rs/tower |
 | tracing | 0.1.44 | MIT | https://github.com/tokio-rs/tracing |
 | tracing-attributes | 0.1.31 | MIT | https://github.com/tokio-rs/tracing |
 | tracing-core | 0.1.36 | MIT | https://github.com/tokio-rs/tracing |
 | tree_magic_mini | 3.2.2 | MIT | https://github.com/mbrubeck/tree_magic/ |
-| try-lock | 0.2.5 | MIT | https://github.com/seanmonstar/try-lock |
 | type-map | 0.5.1 | MIT/Apache-2.0 | https://github.com/kardeiz/type-map |
 | typeid | 1.0.3 | MIT OR Apache-2.0 | https://github.com/dtolnay/typeid |
 | typenum | 1.20.1 | MIT OR Apache-2.0 | https://github.com/paholg/typenum |
@@ -545,7 +502,6 @@ Each folder there holds its `OFL.txt` with the copyright line.
 | vello_cpu | 0.2.0 | Apache-2.0 OR MIT | https://github.com/linebender/vello |
 | version_check | 0.9.5 | MIT/Apache-2.0 | https://github.com/SergioBenitez/version_check |
 | walkdir | 2.5.1 | Unlicense/MIT | https://github.com/BurntSushi/walkdir |
-| want | 0.3.2 | MIT | https://github.com/seanmonstar/want |
 | wasi | 0.11.1+wasi-snapshot-preview1 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT | https://github.com/bytecodealliance/wasi |
 | wasip2 | 1.0.4+wasi-0.2.12 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT | https://github.com/bytecodealliance/wasi-rs |
 | wasm-bindgen | 0.2.130 | MIT OR Apache-2.0 | https://github.com/wasm-bindgen/wasm-bindgen |
@@ -553,7 +509,6 @@ Each folder there holds its `OFL.txt` with the copyright line.
 | wasm-bindgen-macro | 0.2.130 | MIT OR Apache-2.0 | https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/macro |
 | wasm-bindgen-macro-support | 0.2.130 | MIT OR Apache-2.0 | https://github.com/wasm-bindgen/wasm-bindgen/tree/main/crates/macro-support |
 | wasm-bindgen-shared | 0.2.130 | MIT OR Apache-2.0 | https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/shared |
-| wasm-streams | 0.4.2 | MIT OR Apache-2.0 | https://github.com/MattiasBuelens/wasm-streams/ |
 | wayland-backend | 0.3.17 | MIT | https://github.com/smithay/wayland-rs |
 | wayland-client | 0.31.15 | MIT | https://github.com/smithay/wayland-rs |
 | wayland-csd-frame | 0.3.0 | MIT | https://github.com/rust-windowing/wayland-csd-frame |
@@ -592,36 +547,27 @@ Each folder there holds its `OFL.txt` with the copyright line.
 | windows-numerics | 0.3.1 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs |
 | windows-result | 0.4.1 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs |
 | windows-strings | 0.5.1 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs |
-| windows-sys | 0.48.0 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs |
 | windows-sys | 0.52.0 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs |
 | windows-sys | 0.59.0 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs |
 | windows-sys | 0.60.2 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs |
 | windows-sys | 0.61.2 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs |
-| windows-targets | 0.48.5 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs |
 | windows-targets | 0.52.6 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs |
 | windows-targets | 0.53.5 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs |
 | windows-threading | 0.2.1 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs |
-| windows_aarch64_gnullvm | 0.48.5 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs |
 | windows_aarch64_gnullvm | 0.52.6 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs |
 | windows_aarch64_gnullvm | 0.53.1 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs |
-| windows_aarch64_msvc | 0.48.5 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs |
 | windows_aarch64_msvc | 0.52.6 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs |
 | windows_aarch64_msvc | 0.53.1 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs |
-| windows_i686_gnu | 0.48.5 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs |
 | windows_i686_gnu | 0.52.6 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs |
 | windows_i686_gnu | 0.53.1 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs |
 | windows_i686_gnullvm | 0.52.6 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs |
 | windows_i686_gnullvm | 0.53.1 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs |
-| windows_i686_msvc | 0.48.5 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs |
 | windows_i686_msvc | 0.52.6 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs |
 | windows_i686_msvc | 0.53.1 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs |
-| windows_x86_64_gnu | 0.48.5 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs |
 | windows_x86_64_gnu | 0.52.6 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs |
 | windows_x86_64_gnu | 0.53.1 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs |
-| windows_x86_64_gnullvm | 0.48.5 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs |
 | windows_x86_64_gnullvm | 0.52.6 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs |
 | windows_x86_64_gnullvm | 0.53.1 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs |
-| windows_x86_64_msvc | 0.48.5 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs |
 | windows_x86_64_msvc | 0.52.6 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs |
 | windows_x86_64_msvc | 0.53.1 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs |
 | winit | 0.30.13 | Apache-2.0 | https://github.com/rust-windowing/winit |
@@ -632,7 +578,6 @@ Each folder there holds its `OFL.txt` with the copyright line.
 | x11-dl | 2.21.0 | MIT | https://github.com/AltF02/x11-rs.git |
 | x11rb | 0.13.2 | MIT OR Apache-2.0 | https://github.com/psychon/x11rb |
 | x11rb-protocol | 0.13.2 | MIT OR Apache-2.0 | https://github.com/psychon/x11rb |
-| xattr | 1.7.0 | MIT OR Apache-2.0 | https://github.com/Stebalien/xattr |
 | xcursor | 0.3.11 | MIT | https://github.com/esposm03/xcursor-rs |
 | xkbcommon-dl | 0.4.2 | MIT | https://github.com/rust-windowing/xkbcommon-dl |
 | xkeysym | 0.2.1 | MIT OR Apache-2.0 OR Zlib | https://github.com/notgull/xkeysym |
