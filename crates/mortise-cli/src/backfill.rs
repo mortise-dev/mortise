@@ -113,11 +113,17 @@ pub(crate) fn run(options: &Options) -> u8 {
     };
 
     // A document names the default branch. A dry run writes none.
+    // The branch that is checked out is the one that is read. A job can check out another
+    // one than its run is for. With a detached `HEAD`, the branch of the run stands in
+    // only when the run is for the commit that is checked out.
     let branch = options
         .branch
         .clone()
-        .or_else(|| github.as_ref().and_then(|github| github.branch.clone()))
-        .or_else(|| repository.branch.clone());
+        .or_else(|| repository.branch.clone())
+        .or_else(|| {
+            let github = github.as_ref()?;
+            (github.commit.as_ref() == Some(head)).then(|| github.branch.clone())?
+        });
     if branch.is_none() && !options.dry_run {
         say(strings::BACKFILL_BRANCH_UNKNOWN);
         return crate::USAGE;
@@ -197,12 +203,20 @@ pub(crate) fn run(options: &Options) -> u8 {
         };
     }
     if options.dry_run {
+        let lines: String = commits
+            .iter()
+            .map(|commit| format!("{} {}\n", commit.commit, time(commit.committed_at)))
+            .collect();
         let mut out = std::io::stdout().lock();
-        for commit in &commits {
+        return match out.write_all(lines.as_bytes()).and_then(|()| out.flush()) {
+            Ok(()) => crate::PASSED,
             // A closed pipe, as with `| head`, is not an error.
-            let _ = writeln!(out, "{} {}", commit.commit, time(commit.committed_at));
-        }
-        return crate::PASSED;
+            Err(error) if error.kind() == std::io::ErrorKind::BrokenPipe => crate::PASSED,
+            Err(error) => {
+                say(&strings::not_written(&error.to_string()));
+                crate::NOT_WRITTEN
+            }
+        };
     }
     let cloud = cloud.expect("only a dry run goes on without a token");
 
@@ -364,12 +378,18 @@ fn done(cloud: &Cloud, options: &Options) -> u8 {
             say(&strings::backfill_not_told(&hide(&reason)));
             crate::PASSED
         }
-        Outcome::Refused { status, problem } => {
-            say(&strings::backfill_refused(
-                status,
-                &hide(&problem.summary()),
-            ));
+        // Only a wrong token is for the user to fix. Another refusal, such as from a
+        // cloud that does not know this request yet, does not fail the build.
+        Outcome::Refused {
+            status: 401,
+            problem,
+        } => {
+            say(&strings::backfill_refused(401, &hide(&problem.summary())));
             crate::REFUSED
+        }
+        Outcome::Refused { status, .. } => {
+            say(&strings::backfill_not_told(&format!("HTTP {status}")));
+            crate::PASSED
         }
     }
 }

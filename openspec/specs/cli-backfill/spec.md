@@ -34,7 +34,7 @@ When the answer holds `default_branch` and the branch the tool would send differ
 - **THEN** one request was made, standard error names `main` and `trunk`, and the exit code is 0
 
 ### Requirement: A run with nothing to send is reported
-When the cloud asked for a period and the run has no document to send, the tool SHALL send `POST /api/v1/backfill` with the token and no body, so that the cloud stops asking. A failure of this call SHALL warn and exit 0. A dry run SHALL NOT send it, and neither SHALL a run with `--weeks`, which is a test run.
+When the cloud asked for a period and the run has no document to send, the tool SHALL send `POST /api/v1/backfill` with the token and no body, so that the cloud stops asking. A failure of this call SHALL warn and exit 0; only a wrong token SHALL exit 4. A dry run SHALL NOT send it, and neither SHALL a run with `--weeks`, which is a test run.
 
 #### Scenario: Only the checked out commit is in the period
 - **WHEN** the cloud asks for a period that holds no past commit and answers `204` to the report
@@ -74,7 +74,7 @@ No filter program and no git hook of the computer SHALL run on the files of a pa
 - **THEN** the commit is left out with one line
 
 ### Requirement: The app keeps its place in the repository
-An app below the top of the repository SHALL be read under the `.gitignore` files that the commit holds in the folders above it, as a read of the checkout obeys them.
+An app below the top of the repository SHALL be read under the `.gitignore` and `.ignore` files that the commit holds in the folders above it, as a read of the checkout obeys them.
 
 #### Scenario: A tracked file that is ignored from above
 - **WHEN** the `.gitignore` at the top of the repository names a tracked file of a module
@@ -88,7 +88,7 @@ Each document SHALL carry the commit, its committer date as `git.committed_at`, 
 - **THEN** the document of that commit gives the module 3 commits
 
 ### Requirement: The default branch has three sources
-The default branch SHALL be `--branch`, else the branch of the run on GitHub Actions, else the branch that is checked out. Without any of them the tool SHALL exit 2, except on a dry run, which writes no document.
+The default branch SHALL be `--branch`, else the branch that is checked out, else, with a detached `HEAD`, the branch of a GitHub Actions run whose commit is the one checked out. Without any of them the tool SHALL exit 2, except on a dry run, which writes no document.
 
 #### Scenario: A detached HEAD
 - **WHEN** no branch is checked out, `--branch` is not given and the run is not on GitHub Actions

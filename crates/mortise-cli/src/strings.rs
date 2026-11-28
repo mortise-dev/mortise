@@ -36,7 +36,7 @@ Options of backfill:
   --weeks <number>            For a test run: read no commit older than this many weeks.
                               The cloud then takes what was sent as the history
   --dry-run                   Print the commits and send nothing. With --weeks, needs no token
-  --branch <name>             The default branch. Default: the branch of the run, or of HEAD
+  --branch <name>             The default branch. Default: the branch that is checked out
   --repository <owner/name>   Default: GITHUB_REPOSITORY
 
   -h, --help                  Print this help

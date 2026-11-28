@@ -42,7 +42,9 @@ pub fn read_repository(root: &Path) -> Option<Repository> {
             parts.join("/")
         },
         commit: text(&["rev-parse", "-q", "--verify", "HEAD"]),
-        branch: text(&["symbolic-ref", "--short", "-q", "HEAD"]),
+        // The whole name: the short one is `heads/main` when a tag is named `main` too.
+        branch: text(&["symbolic-ref", "-q", "HEAD"])
+            .and_then(|name| name.strip_prefix("refs/heads/").map(str::to_owned)),
         // Git before 2.15 prints the flag back; that is not "true".
         shallow: text(&["rev-parse", "--is-shallow-repository"]).as_deref() == Some("true"),
     })

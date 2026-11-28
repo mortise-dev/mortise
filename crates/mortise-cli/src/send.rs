@@ -14,6 +14,8 @@ const RETRIES: u32 = 3;
 const LONGEST_WAIT: u64 = 60;
 /// The most of an answer that is read. An answer is a short JSON object.
 const ANSWER_LIMIT: u64 = 64 * 1024;
+/// The most of the answer to a question. It lists the commits the cloud has.
+const LONG_ANSWER_LIMIT: u64 = 8 * 1024 * 1024;
 
 /// What the cloud did with a request.
 pub(crate) enum Outcome {
@@ -148,10 +150,20 @@ pub(crate) fn send(
                     .body_mut()
                     .with_config()
                     .reader()
-                    .take(ANSWER_LIMIT)
+                    .take(match body {
+                        Some(_) => ANSWER_LIMIT,
+                        None => LONG_ANSWER_LIMIT,
+                    })
                     .read_to_string(&mut answer);
+                // A document is taken with `200` or `202`, an empty request with `204`,
+                // and a question is answered with `200`.
+                let accepted = match body {
+                    Some([]) => status == 204,
+                    Some(_) => matches!(status, 200 | 202),
+                    None => status == 200,
+                };
                 match status {
-                    200 | 202 | 204 => {
+                    _ if accepted => {
                         return Outcome::Accepted {
                             answer: serde_json::from_str(&answer).unwrap_or(Value::Null),
                         };

@@ -323,6 +323,13 @@ fn a_refusal_stops_the_run_and_only_a_wrong_token_or_document_fails_the_build() 
             "No past commits to send.\n",
             "could not be told that the run has nothing to send",
         ),
+        // A cloud that does not know the report yet does not fail the build.
+        (
+            vec![(200, "", recent), (405, "", "{}")],
+            0,
+            "No past commits to send.\n",
+            "could not be told that the run has nothing to send: HTTP 405",
+        ),
         (
             vec![(200, "", asks), accepted, (402, "", "{}")],
             0,
@@ -369,6 +376,21 @@ fn a_refusal_stops_the_run_and_only_a_wrong_token_or_document_fails_the_build() 
             assert!(taken[1].body.is_empty() && taken[1].header("authorization").is_some());
         }
     }
+
+    // A job for `trunk` that checked out `main` reads `main`, and says so.
+    let (url, taken) = stub(vec![(200, "", other_branch)]);
+    let output = backfill(
+        &[app],
+        &[
+            ("MORTISE_TOKEN", TOKEN),
+            ("MORTISE_CLOUD_URL", &url),
+            ("GITHUB_ACTIONS", "true"),
+            ("GITHUB_REF", "refs/heads/trunk"),
+        ],
+    );
+    assert_eq!(output.status.code(), Some(0), "{}", stderr(&output));
+    assert!(stderr(&output).contains("reads the branch main"));
+    assert_eq!(requests(&taken).len(), 1);
 
     // A shallow clone has no past commit: nothing is asked, with or without a token.
     let origin = history.repository();

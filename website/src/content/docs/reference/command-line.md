@@ -195,7 +195,7 @@ and which commits it has. The tool reads each commit on its own: it compares not
 | `PATH` | The app folder. Default: the current folder |
 | `--weeks <n>` | For a test run. Reads no commit older than `n` weeks. It can lower what the cloud asks for and never raises it. After a run that sent documents, the cloud takes the history as filled and answers that nothing is needed, although the older weeks were not sent. A run with `--weeks` that has nothing to send tells the cloud nothing |
 | `--dry-run` | Prints the commits it would read, one line each with the SHA and the committer date, and sends nothing. With `--weeks` it needs no token and asks nothing |
-| `--branch <name>` | The default branch. Default: the branch of `GITHUB_REF`, or the branch of `HEAD` |
+| `--branch <name>` | The default branch. Default: the branch that is checked out. With a detached `HEAD` on GitHub Actions, the branch of `GITHUB_REF` when `GITHUB_SHA` is the commit checked out |
 | `--repository <owner/name>` | Default: `GITHUB_REPOSITORY` |
 
 It reads `MORTISE_TOKEN` and `MORTISE_CLOUD_URL` as `mortise push` does.
@@ -216,7 +216,7 @@ branch, or change the default branch in the settings of the app in Mortise Cloud
 
 When the cloud asks for a period and the run has no document to send, the tool tells the cloud that
 the run is done, with `POST /api/v1/backfill` and no body. The cloud then stops asking. When that call
-fails, the tool warns and exits 0, and the next run tells it again. A run with `--weeks` never sends it.
+fails, the tool warns and exits 0, and the next run tells it again. Only a wrong token exits 4. A run with `--weeks` never sends it.
 
 Run it on the default branch: the history it walks is that of the commit that is checked out.
 
@@ -230,7 +230,7 @@ the app, reads them as it reads any app, and removes the folder. The working tre
 `HEAD` of the checkout stay as they are. The files are those of a checkout of that commit, without
 what could run a program: no git hook and no filter program runs, such as the one of Git LFS, and a
 link is written as a plain file. An app below the top of the repository is read under the
-`.gitignore` files of the folders above it, as in the checkout. A commit whose `config/modules.php` keeps the modules outside the app folder is left out,
+`.gitignore` and `.ignore` files of the folders above it, as in the checkout. A commit whose `config/modules.php` keeps the modules outside the app folder is left out,
 because those files are not in the commit.
 
 Listing the commits downloads nothing. In a clone made with `--filter=blob:none`, git downloads the
