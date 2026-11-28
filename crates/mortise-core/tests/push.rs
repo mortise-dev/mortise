@@ -10,7 +10,9 @@ use std::path::{Path, PathBuf};
 
 use mortise_core::Detail;
 
-use mortise_core::{PushBackfill, PushCi, PushContext, PushGit, push_document, read_app};
+use mortise_core::{
+    PushBackfill, PushCi, PushContext, PushGit, commit_time, push_document, read_app,
+};
 use serde_json::{Value, json};
 
 /// The public URL of schema version 1. A new version gets a new file and URL; this one stays.
@@ -263,4 +265,82 @@ fn no_absolute_path_leaves_when_the_modules_live_outside_the_app() {
             "../outside/modules_statuses.json"
         ]
     );
+}
+
+/// Runs git in `folder`, with `time` as the committer date in seconds and without the
+/// settings of this computer. Gives what git prints.
+fn git(folder: &Path, time: i64, args: &[&str]) -> String {
+    let date = format!("{time} +0100");
+    let output = std::process::Command::new("git")
+        .current_dir(folder)
+        .args([
+            "-c",
+            "user.name=Test",
+            "-c",
+            "user.email=test@mortise.invalid",
+        ])
+        .args(["-c", "commit.gpgsign=false"])
+        .args(args)
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .env("GIT_CONFIG_SYSTEM", "/dev/null")
+        .env("GIT_AUTHOR_DATE", "1700000000 +0000")
+        .env("GIT_COMMITTER_DATE", &date)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "git {args:?}: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    String::from_utf8(output.stdout).unwrap().trim().to_owned()
+}
+
+#[test]
+fn the_commit_time_is_the_committer_date_of_the_named_commit_in_the_checkout() {
+    let folder = tempfile::tempdir().unwrap();
+    let origin = folder.path().join("origin");
+    std::fs::create_dir(&origin).unwrap();
+    let commit = |time: i64| {
+        std::fs::write(origin.join("file"), time.to_string()).unwrap();
+        git(&origin, time, &["add", "file"]);
+        git(&origin, time, &["commit", "-q", "-m", "change"]);
+        git(&origin, time, &["rev-parse", "HEAD"])
+    };
+    let (january, february, march) = (1_800_000_000, 1_802_000_000, 1_804_000_000);
+    git(&origin, january, &["init", "-q"]);
+    // A clone with a filter may ask this repository for any commit by its SHA.
+    git(
+        &origin,
+        january,
+        &["config", "uploadpack.allowFilter", "true"],
+    );
+    git(
+        &origin,
+        january,
+        &["config", "uploadpack.allowAnySHA1InWant", "true"],
+    );
+    let first = commit(january);
+    let second = commit(february);
+
+    // Not the author date, and the date of the commit that is named, not of `HEAD`.
+    assert_eq!(commit_time(&origin, &first), Some(january));
+    assert_eq!(commit_time(&origin, &second), Some(february));
+
+    // A partial clone can download a commit it does not hold. The read does not.
+    let filter = ["clone", "-q", "--no-local", "--filter=blob:none"];
+    git(
+        folder.path(),
+        january,
+        &[&filter[..], &["origin", "clone"]].concat(),
+    );
+    let third = commit(march);
+    assert_eq!(commit_time(&folder.path().join("clone"), &third), None);
+
+    // Another commit stands in for the second one: the date stays the second one's.
+    git(&origin, january, &["replace", &second, &first]);
+    assert_eq!(commit_time(&origin, &second), Some(february));
+
+    // A file with the name of the revision does not hide the commit.
+    std::fs::write(origin.join(format!("{second}^{{commit}}")), "").unwrap();
+    assert_eq!(commit_time(&origin, &second), Some(february));
 }
