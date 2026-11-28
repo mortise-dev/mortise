@@ -32,12 +32,17 @@ pub struct Tested {
 pub struct PhpTest {
     running: Option<(RunnerKind, PathBuf, Receiver<TestOutcome>)>,
     last: Option<Tested>,
+    /// No test starts: Mortise replaces itself and closes in a moment.
+    held: bool,
 }
 
 impl PhpTest {
     /// Runs `artisan --version` through `runner` in `folder`, on a worker thread.
     /// The window is drawn again when it ends.
     pub fn start(&mut self, runner: &RunnerKind, folder: PathBuf, ctx: &egui::Context) {
+        if self.held {
+            return;
+        }
         let (sender, receiver) = channel();
         let worker = (runner.clone(), folder.clone(), ctx.clone());
         std::thread::Builder::new()
@@ -49,6 +54,11 @@ impl PhpTest {
             })
             .expect("a thread can be started");
         self.running = Some((runner.clone(), folder, receiver));
+    }
+
+    /// Holds back every start while `held`.
+    pub fn hold(&mut self, held: bool) {
+        self.held = held;
     }
 
     pub fn running(&self) -> bool {

@@ -1,7 +1,7 @@
 //! The toast (C13): a short message after something happened out of sight.
 //!
 //! One at a time, at the bottom right of the workspace. A done toast leaves after
-//! 4 s; a failed toast stays until it is closed.
+//! 4 s, unless it is news the user may act on later; a failed toast stays until it is closed.
 
 use eframe::egui::{
     Align2, Color32, Rect, Role, Sense, Shadow, Ui, UiBuilder, Vec2, WidgetInfo, pos2, vec2,
@@ -27,6 +27,10 @@ pub enum ToastAction {
     /// Select the app in this folder and open the runner drawer. The folder, not the
     /// place on the rail, because the rail can change while the toast stays.
     ShowOutput(std::path::PathBuf),
+    /// Download the newer Mortise, install it and start it.
+    InstallUpdate,
+    /// Open the download page of Mortise in the browser.
+    OpenDownloadPage,
 }
 
 #[derive(Debug, Clone)]
@@ -35,6 +39,8 @@ pub struct Toast {
     pub kind: ToastKind,
     /// A small button under the text, such as "Show output".
     pub action: Option<(String, ToastAction)>,
+    /// A done toast that stays until it is closed, as a failed one does.
+    stays: bool,
     /// When it was first painted, in seconds of egui's clock.
     shown: Option<f64>,
 }
@@ -45,6 +51,7 @@ impl Toast {
             text: text.into(),
             kind: ToastKind::Done,
             action: None,
+            stays: false,
             shown: None,
         }
     }
@@ -54,8 +61,15 @@ impl Toast {
             text: text.into(),
             kind: ToastKind::Failed,
             action: None,
+            stays: false,
             shown: None,
         }
+    }
+
+    /// A done toast that does not leave by itself: news the user may act on later.
+    pub fn staying(mut self) -> Self {
+        self.stays = true;
+        self
     }
 
     /// A toast with a button under its text.
@@ -85,18 +99,20 @@ impl Toast {
             0.0
         };
         let fade = if reduced_motion { 0.0 } else { FADE_OUT };
+        let leaves = self.kind == ToastKind::Done && !self.stays;
         let opacity = match self.kind {
+            _ if !leaves => 1.0,
             ToastKind::Done if age > DWELL + fade => return (false, None),
             ToastKind::Done if age > DWELL => 1.0 - ((age - DWELL) / FADE_OUT) as f32,
             _ => 1.0,
         };
         match self.kind {
             _ if (age < SLIDE_IN && !reduced_motion) || opacity < 1.0 => ui.ctx().request_repaint(),
-            ToastKind::Done => {
+            _ if leaves => {
                 let wait = std::time::Duration::from_secs_f64(DWELL - age);
                 ui.ctx().request_repaint_after(wait);
             }
-            ToastKind::Failed => {}
+            _ => {}
         }
 
         let text_w =

@@ -1,0 +1,80 @@
+---
+title: Update Mortise
+description: Install a newer version of Mortise from its window, check for one by hand, turn the check off, and update a copy that cannot replace itself.
+sidebar:
+  order: 18
+---
+import { Steps } from '@astrojs/starlight/components';
+
+Mortise can update itself from its window. Versions up to 1.1.0 cannot: install the next release by hand
+once, as in [Install Mortise](/mortise/start-here/installation/). Later versions offer the update
+themselves. The command line tool `mortise` does not update itself.
+
+## Install an update
+
+When a newer version exists, a message stays at the bottom right: "Mortise X.Y.Z is available."
+Nothing is downloaded until you press the button.
+
+<Steps>
+
+1. Press **Install and restart** in the message. The same button is in Settings, under **General**, in the
+   **Updates** row.
+2. Wait while Mortise downloads the update. Settings shows the progress.
+3. Mortise checks the signature of the download against a public key built into the app. A download
+   without the right signature is not installed.
+4. Mortise replaces itself and starts again.
+
+</Steps>
+
+The install waits while a command runs in an app, and while another window of Mortise is open. Close the
+other windows to let it go on. Settings says:
+"Downloaded. It installs when no command runs and no other window of Mortise is open."
+
+On each platform:
+
+- **macOS:** Mortise replaces `Mortise.app`.
+- **Windows:** Mortise runs the setup of the new version. It shows a progress bar and starts Mortise again.
+- **Linux:** Mortise replaces the AppImage file.
+
+## Check by hand
+
+1. Open Settings, then **General**.
+2. Press **Check now** in the **Updates** row.
+
+Mortise says "This is the newest version." or offers the update. A check that you start shows its failure:
+when GitHub cannot be reached, Mortise shows the error.
+
+## Turn the check off
+
+1. Open Settings, then **General**.
+2. Choose **Off** in the **Updates** row. The default is **At start**.
+
+Mortise then asks for nothing by itself. **Check now** still works.
+
+## Update a copy that cannot replace itself
+
+Some copies cannot replace themselves. Mortise says: "Mortise X.Y.Z is available. This copy cannot
+replace itself: get it from the download page." The message has the button **Open the download page**.
+
+These copies cannot replace themselves:
+
+- the `.deb` package
+- a build from source
+- a macOS app opened from the disk image or the Downloads folder, without being moved to Applications
+- an app in a folder that you cannot write without an administrator password
+
+1. Press **Open the download page**. Your browser opens the
+   [latest release](https://github.com/mortise-dev/mortise/releases/latest).
+2. Download the installer for your platform and install it as in
+   [Install Mortise](/mortise/start-here/installation/).
+
+On macOS, move Mortise to Applications to let it update itself next time.
+
+## What the check sends
+
+With **At start**, Mortise asks at start, at most once every 24 hours, for one file: `latest.json` of the
+newest release on GitHub. The request is a plain download. It carries no path, no app name, no module
+name and no token. GitHub sees what any download shows it: your IP address.
+
+A check at start that fails says nothing, and Mortise asks again a day later. `update.json` keeps when Mortise asked last and the newer
+version it found. See [Files and folders](/mortise/reference/files-and-folders/#settingsjson).

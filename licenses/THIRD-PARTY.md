@@ -8,14 +8,14 @@ holds only a part of them.
 The fonts in `assets/fonts` are under the SIL Open Font License 1.1.
 Each folder there holds its `OFL.txt` with the copyright line.
 
-555 crates.
+557 crates.
 
 ## By licence
 
 | Licence | Crates |
 |---|---|
-| MIT OR Apache-2.0 | 276 |
-| MIT | 104 |
+| MIT OR Apache-2.0 | 277 |
+| MIT | 105 |
 | Apache-2.0 OR MIT | 51 |
 | Unicode-3.0 | 18 |
 | MIT/Apache-2.0 | 13 |
@@ -90,6 +90,7 @@ Each folder there holds its `OFL.txt` with the copyright line.
 | atspi-common | 0.13.0 | Apache-2.0 OR MIT | https://github.com/odilia-app/atspi |
 | atspi-proxies | 0.13.0 | Apache-2.0 OR MIT | https://github.com/odilia-app/atspi |
 | autocfg | 1.5.1 | Apache-2.0 OR MIT | https://github.com/cuviper/autocfg |
+| base64 | 0.22.1 | MIT OR Apache-2.0 | https://github.com/marshallpierce/rust-base64 |
 | base64 | 0.23.1 | MIT OR Apache-2.0 | https://github.com/marshallpierce/rust-base64 |
 | bit-set | 0.10.0 | Apache-2.0 OR MIT | https://github.com/contain-rs/bit-set |
 | bit-vec | 0.9.1 | Apache-2.0 OR MIT | https://github.com/contain-rs/bit-vec |
@@ -286,6 +287,7 @@ Each folder there holds its `OFL.txt` with the copyright line.
 | memchr | 2.8.3 | Unlicense OR MIT | https://github.com/BurntSushi/memchr |
 | memmap2 | 0.9.12 | MIT OR Apache-2.0 | https://github.com/RazrFalcon/memmap2-rs |
 | memoffset | 0.9.1 | MIT | https://github.com/Gilnaa/memoffset |
+| minisign-verify | 0.2.5 | MIT | https://github.com/jedisct1/rust-minisign-verify |
 | miniz_oxide | 0.8.9 | MIT OR Zlib OR Apache-2.0 | https://github.com/Frommi/miniz_oxide/tree/master/miniz_oxide |
 | miniz_oxide | 0.9.1 | MIT OR Zlib OR Apache-2.0 | https://github.com/Frommi/miniz_oxide/tree/master/miniz_oxide |
 | mio | 1.2.5 | MIT | https://github.com/tokio-rs/mio |

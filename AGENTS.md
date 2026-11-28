@@ -22,6 +22,9 @@ room for feedback). Milestone 33 (hardening and the release 1.1.0) is open. The 
   and `prometheus` only. It never asks for `env` and follows no redirect.
 - `mortise push` sends only the push document, to the cloud host, when CI or the user runs it.
   The token comes from `MORTISE_TOKEN` only and is never printed. The window has no push button.
+- The window makes one request by itself: the update manifest of the newest release, at start, at most once
+  a day, unless the user turned it off. It carries nothing of an app. Mortise downloads a newer version only
+  when the user asks, and installs it only when its signature verifies with the key in `update/mod.rs`.
 - A token or a password goes to the credential store of the operating system. It is never written to a file or a log.
 - `unsafe` code is forbidden in the workspace (`unsafe_code = "forbid"`). Find a safe route or record a deviation.
 - `mortise-core` has no interface dependency. Drawing belongs in `mortise-app` only.

@@ -104,3 +104,7 @@ pub const MENU_VIEW: &str = "View";
 pub const MENU_WINDOW: &str = "Window";
 pub const MENU_SHORTCUTS: &str = "Keyboard Shortcuts";
 pub const MENU_HELP: &str = "Help";
+
+/// Not in the spec: a command asked for while Mortise replaces itself.
+pub const INSTALLING_NO_COMMAND: &str =
+    "Mortise is installing its newer version and restarts in a moment. Run the command after that.";

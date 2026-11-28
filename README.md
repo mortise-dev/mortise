@@ -189,6 +189,10 @@ Download the latest release for your platform:
 
 The files are also on the [release page](https://github.com/mortise-dev/mortise/releases/latest).
 
+Later versions of the app offer a newer version in their window and install it with **Install and restart**.
+Versions up to 1.1.0 do not: install the next release by hand once. The `.deb` package and the command line
+tool do not update themselves. See the [how-to](https://mortise-dev.github.io/mortise/how-to/update-mortise/).
+
 Each release also has the command line tool, binary `mortise`, as one archive per platform:
 
 | Platform | File |

@@ -114,7 +114,9 @@ pub use runtime::live::{
 #[cfg(feature = "actuator")]
 pub use runtime::modules::{ModuleRuntime, RuntimeByModule, by_module};
 pub use runtime::secrets::{Kept, Secrets};
-pub use settings::{AppEntry, General, IndexRows, Motion, Settings, SettingsError, ThemeChoice};
+pub use settings::{
+    AppEntry, General, IndexRows, Motion, Settings, SettingsError, ThemeChoice, UpdateCheck,
+};
 pub use surface::{
     AcceptedSurface, Difference, Proposal, ScanCounts, SurfaceAnswer, SurfaceEntry, SurfaceKind,
     SurfaceProblem, SurfaceScan, Typed, surface_args,

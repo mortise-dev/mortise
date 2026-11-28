@@ -101,6 +101,13 @@ nothing in the running app.
 HTTPS uses the certificates your computer trusts, so a local site with its own certificate authority,
 such as a Herd `.test` site, works as it does in the browser.
 
+## The check for a newer version asks for one file
+
+Mortise asks GitHub once at start, at most once every 24 hours, for one file: `latest.json` of the
+newest release. It is a plain download. It carries no path, no app name, no module name and no token.
+You can turn it off in Settings. Nothing is downloaded until you press **Install and restart**, and Mortise
+installs only a download that carries its signature. See [Update Mortise](/mortise/how-to/update-mortise/).
+
 ## Secrets stay in the credential store
 
 An environment can need a bearer token, a password or the value of a custom header. Mortise puts that

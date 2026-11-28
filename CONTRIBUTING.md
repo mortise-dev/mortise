@@ -10,7 +10,7 @@ people too. This file says how the workflows build, sign and release Mortise.
 | `ci.yml` | Every pull request and every push to `main` | Commit subjects, formatting, clippy and tests on macOS, Linux and Windows, coverage on macOS, the licence list, `cargo audit`, a secret scan, OpenSpec, and, not required, the package's commands in a real app and the actuator client against a real app |
 | `installers.yml` | A run by hand, a pull request that changes the packaging, and a release | Builds the DMG, the Windows setup, the AppImage and the .deb, and the four archives of the command line tool with their sums, as artifacts. It never publishes |
 | `release.yml` | A run by hand on `main` | Opens the release pull request |
-| `tag-release.yml` | The merge of a release pull request | Builds the installers and the command line tool on the merge commit, signs the macOS app and tool, tags and publishes the release, then publishes the crates to crates.io |
+| `tag-release.yml` | The merge of a release pull request | Builds the installers and the command line tool on the merge commit, signs the macOS app and tool and the updates, tags and publishes the release, then publishes the crates to crates.io |
 | `codeql.yml` | A push to `main`, weekly, by hand | CodeQL for Rust and for the workflows |
 
 Commit subjects follow Conventional Commits. CI checks them, because git-cliff builds `CHANGELOG.md` from them.
@@ -110,7 +110,7 @@ A crate version cannot be removed from crates.io, only yanked.
 2. The workflow runs `tools/release.sh`. It adds the section of the new version to `CHANGELOG.md`, sets the version in `Cargo.toml` and `Cargo.lock`, and opens the pull request `chore(release): vX.Y.Z` from `release/vX.Y.Z`.
 3. Review the `CHANGELOG.md` section. Edit it on the branch if needed: the release notes come from it.
 4. Merge with Squash and merge, and keep the subject `chore(release): vX.Y.Z`. A merge commit works too. A rebase merge does not.
-5. The push to `main` starts the Tag release workflow. It builds and tests the merge commit, builds the installers and the archives of the command line tool, signs and notarizes the macOS app and the macOS tool, then tags the commit and publishes the GitHub release with the installers, the archives and their SHA-256 sums.
+5. The push to `main` starts the Tag release workflow. It builds and tests the merge commit, builds the installers and the archives of the command line tool, signs and notarizes the macOS app and the macOS tool, signs what a window updates from (see Update key), then tags the commit and publishes the GitHub release with the installers, the update manifest, the archives and their SHA-256 sums.
 6. The same workflow then publishes `mortise-core` and `mortise-cli` to crates.io. If that job fails, the GitHub release stays; fix the cause, then re-run the failed job.
 
 The tag exists only once every installer built. If the Tag release workflow did not start, or the
@@ -196,3 +196,47 @@ tools/verify-macos-app.sh /Volumes/Mortise/Mortise.app
 
 The keychain guards a saved token with the signature of the app that saved it. A token saved by a
 build signed ad hoc can make the signed app ask once for access. Choose Always Allow.
+
+## Update key
+
+A window installs a newer version only when the download carries a signature of the update key
+(`docs/deviations.md`, S80). The key is a minisign key pair that cargo-packager makes. It has nothing to do
+with the Apple certificate.
+
+- The public half is the constant `PUBLIC_KEY` in `crates/mortise-app/src/update/mod.rs`. Every build carries it.
+- The private half and its password are the secrets `CARGO_PACKAGER_SIGN_PRIVATE_KEY` and
+  `CARGO_PACKAGER_SIGN_PRIVATE_KEY_PASSWORD` of the `release` environment. Only the step "Sign and write
+  the manifest" of the job "Sign the updates" in `installers.yml` gets them. That job builds nothing of the app.
+
+Set it up once:
+
+1. Make the key pair, with a password:
+   ```
+   cargo packager signer generate --path ~/.mortise/update.key
+   ```
+2. Put the contents of `~/.mortise/update.key.pub` in `PUBLIC_KEY`, through a pull request.
+3. Store the private half and the password:
+   ```
+   gh secret set CARGO_PACKAGER_SIGN_PRIVATE_KEY --env release < ~/.mortise/update.key
+   gh secret set CARGO_PACKAGER_SIGN_PRIVATE_KEY_PASSWORD --env release
+   ```
+4. Keep a copy of `~/.mortise/update.key` and its password somewhere safe that is not this computer, such as a
+   password manager. GitHub never shows a secret again.
+
+What a release does with it:
+
+- The job "Build dmg (signed)" packs the notarized app as `Mortise-vX.Y.Z-macos-arm64.app.tar.gz` and checks
+  that the app still passes `tools/verify-macos-app.sh` once it is unpacked.
+- `tools/sign-updates.sh` signs that archive, the Windows setup and the AppImage, checks each signature with
+  the public key of the source, and writes `latest.json`: the version, and per platform the signature.
+  A window builds the address of its file from the version, on the release host, and takes none from the manifest. A missing key, or a key that is not the one in the source, fails the release
+  before anything is published.
+- `tag-release.yml` publishes `latest.json` with the release. A window reads it at
+  `https://github.com/mortise-dev/mortise/releases/latest/download/latest.json`.
+
+Take care of two things:
+
+- A lost private key cannot be replaced for the windows that are installed: they trust the old public key
+  only. Their users must install the next version by hand. So keep the copy of step 4.
+- A release that is marked "pre-release" or "draft" is not the latest release, so no window sees it. A
+  release that must not reach the windows yet can use that.

@@ -18,13 +18,16 @@ mod runs;
 mod runtime;
 mod settings;
 mod surface;
+mod update;
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use eframe::egui::{self, Key, Modifiers, Rect, Theme, Ui, pos2, vec2};
-use mortise_core::{AppEntry, AppSnapshot, LiveApp, LiveState, Settings, SettingsError};
+use mortise_core::{
+    AppEntry, AppSnapshot, LiveApp, LiveState, Settings, SettingsError, UpdateCheck,
+};
 use mortise_core::{
     Catalog, Environment, LiveMetrics, LiveRuntime, MODULE_MAKE, MetricsClock, Pace, PackageData,
     ReadOptions, Rules, Runs, RuntimeState, Secret, Secrets, Target, Version,
@@ -72,6 +75,8 @@ pub struct Config {
     pub data_dir: Option<PathBuf>,
     /// How often an environment is asked. Tests ask faster.
     pub pace: Pace,
+    /// Where a newer Mortise comes from. `None` never asks: the tests, unless they bring one.
+    pub updates: Option<Arc<dyn crate::update::Channel>>,
     /// The clock of the metrics reads. `None` is the clock of a real run; tests pass one
     /// that steps, so that two reads give the same figures on every run.
     pub metrics_clock: Option<MetricsClock>,
@@ -274,6 +279,12 @@ pub struct MortiseApp {
     data_dir: Option<PathBuf>,
     /// Where the drawer was in the last frame, to tell which region holds focus.
     drawer_rect: Rect,
+    /// The update of Mortise itself, where the window can ask for one.
+    updates: Option<crate::update::Updates>,
+    /// When the window asked for a newer Mortise last, and the answer.
+    update_check: UpdateCheck,
+    /// The mark that this window is open, for the install of an update.
+    instance: update::Instance,
 }
 
 impl MortiseApp {
@@ -304,7 +315,18 @@ impl MortiseApp {
             .iter()
             .map(|entry| open_app(&cc.egui_ctx, entry, config.data_dir.as_deref()))
             .collect();
+        let update_check = config
+            .settings_path
+            .as_deref()
+            .map(|path| UpdateCheck::load(&UpdateCheck::path(path)))
+            .unwrap_or_default();
+        let updates = config
+            .updates
+            .map(|channel| crate::update::Updates::new(channel, update_check.newer.as_deref()));
         let mut app = Self {
+            updates,
+            update_check,
+            instance: update::Instance::open(config.settings_path.as_deref()),
             chrome: config.chrome,
             current: None,
             settings,
@@ -356,10 +378,16 @@ impl MortiseApp {
                 None => app.open_folder(&cc.egui_ctx, &folder),
             }
         }
+        app.start_updates(&cc.egui_ctx);
         app
     }
 
     // --- What tests and the screens ask ---
+
+    /// Where the update of Mortise is.
+    pub fn update_phase(&self) -> Option<&crate::update::Phase> {
+        self.updates.as_ref().map(crate::update::Updates::phase)
+    }
 
     /// The names of the apps, in the order of the rail.
     pub fn app_names(&self) -> Vec<&str> {
@@ -508,6 +536,7 @@ impl eframe::App for MortiseApp {
         self.take_in();
         self.forget_state_of_another_place();
         self.sync_runtime(&ctx);
+        self.poll_updates(&ctx);
         // Lines and the elapsed time show without a callback from the core.
         let mut running = false;
         let mut ended = Vec::new();
@@ -696,6 +725,7 @@ impl eframe::App for MortiseApp {
                 &mut self.settings,
                 &mut infos,
                 &self.secrets,
+                self.updates.as_ref(),
                 custom_frame,
                 self.keyboard,
                 mac,
@@ -1216,7 +1246,7 @@ impl eframe::App for MortiseApp {
             _ => {}
         }
         if let Some(action) = toast_action {
-            self.toast_action(action);
+            self.toast_action(&ctx, action);
         }
 
         // Focus is always visible while the keyboard is in use.
@@ -1250,6 +1280,9 @@ impl eframe::App for MortiseApp {
                 SettingsAction::ReportProblem => ctx.open_url(egui::OpenUrl::new_tab(
                     crate::settings::view::report_problem_url(),
                 )),
+                SettingsAction::CheckForUpdates => self.check_for_updates(&ctx),
+                SettingsAction::InstallUpdate => self.install_update(&ctx),
+                SettingsAction::OpenDownloadPage => self.open_download_page(&ctx),
                 SettingsAction::Changed { reread } => {
                     self.save();
                     if let Some(index) = reread {
@@ -1304,6 +1337,8 @@ impl eframe::App for MortiseApp {
     /// No dialog asks. eframe calls this on every way out, Cmd Q on macOS too, and
     /// the process ends only after it returns.
     fn on_exit(&mut self) {
+        // An app that is half replaced is worse than a window that closes a moment later.
+        self.finish_update();
         for open in &self.apps {
             open.runs.stop();
             if let Some(reading) = &open.reading {
@@ -1646,6 +1681,7 @@ pub fn run(chrome: Chrome, folder: Option<PathBuf>) -> eframe::Result {
                 quick_read: std::time::Duration::from_millis(60),
                 data_dir: mortise_core::history::data_dir(),
                 pace: Pace::default(),
+                updates: Some(Arc::new(crate::update::Release::of_this_build())),
                 metrics_clock: None,
             };
             let app = MortiseApp::new(cc, config);

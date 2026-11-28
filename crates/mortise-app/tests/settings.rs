@@ -8,7 +8,8 @@ use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT as _, Queryable as _};
 use mortise_app::app::MortiseApp;
 use mortise_app::index::view::Selection;
-use mortise_core::{CommandLine, Editor, IndexRows, RunnerKind, ThemeChoice};
+use mortise_app::update::Phase;
+use mortise_core::{CommandLine, Editor, IndexRows, RunnerKind, ThemeChoice, UpdateCheck};
 
 fn open_settings(harness: &mut Harness<'static, MortiseApp>) {
     harness.key_press_modifiers(Modifiers::COMMAND, Key::Comma);
@@ -100,6 +101,80 @@ fn a_choice_in_general_applies_at_once_and_is_kept() {
     let harness = desk.start();
     assert_eq!(harness.ctx.theme(), Theme::Dark);
     assert!((harness.ctx.zoom_factor() - 1.25).abs() < 0.001);
+}
+
+#[test]
+fn a_newer_version_is_offered_once_a_day_and_installs_after_a_click() {
+    use std::sync::atomic::Ordering::SeqCst;
+    let mut desk = Desk::new();
+    let root = desk.app("shop-api");
+    desk.knows(&[(&root, "SA")]);
+    let release = common::FakeRelease::offering(Some("9.0.0"));
+    desk.updates = Some(release.clone());
+
+    // The check at start finds it. Nothing is downloaded yet.
+    let mut harness = desk.start();
+    // Waited for in the window: the count of the release moves before the answer arrives.
+    let offered = |app: &MortiseApp| app.update_phase() == Some(&Phase::Available("9.0.0".into()));
+    wait_until(&mut harness, "the check ended", offered);
+    assert_eq!(release.checks.load(SeqCst), 1);
+    harness.get_by_label("Mortise 9.0.0 is available.");
+    let kept = UpdateCheck::path(&desk.settings_path());
+    assert_eq!(UpdateCheck::load(&kept).newer.as_deref(), Some("9.0.0"));
+    assert_eq!(release.installs.load(SeqCst), 0);
+
+    // Within the day the next start asks nobody, and offers it again.
+    let first_window = harness;
+    let mut harness = desk.start();
+    harness.run();
+    assert_eq!(release.checks.load(SeqCst), 1);
+    harness
+        .get_by_role_and_label(Role::Button, "Install and restart")
+        .click();
+    // The download waits while another window of Mortise is open.
+    let waits = |app: &MortiseApp| app.update_phase() == Some(&Phase::Waiting("9.0.0".into()));
+    wait_until(&mut harness, "the download is here", waits);
+    harness.get_by_label_contains("no other window of Mortise is open");
+    assert_eq!(release.installs.load(SeqCst), 0);
+    drop(first_window);
+    wait_until(&mut harness, "the version is installed", |_| {
+        release.installs.load(SeqCst) == 1
+    });
+
+    // Settings turns the check off, and can still ask.
+    std::fs::remove_file(&kept).unwrap();
+    let mut settings = desk.saved();
+    settings.general.check_for_updates = false;
+    settings.save(&desk.settings_path()).unwrap();
+    let mut harness = desk.start();
+    harness.run();
+    assert_eq!(release.checks.load(SeqCst), 1);
+    open_settings(&mut harness);
+    harness
+        .get_by_role_and_label(Role::ListBoxOption, "General")
+        .click();
+    harness.run();
+    harness
+        .get_by_role_and_label(Role::Button, "Check now")
+        .click();
+    wait_until(&mut harness, "the check ended", offered);
+    assert_eq!(release.checks.load(SeqCst), 2);
+    harness.get_by_role_and_label(Role::Button, "Install and restart");
+
+    // A check at start that fails says nothing, and still counts for the day.
+    std::fs::remove_file(&kept).unwrap();
+    settings.general.check_for_updates = true;
+    settings.save(&desk.settings_path()).unwrap();
+    release.fails.store(true, SeqCst);
+    let mut harness = desk.start();
+    wait_until(&mut harness, "the check ended", |_| {
+        release.checks.load(SeqCst) == 3
+    });
+    harness.run();
+    assert!(harness.query_by_label_contains("Could not").is_none());
+    let mut harness = desk.start();
+    harness.run();
+    assert_eq!(release.checks.load(SeqCst), 3);
 }
 
 #[test]

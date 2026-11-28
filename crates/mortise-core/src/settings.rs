@@ -125,6 +125,8 @@ pub struct General {
     pub system_title_bar: bool,
     /// The width of the module index in a window that has room for it: 220 to 320.
     pub index_width: u16,
+    /// The window asks at start whether a newer Mortise exists, at most once a day.
+    pub check_for_updates: bool,
 }
 
 impl Default for General {
@@ -139,6 +141,7 @@ impl Default for General {
             window_controls_left: false,
             system_title_bar: false,
             index_width: 264,
+            check_for_updates: true,
         }
     }
 }
@@ -147,6 +150,73 @@ impl General {
     /// The command that opens a file, with `{file}` and `{line}` where they go.
     pub fn editor_command(&self) -> &str {
         self.editor.command().unwrap_or(&self.editor_command)
+    }
+}
+
+/// The last time the window asked "is there a newer Mortise", and the answer.
+///
+/// It has a file of its own, `update.json` beside the settings. The window writes it
+/// without the user doing anything, and a write of the settings at such a moment
+/// could undo what another window of Mortise just saved.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UpdateCheck {
+    /// When it was asked, in seconds since 1970. Kept also when the answer never came.
+    pub at: u64,
+    /// The newer version the last answer named, if any.
+    #[serde(default)]
+    pub newer: Option<String>,
+}
+
+impl UpdateCheck {
+    /// Where it is kept, for settings at `settings`.
+    pub fn path(settings: &Path) -> PathBuf {
+        settings.with_file_name("update.json")
+    }
+
+    /// Reads it. A file that is not there or cannot be read is "never asked".
+    pub fn load(path: &Path) -> Self {
+        std::fs::read(path)
+            .ok()
+            .and_then(|json| serde_json::from_slice(&json).ok())
+            .unwrap_or_default()
+    }
+
+    /// Writes it under a lock, so two windows of Mortise do not write at once.
+    pub fn save(&self, path: &Path) -> std::io::Result<()> {
+        let _lock = Self::lock(path)?;
+        self.write(path)
+    }
+
+    /// Takes the check of this day for the caller, if nobody asked within `every`
+    /// seconds before `now`. It then keeps `now` as the time, with the newer version
+    /// that was known, and gives what it kept. Reading and writing happen under one
+    /// lock: of two windows that start together, one gets it.
+    pub fn claim(path: &Path, now: u64, every: u64) -> Option<Self> {
+        let _lock = Self::lock(path).ok()?;
+        let last = Self::load(path);
+        if now.saturating_sub(last.at) < every {
+            return None;
+        }
+        let claimed = Self { at: now, ..last };
+        claimed.write(path).ok()?;
+        Some(claimed)
+    }
+
+    /// A lock file beside `path`, held until the file is dropped.
+    fn lock(path: &Path) -> std::io::Result<std::fs::File> {
+        if let Some(dir) = path.parent() {
+            std::fs::create_dir_all(dir)?;
+        }
+        let lock = std::fs::File::create(path.with_extension("lock"))?;
+        lock.lock()?;
+        Ok(lock)
+    }
+
+    fn write(&self, path: &Path) -> std::io::Result<()> {
+        let json = serde_json::to_vec_pretty(self).expect("an update check is plain data");
+        let partial = path.with_extension("json.partial");
+        std::fs::write(&partial, json)?;
+        std::fs::rename(&partial, path)
     }
 }
 

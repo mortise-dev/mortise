@@ -26,6 +26,10 @@
 # secrets named below, and no other job gets them. They are environment secrets of the `release`
 # environment, which only main can deploy to. The macOS signing section of CONTRIBUTING.md says how to
 # set the environment and the secrets up.
+#
+# Updates: the same call gets the two secrets of the update key. installers.yml signs what a window
+# updates from and writes the update manifest `latest.json`, which goes up with the release. A window
+# reads it at releases/latest/download/latest.json. The update key section of CONTRIBUTING.md says more.
 name: Tag release
 
 on:
@@ -153,6 +157,8 @@ jobs:
       APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
       APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
       APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+      CARGO_PACKAGER_SIGN_PRIVATE_KEY: ${{ secrets.CARGO_PACKAGER_SIGN_PRIVATE_KEY }}
+      CARGO_PACKAGER_SIGN_PRIVATE_KEY_PASSWORD: ${{ secrets.CARGO_PACKAGER_SIGN_PRIVATE_KEY_PASSWORD }}
 
   publish:
     name: Tag and publish release
@@ -200,6 +206,11 @@ jobs:
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: linux
+          path: dist
+      # The update manifest. It names the macOS archive, the setup and the AppImage of this tag.
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: update
           path: dist
       # The four archives of the command line tool, one artifact each. installers.yml checked their names.
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
