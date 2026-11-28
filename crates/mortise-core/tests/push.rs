@@ -340,6 +340,15 @@ fn the_commit_time_is_the_committer_date_of_the_named_commit_in_the_checkout() {
     git(&origin, january, &["replace", &second, &first]);
     assert_eq!(commit_time(&origin, &second), Some(february));
 
+    // The SHA of a tag names no commit, though git can find the commit behind it.
+    git(
+        &origin,
+        march,
+        &["tag", "-a", "-m", "release", "v1", &second],
+    );
+    let tag = git(&origin, march, &["rev-parse", "v1"]);
+    assert_eq!(commit_time(&origin, &tag), None);
+
     // A file with the name of the revision does not hide the commit.
     std::fs::write(origin.join(format!("{second}^{{commit}}")), "").unwrap();
     assert_eq!(commit_time(&origin, &second), Some(february));

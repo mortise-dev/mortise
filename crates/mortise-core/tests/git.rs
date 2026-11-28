@@ -128,6 +128,30 @@ fn counts_the_commits_of_30_days_for_each_module() {
     // Quiet for 30 days: the last commit is still known.
     assert_eq!(churn("Billing").commits, 0);
     assert_eq!(days_since(churn("Billing").last_commit), 90);
+
+    // A clone without the trees of older commits downloads them for the count: a module
+    // with commits does not read as quiet.
+    git(&root, 0, &["config", "uploadpack.allowFilter", "true"]);
+    git(
+        &root,
+        0,
+        &["config", "uploadpack.allowAnySHA1InWant", "true"],
+    );
+    let clone = dir.path().join("treeless");
+    let from = root.to_str().unwrap();
+    let filter = ["clone", "-q", "--no-local", "--filter=tree:0", from];
+    git(
+        dir.path(),
+        0,
+        &[&filter[..], &[clone.to_str().unwrap()]].concat(),
+    );
+    let treeless = read_app(&clone).unwrap();
+    let checkout = treeless
+        .modules
+        .iter()
+        .find(|module| module.name == "Checkout")
+        .unwrap();
+    assert_eq!(checkout.churn.unwrap().commits, 2);
 }
 
 #[test]
