@@ -14,7 +14,8 @@
     "base_branch": "main",
     "base_commit": "e07a3d5c19b84f2a6d0c7e1b9f3a5d8c2e4b6a10",
     "pull_request": 42,
-    "shallow": false
+    "shallow": false,
+    "committed_at": "2026-11-24T14:01:52Z"
   },
   "ci": {
     "provider": "github-actions",
@@ -23,6 +24,7 @@
     "run_url": "https://github.com/acme/shop-api/actions/runs/12093847561"
   },
   "environment": null,
+  "backfill": null,
   "snapshot": {
     "name": "shop-api",
     "laravel": {

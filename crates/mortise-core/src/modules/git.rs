@@ -38,9 +38,10 @@ pub struct Churn {
     pub last_commit: Option<i64>,
 }
 
-/// Runs git in `root` and gives its output, or `None` when it fails.
-pub(crate) fn git(root: &Path, args: &[&str]) -> Option<String> {
-    let output = crate::program::command("git")
+/// Git in `root` with `args`, set up so that it only reads.
+fn command(root: &Path, args: &[&str]) -> std::process::Command {
+    let mut command = crate::program::command("git");
+    command
         .arg("-C")
         .arg(root)
         // Paths as they are, not quoted and escaped.
@@ -51,13 +52,35 @@ pub(crate) fn git(root: &Path, args: &[&str]) -> Option<String> {
         // Never take a lock or write the index: Mortise only reads.
         .env("GIT_OPTIONAL_LOCKS", "0")
         .env("GIT_TERMINAL_PROMPT", "0")
-        .stderr(Stdio::null())
-        .output()
-        .ok()?;
+        .stderr(Stdio::null());
+    command
+}
+
+/// The output of a git command, or `None` when it fails.
+fn output(mut command: std::process::Command) -> Option<String> {
+    let output = command.output().ok()?;
     output
         .status
         .success()
         .then(|| String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
+/// Runs git in `root` and gives its output, or `None` when it fails.
+pub(crate) fn git(root: &Path, args: &[&str]) -> Option<String> {
+    output(command(root, args))
+}
+
+/// As [`git`], for a question about one object: git answers from the objects the
+/// checkout holds and downloads none. A partial clone would otherwise fetch a missing
+/// object from its remote and write it. Git before 2.34 does not know
+/// `GIT_NO_LAZY_FETCH`, so no transport is allowed either, which every Git obeys.
+#[cfg(feature = "push")]
+pub(crate) fn git_local(root: &Path, args: &[&str]) -> Option<String> {
+    let mut command = command(root, args);
+    command
+        .env("GIT_NO_LAZY_FETCH", "1")
+        .env("GIT_ALLOW_PROTOCOL", "none");
+    output(command)
 }
 
 /// Reads the branch and commit of the app in `root`.

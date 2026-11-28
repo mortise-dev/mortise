@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use crate::modules::git::git;
+use crate::modules::git::{git, git_local};
 
 /// The git facts of the envelope, for the app in a folder.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -46,4 +46,37 @@ pub fn read_repository(root: &Path) -> Option<Repository> {
         // Git before 2.15 prints the flag back; that is not "true".
         shallow: text(&["rev-parse", "--is-shallow-repository"]).as_deref() == Some("true"),
     })
+}
+
+/// When `commit` was committed, in seconds since 1970: its committer date, not its author
+/// date, which a rebase keeps from the first draft. `commit` is a full SHA. `None` when the
+/// folder is in no repository, the repository does not hold the commit, or the SHA names
+/// another object, such as a tag. A clone that can download a missing commit does not.
+pub fn commit_time(root: &Path, commit: &str) -> Option<i64> {
+    // Only a SHA reaches git: a name from the environment could read as an option.
+    if commit.is_empty() || !commit.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return None;
+    }
+    let found = git_local(
+        root,
+        &[
+            // The date of the commit that the document names, not of one that stands in for it.
+            "--no-replace-objects",
+            "show",
+            "-s",
+            // A setting can print the state of the signature before the date.
+            "--no-show-signature",
+            "--format=%H %ct",
+            &format!("{commit}^{{commit}}"),
+            // A commit, not a file of that name.
+            "--",
+        ],
+    )?;
+    let (id, time) = found.trim().split_once(' ')?;
+    // Git peels a tag to its commit and completes the start of a longer SHA: neither
+    // is the commit that the document names.
+    if !id.eq_ignore_ascii_case(commit) {
+        return None;
+    }
+    time.parse().ok()
 }

@@ -39,7 +39,8 @@
         "base_branch": { "type": ["string", "null"], "maxLength": 255 },
         "base_commit": { "oneOf": [{ "$ref": "#/$defs/sha" }, { "type": "null" }], "description": "The tip of the base branch the pull request was merged with." },
         "pull_request": { "type": ["integer", "null"], "minimum": 1 },
-        "shallow": { "type": "boolean", "description": "True when the clone was shallow. Churn is then null for every module." }
+        "shallow": { "type": "boolean", "description": "True when the clone was shallow. Churn is then null for every module." },
+        "committed_at": { "type": ["string", "null"], "format": "date-time", "description": "Optional. The committer date of `commit`, in UTC. Null when git gives none." }
       },
       "if": { "properties": { "pull_request": { "type": "integer" } } },
       "then": {
@@ -64,11 +65,38 @@
       "description": "Set only when this run deploys the commit. The cloud then records a deploy in that environment.",
       "oneOf": [{ "$ref": "#/$defs/environment" }, { "type": "null" }]
     },
+    "backfill": {
+      "description": "Optional. Set only by a backfill run, which sends past commits of the default branch. Null on every other push.",
+      "oneOf": [{ "$ref": "#/$defs/backfill" }, { "type": "null" }]
+    },
     "snapshot": { "$ref": "#/$defs/snapshot" }
+  },
+  "if": { "required": ["backfill"], "properties": { "backfill": { "type": "object" } } },
+  "then": {
+    "$comment": "A backfill reads a branch, never a pull request, and never records a deploy. The cloud places its snapshot by the commit time.",
+    "properties": {
+      "git": {
+        "required": ["committed_at"],
+        "properties": {
+          "committed_at": { "type": "string" },
+          "pull_request": { "type": "null" }
+        }
+      },
+      "environment": { "type": "null" }
+    }
   },
   "$defs": {
     "sha": { "type": "string", "pattern": "^[0-9a-f]{40}([0-9a-f]{24})?$" },
     "environment": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,31}$" },
+    "backfill": {
+      "description": "The place of this document in a backfill run: the document number `position` of the `of` documents that the run plans to send.",
+      "type": "object",
+      "required": ["position", "of"],
+      "properties": {
+        "position": { "type": "integer", "minimum": 1 },
+        "of": { "type": "integer", "minimum": 1 }
+      }
+    },
     "name": { "type": "string", "minLength": 1, "maxLength": 255 },
     "path": { "type": "string", "maxLength": 1024 },
     "count": { "type": "integer", "minimum": 0 },
