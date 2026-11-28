@@ -27,7 +27,7 @@ const MANIFEST: &str =
 
 /// The public half of the update key, as `cargo packager signer generate` writes it.
 /// CONTRIBUTING.md says where the private half lives.
-const PUBLIC_KEY: &str = "";
+const PUBLIC_KEY: &str = "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEY0MkNFMkEyMDU2REQyQUIKUldTcjBtMEZvdUlzOUxUdVgwekxSM3hRMVVBaE5KcDRoQy9zZW1QMjMzK1V3aDA0TXloeWdGQlQK";
 
 /// The end of the name of the file this platform updates from, after `Mortise-vX.Y.Z-`.
 /// tools/sign-updates.sh signs the files under these names.

@@ -16,7 +16,8 @@
 - [x] 3.1 `installers.yml`: pack the notarized app and check it unpacked; the job `sign-updates`
 - [x] 3.2 `tools/sign-updates.sh`. Verify by a run with a key made for it, with the wrong key and with no key
 - [x] 3.3 `tag-release.yml` passes the key and publishes `latest.json`
-- [ ] 3.4 The owner makes the update key, stores its private half in the `release` environment, and its public half goes into `PUBLIC_KEY`
+- [x] 3.4 The owner makes the update key, and its public half goes into `PUBLIC_KEY`
+- [ ] 3.5 The owner stores the private half and its password in the `release` environment, before the next release
 
 ## 4. Docs
 
