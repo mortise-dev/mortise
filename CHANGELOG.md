@@ -2,6 +2,12 @@
 
 All notable changes to this project are listed here.
 <!-- git-cliff: end of header -->
+## [1.3.0] - 2026-11-28
+
+### Features
+
+- *(cli)* Add mortise backfill (#113)
+
 ## [1.2.0] - 2026-11-28
 
 ### Features
