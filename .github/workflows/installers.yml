@@ -22,7 +22,14 @@
 # The command line tool follows the same split: package-cli-macos without secrets, and
 # package-cli-macos-signed in a release, which signs the binary and has Apple notarize its zip.
 #
-# The secrets reach only the step that runs cargo-packager. The job runs the reviewed merge commit with
+# A release also builds what a window updates from. package-macos-signed packs the notarized app as
+# `Mortise-<tag>-macos-arm64.app.tar.gz`. The job sign-updates signs that archive, the Windows setup and
+# the AppImage with the update key, and writes the update manifest `latest.json` (artifact `update`).
+# It runs only with `sign: true`, sets `environment: release` for the key, and builds nothing of the
+# app: the key meets cargo-packager, minisign and jq, and no build script of a dependency of the app.
+# The update key section of CONTRIBUTING.md says how to set the key up.
+#
+# The Apple secrets reach only the step that runs cargo-packager. The job runs the reviewed merge commit with
 # `--locked`, a pinned cargo-packager and its actions pinned to commits. It does not isolate the secrets
 # from the dependencies of the app: a build script of a dependency runs on the same machine.
 # cargo-packager fetches the create-dmg script at run time and runs it with the certificate and its
@@ -65,6 +72,12 @@ on:
       APPLE_API_KEY_P8:
         description: The contents of the AuthKey .p8 file of that key.
         required: false
+      CARGO_PACKAGER_SIGN_PRIVATE_KEY:
+        description: The private update key, as `cargo packager signer generate` wrote it.
+        required: false
+      CARGO_PACKAGER_SIGN_PRIVATE_KEY_PASSWORD:
+        description: The password of the private update key.
+        required: false
   workflow_dispatch:
     inputs:
       quick:
@@ -82,6 +95,7 @@ on:
       - tools/check-cli.sh
       - tools/pack-cli.sh
       - tools/sign-macos-cli.sh
+      - tools/sign-updates.sh
       - rust-toolchain.toml
 
 permissions:
@@ -356,10 +370,69 @@ jobs:
           tools/verify-macos-app.sh "$mnt/Mortise.app"
           tools/verify-macos-app.sh target/packages/Mortise.app
 
+      # What a window updates from: the same app, packed. COPYFILE_DISABLE keeps the `._` files of macOS
+      # out of the archive. The app must still pass once it is unpacked, as the update unpacks it.
+      - name: Pack the app for updates
+        env:
+          NAME: Mortise-${{ needs.version.outputs.label }}-macos-arm64.app.tar.gz
+        run: |
+          COPYFILE_DISABLE=1 tar -czf "dist/$NAME" -C target/packages Mortise.app
+          unpacked="$RUNNER_TEMP/unpacked"
+          mkdir "$unpacked"
+          tar -xzf "dist/$NAME" -C "$unpacked"
+          tools/verify-macos-app.sh "$unpacked/Mortise.app"
+
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: dmg
           path: dist/*
+          if-no-files-found: error
+
+  # Signs what a window updates from and writes the update manifest, for a release. The environment gives
+  # this job the update key, and only when the run belongs to main. The job builds nothing of the app.
+  sign-updates:
+    name: Sign the updates
+    needs: [version, package-windows, package-linux, package-macos-signed]
+    if: ${{ !cancelled() && !failure() && inputs.sign }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: release
+    steps:
+      # Pinned to commits, because this job holds the update key.
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: dmg
+          path: dist
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: setup
+          path: dist
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: linux
+          path: dist
+      - name: Install minisign
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y minisign
+      - run: rustup toolchain install
+      - run: cargo install cargo-packager --locked --version "$CARGO_PACKAGER_VERSION"
+      # Only this step gets the key. tools/sign-updates.sh fails when the key is missing, and when a
+      # signature does not verify with the public key the app is built with.
+      - name: Sign and write the manifest
+        env:
+          CARGO_PACKAGER_SIGN_PRIVATE_KEY: ${{ secrets.CARGO_PACKAGER_SIGN_PRIVATE_KEY }}
+          CARGO_PACKAGER_SIGN_PRIVATE_KEY_PASSWORD: ${{ secrets.CARGO_PACKAGER_SIGN_PRIVATE_KEY_PASSWORD }}
+          TAG: ${{ inputs.tag }}
+        run: tools/sign-updates.sh "$TAG"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: update
+          path: dist/latest.json
           if-no-files-found: error
 
   # The command line tool for Linux (static, musl) and Windows. Each runner builds for its own

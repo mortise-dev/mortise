@@ -50,6 +50,8 @@ pub struct Desk {
     pub pace: Pace,
     /// The clock of the metrics reads. `None` is the real one.
     pub metrics_clock: Option<MetricsClock>,
+    /// Where a newer Mortise comes from.
+    pub updates: Option<std::sync::Arc<dyn mortise_app::update::Channel>>,
 }
 
 impl Desk {
@@ -67,6 +69,8 @@ impl Desk {
             quick_read: Duration::from_secs(30),
             pace: Pace::default(),
             metrics_clock: None,
+            // As the real window: updates are there, and nothing newer exists.
+            updates: Some(FakeRelease::offering(None)),
         }
     }
 
@@ -110,6 +114,7 @@ impl Desk {
                 .collect(),
             current: Some(0),
             general: mortise_core::General::default(),
+            update: None,
         };
         settings.save(&self.settings_path()).unwrap();
     }
@@ -144,6 +149,7 @@ impl Desk {
             quick_read: self.quick_read,
             data_dir: Some(self.data_dir()),
             pace: self.pace,
+            updates: self.updates.clone(),
             metrics_clock: self.metrics_clock.clone(),
         };
         let mut harness = Harness::builder()
@@ -567,4 +573,54 @@ pub fn runtime_state(letter: char) -> Option<mortise_core::testing::StubActuator
         _ => return Some(StubActuator::healthy()),
     }
     Some(stub)
+}
+
+/// Releases that offer one newer version, or none, without a network.
+pub struct FakeRelease {
+    pub newer: Option<&'static str>,
+    pub can_install: bool,
+    /// How many times it was asked for the newest version.
+    pub checks: std::sync::atomic::AtomicUsize,
+    /// How many times the newer version was put in place and started.
+    pub installs: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+}
+
+impl FakeRelease {
+    pub fn offering(newer: Option<&'static str>) -> std::sync::Arc<Self> {
+        std::sync::Arc::new(Self {
+            newer,
+            can_install: true,
+            checks: Default::default(),
+            installs: Default::default(),
+        })
+    }
+}
+
+impl mortise_app::update::Channel for FakeRelease {
+    fn check(&self) -> Result<Option<String>, String> {
+        self.checks
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Ok(self.newer.map(str::to_owned))
+    }
+
+    fn is_newer(&self, version: &str) -> bool {
+        self.newer == Some(version)
+    }
+
+    fn can_install(&self) -> bool {
+        self.can_install
+    }
+
+    fn download(&self, progress: &dyn Fn(f32)) -> Result<mortise_app::update::Install, String> {
+        progress(1.0);
+        let installs = std::sync::Arc::clone(&self.installs);
+        Ok(Box::new(move || {
+            installs.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Ok(())
+        }))
+    }
+
+    fn restart(&self) -> Result<(), String> {
+        Ok(())
+    }
 }

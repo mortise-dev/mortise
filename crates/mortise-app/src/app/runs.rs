@@ -343,8 +343,10 @@ impl MortiseApp {
     }
 
     /// What the button of a toast asked for.
-    pub(super) fn toast_action(&mut self, action: ToastAction) {
+    pub(super) fn toast_action(&mut self, ctx: &eframe::egui::Context, action: ToastAction) {
         match action {
+            ToastAction::InstallUpdate => self.install_update(ctx),
+            ToastAction::OpenDownloadPage => self.open_download_page(ctx),
             ToastAction::ShowOutput(root) => {
                 self.toast = None;
                 // The app may be gone from the rail since the toast came.

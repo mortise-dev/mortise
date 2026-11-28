@@ -103,6 +103,59 @@ fn a_choice_in_general_applies_at_once_and_is_kept() {
 }
 
 #[test]
+fn a_newer_version_is_offered_once_a_day_and_installs_after_a_click() {
+    use std::sync::atomic::Ordering::SeqCst;
+    let mut desk = Desk::new();
+    let root = desk.app("shop-api");
+    desk.knows(&[(&root, "SA")]);
+    let release = common::FakeRelease::offering(Some("9.0.0"));
+    desk.updates = Some(release.clone());
+
+    // The check at start finds it. Nothing is downloaded yet.
+    let mut harness = desk.start();
+    wait_until(&mut harness, "the check ended", |_| {
+        release.checks.load(SeqCst) == 1
+    });
+    harness.run();
+    harness.get_by_label("Mortise 9.0.0 is available.");
+    assert_eq!(desk.saved().update.unwrap().newer.as_deref(), Some("9.0.0"));
+    assert_eq!(release.installs.load(SeqCst), 0);
+
+    // Within the day the next start asks nobody, and offers it again.
+    let mut harness = desk.start();
+    harness.run();
+    assert_eq!(release.checks.load(SeqCst), 1);
+    harness
+        .get_by_role_and_label(Role::Button, "Install and restart")
+        .click();
+    wait_until(&mut harness, "the version is installed", |_| {
+        release.installs.load(SeqCst) == 1
+    });
+
+    // Settings turns the check off, and can still ask.
+    let mut settings = desk.saved();
+    settings.update = None;
+    settings.general.check_for_updates = false;
+    settings.save(&desk.settings_path()).unwrap();
+    let mut harness = desk.start();
+    harness.run();
+    assert_eq!(release.checks.load(SeqCst), 1);
+    open_settings(&mut harness);
+    harness
+        .get_by_role_and_label(Role::ListBoxOption, "General")
+        .click();
+    harness.run();
+    harness
+        .get_by_role_and_label(Role::Button, "Check now")
+        .click();
+    wait_until(&mut harness, "the check ended", |_| {
+        release.checks.load(SeqCst) == 2
+    });
+    harness.run();
+    harness.get_by_role_and_label(Role::Button, "Install and restart");
+}
+
+#[test]
 fn the_fields_of_an_app_apply_when_they_lose_focus() {
     let (desk, mut harness) = shop_api();
     open_settings(&mut harness);

@@ -78,7 +78,8 @@ name `Mortise`.
 | `apps[].environment` | The name of the environment the runtime box shows |
 | `apps[].php` | How PHP runs: `runner`, `working_folder` and `time_limit_minutes` (default `10`) |
 | `current` | The app that was open last, as a place in `apps` |
-| `general` | `theme`, `text_size`, `motion`, `index_rows`, `editor`, `editor_command`, `window_controls_left`, `system_title_bar` and `index_width` (default `264`) |
+| `general` | `theme`, `text_size`, `motion`, `index_rows`, `editor`, `editor_command`, `window_controls_left`, `system_title_bar`, `index_width` (default `264`) and `check_for_updates` |
+| `update` | When Mortise last asked for a newer version, and the newer version it found |
 
 `credentials` holds the kind and, for HTTP basic, the user name, or, for a custom header, the header
 name. For example `{ "kind": "basic", "user": "mortise" }`. The secret itself is never in the file.

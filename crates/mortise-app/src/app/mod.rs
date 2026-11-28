@@ -18,6 +18,7 @@ mod runs;
 mod runtime;
 mod settings;
 mod surface;
+mod update;
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -72,6 +73,8 @@ pub struct Config {
     pub data_dir: Option<PathBuf>,
     /// How often an environment is asked. Tests ask faster.
     pub pace: Pace,
+    /// Where a newer Mortise comes from. `None` never asks: the tests, unless they bring one.
+    pub updates: Option<Arc<dyn crate::update::Channel>>,
     /// The clock of the metrics reads. `None` is the clock of a real run; tests pass one
     /// that steps, so that two reads give the same figures on every run.
     pub metrics_clock: Option<MetricsClock>,
@@ -274,6 +277,8 @@ pub struct MortiseApp {
     data_dir: Option<PathBuf>,
     /// Where the drawer was in the last frame, to tell which region holds focus.
     drawer_rect: Rect,
+    /// The update of Mortise itself, where the window can ask for one.
+    updates: Option<crate::update::Updates>,
 }
 
 impl MortiseApp {
@@ -304,7 +309,15 @@ impl MortiseApp {
             .iter()
             .map(|entry| open_app(&cc.egui_ctx, entry, config.data_dir.as_deref()))
             .collect();
+        let seen = settings
+            .update
+            .as_ref()
+            .and_then(|check| check.newer.as_deref());
+        let updates = config
+            .updates
+            .map(|channel| crate::update::Updates::new(channel, seen));
         let mut app = Self {
+            updates,
             chrome: config.chrome,
             current: None,
             settings,
@@ -356,6 +369,7 @@ impl MortiseApp {
                 None => app.open_folder(&cc.egui_ctx, &folder),
             }
         }
+        app.start_updates(&cc.egui_ctx);
         app
     }
 
@@ -508,6 +522,7 @@ impl eframe::App for MortiseApp {
         self.take_in();
         self.forget_state_of_another_place();
         self.sync_runtime(&ctx);
+        self.poll_updates(&ctx);
         // Lines and the elapsed time show without a callback from the core.
         let mut running = false;
         let mut ended = Vec::new();
@@ -696,6 +711,7 @@ impl eframe::App for MortiseApp {
                 &mut self.settings,
                 &mut infos,
                 &self.secrets,
+                self.updates.as_ref(),
                 custom_frame,
                 self.keyboard,
                 mac,
@@ -1216,7 +1232,7 @@ impl eframe::App for MortiseApp {
             _ => {}
         }
         if let Some(action) = toast_action {
-            self.toast_action(action);
+            self.toast_action(&ctx, action);
         }
 
         // Focus is always visible while the keyboard is in use.
@@ -1250,6 +1266,9 @@ impl eframe::App for MortiseApp {
                 SettingsAction::ReportProblem => ctx.open_url(egui::OpenUrl::new_tab(
                     crate::settings::view::report_problem_url(),
                 )),
+                SettingsAction::CheckForUpdates => self.check_for_updates(&ctx),
+                SettingsAction::InstallUpdate => self.install_update(&ctx),
+                SettingsAction::OpenDownloadPage => self.open_download_page(&ctx),
                 SettingsAction::Changed { reread } => {
                     self.save();
                     if let Some(index) = reread {
@@ -1646,6 +1665,7 @@ pub fn run(chrome: Chrome, folder: Option<PathBuf>) -> eframe::Result {
                 quick_read: std::time::Duration::from_millis(60),
                 data_dir: mortise_core::history::data_dir(),
                 pace: Pace::default(),
+                updates: Some(Arc::new(crate::update::Release::of_this_build())),
                 metrics_clock: None,
             };
             let app = MortiseApp::new(cc, config);

@@ -549,7 +549,9 @@ fn a_module_that_is_removed_while_selected_gives_way_to_all_modules() {
 
 #[test]
 fn settings_that_cannot_be_read_are_kept_aside() {
-    let desk = Desk::new();
+    let mut desk = Desk::new();
+    // A check for a newer version writes when it asked into the settings.
+    desk.updates = None;
     let path = desk.settings_path();
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     std::fs::write(&path, "{ this is not JSON").unwrap();

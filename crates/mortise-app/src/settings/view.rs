@@ -21,6 +21,8 @@ use crate::runtime::view::Brief;
 use crate::settings::strings;
 use crate::ui::draw::{self, Button, Icon};
 use crate::ui::theme::{Face, Palette, Type, radius, size, ty};
+use crate::update::strings as update_strings;
+use crate::update::{Phase, Updates};
 
 /// The version Settings shows. The tests show a fixed one, so a release does not
 /// change the images of Settings.
@@ -221,6 +223,12 @@ pub enum SettingsAction {
     RemoveApp(usize),
     /// Open the form of a problem in the browser.
     ReportProblem,
+    /// Ask now whether a newer Mortise exists.
+    CheckForUpdates,
+    /// Download the newer Mortise, install it and start it.
+    InstallUpdate,
+    /// Open the download page of Mortise in the browser.
+    OpenDownloadPage,
 }
 
 /// Paints the list of sections into the index column. The rect includes the joint
@@ -360,6 +368,7 @@ pub fn section(
     settings: &mut Settings,
     infos: &mut [AppInfo<'_>],
     secrets: &Secrets,
+    updates: Option<&Updates>,
     custom_frame: bool,
     keyboard: bool,
     mac: bool,
@@ -412,6 +421,7 @@ pub fn section(
                         top,
                         state,
                         &mut settings.general,
+                        updates,
                         custom_frame,
                         &mut actions,
                     ),
@@ -486,12 +496,14 @@ impl Form<'_> {
 
     // --- General (S8.3) ---
 
+    #[expect(clippy::too_many_arguments)]
     fn general(
         &self,
         ui: &mut Ui,
         mut y: f32,
         state: &mut SettingsState,
         general: &mut General,
+        updates: Option<&Updates>,
         custom_frame: bool,
         actions: &mut Vec<SettingsAction>,
     ) -> f32 {
@@ -656,9 +668,25 @@ impl Form<'_> {
             y = next;
         }
 
+        if let Some(updates) = updates {
+            let at = usize::from(!general.check_for_updates);
+            let (next, clicked) = self.choice(
+                ui,
+                y,
+                update_strings::UPDATES,
+                update_strings::UPDATES_HINT,
+                update_strings::CHECK_CHOICES,
+                at,
+            );
+            if let Some(clicked) = clicked {
+                general.check_for_updates = clicked == 0;
+                changed = true;
+            }
+            y = self.update(ui, next - 4.0, updates, actions);
+        }
+
         // Not in the drawing: a way to report a problem. It opens the form in the browser.
-        // Mortise sends nothing by itself, and the address holds the version and the
-        // platform only.
+        // The address holds the version and the platform only.
         let y = self.label(ui, y, strings::FEEDBACK, strings::FEEDBACK_HINT);
         let report = Button {
             label: strings::REPORT_A_PROBLEM,
@@ -674,6 +702,63 @@ impl Form<'_> {
             actions.push(SettingsAction::Changed { reread: None });
         }
         y
+    }
+
+    /// Not in the drawing: where the update of Mortise is, and the button for the next step.
+    fn update(
+        &self,
+        ui: &Ui,
+        mut y: f32,
+        updates: &Updates,
+        actions: &mut Vec<SettingsAction>,
+    ) -> f32 {
+        let width = self.width.min(560.0);
+        let said = match updates.phase() {
+            Phase::Idle => None,
+            Phase::Checking => Some(update_strings::CHECKING.to_owned()),
+            Phase::Latest => Some(update_strings::LATEST.to_owned()),
+            Phase::Available(version) if updates.can_install() => {
+                Some(update_strings::available(version))
+            }
+            Phase::Available(version) => Some(update_strings::available_by_hand(version)),
+            Phase::Downloading(version) => {
+                let label = update_strings::downloading(version);
+                let at = pos2(self.left, y);
+                return draw::progress(ui, self.pal, at, width, &label, updates.share()) + 12.0;
+            }
+            Phase::Waiting(_) => Some(update_strings::WAITING.to_owned()),
+            Phase::Installing(_) => Some(update_strings::INSTALLING.to_owned()),
+            Phase::Failed(error) => Some(error.clone()),
+        };
+        if let Some(said) = said {
+            let at = pos2(self.left, y);
+            let text = draw::paragraph(ui, at, &said, ty::SECONDARY, self.pal.ink_2, width);
+            y = text.bottom() + 8.0;
+        }
+        let (label, action) = match updates.phase() {
+            Phase::Waiting(_) | Phase::Installing(_) => return y + 4.0,
+            Phase::Available(_) if updates.can_install() => (
+                update_strings::INSTALL_AND_RESTART,
+                SettingsAction::InstallUpdate,
+            ),
+            Phase::Available(_) => (
+                update_strings::OPEN_DOWNLOAD_PAGE,
+                SettingsAction::OpenDownloadPage,
+            ),
+            _ => (update_strings::CHECK_NOW, SettingsAction::CheckForUpdates),
+        };
+        let button = Button {
+            label,
+            disabled: *updates.phase() == Phase::Checking,
+            ..Default::default()
+        };
+        if button
+            .show(ui, self.pal, pos2(self.left, y), self.keyboard)
+            .clicked()
+        {
+            actions.push(action);
+        }
+        y + size::CONTROL_H + 12.0
     }
 
     // --- Apps (S8.1) ---

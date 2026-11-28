@@ -17,3 +17,4 @@ pub mod settings;
 pub mod strings;
 pub mod summary;
 pub mod ui;
+pub mod update;

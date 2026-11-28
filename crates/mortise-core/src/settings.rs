@@ -125,6 +125,8 @@ pub struct General {
     pub system_title_bar: bool,
     /// The width of the module index in a window that has room for it: 220 to 320.
     pub index_width: u16,
+    /// The window asks at start whether a newer Mortise exists, at most once a day.
+    pub check_for_updates: bool,
 }
 
 impl Default for General {
@@ -139,6 +141,7 @@ impl Default for General {
             window_controls_left: false,
             system_title_bar: false,
             index_width: 264,
+            check_for_updates: true,
         }
     }
 }
@@ -148,6 +151,16 @@ impl General {
     pub fn editor_command(&self) -> &str {
         self.editor.command().unwrap_or(&self.editor_command)
     }
+}
+
+/// The last answer to "is there a newer Mortise".
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UpdateCheck {
+    /// When it was asked, in seconds since 1970.
+    pub at: u64,
+    /// The newer version it found, if any.
+    #[serde(default)]
+    pub newer: Option<String>,
 }
 
 /// Everything Mortise keeps between runs.
@@ -161,6 +174,9 @@ pub struct Settings {
     pub current: Option<usize>,
     #[serde(default)]
     pub general: General,
+    /// The last check for a newer Mortise.
+    #[serde(default)]
+    pub update: Option<UpdateCheck>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -339,6 +355,10 @@ mod tests {
                 theme: ThemeChoice::Dark,
                 ..General::default()
             },
+            update: Some(UpdateCheck {
+                at: 1_795_000_000,
+                newer: Some("1.2.0".into()),
+            }),
         };
         settings.save(&path).unwrap();
         assert_eq!(Settings::load(&path).unwrap(), settings);
@@ -415,6 +435,7 @@ mod tests {
             apps: vec![entry("a", "AA"), entry("b", "BB"), entry("c", "CC")],
             current: Some(2),
             general: General::default(),
+            update: None,
         };
         assert_eq!(settings.remove(0).name, "a");
         assert_eq!(settings.current, Some(1));
@@ -434,6 +455,7 @@ mod tests {
             }],
             current: None,
             general: General::default(),
+            update: None,
         };
         assert_eq!(settings.position(&root), Some(0));
         assert_eq!(
