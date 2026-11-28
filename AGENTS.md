@@ -2,14 +2,6 @@
 
 Instructions for coding agents that work on Mortise. `README.md` describes the project for people.
 
-## Workflow
-
-The owner works on this repository from a workspace folder, `mortise-dev`, that holds it beside
-`mortise-cloud` and `setup-mortise`. The `AGENTS.md` of that folder, one level above the main checkout of
-this repository, says how agent threads are started, which model they run on, how issues and the project
-board stay current, and when a pull request may merge. Read it before you start if your tool did not load it.
-If that file is not there, do not merge a pull request unless the owner asks.
-
 ## What Mortise is
 
 A desktop app, written in Rust with egui and eframe, for Laravel apps that use
