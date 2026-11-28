@@ -179,13 +179,15 @@ the tool warns and exits 0. A refused token or document exits 4. The
 
 ## Install
 
-Each [release](https://github.com/mortise-dev/mortise/releases/latest) has:
+Download the latest release for your platform:
 
-| Platform | File |
+| Platform | Download |
 |---|---|
-| macOS, Apple silicon | `Mortise-macos-arm64.dmg`. Signed with a Developer ID and notarized by Apple. |
-| Windows, x64 | `Mortise-windows-x64-setup.exe`. Not signed: SmartScreen warns once. Choose More info, then Run anyway. |
-| Linux, x86_64 | `Mortise-linux-x86_64.AppImage`, or `Mortise-linux-amd64.deb` for Debian and Ubuntu. Not signed. |
+| macOS, Apple silicon | [`Mortise-macos-arm64.dmg`](https://github.com/mortise-dev/mortise/releases/latest/download/Mortise-macos-arm64.dmg). Signed with a Developer ID and notarized by Apple. |
+| Windows, x64 | [`Mortise-windows-x64-setup.exe`](https://github.com/mortise-dev/mortise/releases/latest/download/Mortise-windows-x64-setup.exe). Not signed: SmartScreen warns once. Choose More info, then Run anyway. |
+| Linux, x86_64 | [`Mortise-linux-x86_64.AppImage`](https://github.com/mortise-dev/mortise/releases/latest/download/Mortise-linux-x86_64.AppImage), or [`Mortise-linux-amd64.deb`](https://github.com/mortise-dev/mortise/releases/latest/download/Mortise-linux-amd64.deb) for Debian and Ubuntu. Not signed. |
+
+The files are also on the [release page](https://github.com/mortise-dev/mortise/releases/latest).
 
 Each release also has the command line tool, binary `mortise`, as one archive per platform:
 
