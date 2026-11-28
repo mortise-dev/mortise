@@ -123,7 +123,9 @@ It sends no source code, nothing from `.env` and no absolute path. Paths are rel
 | `--repository <owner/name>` | Default: `GITHUB_REPOSITORY` |
 
 A flag wins over the environment. `app_path`, the app folder relative to the top of the git
-repository, and `shallow` always come from git. On a shallow clone the commits per module are left out.
+repository, and `shallow` always come from git. On a shallow clone the commits per module are left out,
+and the tool prints one notice: "shallow clone: commits per module are not sent. Set `fetch-depth: 0`
+on `actions/checkout`." It still sends the document and exits 0.
 
 ### Schema of the push document
 

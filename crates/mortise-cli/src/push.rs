@@ -141,6 +141,12 @@ pub(crate) fn run(options: &Options) -> u8 {
             return crate::USAGE;
         }
     };
+    if repository
+        .as_ref()
+        .is_some_and(|repository| repository.shallow)
+    {
+        say(strings::SHALLOW_CLONE);
+    }
     let document = push_document(app, context);
 
     let mut pretty = serde_json::to_string_pretty(&document).expect("the document is plain data");

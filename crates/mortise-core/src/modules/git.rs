@@ -107,6 +107,9 @@ pub(crate) fn churn(root: &Path, folders: &[String]) -> BTreeMap<String, Churn> 
         "--format=%x01%ct",
         "--name-only",
         "--relative",
+        // A moved file counts for the folder it left and the one it joined. Finding a
+        // rename compares file contents, which a clone without blobs has to download.
+        "--no-renames",
         "--",
     ];
     args.extend(folders.iter().map(String::as_str));

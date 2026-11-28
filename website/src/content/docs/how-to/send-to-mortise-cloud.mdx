@@ -34,6 +34,8 @@ its base. Mortise itself judges one commit; `push` only sends.
        runs-on: ubuntu-latest
        steps:
          - uses: actions/checkout@v5
+           with:
+             fetch-depth: 0
          - uses: mortise-dev/setup-mortise@v1
          - run: mortise push
            env:
@@ -44,6 +46,10 @@ its base. Mortise itself judges one commit; `push` only sends.
    On GitHub Actions the tool takes the pull request and the run from the environment, and the
    commit that is checked out.
    It prints the URL of the snapshot in the cloud.
+
+   `fetch-depth: 0` gives the full history, which the commits per module need. With the default
+   depth of 1 the checkout is faster, `mortise push` leaves the commits per module out, prints a
+   notice and still sends the rest.
 
 </Steps>
 

@@ -12,6 +12,7 @@ mod send;
 mod strings;
 
 use std::ffi::OsString;
+use std::io::Write;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
@@ -67,9 +68,10 @@ fn printable(text: &str) -> String {
         .collect()
 }
 
-/// Prints a diagnostic on standard error.
+/// Prints a diagnostic on standard error. A diagnostic that cannot be written, such as
+/// to a full disk, does not stop the command: the exit code still says what happened.
 fn say(text: &str) {
-    eprintln!("{}", printable(text));
+    let _ = writeln!(std::io::stderr().lock(), "{}", printable(text));
 }
 
 enum Command {

@@ -59,6 +59,13 @@ Without `--commit`, the commit SHALL be `HEAD` of the checkout that was read whe
 - **WHEN** `HEAD` is not `GITHUB_SHA`
 - **THEN** the document names `HEAD`, and standard error names both
 
+### Requirement: A shallow clone gets one notice
+On a shallow clone `mortise push` SHALL print one notice on standard error that says the commits per module are not sent and names `fetch-depth: 0` of `actions/checkout`. It SHALL still send the document and exit 0.
+
+#### Scenario: A clone of depth 1
+- **WHEN** `mortise push` runs in a clone made with `--depth 1` and the cloud accepts the document
+- **THEN** standard error holds the notice once, the document has `git.shallow` true and a null `churn` for each module, and the exit code is 0
+
 ### Requirement: A flag does not take a flag as its value
 A value given as a separate argument SHALL NOT start with `-`; such a value is a usage error. A value after `=` may start with `-`.
 
