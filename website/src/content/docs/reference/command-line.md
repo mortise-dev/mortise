@@ -193,7 +193,7 @@ and which commits it has. The tool reads each commit on its own: it compares not
 | Argument | Meaning |
 |---|---|
 | `PATH` | The app folder. Default: the current folder |
-| `--weeks <n>` | Reads no commit older than `n` weeks. It can lower what the cloud asks for and never raises it |
+| `--weeks <n>` | For a test run. Reads no commit older than `n` weeks. It can lower what the cloud asks for and never raises it. After such a run the cloud takes the history as filled and answers that nothing is needed, although the older weeks were not sent |
 | `--dry-run` | Prints the commits it would read, one line each with the SHA and the committer date, and sends nothing. With `--weeks` it needs no token and asks nothing |
 | `--branch <name>` | The default branch. Default: the branch of `GITHUB_REF`, or the branch of `HEAD` |
 | `--repository <owner/name>` | Default: `GITHUB_REPOSITORY` |
@@ -209,6 +209,14 @@ It reads `MORTISE_TOKEN` and `MORTISE_CLOUD_URL` as `mortise push` does.
    period.
 3. It picks the last commit of each week by committer date. A week runs from Monday to Sunday in UTC.
 4. It leaves out the commit at `HEAD`, which `mortise push` sends, and the commits the cloud has.
+
+The answer can name the default branch that is set on the app in the cloud. When the run reads another
+branch, the tool sends nothing, prints a warning that names both branches, and exits 0. Run it on that
+branch, or change the default branch in the settings of the app in Mortise Cloud.
+
+When the cloud asks for a period and the run has no document to send, the tool tells the cloud that
+the run is done, with `POST /api/v1/backfill` and no body. The cloud then stops asking. When that call
+fails, the tool warns and exits 0, and the next run tells it again.
 
 Run it on the default branch: the history it walks is that of the commit that is checked out.
 

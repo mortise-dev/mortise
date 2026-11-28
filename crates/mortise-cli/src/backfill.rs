@@ -41,6 +41,8 @@ struct Asked {
     since: i64,
     /// The commits it has.
     have: BTreeSet<String>,
+    /// The default branch that is set on the app in the cloud, when it says so.
+    default_branch: Option<String>,
 }
 
 /// The answer of the cloud to the question. `Ok(None)` when it needs nothing, `Err` when
@@ -69,6 +71,7 @@ fn asked(answer: &Value) -> Result<Option<Asked>, ()> {
             .flatten()
             .filter_map(|commit| commit.as_str().map(str::to_ascii_lowercase))
             .collect(),
+        default_branch: answer["default_branch"].as_str().map(str::to_owned),
     }))
 }
 
@@ -151,6 +154,14 @@ pub(crate) fn run(options: &Options) -> u8 {
         };
         match asked(&answer) {
             Ok(Some(asked)) => {
+                // The cloud takes past commits of its default branch only. Nothing was
+                // read, so the run is not done either.
+                if let (Some(branch), Some(default)) = (&branch, &asked.default_branch)
+                    && branch != default
+                {
+                    say(&strings::backfill_other_branch(branch, &hide(default)));
+                    return crate::PASSED;
+                }
                 since = Some(since.map_or(asked.since, |weeks| weeks.max(asked.since)));
                 have = asked.have;
             }
@@ -180,7 +191,10 @@ pub(crate) fn run(options: &Options) -> u8 {
         .collect();
     if commits.is_empty() {
         println!("{}", strings::BACKFILL_NO_COMMITS);
-        return crate::PASSED;
+        return match &cloud {
+            Some(cloud) if !options.dry_run => done(cloud),
+            _ => crate::PASSED,
+        };
     }
     if options.dry_run {
         let mut out = std::io::stdout().lock();
@@ -267,7 +281,7 @@ pub(crate) fn run(options: &Options) -> u8 {
     };
     if documents.is_empty() {
         println!("{}", strings::BACKFILL_NONE_READ);
-        return crate::PASSED;
+        return done(&cloud);
     }
 
     // The newest first: a run that stops early keeps the most useful part.
@@ -327,6 +341,33 @@ pub(crate) fn run(options: &Options) -> u8 {
     };
     println!("{summary}");
     code
+}
+
+/// Tells the cloud that a run it asked for is done with nothing to send, so that it
+/// stops asking. Gives the exit code.
+fn done(cloud: &Cloud) -> u8 {
+    let hide = |text: &str| cloud.hide(text);
+    match cloud.send(BACKFILL, Some(&[])) {
+        Outcome::Accepted { .. } => crate::PASSED,
+        Outcome::NotTaken { status, problem } => {
+            let reason = format!("HTTP {status}: {}", hide(&problem.summary()));
+            say(&strings::backfill_not_told(
+                reason.trim_end_matches([':', ' ', '.']),
+            ));
+            crate::PASSED
+        }
+        Outcome::Unreachable { reason } => {
+            say(&strings::backfill_not_told(&hide(&reason)));
+            crate::PASSED
+        }
+        Outcome::Refused { status, problem } => {
+            say(&strings::backfill_refused(
+                status,
+                &hide(&problem.summary()),
+            ));
+            crate::REFUSED
+        }
+    }
 }
 
 /// A committer date as RFC 3339 in UTC.

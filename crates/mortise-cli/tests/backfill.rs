@@ -250,7 +250,7 @@ fn a_clone_without_file_contents_sends_the_last_commit_of_each_week_newest_first
         .concat()
     );
     // The number of weeks lowers what the cloud asks for.
-    let (url, _) = stub(vec![(200, "", asks(monday - 80 * DAY, &[]))]);
+    let (url, _) = stub(vec![(200, "", asks(monday - 80 * DAY, &[])), (204, "", "")]);
     let output = backfill(
         &[app, "--weeks", "1"],
         &[("MORTISE_TOKEN", TOKEN), ("MORTISE_CLOUD_URL", &url)],
@@ -265,6 +265,10 @@ fn a_refusal_stops_the_run_and_only_a_wrong_token_or_document_fails_the_build() 
     let app = history.app();
     let app = app.to_str().unwrap();
     let asks = asks(monday() - 60 * DAY, &[]);
+    let other_branch = r#"{"needed": true, "since": "2026-01-01T00:00:00Z", "every": "week",
+                           "have": [], "default_branch": "trunk"}"#;
+    // A period that holds only the commit that is checked out.
+    let recent = self::asks(monday() - DAY, &[]);
     let done = "Sent 1 past commit, back to";
     let wait = "Retry-After: 0\r\n";
     let limited = (429, wait, "{}");
@@ -290,6 +294,32 @@ fn a_refusal_stops_the_run_and_only_a_wrong_token_or_document_fails_the_build() 
             0,
             "",
             "Update Mortise to fill the history.",
+        ),
+        // The app in the cloud has another default branch: nothing is read or sent.
+        (
+            vec![(200, "", other_branch)],
+            0,
+            "",
+            "reads the branch main, and Mortise Cloud takes past commits of trunk",
+        ),
+        // Nothing to send in the period: the cloud is told that the run is done.
+        (
+            vec![(200, "", recent), (204, "", "")],
+            0,
+            "No past commits to send.\n",
+            "",
+        ),
+        (
+            vec![
+                (200, "", recent),
+                (503, wait, ""),
+                (500, wait, ""),
+                (500, wait, ""),
+                (500, wait, ""),
+            ],
+            0,
+            "No past commits to send.\n",
+            "could not be told that the run has nothing to send",
         ),
         (
             vec![(200, "", asks), accepted, (402, "", "{}")],
@@ -329,7 +359,13 @@ fn a_refusal_stops_the_run_and_only_a_wrong_token_or_document_fails_the_build() 
         assert_eq!(output.status.code(), Some(code), "{shown}");
         assert!(stdout(&output).starts_with(said), "{shown}");
         assert!(stderr(&output).contains(warned), "{shown}");
-        assert_eq!(requests(&taken).len(), statuses.len(), "{shown}");
+        let taken = requests(&taken);
+        assert_eq!(taken.len(), statuses.len(), "{shown}");
+        // The word that a run is done is a request without a body.
+        if statuses.get(1) == Some(&204) {
+            assert_eq!(taken[1].line, "POST /api/v1/backfill HTTP/1.1", "{shown}");
+            assert!(taken[1].body.is_empty() && taken[1].header("authorization").is_some());
+        }
     }
 
     // A shallow clone has no past commit: nothing is asked, with or without a token.

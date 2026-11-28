@@ -33,7 +33,8 @@ Options of push:
   --repository <owner/name>   Default: GITHUB_REPOSITORY
 
 Options of backfill:
-  --weeks <number>            Read no commit older than this many weeks
+  --weeks <number>            For a test run: read no commit older than this many weeks.
+                              The cloud then takes the history as filled
   --dry-run                   Print the commits and send nothing. With --weeks, needs no token
   --branch <name>             The default branch. Default: the branch of the run, or of HEAD
   --repository <owner/name>   Default: GITHUB_REPOSITORY
@@ -349,6 +350,24 @@ pub fn backfill_not_asked(reason: &str) -> String {
     format!(
         "mortise: Mortise Cloud could not say which past commits to send after 4 tries: {reason}. \
          Nothing was sent; the build goes on. The next run asks again."
+    )
+}
+
+/// The run is on another branch than the default branch of the app in the cloud.
+pub fn backfill_other_branch(branch: &str, default: &str) -> String {
+    format!(
+        "mortise: this run reads the branch {branch}, and Mortise Cloud takes past commits of \
+         {default}, the default branch of the app. Nothing was sent; the build goes on. \
+         Run the backfill on {default}, or change the default branch in the settings of the app \
+         in Mortise Cloud."
+    )
+}
+
+/// The run had nothing to send, and the cloud does not know it.
+pub fn backfill_not_told(reason: &str) -> String {
+    format!(
+        "mortise: Mortise Cloud could not be told that the run has nothing to send: {reason}. \
+         The build goes on. The next run tells it again."
     )
 }
 

@@ -26,8 +26,22 @@ The tool SHALL ask `GET /api/v1/backfill` on the cloud host first. The answer ho
 - **WHEN** the cloud answers `{"needed": false}`
 - **THEN** standard output is "History is already filled.", one request was made, and the exit code is 0
 
+### Requirement: The run reads the default branch of the app
+When the answer holds `default_branch` and the branch the tool would send differs from it, the tool SHALL read and send nothing, print one warning that names both branches and where to change the setting, and exit 0. Without the member it SHALL go on.
+
+#### Scenario: Another default branch
+- **WHEN** the run is on `main` and the cloud answers `"default_branch": "trunk"`
+- **THEN** one request was made, standard error names `main` and `trunk`, and the exit code is 0
+
+### Requirement: A run with nothing to send is reported
+When the cloud asked for a period and the run has no document to send, the tool SHALL send `POST /api/v1/backfill` with the token and no body, so that the cloud stops asking. A failure of this call SHALL warn and exit 0. A dry run SHALL NOT send it.
+
+#### Scenario: Only the checked out commit is in the period
+- **WHEN** the cloud asks for a period that holds no past commit and answers `204` to the report
+- **THEN** standard output is "No past commits to send.", the second request is `POST /api/v1/backfill` without a body, and the exit code is 0
+
 ### Requirement: One commit per week, newest first
-The tool SHALL walk the whole first-parent history of the commit that was checked out when the run began, keep the commits whose committer date is at or after `since`, and pick the last one of each ISO week in UTC by committer date. From these it SHALL leave out the commit at `HEAD` and every commit in `have`. It SHALL send the newest first. `--weeks <n>` SHALL move the start of the period to at most `n` weeks ago and never earlier than `since`.
+The tool SHALL walk the whole first-parent history of the commit that was checked out when the run began, keep the commits whose committer date is at or after `since`, and pick the last one of each ISO week in UTC by committer date. From these it SHALL leave out the commit at `HEAD` and every commit in `have`. It SHALL send the newest first. `--weeks <n>`, for a test run, SHALL move the start of the period to at most `n` weeks ago and never earlier than `since`.
 
 #### Scenario: A history of ten weeks
 - **WHEN** the cloud has the commit of one week and asks for a period that holds four weeks with commits, besides the week of `HEAD`

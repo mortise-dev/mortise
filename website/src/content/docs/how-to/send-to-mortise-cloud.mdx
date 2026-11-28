@@ -87,6 +87,9 @@ To see which commits it would read, without a token:
 mortise backfill --dry-run --weeks 13
 ```
 
+`--weeks` is for a test run. Without `--dry-run` it sends those weeks only, and the cloud then takes
+the history as filled.
+
 It reads each commit from a temporary folder and leaves the checkout as it is. A past commit has no
 coverage, because its tests did not run. The details are in
 [Command line tool](/mortise/reference/command-line/#mortise-backfill).

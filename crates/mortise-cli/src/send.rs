@@ -18,7 +18,7 @@ const ANSWER_LIMIT: u64 = 64 * 1024;
 /// What the cloud did with a request.
 pub(crate) enum Outcome {
     /// `200` or `202`: the snapshot is queued, or was there already. For a question,
-    /// the answer. `Null` when the answer is not JSON.
+    /// the answer. `Null` when the answer is not JSON, as for a `204`.
     Accepted { answer: Value },
     /// `402` or `403`: a billing state. The build goes on.
     NotTaken { status: u16, problem: Problem },
@@ -80,8 +80,8 @@ pub(crate) fn warnings(answer: &Value) -> Vec<String> {
         .collect()
 }
 
-/// Sends `body`, a gzipped push document, to `url` with `token`. Without a body, asks
-/// `url` with `GET`. Retries an outage and a rate limit 3 times; `wait` waits between
+/// Sends `body`, a gzipped push document, to `url` with `token`. An empty body is a `POST`
+/// with nothing in it. Without a body, asks `url` with `GET`. Retries an outage and a rate limit 3 times; `wait` waits between
 /// attempts.
 pub(crate) fn send(
     url: &str,
@@ -116,6 +116,11 @@ pub(crate) fn send(
     loop {
         let authorization = format!("Bearer {token}");
         let answered = match body {
+            Some([]) => agent
+                .post(url)
+                .header("Authorization", authorization)
+                .header("Accept", "application/json")
+                .send_empty(),
             Some(body) => agent
                 .post(url)
                 .header("Authorization", authorization)
@@ -146,7 +151,7 @@ pub(crate) fn send(
                     .take(ANSWER_LIMIT)
                     .read_to_string(&mut answer);
                 match status {
-                    200 | 202 => {
+                    200 | 202 | 204 => {
                         return Outcome::Accepted {
                             answer: serde_json::from_str(&answer).unwrap_or(Value::Null),
                         };
