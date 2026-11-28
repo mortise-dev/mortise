@@ -1,0 +1,36 @@
+---
+// One button per installer of the latest release. Each links straight to the file on GitHub:
+// the short address /mortise/download/<slug> is a page that redirects, which would stay open
+// on screen while the file downloads. That address is for sharing (see src/downloads.mjs).
+import { LinkButton } from '@astrojs/starlight/components';
+import { downloads } from '../downloads.mjs';
+---
+
+<div class="downloads not-content">
+  {
+    downloads.map((d) => (
+      <LinkButton
+        href={d.url}
+        variant="secondary"
+        icon="download"
+        iconPlacement="start"
+        title={d.file}
+      >
+        {d.label} <span class="downloads-detail">{d.detail}</span>
+      </LinkButton>
+    ))
+  }
+</div>
+
+<style>
+  .downloads {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin-block: 1rem;
+  }
+  .downloads-detail {
+    font-weight: 400;
+    opacity: 0.75;
+  }
+</style>
