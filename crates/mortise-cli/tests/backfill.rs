@@ -250,13 +250,15 @@ fn a_clone_without_file_contents_sends_the_last_commit_of_each_week_newest_first
         .concat()
     );
     // The number of weeks lowers what the cloud asks for.
-    let (url, _) = stub(vec![(200, "", asks(monday - 80 * DAY, &[])), (204, "", "")]);
+    let (url, taken) = stub(vec![(200, "", asks(monday - 80 * DAY, &[])), (204, "", "")]);
     let output = backfill(
         &[app, "--weeks", "1"],
         &[("MORTISE_TOKEN", TOKEN), ("MORTISE_CLOUD_URL", &url)],
     );
     assert_eq!(output.status.code(), Some(0), "{}", stderr(&output));
     assert_eq!(stdout(&output), "No past commits to send.\n");
+    // A test run does not tell the cloud that the history is filled.
+    assert_eq!(requests(&taken).len(), 1);
 }
 
 #[test]

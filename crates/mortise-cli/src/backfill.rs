@@ -192,7 +192,7 @@ pub(crate) fn run(options: &Options) -> u8 {
     if commits.is_empty() {
         println!("{}", strings::BACKFILL_NO_COMMITS);
         return match &cloud {
-            Some(cloud) if !options.dry_run => done(cloud),
+            Some(cloud) if !options.dry_run => done(cloud, options),
             _ => crate::PASSED,
         };
     }
@@ -281,7 +281,7 @@ pub(crate) fn run(options: &Options) -> u8 {
     };
     if documents.is_empty() {
         println!("{}", strings::BACKFILL_NONE_READ);
-        return done(&cloud);
+        return done(&cloud, options);
     }
 
     // The newest first: a run that stops early keeps the most useful part.
@@ -344,8 +344,12 @@ pub(crate) fn run(options: &Options) -> u8 {
 }
 
 /// Tells the cloud that a run it asked for is done with nothing to send, so that it
-/// stops asking. Gives the exit code.
-fn done(cloud: &Cloud) -> u8 {
+/// stops asking. Gives the exit code. A run with `--weeks` is a test run over a part of
+/// the period: it says nothing, so the history does not count as filled.
+fn done(cloud: &Cloud, options: &Options) -> u8 {
+    if options.weeks.is_some() {
+        return crate::PASSED;
+    }
     let hide = |text: &str| cloud.hide(text);
     match cloud.send(BACKFILL, Some(&[])) {
         Outcome::Accepted { .. } => crate::PASSED,

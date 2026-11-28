@@ -34,11 +34,15 @@ When the answer holds `default_branch` and the branch the tool would send differ
 - **THEN** one request was made, standard error names `main` and `trunk`, and the exit code is 0
 
 ### Requirement: A run with nothing to send is reported
-When the cloud asked for a period and the run has no document to send, the tool SHALL send `POST /api/v1/backfill` with the token and no body, so that the cloud stops asking. A failure of this call SHALL warn and exit 0. A dry run SHALL NOT send it.
+When the cloud asked for a period and the run has no document to send, the tool SHALL send `POST /api/v1/backfill` with the token and no body, so that the cloud stops asking. A failure of this call SHALL warn and exit 0. A dry run SHALL NOT send it, and neither SHALL a run with `--weeks`, which is a test run.
 
 #### Scenario: Only the checked out commit is in the period
 - **WHEN** the cloud asks for a period that holds no past commit and answers `204` to the report
 - **THEN** standard output is "No past commits to send.", the second request is `POST /api/v1/backfill` without a body, and the exit code is 0
+
+#### Scenario: A test run with nothing to send
+- **WHEN** `--weeks 1` is given, the cloud asks for a period, and no past commit is in the last week
+- **THEN** one request was made, and the exit code is 0
 
 ### Requirement: One commit per week, newest first
 The tool SHALL walk the whole first-parent history of the commit that was checked out when the run began, keep the commits whose committer date is at or after `since`, and pick the last one of each ISO week in UTC by committer date. From these it SHALL leave out the commit at `HEAD` and every commit in `have`. It SHALL send the newest first. `--weeks <n>`, for a test run, SHALL move the start of the period to at most `n` weeks ago and never earlier than `since`.
