@@ -24,8 +24,9 @@ A new issue offers two forms: a problem and a request (`.github/ISSUE_TEMPLATE/`
 The window has a "Report a problem" button in Settings, General. It opens the problem form with the
 Mortise version and the platform filled in, and nothing of the app.
 
-Check each request against the line first (`docs/plan/phase-5.md`, section 1): Mortise covers one app,
-at one commit, on one machine.
+Check each request against the line first (`docs/plan/phase-4.md`, section 1): Mortise covers one app,
+at one commit, on one machine. When a request is not clearly on one side, the owner decides before
+anything is built.
 
 - One app, one commit, one machine: label `free`. It may go in the feedback slot of the plan, one pull
   request for each change.

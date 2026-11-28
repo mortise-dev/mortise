@@ -50,6 +50,10 @@ room for feedback). Milestone 33 (hardening and the release 1.1.0) is open. The 
 - All use of the PHP parser (`mago-*`, pinned `=1.61.0`) stays in `mortise_core::php`.
   `mago` 1.61 needs Rust 1.100. A newer `mago` may need a newer Rust: move the pin and `rust-toolchain.toml` together.
 - Every change must work on macOS, Windows and Linux. Say what was not run on a platform.
+- Mortise judges one tree: one app, at one commit, on one machine, for one person. It does not compare
+  two commits or two branches, draws no chart over the git history, has no module owners and no
+  notifications, and no view or policy over several apps. Those belong to Mortise Cloud
+  (`docs/plan/phase-4.md`, section 1). Ask the owner before you add a feature that is not clearly one tree.
 
 ## Branches and worktrees
 
