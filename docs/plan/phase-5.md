@@ -101,11 +101,11 @@ Not checked: no code was written or run for this outline. Whether a GitHub runne
 
 Each has a recommendation; the outline assumes it.
 
-Answered on 26 November 2026. The owner chose the recommendation of questions 1, 5, 7 and 10. The other questions were not asked; their recommendations stand until the owner says otherwise.
+Answered on 26 November 2026. The owner chose the recommendation of questions 1, 5, 7 and 10. The other questions were not asked; their recommendations stand until the owner says otherwise. On 28 November 2026 the owner chose the recommendation of question 3 (#109).
 
 1. **Who owns R9.** Recommended: option (c) of section 2. Larch's preset reads the same key.
 2. **The shape of the key.** Recommended: `rules.allowed-use` as in section 2. A module without a list is not checked. Open inside it: a list for every module at once (the cloud says "every module may use Audit"). Recommended: none in the first version; each list names `Audit`.
-3. **Editing the lists in the window.** Recommended: no. S5.3 gets the switch of the rule and the count of modules with a list. The lists are edited in the file. An editor is a new screen with no drawing in the spec.
+3. **Editing the lists in the window.** Recommended: no. S5.3 gets the switch of the rule and the count of modules with a list. The lists are edited in the file. An editor is a new screen with no drawing in the spec. Answered on 28 November 2026: no, and no "Accept this link" button either (#109).
 4. **The drawing of S5.3.** The spec draws two rules. Recommended: add the third row to `docs/spec` first, then build it. Otherwise it is text "not in the spec" and a deviation row.
 5. **Larch's baseline and the line.** Larch has a free "new problems only" mode. With the preset, it also covers the rules of `mortise.json`. Mortise builds no baseline either way. Recommended: accept it. It is local to a test run and keeps no history. The owner decides, since the cloud sells the comparison.
 6. **The sentence "Mortise reads this format" in Larch's docs.** It is not true today. Recommended: remove it in Larch. Option (b) stays out until a team asks.
