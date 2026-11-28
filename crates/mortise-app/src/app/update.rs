@@ -6,6 +6,7 @@ use eframe::egui;
 use mortise_core::UpdateCheck;
 
 use super::MortiseApp;
+use super::strings as app_strings;
 use crate::ui::toast::{Toast, ToastAction};
 use crate::update::{CHECK_EVERY, DOWNLOAD_PAGE, Outcome, Phase, Updates, strings};
 
@@ -25,11 +26,42 @@ impl MortiseApp {
         if !self.settings.general.check_for_updates {
             return;
         }
-        let last = self.settings.update.as_ref().map_or(0, |check| check.at);
-        if now().saturating_sub(last) >= CHECK_EVERY {
+        if now().saturating_sub(self.update_check.at) >= CHECK_EVERY {
             updates.check(ctx, false);
+            self.asked_for_updates();
         } else if let Phase::Available(version) = updates.phase().clone() {
             self.update_notice(&version);
+        }
+    }
+
+    /// Keeps that the window asks now, before the answer: a check that fails, or a
+    /// window that closes first, still counts for the day.
+    fn asked_for_updates(&mut self) {
+        self.update_check.at = now();
+        self.save_update_check();
+    }
+
+    fn save_update_check(&mut self) {
+        let Some(settings) = &self.settings_path else {
+            return;
+        };
+        // Not being able to keep it costs one more request at the next start.
+        let _ = self.update_check.save(&UpdateCheck::path(settings));
+    }
+
+    /// True while Mortise replaces itself, with a toast that says so: no command starts then.
+    pub(super) fn installing_update(&mut self) -> bool {
+        let installing = self.updates.as_ref().is_some_and(Updates::is_installing);
+        if installing {
+            self.toast = Some(Toast::failed(app_strings::INSTALLING_NO_COMMAND));
+        }
+        installing
+    }
+
+    /// On the way out: an install that runs ends first.
+    pub(super) fn finish_update(&mut self) {
+        if let Some(updates) = &mut self.updates {
+            updates.finish();
         }
     }
 
@@ -60,8 +92,8 @@ impl MortiseApp {
                     if let (Some(version), false) = (&newer, asked) {
                         self.update_notice(version);
                     }
-                    self.settings.update = Some(UpdateCheck { at: now(), newer });
-                    self.save();
+                    self.update_check = UpdateCheck { at: now(), newer };
+                    self.save_update_check();
                 }
                 Outcome::Failed(error) => self.toast = Some(Toast::failed(error)),
                 Outcome::Restart => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
@@ -70,8 +102,11 @@ impl MortiseApp {
     }
 
     pub(super) fn check_for_updates(&mut self, ctx: &egui::Context) {
-        if let Some(updates) = &mut self.updates {
+        if let Some(updates) = &mut self.updates
+            && updates.can_check()
+        {
             updates.check(ctx, true);
+            self.asked_for_updates();
         }
     }
 

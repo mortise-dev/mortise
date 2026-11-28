@@ -31,8 +31,7 @@ If a command is running in an app, the install waits until the command ends. Set
 
 On each platform:
 
-- **macOS:** Mortise replaces `Mortise.app`. macOS asks for an administrator password when the folder
-  needs one.
+- **macOS:** Mortise replaces `Mortise.app`.
 - **Windows:** Mortise runs the setup of the new version. It shows a progress bar and starts Mortise again.
 - **Linux:** Mortise replaces the AppImage file.
 
@@ -61,7 +60,7 @@ These copies cannot replace themselves:
 - the `.deb` package
 - a build from source
 - a macOS app opened from the disk image or the Downloads folder, without being moved to Applications
-- an app in a folder that cannot be written
+- an app in a folder that you cannot write without an administrator password
 
 1. Press **Open the download page**. Your browser opens the
    [latest release](https://github.com/mortise-dev/mortise/releases/latest).
@@ -76,5 +75,5 @@ With **At start**, Mortise asks at start, at most once every 24 hours, for one f
 newest release on GitHub. The request is a plain download. It carries no path, no app name, no module
 name and no token. GitHub sees what any download shows it: your IP address.
 
-A check at start that fails says nothing. `settings.json` keeps when Mortise asked last and the newer
+A check at start that fails says nothing, and Mortise asks again a day later. `update.json` keeps when Mortise asked last and the newer
 version it found. See [Files and folders](/mortise/reference/files-and-folders/#settingsjson).

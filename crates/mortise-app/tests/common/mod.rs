@@ -114,7 +114,6 @@ impl Desk {
                 .collect(),
             current: Some(0),
             general: mortise_core::General::default(),
-            update: None,
         };
         settings.save(&self.settings_path()).unwrap();
     }
@@ -579,6 +578,8 @@ pub fn runtime_state(letter: char) -> Option<mortise_core::testing::StubActuator
 pub struct FakeRelease {
     pub newer: Option<&'static str>,
     pub can_install: bool,
+    /// GitHub cannot be reached.
+    pub fails: std::sync::atomic::AtomicBool,
     /// How many times it was asked for the newest version.
     pub checks: std::sync::atomic::AtomicUsize,
     /// How many times the newer version was put in place and started.
@@ -590,6 +591,7 @@ impl FakeRelease {
         std::sync::Arc::new(Self {
             newer,
             can_install: true,
+            fails: Default::default(),
             checks: Default::default(),
             installs: Default::default(),
         })
@@ -600,6 +602,9 @@ impl mortise_app::update::Channel for FakeRelease {
     fn check(&self) -> Result<Option<String>, String> {
         self.checks
             .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        if self.fails.load(std::sync::atomic::Ordering::SeqCst) {
+            return Err("no connection".to_owned());
+        }
         Ok(self.newer.map(str::to_owned))
     }
 

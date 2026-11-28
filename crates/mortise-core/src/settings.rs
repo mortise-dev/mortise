@@ -153,14 +153,43 @@ impl General {
     }
 }
 
-/// The last answer to "is there a newer Mortise".
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+/// The last time the window asked "is there a newer Mortise", and the answer.
+///
+/// It has a file of its own, `update.json` beside the settings. The window writes it
+/// without the user doing anything, and a write of the settings at such a moment
+/// could undo what another window of Mortise just saved.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UpdateCheck {
-    /// When it was asked, in seconds since 1970.
+    /// When it was asked, in seconds since 1970. Kept also when the answer never came.
     pub at: u64,
-    /// The newer version it found, if any.
+    /// The newer version the last answer named, if any.
     #[serde(default)]
     pub newer: Option<String>,
+}
+
+impl UpdateCheck {
+    /// Where it is kept, for settings at `settings`.
+    pub fn path(settings: &Path) -> PathBuf {
+        settings.with_file_name("update.json")
+    }
+
+    /// Reads it. A file that is not there or cannot be read is "never asked".
+    pub fn load(path: &Path) -> Self {
+        std::fs::read(path)
+            .ok()
+            .and_then(|json| serde_json::from_slice(&json).ok())
+            .unwrap_or_default()
+    }
+
+    pub fn save(&self, path: &Path) -> std::io::Result<()> {
+        if let Some(dir) = path.parent() {
+            std::fs::create_dir_all(dir)?;
+        }
+        let json = serde_json::to_vec_pretty(self).expect("an update check is plain data");
+        let partial = path.with_extension("json.partial");
+        std::fs::write(&partial, json)?;
+        std::fs::rename(&partial, path)
+    }
 }
 
 /// Everything Mortise keeps between runs.
@@ -174,9 +203,6 @@ pub struct Settings {
     pub current: Option<usize>,
     #[serde(default)]
     pub general: General,
-    /// The last check for a newer Mortise.
-    #[serde(default)]
-    pub update: Option<UpdateCheck>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -355,10 +381,6 @@ mod tests {
                 theme: ThemeChoice::Dark,
                 ..General::default()
             },
-            update: Some(UpdateCheck {
-                at: 1_795_000_000,
-                newer: Some("1.2.0".into()),
-            }),
         };
         settings.save(&path).unwrap();
         assert_eq!(Settings::load(&path).unwrap(), settings);
@@ -435,7 +457,6 @@ mod tests {
             apps: vec![entry("a", "AA"), entry("b", "BB"), entry("c", "CC")],
             current: Some(2),
             general: General::default(),
-            update: None,
         };
         assert_eq!(settings.remove(0).name, "a");
         assert_eq!(settings.current, Some(1));
@@ -455,7 +476,6 @@ mod tests {
             }],
             current: None,
             general: General::default(),
-            update: None,
         };
         assert_eq!(settings.position(&root), Some(0));
         assert_eq!(

@@ -9,11 +9,13 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::mpsc::{Receiver, Sender};
+use std::thread::JoinHandle;
 use std::time::Duration;
 
+use base64::Engine as _;
+use cargo_packager_updater::http::HeaderMap;
 use cargo_packager_updater::semver::Version;
-use cargo_packager_updater::url::Url;
-use cargo_packager_updater::{Config, Error, Update, UpdaterBuilder};
+use cargo_packager_updater::{Config, Error, Update, UpdateFormat};
 use eframe::egui;
 
 pub mod strings;
@@ -28,6 +30,16 @@ const MANIFEST: &str =
 /// The public half of the update key, as `cargo packager signer generate` writes it.
 /// CONTRIBUTING.md says where the private half lives.
 const PUBLIC_KEY: &str = "";
+
+/// The end of the name of the file this platform updates from, after `Mortise-vX.Y.Z-`.
+/// tools/sign-updates.sh signs the files under these names.
+const ARTIFACT: &str = if cfg!(target_os = "macos") {
+    "macos-arm64.app.tar.gz"
+} else if cfg!(target_os = "windows") {
+    "windows-x64-setup.exe"
+} else {
+    "linux-x86_64.AppImage"
+};
 
 /// The automatic check asks at most this often, in seconds.
 pub const CHECK_EVERY: u64 = 24 * 60 * 60;
@@ -45,7 +57,7 @@ pub trait Channel: Send + Sync {
     /// Whether `version`, found by an earlier check, is still newer than this copy.
     fn is_newer(&self, version: &str) -> bool;
     /// Whether this copy can replace itself. A `.deb` install and an app in a
-    /// place that cannot be written cannot.
+    /// place the user cannot write cannot.
     fn can_install(&self) -> bool;
     /// Downloads the newer version and checks its signature. `progress` gets the
     /// share that is downloaded, 0 to 1.
@@ -56,41 +68,146 @@ pub trait Channel: Send + Sync {
 
 /// The releases of Mortise on GitHub.
 pub struct Release {
-    manifest: Url,
+    manifest: String,
     public_key: String,
     current: Version,
+    /// The key of this platform in the manifest, such as `macos-aarch64`.
+    target: String,
+    artifact: &'static str,
 }
 
 impl Release {
     /// The releases this build updates from.
     pub fn of_this_build() -> Self {
         Self {
-            manifest: MANIFEST.parse().expect("the manifest address is valid"),
+            manifest: MANIFEST.to_owned(),
             public_key: PUBLIC_KEY.to_owned(),
             current: env!("CARGO_PKG_VERSION")
                 .parse()
                 .expect("the version of the crate is valid"),
+            target: format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH),
+            artifact: ARTIFACT,
         }
     }
 
-    fn newer(&self) -> Result<Option<Update>, Error> {
-        let config = Config {
-            endpoints: vec![self.manifest.clone()],
-            pubkey: self.public_key.clone(),
-            ..Default::default()
+    /// Asks for the manifest and gives what it offers this platform, if that is newer.
+    ///
+    /// The request goes out with the certificates this computer trusts and follows the
+    /// redirects of GitHub. It changes nothing in the process, which the check of
+    /// `cargo-packager-updater` does on Linux.
+    fn newer(&self) -> Result<Option<Update>, String> {
+        let config = ureq::Agent::config_builder()
+            .timeout_global(Some(CHECK_TIMEOUT))
+            .tls_config(
+                ureq::tls::TlsConfig::builder()
+                    .root_certs(ureq::tls::RootCerts::PlatformVerifier)
+                    .build(),
+            )
+            .build();
+        let text = ureq::Agent::new_with_config(config)
+            .get(&self.manifest)
+            .call()
+            .and_then(|mut answer| answer.body_mut().read_to_string())
+            .map_err(|error| error.to_string())?;
+        let manifest: serde_json::Value =
+            serde_json::from_str(&text).map_err(|error| error.to_string())?;
+        let said = |value: &serde_json::Value, key: &str| {
+            value[key]
+                .as_str()
+                .map(str::to_owned)
+                .ok_or_else(|| strings::manifest_lacks(key))
         };
-        UpdaterBuilder::new(self.current.clone(), config)
-            .timeout(CHECK_TIMEOUT)
-            .build()?
-            .check()
+        let version: Version = said(&manifest, "version")?
+            .trim_start_matches('v')
+            .parse()
+            .map_err(|_| strings::manifest_lacks("version"))?;
+        if version <= self.current {
+            return Ok(None);
+        }
+        let platform = &manifest["platforms"][&self.target];
+        let format = match said(platform, "format")?.as_str() {
+            "app" => UpdateFormat::App,
+            "appimage" => UpdateFormat::AppImage,
+            "nsis" => UpdateFormat::Nsis,
+            _ => return Err(strings::manifest_lacks("format")),
+        };
+        Ok(Some(Update {
+            config: Config {
+                pubkey: self.public_key.clone(),
+                ..Default::default()
+            },
+            body: None,
+            current_version: self.current.to_string(),
+            version: version.to_string(),
+            date: None,
+            target: self.target.clone(),
+            // Set when it installs: only a copy that can replace itself has one.
+            extract_path: PathBuf::new(),
+            download_url: said(platform, "url")?
+                .parse()
+                .map_err(|_| strings::manifest_lacks("url"))?,
+            signature: said(platform, "signature")?,
+            timeout: Some(DOWNLOAD_TIMEOUT),
+            headers: HeaderMap::new(),
+            format,
+        }))
     }
+
+    /// Downloads what the manifest offers and gives it back only when it is the file
+    /// the update key signed for that version and this platform.
+    ///
+    /// The manifest itself is not signed. The signature covers the bytes and a comment
+    /// that names the file, `Mortise-vX.Y.Z-<platform>`. So a manifest that calls an
+    /// older signed file a newer version is refused: the name does not fit.
+    fn verified(&self, progress: &dyn Fn(f32)) -> Result<(Update, Vec<u8>), String> {
+        // Asked again, so the address and the signature are those of this moment.
+        let update = match self.newer() {
+            Ok(Some(update)) => update,
+            Ok(None) => return Err(strings::NOT_AVAILABLE.to_owned()),
+            Err(error) => return Err(strings::could_not_check(&error)),
+        };
+        let wanted = format!("Mortise-v{}-{}", update.version, self.artifact);
+        if signed_name(&update.signature).as_deref() != Some(&wanted) {
+            return Err(strings::BAD_SIGNATURE.to_owned());
+        }
+        let got = AtomicU64::new(0);
+        let on_chunk = |chunk: usize, total: Option<u64>| {
+            let got = got.fetch_add(chunk as u64, Ordering::Relaxed) + chunk as u64;
+            if let Some(total) = total.filter(|total| *total > 0) {
+                progress(got as f32 / total as f32);
+            }
+        };
+        // `download_extended` returns the bytes only when the signature, which covers
+        // the comment too, is that of the key.
+        match update.download_extended(on_chunk, || {}) {
+            Ok(bytes) => Ok((update, bytes)),
+            Err(Error::Minisign(_) | Error::Base64(_) | Error::SignatureUtf8(_)) => {
+                Err(strings::BAD_SIGNATURE.to_owned())
+            }
+            Err(error) => Err(strings::could_not_download(&error.to_string())),
+        }
+    }
+}
+
+/// The file a signature says it signed, from its trusted comment
+/// `timestamp:<seconds>\tfile:<name>`. Trusted only once the signature verifies.
+fn signed_name(signature: &str) -> Option<String> {
+    let text = base64::engine::general_purpose::STANDARD
+        .decode(signature)
+        .ok()?;
+    let signature = minisign_verify::Signature::decode(&String::from_utf8(text).ok()?).ok()?;
+    signature
+        .trusted_comment()
+        .split('\t')
+        .find_map(|part| part.strip_prefix("file:"))
+        .map(str::to_owned)
 }
 
 impl Channel for Release {
     fn check(&self) -> Result<Option<String>, String> {
         match self.newer() {
             Ok(update) => Ok(update.map(|update| update.version)),
-            Err(error) => Err(strings::could_not_check(&error.to_string())),
+            Err(error) => Err(strings::could_not_check(&error)),
         }
     }
 
@@ -105,32 +222,13 @@ impl Channel for Release {
     }
 
     fn download(&self, progress: &dyn Fn(f32)) -> Result<Install, String> {
-        // Asked again, so the address and the signature are those of this moment.
-        let mut update = match self.newer() {
-            Ok(Some(update)) => update,
-            Ok(None) => return Err(strings::NOT_AVAILABLE.to_owned()),
-            Err(error) => return Err(strings::could_not_check(&error.to_string())),
+        let Some(place) = place() else {
+            return Err(strings::NOT_AVAILABLE.to_owned());
         };
-        update.timeout = Some(DOWNLOAD_TIMEOUT);
-        let got = AtomicU64::new(0);
-        let on_chunk = |chunk: usize, total: Option<u64>| {
-            let got = got.fetch_add(chunk as u64, Ordering::Relaxed) + chunk as u64;
-            if let Some(total) = total.filter(|total| *total > 0) {
-                progress(got as f32 / total as f32);
-            }
-        };
-        // `download_extended` returns the bytes only when their signature is that of the key.
-        let bytes = match update.download_extended(on_chunk, || {}) {
-            Ok(bytes) => bytes,
-            Err(Error::Minisign(_) | Error::Base64(_) | Error::SignatureUtf8(_)) => {
-                return Err(strings::BAD_SIGNATURE.to_owned());
-            }
-            Err(error) => return Err(strings::could_not_download(&error.to_string())),
-        };
+        let (mut update, bytes) = self.verified(progress)?;
+        update.extract_path = place;
         Ok(Box::new(move || {
-            update
-                .install(bytes)
-                .map_err(|error| strings::could_not_install(&error.to_string()))
+            install(&update, bytes).map_err(|error| strings::could_not_install(&error))
         }))
     }
 
@@ -156,12 +254,47 @@ impl Channel for Release {
     }
 }
 
+/// Puts a verified download in place: the `.app` on macOS, the AppImage on Linux.
+#[cfg(not(windows))]
+fn install(update: &Update, bytes: Vec<u8>) -> Result<(), String> {
+    update.install(bytes).map_err(|error| error.to_string())
+}
+
+/// Starts the verified setup of the newer version: `/P` shows its progress only, `/R`
+/// starts Mortise again when it is done. The window then closes the usual way.
+///
+/// `cargo-packager-updater` starts the setup through a hidden PowerShell and ends the
+/// process at once, so a setup that cannot start is never seen. Mortise starts the
+/// setup itself and hears when that fails. The setup installs for the current user
+/// and needs no administrator.
+#[cfg(windows)]
+fn install(_: &Update, bytes: Vec<u8>) -> Result<(), String> {
+    use std::io::Write as _;
+    let said = |error: std::io::Error| error.to_string();
+    let mut setup = tempfile::Builder::new()
+        .prefix("mortise-update-")
+        .suffix(".exe")
+        .tempfile()
+        .map_err(said)?;
+    setup.write_all(&bytes).map_err(said)?;
+    // The file stays: the setup runs after Mortise is gone.
+    let (file, path) = setup.keep().map_err(|error| error.to_string())?;
+    drop(file);
+    std::process::Command::new(path)
+        .args(["/P", "/R"])
+        .spawn()
+        .map(|_| ())
+        .map_err(said)
+}
+
 /// What an update replaces and starts again, when this copy can replace itself.
 ///
-/// - macOS: the `.app` folder. Not an app that macOS runs from a random read-only
-///   place because it was never moved out of its download folder, and not an app on
-///   a volume that cannot be written. A folder that needs an administrator is fine:
-///   the install asks for one.
+/// - macOS: the `.app` folder, in a folder the user can write. Not an app that macOS
+///   runs from a random read-only place because it was never moved out of its download
+///   folder. Not an app in a folder that needs an administrator: the install of
+///   `cargo-packager-updater` would then put paths into a shell command that runs as
+///   administrator, so such a copy gets the download page. For the same reason, not a
+///   path with a quote or a backslash in it.
 /// - Linux: the AppImage, in a folder the user can write. A `.deb` install belongs to
 ///   the package manager.
 /// - Windows: the program the setup installed, which has its uninstaller beside it.
@@ -175,12 +308,9 @@ fn place() -> Option<PathBuf> {
         let moved_by_macos = app
             .components()
             .any(|part| part.as_os_str() == "AppTranslocation");
-        let folder = app.parent()?;
-        let writable = match tempfile::tempfile_in(folder) {
-            Ok(_) => true,
-            Err(error) => error.kind() == std::io::ErrorKind::PermissionDenied,
-        };
-        (is_app && !moved_by_macos && writable).then(|| app.to_owned())
+        let plain = !app.to_string_lossy().contains(['\'', '"', '\\']);
+        let writable = tempfile::tempfile_in(app.parent()?).is_ok();
+        (is_app && !moved_by_macos && plain && writable).then(|| app.to_owned())
     } else if cfg!(target_os = "linux") {
         let image = PathBuf::from(std::env::var_os("APPIMAGE")?);
         let writable = tempfile::tempfile_in(image.parent()?).is_ok();
@@ -238,6 +368,10 @@ pub struct Updates {
     share: Arc<AtomicU32>,
     /// A checked download that waits for the commands to end.
     ready: Option<Install>,
+    /// The thread that replaces the app. Mortise does not end before it does.
+    installing: Option<JoinHandle<()>>,
+    /// Where the update was before the check that runs.
+    before: Phase,
     events: Receiver<Event>,
     sender: Sender<Event>,
 }
@@ -256,6 +390,8 @@ impl Updates {
             asked: false,
             share: Arc::default(),
             ready: None,
+            installing: None,
+            before: Phase::Idle,
             events,
             sender,
         }
@@ -288,10 +424,10 @@ impl Updates {
         if !self.can_check() {
             return;
         }
-        self.phase = Phase::Checking;
+        self.before = std::mem::replace(&mut self.phase, Phase::Checking);
         self.asked = asked;
         let channel = Arc::clone(&self.channel);
-        self.work(ctx, move || Event::Checked(channel.check()));
+        let _ = self.work(ctx, move || Event::Checked(channel.check()));
     }
 
     /// Downloads the newer version. It installs in `poll`.
@@ -307,7 +443,7 @@ impl Updates {
         let channel = Arc::clone(&self.channel);
         let share = Arc::clone(&self.share);
         let repaint = ctx.clone();
-        self.work(ctx, move || {
+        let _ = self.work(ctx, move || {
             Event::Downloaded(channel.download(&|part| {
                 share.store(part.clamp(0.0, 1.0).to_bits(), Ordering::Relaxed);
                 repaint.request_repaint();
@@ -315,13 +451,31 @@ impl Updates {
         });
     }
 
-    fn work(&self, ctx: &egui::Context, work: impl FnOnce() -> Event + Send + 'static) {
+    fn work(
+        &self,
+        ctx: &egui::Context,
+        work: impl FnOnce() -> Event + Send + 'static,
+    ) -> JoinHandle<()> {
         let sender = self.sender.clone();
         let ctx = ctx.clone();
         std::thread::spawn(move || {
             let _ = sender.send(work());
             ctx.request_repaint();
-        });
+        })
+    }
+
+    /// True while the app is being replaced. No command may start then: Mortise
+    /// closes when it is done.
+    pub fn is_installing(&self) -> bool {
+        matches!(self.phase, Phase::Installing(_))
+    }
+
+    /// Waits until an install that runs has put the app in place. Mortise calls it
+    /// on its way out, so that closing the window cannot leave half an app.
+    pub fn finish(&mut self) {
+        if let Some(installing) = self.installing.take() {
+            let _ = installing.join();
+        }
     }
 
     /// Takes what ended since the last frame. `busy` says a command runs in an app:
@@ -339,8 +493,10 @@ impl Updates {
                     };
                     outcomes.push(Outcome::Checked { newer, asked });
                 }
-                // A check nobody asked for fails in silence.
-                (Event::Checked(Err(_)), _) if !asked => self.phase = Phase::Idle,
+                // A check nobody asked for fails in silence, and what was known stays.
+                (Event::Checked(Err(_)), _) if !asked => {
+                    self.phase = std::mem::replace(&mut self.before, Phase::Idle);
+                }
                 (Event::Checked(Err(error)), _) => self.fail(error, &mut outcomes),
                 (Event::Downloaded(Ok(install)), Phase::Downloading(version)) => {
                     self.ready = Some(install);
@@ -361,7 +517,7 @@ impl Updates {
         {
             self.phase = Phase::Installing(version);
             // Off the frame: on macOS the install can ask for an administrator.
-            self.work(ctx, move || Event::Installed(install()));
+            self.installing = Some(self.work(ctx, move || Event::Installed(install())));
         }
         outcomes
     }
@@ -379,41 +535,48 @@ mod tests {
     use super::*;
 
     // A key made for this test with `cargo packager signer generate`, and the signature
-    // of `PAYLOAD` by it. The private half was thrown away.
+    // of `PAYLOAD` under the name `Mortise-v9.0.0-test` by it. The private half was thrown away.
     const TEST_KEY: &str = "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDYwRjdGRDAxQ0NCNjk1NzUKUldSMWxiYk1BZjMzWUNzdWJCcVR0OE1vZzVuYThneS9sc1lGSktxV04vQlR6THd5LzhvTnd3RmoK";
-    const SIGNATURE: &str = "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIGNhcmdvLXBhY2thZ2VyIHNlY3JldCBrZXkKUlVSMWxiYk1BZjMzWVBOalZKSU5Yd1ZrS09BRFdxU1VaWmpFWDR3WDhYV044MElIVXh5WmRvK3BvaVJtYVN5bXRyV21LRTQwaUNJZFV1MmxiWTBKZWR3aENSU3BMeTVZZ1FzPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk1ODYwODg0CWZpbGU6cGF5bG9hZC5BcHBJbWFnZQpkOXQ0bktmdmVXTDB3eVdxMHlHcHBOaG0rL25nbnBzdGJCdjJzbVkzMVN0Nk1JQUZQbEdpMUtZYUp3bkxGcWhYTTR5eVVQZEQxb21VakNlQUJrck1BQT09Cg==";
+    const SIGNATURE: &str = "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIGNhcmdvLXBhY2thZ2VyIHNlY3JldCBrZXkKUlVSMWxiYk1BZjMzWUlJUG9tREhJdWtEK0JGbmhxWm1sSWZaZk5xLzY4Vy9vaDQyWkl4NHhxdVJJekpYQnJ0cEN3WlRFOTY1M1hhN1lCOVgwTXFobmJudkgxNWZ5VVZWWndJPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk1ODYyNjk0CWZpbGU6TW9ydGlzZS12OS4wLjAtdGVzdApQelZweHQrM0pvanhlYlRPd3lkT1dKS1F6OUQ3YkhWb1NFRTFlWWpJM21GV21jVG01SW4wSyt2b3FTaTNwZEg3THpubGZSeVd6emtJdTczRktNamJBUT09Cg==";
     const PAYLOAD: &str = "a signed update of Mortise";
 
-    /// A release server that offers 9.0.0 with the signature of `PAYLOAD`.
-    fn release(server: &StubActuator, current: &str) -> Release {
+    /// A release server that offers `version` with the signature of 9.0.0.
+    fn release(server: &StubActuator, current: &str, version: &str) -> Release {
         let manifest = format!(
-            r#"{{"version":"9.0.0","url":"{}/update","signature":"{SIGNATURE}","format":"appimage"}}"#,
+            r#"{{"version":"{version}","platforms":{{"test":{{"url":"{}/update","signature":"{SIGNATURE}","format":"appimage"}}}}}}"#,
             server.base_url
         );
         server.set("/latest.json", Reply::ok(&manifest));
         Release {
-            manifest: format!("{}/latest.json", server.base_url).parse().unwrap(),
+            manifest: format!("{}/latest.json", server.base_url),
             public_key: TEST_KEY.to_owned(),
             current: current.parse().unwrap(),
+            target: "test".to_owned(),
+            artifact: "test",
         }
     }
 
     #[test]
-    fn a_download_is_kept_only_with_the_signature_of_the_key() {
+    fn a_download_is_kept_only_with_the_signature_of_the_key_for_that_version() {
         let server = StubActuator::start();
-        let release = release(&server, "1.0.0");
-        assert_eq!(release.check(), Ok(Some("9.0.0".to_owned())));
-        assert!(release.is_newer("9.0.0") && !release.is_newer("1.0.0"));
+        let offered = release(&server, "1.0.0", "9.0.0");
+        assert_eq!(offered.check(), Ok(Some("9.0.0".to_owned())));
+        assert!(offered.is_newer("9.0.0") && !offered.is_newer("1.0.0"));
 
         server.set("/update", Reply::ok(PAYLOAD));
-        assert!(release.download(&|_| {}).is_ok());
+        assert!(offered.verified(&|_| {}).is_ok());
 
         server.set("/update", Reply::ok("something else under the same name"));
-        let refused = release.download(&|_| {}).err();
+        let refused = offered.verified(&|_| {}).err();
         assert_eq!(refused.as_deref(), Some(strings::BAD_SIGNATURE));
 
+        // A manifest that calls the signed 9.0.0 a newer version: the name does not fit.
+        server.set("/update", Reply::ok(PAYLOAD));
+        let renamed = release(&server, "9.2.0", "9.5.0").verified(&|_| {}).err();
+        assert_eq!(renamed.as_deref(), Some(strings::BAD_SIGNATURE));
+
         // The copy that already is the newest gets nothing.
-        assert_eq!(self::release(&server, "9.0.0").check(), Ok(None));
+        assert_eq!(release(&server, "9.0.0", "9.0.0").check(), Ok(None));
     }
 
     /// Releases whose download is ready at once and counts its installs.

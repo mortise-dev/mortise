@@ -58,3 +58,8 @@ pub fn could_not_install(error: &str) -> String {
         "Could not install the newer version: {error}. Download Mortise from the download page instead."
     )
 }
+
+/// `the update manifest has no version`
+pub fn manifest_lacks(key: &str) -> String {
+    format!("the update manifest has no {key}")
+}

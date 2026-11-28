@@ -2814,11 +2814,13 @@ dependencies = [
 name = "mortise-app"
 version = "1.1.0"
 dependencies = [
+ "base64 0.22.1",
  "cargo-packager-updater",
  "eframe",
  "egui_kittest",
  "image",
  "jiff",
+ "minisign-verify",
  "mortise-app",
  "mortise-core",
  "muda",
@@ -2826,6 +2828,7 @@ dependencies = [
  "rfd",
  "serde_json",
  "tempfile",
+ "ureq",
  "windows",
  "zbus",
 ]

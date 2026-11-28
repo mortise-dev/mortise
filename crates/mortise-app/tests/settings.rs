@@ -8,7 +8,7 @@ use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT as _, Queryable as _};
 use mortise_app::app::MortiseApp;
 use mortise_app::index::view::Selection;
-use mortise_core::{CommandLine, Editor, IndexRows, RunnerKind, ThemeChoice};
+use mortise_core::{CommandLine, Editor, IndexRows, RunnerKind, ThemeChoice, UpdateCheck};
 
 fn open_settings(harness: &mut Harness<'static, MortiseApp>) {
     harness.key_press_modifiers(Modifiers::COMMAND, Key::Comma);
@@ -118,7 +118,8 @@ fn a_newer_version_is_offered_once_a_day_and_installs_after_a_click() {
     });
     harness.run();
     harness.get_by_label("Mortise 9.0.0 is available.");
-    assert_eq!(desk.saved().update.unwrap().newer.as_deref(), Some("9.0.0"));
+    let kept = UpdateCheck::path(&desk.settings_path());
+    assert_eq!(UpdateCheck::load(&kept).newer.as_deref(), Some("9.0.0"));
     assert_eq!(release.installs.load(SeqCst), 0);
 
     // Within the day the next start asks nobody, and offers it again.
@@ -133,8 +134,8 @@ fn a_newer_version_is_offered_once_a_day_and_installs_after_a_click() {
     });
 
     // Settings turns the check off, and can still ask.
+    std::fs::remove_file(&kept).unwrap();
     let mut settings = desk.saved();
-    settings.update = None;
     settings.general.check_for_updates = false;
     settings.save(&desk.settings_path()).unwrap();
     let mut harness = desk.start();
@@ -153,6 +154,21 @@ fn a_newer_version_is_offered_once_a_day_and_installs_after_a_click() {
     });
     harness.run();
     harness.get_by_role_and_label(Role::Button, "Install and restart");
+
+    // A check at start that fails says nothing, and still counts for the day.
+    std::fs::remove_file(&kept).unwrap();
+    settings.general.check_for_updates = true;
+    settings.save(&desk.settings_path()).unwrap();
+    release.fails.store(true, SeqCst);
+    let mut harness = desk.start();
+    wait_until(&mut harness, "the check ended", |_| {
+        release.checks.load(SeqCst) == 3
+    });
+    harness.run();
+    assert!(harness.query_by_label_contains("Could not").is_none());
+    let mut harness = desk.start();
+    harness.run();
+    assert_eq!(release.checks.load(SeqCst), 3);
 }
 
 #[test]

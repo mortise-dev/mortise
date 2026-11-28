@@ -37,7 +37,8 @@ impl MortiseApp {
         else {
             return;
         };
-        if open.busy().is_some() {
+        let installing = self.updates.as_ref().is_some_and(|u| u.is_installing());
+        if open.busy().is_some() || installing {
             return;
         }
         match mortise_core::Read::start_with_input(
@@ -213,6 +214,9 @@ impl MortiseApp {
     /// Starts artisan with `args` in the app at `index`, through its current runner.
     /// The drawer opens on it; it does not take focus.
     pub(super) fn start_run(&mut self, index: usize, args: Vec<String>) {
+        if self.installing_update() {
+            return;
+        }
         let Some(entry) = self.settings.apps.get(index) else {
             return;
         };

@@ -24,15 +24,19 @@ not "latest", so it reaches no window.
 of the window bring releases of their own, so no test needs a network or replaces a program.
 
 **D5. Check, then download on a press, then install when nothing runs.** The download asks for the manifest
-again, so the address and the signature are those of that moment. The install closes Mortise, and on
-Windows the crate ends the process itself, so the window starts it only when no command runs in an app.
+again, so the address and the signature are those of that moment. The install closes Mortise, so the
+window starts it only when no command runs in an app, lets no command start while it runs, and does not
+end before it has ended.
 
-**D6. Once a day, by what `settings.json` remembers.** `update.at` is when the last check ended and
-`update.newer` what it found. A start within the day asks nobody and offers the remembered version again,
+**D6. Once a day, by what `update.json` remembers.** `at` is when the window asked last, kept before the
+request, and `newer` what the last answer named. The file sits beside `settings.json` and is not part of
+it: the window writes it without the user doing anything, and a write of the whole settings at such a
+moment could undo what another window just saved. A start within the day asks nobody and offers the remembered version again,
 if it is still newer than the running one.
 
 **D7. A copy that cannot replace itself gets a link.** `place()` names what an update replaces: the `.app`
-on macOS, unless macOS runs it from a translocated place or its folder cannot be written; the AppImage on
+on macOS, unless macOS runs it from a translocated place, the user cannot write its folder, or its path
+holds a quote or a backslash; the AppImage on
 Linux in a folder the user can write; the installed program on Windows, known by `uninstall.exe` beside
 it. A `.deb` install and a build from source are none of these.
 
@@ -47,4 +51,23 @@ notarized the app, and the unpacked app must pass `tools/verify-macos-app.sh` ag
   says to keep a copy.
 - No release with a manifest exists yet, so no update ran end to end. The second release after this change
   is the first that can prove it. `docs/deviations.md` S80 lists what was not run.
-- `cargo-packager-updater` sets two environment variables on Linux from a worker thread.
+- The Windows install is Mortise's own few lines and ran on no machine yet.
+
+## Decisions after the first review
+
+**D9. The version is trusted through the signature.** The manifest is not signed. minisign signs a comment
+with the bytes, and `cargo packager signer sign` puts the file name in it. The window refuses a download
+whose signed name is not `Mortise-v<offered version>-<this platform>`, so a manifest cannot pass an older
+signed file as a newer version, or the file of another platform.
+
+**D10. Mortise asks for the manifest itself.** The check of the crate sets two environment variables on
+Linux from a worker thread, which Rust calls unsafe once other threads run. `ureq` is in the workspace
+already and needs no such thing.
+
+**D11. No administrator on macOS.** The crate falls back to an AppleScript that runs a shell command as
+administrator, with the paths written into it unescaped. A folder that needs an administrator therefore
+gets the download page.
+
+**D12. Mortise starts the Windows setup itself.** The crate starts it through a hidden PowerShell and ends
+the process at once. Mortise writes the verified setup to a temporary file, starts it with `/P /R`, and
+closes the usual way, so a setup that cannot start is an error the user reads.

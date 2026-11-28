@@ -25,7 +25,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use eframe::egui::{self, Key, Modifiers, Rect, Theme, Ui, pos2, vec2};
-use mortise_core::{AppEntry, AppSnapshot, LiveApp, LiveState, Settings, SettingsError};
+use mortise_core::{
+    AppEntry, AppSnapshot, LiveApp, LiveState, Settings, SettingsError, UpdateCheck,
+};
 use mortise_core::{
     Catalog, Environment, LiveMetrics, LiveRuntime, MODULE_MAKE, MetricsClock, Pace, PackageData,
     ReadOptions, Rules, Runs, RuntimeState, Secret, Secrets, Target, Version,
@@ -279,6 +281,8 @@ pub struct MortiseApp {
     drawer_rect: Rect,
     /// The update of Mortise itself, where the window can ask for one.
     updates: Option<crate::update::Updates>,
+    /// When the window asked for a newer Mortise last, and the answer.
+    update_check: UpdateCheck,
 }
 
 impl MortiseApp {
@@ -309,15 +313,17 @@ impl MortiseApp {
             .iter()
             .map(|entry| open_app(&cc.egui_ctx, entry, config.data_dir.as_deref()))
             .collect();
-        let seen = settings
-            .update
-            .as_ref()
-            .and_then(|check| check.newer.as_deref());
+        let update_check = config
+            .settings_path
+            .as_deref()
+            .map(|path| UpdateCheck::load(&UpdateCheck::path(path)))
+            .unwrap_or_default();
         let updates = config
             .updates
-            .map(|channel| crate::update::Updates::new(channel, seen));
+            .map(|channel| crate::update::Updates::new(channel, update_check.newer.as_deref()));
         let mut app = Self {
             updates,
+            update_check,
             chrome: config.chrome,
             current: None,
             settings,
@@ -1323,6 +1329,8 @@ impl eframe::App for MortiseApp {
     /// No dialog asks. eframe calls this on every way out, Cmd Q on macOS too, and
     /// the process ends only after it returns.
     fn on_exit(&mut self) {
+        // An app that is half replaced is worse than a window that closes a moment later.
+        self.finish_update();
         for open in &self.apps {
             open.runs.stop();
             if let Some(reading) = &open.reading {
