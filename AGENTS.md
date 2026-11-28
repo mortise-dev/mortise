@@ -2,27 +2,13 @@
 
 Instructions for coding agents that work on Mortise. `README.md` describes the project for people.
 
-## Orchestration
+## Workflow
 
-Act as the lead orchestrator for this project.
-
-Review the entire specification and break it down into small, independently executable tasks with clear dependencies, acceptance criteria, and expected outcomes.
-
-Before starting any task, evaluate its complexity, reasoning requirements, risk, and implementation scope. Determine the most appropriate model for each change rather than defaulting everything to Fable 5.2.
-
-Use Sonnet for simple, repetitive, and well-defined changes that require minimal reasoning.
-
-Use Opus for standard implementation, feature development, refactoring, test creation, and moderately complex debugging.
-
-Use Fable 5.2 for architectural decisions, difficult debugging, ambiguous requirements, complex reasoning, and changes with significant system-wide impact.
-
-Assign work to the most appropriate model wherever model-specific delegation is supported. Run independent tasks in parallel when appropriate, respect dependencies, and avoid conflicting changes.
-
-Maintain responsibility for coordination, integration, code review, and final verification. Escalate work to a stronger model only when complexity, risk, or failed attempts justify it.
-
-Before execution, show me the complete task breakdown, the model selected for each task, and a brief explanation of why that model is the best choice.
-
-Your goal is to complete the entire specification with maximum quality while minimizing unnecessary token usage, execution time, and cost. Never use Fable 5.2 for work that Sonnet or Opus can reliably handle.
+The owner works on this repository from a workspace folder, `mortise-dev`, that holds it beside
+`mortise-cloud` and `setup-mortise`. The `AGENTS.md` of that folder, one level above the main checkout of
+this repository, says how agent threads are started, which model they run on, how issues and the project
+board stay current, and when a pull request may merge. Read it before you start if your tool did not load it.
+If that file is not there, do not merge a pull request unless the owner asks.
 
 ## What Mortise is
 
