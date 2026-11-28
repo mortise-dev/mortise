@@ -7,7 +7,7 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
-use crate::app::{AppSnapshot, ReadError, ReadOptions, read_app_cached, shown};
+use crate::app::{AppSnapshot, ReadError, ReadOptions, lexical, read_app_cached, shown};
 use crate::modules::git::{churn_at, export, git, git_local};
 use crate::modules::module::ReadCache;
 
@@ -30,6 +30,10 @@ pub enum PastError {
     /// contents cannot download them.
     #[error("git could not give the files of the commit")]
     NoFiles,
+    /// The commit keeps its modules or its statuses file outside the app folder. Those
+    /// files are not in the commit, so they are not read.
+    #[error("the commit keeps its modules outside the app folder")]
+    Outside,
     /// The files are there, and are not an app that Mortise reads.
     #[error(transparent)]
     NotAnApp(#[from] ReadError),
@@ -47,9 +51,10 @@ pub fn weekly_commits(root: &Path, since: i64) -> Option<Vec<PastCommit>> {
             "--no-replace-objects",
             "rev-list",
             "--first-parent",
-            // Each line: the committer date, a space, the SHA.
+            // Each line: the committer date, a space, the SHA. The whole history is
+            // walked: a commit before the period can stand before one in it, such as
+            // after a clock was set right.
             "--timestamp",
-            &format!("--max-age={since}"),
             "HEAD",
             "--",
         ],
@@ -112,8 +117,10 @@ pub fn read_past_app(
     }
     // A clone without file contents still holds the folders of every commit, so it
     // downloads nothing for this.
+    // The tree of the commit that the document names, not of one that stands in for it.
     let id = |name: &str| {
-        git(root, &["rev-parse", "-q", "--verify", name]).map(|id| id.trim().to_owned())
+        let args = ["--no-replace-objects", "rev-parse", "-q", "--verify", name];
+        git(root, &args).map(|id| id.trim().to_owned())
     };
     let named = if app_path == "." {
         sha.to_owned()
@@ -131,8 +138,8 @@ pub fn read_past_app(
         .ok()
         .and_then(|root| root.file_name().map(ToOwned::to_owned))
         .unwrap_or_else(|| "app".into());
-    let files = folder.path().join(name);
-    std::fs::create_dir(&files).map_err(|_| PastError::NoFiles)?;
+    let files = folder.path().join("files").join(name);
+    std::fs::create_dir_all(&files).map_err(|_| PastError::NoFiles)?;
     if !export(root, &tree, &files, &folder.path().join("index")) {
         return Err(PastError::NoFiles);
     }
@@ -147,6 +154,15 @@ pub fn read_past_app(
         &options,
         &mut ReadCache::default(),
     )?;
+    // A path in `config/modules.php` can lead out of the app folder, to files of today.
+    // A commit stands for nothing that is not in it.
+    let inside = |path: &Path| lexical(path).starts_with(lexical(&app.root));
+    if !inside(&app.layout.modules_dir)
+        || !inside(&app.layout.statuses_file)
+        || !app.modules.iter().all(|module| inside(&module.dir))
+    {
+        return Err(PastError::Outside);
+    }
     // The temporary folder is in no repository. The history is in the checkout.
     let folders: Vec<String> = app
         .modules

@@ -369,6 +369,7 @@ pub fn past_error(error: &PastError, app_path: &str) -> String {
     match error {
         PastError::NoFolder => format!("it has no folder {app_path}"),
         PastError::NoFiles => "git could not give its files".to_owned(),
+        PastError::Outside => "it keeps its modules outside the app folder".to_owned(),
         PastError::NotAnApp(ReadError::NotLaravel { .. }) => "it holds no Laravel app".to_owned(),
         PastError::NotAnApp(ReadError::NoLock { .. }) => "it has no composer.lock".to_owned(),
         PastError::NotAnApp(ReadError::NoPackage { .. }) => {

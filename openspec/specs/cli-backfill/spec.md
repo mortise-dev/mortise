@@ -13,7 +13,7 @@ Defines `mortise backfill`, which sends one push document for each past week of 
 - **THEN** the tool exits 2 and names `--dry-run` with `--weeks`
 
 ### Requirement: A shallow clone sends nothing
-On a shallow clone the tool SHALL ask nothing and send nothing, say that it needs the full history and name `fetch-depth: 0` of `actions/checkout`, and exit 0.
+On a shallow clone, with or without a token, the tool SHALL ask nothing and send nothing, say that it needs the full history and name `fetch-depth: 0` of `actions/checkout`, and exit 0.
 
 #### Scenario: A clone of depth 1
 - **WHEN** `mortise backfill` runs in a clone made with `--depth 1`
@@ -27,7 +27,7 @@ The tool SHALL ask `GET /api/v1/backfill` on the cloud host first. The answer ho
 - **THEN** standard output is "History is already filled.", one request was made, and the exit code is 0
 
 ### Requirement: One commit per week, newest first
-The tool SHALL walk the first-parent history of `HEAD`, keep the commits whose committer date is at or after `since`, and pick the last one of each ISO week in UTC by committer date. From these it SHALL leave out the commit at `HEAD` and every commit in `have`. It SHALL send the newest first. `--weeks <n>` SHALL move the start of the period to at most `n` weeks ago and never earlier than `since`.
+The tool SHALL walk the whole first-parent history of `HEAD`, keep the commits whose committer date is at or after `since`, and pick the last one of each ISO week in UTC by committer date. From these it SHALL leave out the commit at `HEAD` and every commit in `have`. It SHALL send the newest first. `--weeks <n>` SHALL move the start of the period to at most `n` weeks ago and never earlier than `since`.
 
 #### Scenario: A history of ten weeks
 - **WHEN** the cloud has the commit of one week and asks for a period that holds four weeks with commits, besides the week of `HEAD`
@@ -44,8 +44,19 @@ The tool SHALL read the app at each commit from a temporary folder outside the a
 - **WHEN** `mortise backfill` runs in a clone made with `--filter=blob:none`
 - **THEN** each document holds the modules of its commit, and `git status` of the clone is clean
 
+### Requirement: A past commit is read from its own files only
+The files of a past commit SHALL hold the bytes that are committed: no filter program of the computer SHALL run on them, and a link SHALL be written as a plain file. A commit whose modules folder or statuses file is outside the app folder SHALL be left out. The tree SHALL be the one of the commit that the document names, not of a replacement.
+
+#### Scenario: A filter that fails
+- **WHEN** the repository sets a required filter whose program fails for every file
+- **THEN** the past commit is still read
+
+#### Scenario: Modules outside the app folder
+- **WHEN** the `config/modules.php` of a past commit names an absolute modules folder outside the app
+- **THEN** the commit is left out with one line
+
 ### Requirement: Each document stands for its commit
-Each document SHALL carry the commit, its committer date as `git.committed_at`, `git.branch` set to the default branch, null pull request members, `git.shallow` false, a null `environment`, and `backfill` set to `{ "position": n, "of": m }`. The document SHALL hold no coverage, also when the commit holds a coverage report. The churn of a module SHALL count the 30 days before the commit.
+Each document SHALL carry the commit, its committer date as `git.committed_at`, `git.branch` set to the default branch, null pull request members, `git.shallow` false, a null `environment`, and `backfill` set to `{ "position": n, "of": m }`. The document SHALL hold no coverage, also when the commit holds a coverage report. The churn of a module SHALL count the 30 days before the commit, up to its committer date.
 
 #### Scenario: A commit older than 30 days
 - **WHEN** a module had 3 commits in the 30 days before a past commit, all older than 30 days now
@@ -59,7 +70,7 @@ The default branch SHALL be `--branch`, else the branch of the run on GitHub Act
 - **THEN** the tool exits 2 and names `--branch`
 
 ### Requirement: The place of a document counts the documents that are sent
-The tool SHALL read every picked commit before it sends the first document. A commit that cannot be read as an app, or whose document is over a limit of the cloud, SHALL be left out with one line on standard error, and the run goes on. `of` SHALL be the number of documents left, and `position` SHALL count from 1 with the newest.
+The tool SHALL read every picked commit before it sends the first document. A commit that cannot be read as an app, or whose document is over a limit of the cloud, SHALL be left out with one line on standard error, and the run goes on. The size limits SHALL be checked on the body as it is sent. `of` SHALL be the number of documents left, and `position` SHALL count from 1 with the newest.
 
 #### Scenario: A commit from before the app
 - **WHEN** one of three picked commits has no app folder

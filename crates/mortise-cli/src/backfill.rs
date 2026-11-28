@@ -74,6 +74,21 @@ fn asked(answer: &Value) -> Result<Option<Asked>, ()> {
 pub(crate) fn run(options: &Options) -> u8 {
     let github = github::read();
 
+    // A shallow clone has no past commit, with or without a token.
+    let repository = read_repository(&options.path);
+    let Some((repository, head)) = repository
+        .as_ref()
+        .and_then(|repository| Some((repository, repository.commit.as_ref()?)))
+    else {
+        say(&strings::backfill_without_git(
+            &options.path.to_string_lossy(),
+        ));
+        return crate::USAGE;
+    };
+    if repository.shallow {
+        say(strings::BACKFILL_SHALLOW);
+        return crate::PASSED;
+    }
     // A dry run with `--weeks` knows its period, so it needs no token.
     let cloud = match Cloud::read() {
         Ok(Some(cloud)) => Some(cloud),
@@ -92,20 +107,6 @@ pub(crate) fn run(options: &Options) -> u8 {
         }
     };
 
-    let repository = read_repository(&options.path);
-    let Some((repository, head)) = repository
-        .as_ref()
-        .and_then(|repository| Some((repository, repository.commit.as_ref()?)))
-    else {
-        say(&strings::backfill_without_git(
-            &options.path.to_string_lossy(),
-        ));
-        return crate::USAGE;
-    };
-    if repository.shallow {
-        say(strings::BACKFILL_SHALLOW);
-        return crate::PASSED;
-    }
     // A document names the default branch. A dry run writes none.
     let branch = options
         .branch
@@ -190,7 +191,6 @@ pub(crate) fn run(options: &Options) -> u8 {
 
     // Read every commit first: the place of a document in the run counts only the
     // commits that can be sent. A document waits as its gzipped JSON.
-    let planned = u32::try_from(commits.len()).unwrap_or(u32::MAX);
     let mut documents: Vec<(&PastCommit, Vec<u8>)> = Vec::new();
     for commit in &commits {
         let short = &commit.commit[..commit.commit.len().min(7)];
@@ -225,41 +225,56 @@ pub(crate) fn run(options: &Options) -> u8 {
             },
             ci: push::ci(github.as_ref()),
             environment: None,
-            // The widest place, for the size. `placed` writes the true one.
-            backfill: Some(PushBackfill {
-                position: planned,
-                of: planned,
-            }),
+            // `placed` writes the place, once the run knows how many it sends.
+            backfill: Some(PushBackfill { position: 1, of: 1 }),
         };
         let document = push_document(app, context);
-        let json = serde_json::to_vec(&document).expect("the document is plain data");
-        let body = push::gzip(&json);
-        if let Some(limit) = document
-            .over_limit()
-            .or_else(|| byte_limit(json.len(), body.len()))
-        {
+        if let Some(limit) = document.over_limit() {
             say(&strings::backfill_left_out(
                 short,
                 &strings::limit_passed(&limit),
             ));
             continue;
         }
-        documents.push((commit, body));
+        let json = serde_json::to_vec(&document).expect("the document is plain data");
+        documents.push((commit, push::gzip(&json)));
     }
+    // The size of a body is known only with its place in it. A body over a limit is left
+    // out, and the others are placed again.
+    let bodies = loop {
+        let of = u32::try_from(documents.len()).unwrap_or(u32::MAX);
+        let mut bodies = Vec::new();
+        let over = (1..)
+            .zip(&documents)
+            .find_map(|(position, (commit, body))| {
+                let (size, body) = placed(body, position, of);
+                let limit = byte_limit(size, body.len());
+                bodies.push(body);
+                limit.map(|limit| (bodies.len() - 1, *commit, limit))
+            });
+        let Some((at, commit, limit)) = over else {
+            break bodies;
+        };
+        let short = &commit.commit[..commit.commit.len().min(7)];
+        say(&strings::backfill_left_out(
+            short,
+            &strings::limit_passed(&limit),
+        ));
+        documents.remove(at);
+    };
     if documents.is_empty() {
         println!("{}", strings::BACKFILL_NONE_READ);
         return crate::PASSED;
     }
 
     // The newest first: a run that stops early keeps the most useful part.
-    let of = u32::try_from(documents.len()).unwrap_or(u32::MAX);
     let hide = |text: &str| cloud.hide(text);
     let mut warned = BTreeSet::new();
     let mut sent: Option<(usize, i64)> = None;
     let mut code = crate::PASSED;
-    for (position, (commit, body)) in (1..).zip(&documents) {
+    for (position, ((commit, _), body)) in (1usize..).zip(documents.iter().zip(&bodies)) {
         let short = &commit.commit[..commit.commit.len().min(7)];
-        match cloud.send(push::SNAPSHOTS, Some(&placed(body, position, of))) {
+        match cloud.send(push::SNAPSHOTS, Some(body)) {
             Outcome::Accepted { answer } => {
                 for warning in send::warnings(&answer) {
                     // The same warning for every commit is said once.
@@ -267,7 +282,7 @@ pub(crate) fn run(options: &Options) -> u8 {
                         say(&strings::cloud_warning(&hide(&warning)));
                     }
                 }
-                sent = Some((position as usize, commit.committed_at));
+                sent = Some((position, commit.committed_at));
             }
             Outcome::NotTaken { status, problem } => {
                 say(&strings::backfill_stopped_not_taken(
@@ -318,13 +333,15 @@ fn time(seconds: i64) -> String {
         .unwrap_or_default()
 }
 
-/// `body`, a gzipped push document, with its place in the run.
-fn placed(body: &[u8], position: u32, of: u32) -> Vec<u8> {
+/// `body`, a gzipped push document, with its place in the run: the size of its JSON, and
+/// the body as sent.
+fn placed(body: &[u8], position: u32, of: u32) -> (usize, Vec<u8>) {
     let mut json = Vec::new();
     flate2::read::GzDecoder::new(body)
         .read_to_end(&mut json)
         .expect("the body was gzipped here");
     let mut document: Value = serde_json::from_slice(&json).expect("the body is JSON");
     document["backfill"] = serde_json::json!({ "position": position, "of": of });
-    push::gzip(&serde_json::to_vec(&document).expect("the document is plain data"))
+    let json = serde_json::to_vec(&document).expect("the document is plain data");
+    (json.len(), push::gzip(&json))
 }

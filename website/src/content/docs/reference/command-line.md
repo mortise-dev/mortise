@@ -212,14 +212,17 @@ It reads `MORTISE_TOKEN` and `MORTISE_CLOUD_URL` as `mortise push` does.
 
 Run it on the default branch: the history it walks is that of the commit that is checked out.
 
-A shallow clone has no past commits. There the tool sends nothing, prints "backfill needs the full
+A shallow clone has no past commits. There the tool sends nothing, with or without a token, prints "backfill needs the full
 history. Set `fetch-depth: 0` on `actions/checkout`, then run the workflow again." and exits 0.
 
 ### How a past commit is read
 
 The tool asks git to write the files of the app folder at that commit to a temporary folder outside
 the app, reads them as it reads any app, and removes the folder. The working tree, the index and
-`HEAD` of the checkout stay as they are, and no git hook runs.
+`HEAD` of the checkout stay as they are, and no git hook runs. The files hold the bytes that are
+committed: no filter program runs on them, such as the one of Git LFS, and a link is written as a
+plain file. A commit whose `config/modules.php` keeps the modules outside the app folder is left out,
+because those files are not in the commit.
 
 Listing the commits downloads nothing. In a clone made with `--filter=blob:none`, git downloads the
 files of the app folder that the commit needs, in one request per commit, and keeps them in `.git` as

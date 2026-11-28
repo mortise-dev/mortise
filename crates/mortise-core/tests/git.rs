@@ -181,6 +181,40 @@ fn counts_the_commits_of_30_days_for_each_module() {
     // The tests of a past commit did not run: the report in the fixture is not read.
     assert!(past.coverage_report.is_none());
     assert!(past.modules.iter().all(|module| module.coverage.is_none()));
+    // A filter program of the computer does not run on the files of a past commit. This
+    // one fails, and git would stop at it.
+    for (key, value) in [("smudge", "exit 1"), ("required", "true")] {
+        git(
+            &clone,
+            0,
+            &["config", &format!("filter.broken.{key}"), value],
+        );
+    }
+    std::fs::write(clone.join(".git/info/attributes"), "* filter=broken\n").unwrap();
+    assert!(read_past_app(&clone, ".", &commit).is_ok());
+    // A commit that keeps its modules outside the app folder is not read from there.
+    let elsewhere = dir.path().join("elsewhere");
+    copy_dir(&root.join("Modules"), &elsewhere);
+    let config = root.join("config/modules.php");
+    let php = std::fs::read_to_string(&config).unwrap();
+    let path = format!("'{}'", elsewhere.to_str().unwrap().replace('\\', "/"));
+    std::fs::write(&config, php.replace("base_path('Modules')", &path)).unwrap();
+    commit_all(&root, 0, "modules elsewhere");
+    assert_eq!(
+        read_app(&root).unwrap().modules[0].dir.parent(),
+        Some(&*elsewhere)
+    );
+    let mut head = Command::new("git");
+    let head = head.arg("-C").arg(&root).args(["rev-parse", "HEAD"]);
+    let head = String::from_utf8(head.output().unwrap().stdout).unwrap();
+    let outside = PastCommit {
+        commit: head.trim().to_owned(),
+        ..commit.clone()
+    };
+    assert!(matches!(
+        read_past_app(&root, ".", &outside),
+        Err(PastError::Outside)
+    ));
     // A commit that the repository does not hold gives no app.
     let unknown = PastCommit {
         commit: "0".repeat(40),

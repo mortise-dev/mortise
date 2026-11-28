@@ -87,29 +87,43 @@ pub(crate) fn git_local(root: &Path, args: &[&str]) -> Option<String> {
 /// which is outside the repository. `index` is a file for git to keep beside it. The
 /// working tree and the index of the repository stay as they are. A clone without file
 /// contents downloads the files of this tree it lacks, in one request. False when git fails.
+///
+/// The files hold the bytes that are committed: no filter program of the computer runs
+/// on them, and a link is written as a file that holds its target, so nothing in `into`
+/// leads out of it.
 #[cfg(feature = "push")]
 pub(crate) fn export(root: &Path, tree: &str, into: &Path, index: &Path) -> bool {
-    let mut command = command(
+    // Every filter that a setting of the computer or the repository names, such as the
+    // one of Git LFS. An empty program is no filter.
+    let filters: std::collections::BTreeSet<String> = git(
         root,
-        &[
-            // Every file of the tree, whatever the checkout leaves out.
-            "-c",
-            "core.sparseCheckout=false",
-            // The bytes as they are committed.
-            "-c",
-            "core.autocrlf=false",
-            "--no-replace-objects",
-            "read-tree",
-            "-m",
-            "-u",
-            tree,
-        ],
-    );
+        &["config", "--name-only", "--get-regexp", r"^filter\."],
+    )
+    .unwrap_or_default()
+    .lines()
+    .filter_map(|key| Some(key.strip_prefix("filter.")?.rsplit_once('.')?.0.to_owned()))
+    .collect();
+    let mut settings = vec![
+        // Every file of the tree, whatever the checkout leaves out.
+        "core.sparseCheckout=false".to_owned(),
+        // The bytes as they are committed.
+        "core.autocrlf=false".to_owned(),
+        "core.symlinks=false".to_owned(),
+    ];
+    for filter in &filters {
+        settings.push(format!("filter.{filter}.smudge="));
+        settings.push(format!("filter.{filter}.process="));
+        settings.push(format!("filter.{filter}.required=false"));
+    }
+    let mut args: Vec<&str> = settings
+        .iter()
+        .flat_map(|setting| ["-c", setting.as_str()])
+        .collect();
+    args.extend(["--no-replace-objects", "read-tree", "-m", "-u", tree]);
+    let mut command = command(root, &args);
     command
         .env("GIT_INDEX_FILE", index)
         .env("GIT_WORK_TREE", into)
-        // A large file kept outside git stays a pointer: Mortise reads PHP and JSON.
-        .env("GIT_LFS_SKIP_SMUDGE", "1")
         .stdout(Stdio::null());
     command.status().is_ok_and(|status| status.success())
 }
@@ -147,7 +161,7 @@ pub(crate) fn read(root: &Path) -> Git {
 /// Counts the commits of the last [`CHURN_DAYS`] days for each folder, and finds
 /// when each was last touched. `folders` are paths relative to `root`, with `/`.
 pub(crate) fn churn(root: &Path, folders: &[String]) -> BTreeMap<String, Churn> {
-    churn_from(root, "HEAD", &format!("{CHURN_DAYS}.days"), folders)
+    churn_from(root, "HEAD", &format!("{CHURN_DAYS}.days"), None, folders)
 }
 
 /// As [`churn`], as it was at `commit`, a full SHA committed at `time`: the commits of
@@ -161,12 +175,22 @@ pub(crate) fn churn_at(
 ) -> BTreeMap<String, Churn> {
     // A number of this size is seconds since 1970 to git.
     let since = time - i64::from(CHURN_DAYS) * 86_400;
-    churn_from(root, commit, &since.to_string(), folders)
+    // An older commit can carry a later date, such as after a clock was set right. It is
+    // not in the 30 days before this one.
+    let until = time.to_string();
+    churn_from(root, commit, &since.to_string(), Some(&until), folders)
 }
 
 /// The churn of `folders` in the history of `from`, counting the commits after `since`,
-/// a date as `git log --since` takes it.
-fn churn_from(root: &Path, from: &str, since: &str, folders: &[String]) -> BTreeMap<String, Churn> {
+/// a date as `git log --since` takes it: git stops at the first commit before that date.
+/// With `until`, no commit after that date counts.
+fn churn_from(
+    root: &Path,
+    from: &str,
+    since: &str,
+    until: Option<&str>,
+    folders: &[String],
+) -> BTreeMap<String, Churn> {
     let mut churn: BTreeMap<String, Churn> = BTreeMap::new();
     if folders.is_empty() {
         return churn;
@@ -175,10 +199,10 @@ fn churn_from(root: &Path, from: &str, since: &str, folders: &[String]) -> BTree
     // One call for the window: each commit as a marker line with its time, then
     // the files it touched, relative to the app folder.
     let since = format!("--since={since}");
-    let mut args = vec![
-        "log",
-        from,
-        &since,
+    let until = until.map(|until| format!("--until={until}"));
+    let mut args = vec!["log", from, &since];
+    args.extend(until.as_deref());
+    args.extend([
         "--format=%x01%ct",
         "--name-only",
         "--relative",
@@ -186,7 +210,7 @@ fn churn_from(root: &Path, from: &str, since: &str, folders: &[String]) -> BTree
         // rename compares file contents, which a clone without blobs has to download.
         "--no-renames",
         "--",
-    ];
+    ]);
     args.extend(folders.iter().map(String::as_str));
     let log = git(root, &args).unwrap_or_default();
     for commit in log.split('\u{1}').skip(1) {
@@ -221,8 +245,10 @@ fn churn_from(root: &Path, from: &str, since: &str, folders: &[String]) -> BTree
         if churn.contains_key(folder) {
             continue;
         }
-        let last = git(root, &["log", "-1", "--format=%ct", from, "--", folder])
-            .and_then(|time| time.trim().parse().ok());
+        let mut args = vec!["log", "-1", "--format=%ct", from];
+        args.extend(until.as_deref());
+        args.extend(["--", folder]);
+        let last = git(root, &args).and_then(|time| time.trim().parse().ok());
         churn.insert(
             folder.clone(),
             Churn {

@@ -67,6 +67,8 @@ fn history() -> History {
     };
     let monday = monday();
     let no_app = commit(monday - 70 * DAY + DAY, "README.md");
+    // A commit with a date before any period stands between commits in it.
+    commit(monday - 300 * DAY, "README.md");
     copy_dir(&fixture(), &app);
     commit(monday - 56 * DAY + DAY, "README.md");
     let order = "apps/shop-api/Modules/Checkout/app/Models/Order.php";
@@ -222,7 +224,7 @@ fn a_clone_without_file_contents_sends_the_last_commit_of_each_week_newest_first
     assert_eq!(billing.unwrap()["churn"]["commits"], 3);
 
     // A dry run with a number of weeks asks nothing and reads nothing.
-    let output = backfill(&[app, "--dry-run", "--weeks", "100"], &[]);
+    let output = backfill(&[app, "--dry-run", "--weeks", "30"], &[]);
     assert_eq!(output.status.code(), Some(0), "{}", stderr(&output));
     let line = |commit: &str, time: i64| format!("{commit} {}\n", utc(time));
     assert_eq!(
@@ -318,7 +320,7 @@ fn a_refusal_stops_the_run_and_only_a_wrong_token_or_document_fails_the_build() 
         assert_eq!(requests(&taken).len(), statuses.len(), "{shown}");
     }
 
-    // A shallow clone has no past commit: nothing is asked.
+    // A shallow clone has no past commit: nothing is asked, with or without a token.
     let origin = history.repository();
     git(
         history.folder.path(),
@@ -333,7 +335,7 @@ fn a_refusal_stops_the_run_and_only_a_wrong_token_or_document_fails_the_build() 
         ],
     );
     let shallow = history.folder.path().join("shallow/apps/shop-api");
-    let output = backfill(&[shallow.to_str().unwrap()], &[("MORTISE_TOKEN", TOKEN)]);
+    let output = backfill(&[shallow.to_str().unwrap()], &[]);
     assert_eq!(output.status.code(), Some(0), "{}", stderr(&output));
     assert_eq!(
         stderr(&output).trim_end(),
